@@ -22,7 +22,7 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       loanAmount: 400000,
       propertyValue: 500000,
       ltv: "80",
-      loanType: "Conventional",
+      loanType: "30 YR Fixed Rate",
       loanPurpose: "Purchase",
       propertyType: "Single Family",
       interestOnly: "No",
@@ -183,11 +183,10 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="Conventional">Conventional</SelectItem>
-                          <SelectItem value="FHA">FHA</SelectItem>
-                          <SelectItem value="VA">VA</SelectItem>
-                          <SelectItem value="Non-QM">Non-QM</SelectItem>
-                          <SelectItem value="Jumbo">Jumbo</SelectItem>
+                          <SelectItem value="30 YR Fixed Rate">30 YR Fixed Rate</SelectItem>
+                          <SelectItem value="10/6 ARM (30 YR)">10/6 ARM (30 YR)</SelectItem>
+                          <SelectItem value="7/6 ARM (30 YR)">7/6 ARM (30 YR)</SelectItem>
+                          <SelectItem value="5/6 ARM (30 YR)">5/6 ARM (30 YR)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
