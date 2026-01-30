@@ -27,14 +27,20 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       propertyType: "" as any,
       interestOnly: "" as any,
       ficoScore: "" as any,
+      grossMonthlyRent: "" as any,
+      annualTaxes: "" as any,
+      annualInsurance: "" as any,
       dscr: "" as any,
       prepaymentPenalty: "" as any,
     },
   });
 
-  // Calculate LTV whenever loan amount or property value changes
+  // Calculate LTV and DSCR
   const loanAmount = form.watch("loanAmount");
   const propertyValue = form.watch("propertyValue");
+  const grossMonthlyRent = form.watch("grossMonthlyRent");
+  const annualTaxes = form.watch("annualTaxes");
+  const annualInsurance = form.watch("annualInsurance");
 
   useEffect(() => {
     if (loanAmount && propertyValue && propertyValue > 0) {
@@ -48,12 +54,38 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       else if (numericLtv <= 65) mappedLtv = "60.01% - 65%";
       else if (numericLtv <= 70) mappedLtv = "65.01% - 70%";
       else if (numericLtv <= 75) mappedLtv = "70.01% - 75%";
-      else if (numericLtv <= 80) mappedLtv = "75.01% - 80%";
-      else mappedLtv = "75.01% - 80%"; // Cap at 80% as per backend options
+      else mappedLtv = "75.01% - 80%";
       
       form.setValue("ltv", mappedLtv);
     }
   }, [loanAmount, propertyValue, form]);
+
+  useEffect(() => {
+    if (grossMonthlyRent && annualTaxes !== undefined && annualInsurance !== undefined && loanAmount) {
+      const monthlyRent = Number(grossMonthlyRent);
+      const taxes = Number(annualTaxes);
+      const insurance = Number(annualInsurance);
+      const loan = Number(loanAmount);
+
+      const annualIncome = monthlyRent * 12;
+      const noi = annualIncome - (taxes || 0) - (insurance || 0);
+
+      // Estimate monthly payment (P&I) at 7% interest for 30 years
+      const rate = 0.07 / 12;
+      const n = 360;
+      const monthlyPayment = loan * (rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1);
+      const annualDebtService = monthlyPayment * 12;
+
+      const dscrRatio = noi / annualDebtService;
+
+      let mappedDscr = "1.20x+";
+      if (dscrRatio < 1.0) mappedDscr = "1.0x - 1.19x";
+      else if (dscrRatio < 1.2) mappedDscr = "1.0x - 1.19x";
+      else mappedDscr = "1.20x+";
+
+      form.setValue("dscr", mappedDscr);
+    }
+  }, [grossMonthlyRent, annualTaxes, annualInsurance, loanAmount, form]);
 
   return (
     <Card className="w-full bg-white/90 backdrop-blur-sm shadow-xl border-slate-200/60 overflow-hidden">
@@ -163,10 +195,10 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-slate-700">Est. DSCR</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select disabled onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
-                            <SelectValue placeholder="Select DSCR" />
+                          <SelectTrigger className="h-11 bg-slate-100/50 text-slate-500 font-medium">
+                            <SelectValue placeholder="Calculated from financials" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -174,6 +206,50 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                           <SelectItem value="1.20x+">1.20x+</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <FormField
+                  control={form.control}
+                  name="grossMonthlyRent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Gross Monthly Rent ($)</FormLabel>
+                      <FormControl>
+                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter rent" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="annualTaxes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Annual Taxes ($)</FormLabel>
+                      <FormControl>
+                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter taxes" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="annualInsurance"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Annual Insurance ($)</FormLabel>
+                      <FormControl>
+                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter insurance" {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
