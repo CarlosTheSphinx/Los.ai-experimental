@@ -30,6 +30,7 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       grossMonthlyRent: "" as any,
       annualTaxes: "" as any,
       annualInsurance: "" as any,
+      calculatedDscr: "",
       dscr: "" as any,
       prepaymentPenalty: "" as any,
     },
@@ -77,6 +78,7 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       const annualDebtService = monthlyPayment * 12;
 
       const dscrRatio = noi / annualDebtService;
+      form.setValue("calculatedDscr", dscrRatio.toFixed(2));
 
       let mappedDscr = "1.20x+";
       if (dscrRatio < 1.0) mappedDscr = "1.0x - 1.19x";
@@ -184,6 +186,20 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="calculatedDscr"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Exact DSCR</FormLabel>
+                      <FormControl>
+                        <Input readOnly className="h-11 bg-slate-100/50 text-slate-500 font-medium" placeholder="Calculated" {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

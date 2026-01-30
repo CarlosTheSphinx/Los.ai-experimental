@@ -28,6 +28,7 @@ export const loanPricingFormSchema = z.object({
   grossMonthlyRent: z.coerce.number().min(0, "Gross monthly rent is required"),
   annualTaxes: z.coerce.number().min(0, "Annual taxes are required"),
   annualInsurance: z.coerce.number().min(0, "Annual insurance is required"),
+  calculatedDscr: z.string().optional(),
   dscr: z.string().min(1, "DSCR is required"),
   ficoScore: z.string().min(1, "FICO Score is required"),
   prepaymentPenalty: z.string().min(1, "Prepayment penalty is required"),
