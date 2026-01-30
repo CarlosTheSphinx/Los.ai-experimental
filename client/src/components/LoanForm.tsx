@@ -29,7 +29,6 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       ficoScore: "740",
       dscr: "1.20x+",
       prepaymentPenalty: "5-Year (54321)",
-      testMode: false,
     },
   });
 
@@ -339,29 +338,6 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                         </SelectContent>
                       </Select>
                       <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="testMode"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>
-                          Test Mode
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          Simulate a response instead of scraping real data.
-                        </p>
-                      </div>
                     </FormItem>
                   )}
                 />

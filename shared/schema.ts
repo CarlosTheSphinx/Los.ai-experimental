@@ -29,7 +29,6 @@ export const loanPricingFormSchema = z.object({
   ficoScore: z.string().min(1, "FICO Score is required"),
   prepaymentPenalty: z.string().min(1, "Prepayment penalty is required"),
   tpoPremium: z.string().optional(),
-  testMode: z.boolean().optional().default(false)
 });
 
 export type LoanPricingFormData = z.infer<typeof loanPricingFormSchema>;
