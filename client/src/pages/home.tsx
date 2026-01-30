@@ -4,6 +4,7 @@ import { PricingResult } from "@/components/PricingResult";
 import { usePricing } from "@/hooks/use-pricing";
 import { type LoanPricingFormData, type PricingResponse } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
+import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
 export default function Home() {
   const [result, setResult] = useState<PricingResponse | null>(null);
@@ -30,7 +31,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 font-sans pb-20">
       {/* Header Section */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-primary rounded-lg p-1.5">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -41,8 +42,12 @@ export default function Home() {
               Rate<span className="text-primary">Master</span>
             </h1>
           </div>
-          <div className="text-sm font-medium text-slate-500">
-            Professional Pricing Engine
+          <div>
+            <img 
+              src={sphinxLogo} 
+              alt="Sphinx Capital" 
+              className="h-12 w-auto object-contain"
+            />
           </div>
         </div>
       </header>

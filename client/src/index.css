@@ -4,21 +4,21 @@
 @tailwind utilities;
 
 :root {
-  /* Elegant Blue-Grey Theme */
+  /* Sphinx Capital Logo Colors */
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Lexend', sans-serif;
 
   --background: 210 20% 98%;
-  --foreground: 222 47% 11%;
+  --foreground: 226 100% 25%; /* Deep Blue from logo */
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 226 100% 25%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover-foreground: 226 100% 25%;
 
-  /* Corporate Blue Primary */
-  --primary: 221 83% 53%;
+  /* Corporate Blue Primary from Logo (#002699 or similar) */
+  --primary: 226 100% 30%; 
   --primary-foreground: 210 40% 98%;
 
   /* Subtle Secondary */
