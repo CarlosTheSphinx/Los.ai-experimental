@@ -279,10 +279,41 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="None">None</SelectItem>
-                          <SelectItem value="1 Year">1 Year</SelectItem>
-                          <SelectItem value="2 Years">2 Years</SelectItem>
-                          <SelectItem value="3 Years">3 Years</SelectItem>
+                          <SelectItem value="5-Year (54321)">5-Year (54321)</SelectItem>
+                          <SelectItem value="3-Year (321)">3-Year (321)</SelectItem>
+                          <SelectItem value="2-Year (320)">2-Year (320)</SelectItem>
+                          <SelectItem value="1-Year (300)">1-Year (300)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="tpoPremium"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">TPO Premium</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="No TPO Premium" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="No TPO Premium">No TPO Premium</SelectItem>
+                          <SelectItem value="0.25%">0.25%</SelectItem>
+                          <SelectItem value="0.50%">0.50%</SelectItem>
+                          <SelectItem value="0.75%">0.75%</SelectItem>
+                          <SelectItem value="1.00%">1.00%</SelectItem>
+                          <SelectItem value="1.25%">1.25%</SelectItem>
+                          <SelectItem value="1.5%">1.5%</SelectItem>
+                          <SelectItem value="1.75%">1.75%</SelectItem>
+                          <SelectItem value="2.0%">2.0%</SelectItem>
+                          <SelectItem value="2.25%">2.25%</SelectItem>
+                          <SelectItem value="2.5%">2.5%</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
