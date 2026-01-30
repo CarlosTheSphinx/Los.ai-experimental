@@ -39,8 +39,20 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
 
   useEffect(() => {
     if (loanAmount && propertyValue && propertyValue > 0) {
-      const calculatedLtv = ((Number(loanAmount) / Number(propertyValue)) * 100).toFixed(2);
-      form.setValue("ltv", calculatedLtv);
+      const numericLtv = (Number(loanAmount) / Number(propertyValue)) * 100;
+      
+      // Map numeric LTV to backend ranges
+      let mappedLtv = "";
+      if (numericLtv <= 50) mappedLtv = "≤ 50%";
+      else if (numericLtv <= 55) mappedLtv = "50.01% - 55%";
+      else if (numericLtv <= 60) mappedLtv = "55.01% - 60%";
+      else if (numericLtv <= 65) mappedLtv = "60.01% - 65%";
+      else if (numericLtv <= 70) mappedLtv = "65.01% - 70%";
+      else if (numericLtv <= 75) mappedLtv = "70.01% - 75%";
+      else if (numericLtv <= 80) mappedLtv = "75.01% - 80%";
+      else mappedLtv = "75.01% - 80%"; // Cap at 80% as per backend options
+      
+      form.setValue("ltv", mappedLtv);
     }
   }, [loanAmount, propertyValue, form]);
 

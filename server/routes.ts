@@ -132,12 +132,24 @@ export async function registerRoutes(
                 
                 // Find the combobox div - try multiple strategies
                 const comboboxResult = await page.evaluate((placeholder) => {
-                  const input = Array.from(document.querySelectorAll('input')).find(
-                    inp => inp.placeholder === placeholder
-                  );
+                  const inputs = Array.from(document.querySelectorAll('input'));
+                  
+                  // Specific handling for Loan Type and LTV to avoid mixing them up
+                  // The site seems to have multiple inputs with similar names or roles
+                  let input;
+                  if (placeholder === 'Loan Type') {
+                    // Look for input that is explicitly related to Loan Type
+                    input = inputs.find(inp => 
+                      (inp.placeholder === 'Loan Type') || 
+                      (inp.getAttribute('aria-label') === 'Loan Type') ||
+                      (inp.id && inp.id.includes('loanType'))
+                    );
+                  } else {
+                    input = inputs.find(inp => inp.placeholder === placeholder);
+                  }
                   
                   if (!input) {
-                    return { success: false, error: 'Input not found' };
+                    return { success: false, error: 'Input not found for ' + placeholder };
                   }
                   
                   // Strategy 1: Check if input is inside a combobox (parent)
@@ -167,16 +179,18 @@ export async function registerRoutes(
                     }
                   }
                   
-                  // Strategy 4: Look at grandparent level
-                  if (input.parentElement && input.parentElement.parentElement) {
-                    const grandparent = input.parentElement.parentElement;
-                    const comboboxInGrandparent = grandparent.querySelector('[role="combobox"]');
-                    if (comboboxInGrandparent && comboboxInGrandparent.id) {
-                      return { success: true, id: comboboxInGrandparent.id, strategy: 'grandparent' };
-                    }
+                  // Strategy 4: Find by ID pattern if we know it
+                  // LTV is usually :r2:, Loan Type is usually :r4:
+                  if (placeholder === 'LTV') {
+                    const ltvEl = document.getElementById(':r2:-outlined') || document.getElementById(':r2:');
+                    if (ltvEl) return { success: true, id: ltvEl.id, strategy: 'explicit-id' };
+                  }
+                  if (placeholder === 'Loan Type') {
+                    const ltEl = document.getElementById(':r4:-outlined') || document.getElementById(':r4:');
+                    if (ltEl) return { success: true, id: ltEl.id, strategy: 'explicit-id' };
                   }
                   
-                  return { success: false, error: 'Combobox not found with any strategy' };
+                  return { success: false, error: 'Combobox not found for ' + placeholder };
                 }, dropdown.label);
                 
                 if (!comboboxResult.success) {
