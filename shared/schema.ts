@@ -27,7 +27,7 @@ export const loanPricingFormSchema = z.object({
   propertyType: z.string().min(1, "Property Type is required"),
   dscr: z.string().min(1, "DSCR is required"),
   ficoScore: z.string().min(1, "FICO Score is required"),
-  prepaymentPenalty: z.string().optional(),
+  prepaymentPenalty: z.string().min(1, "Prepayment penalty is required"),
   tpoPremium: z.string().optional(),
   testMode: z.boolean().optional().default(false)
 });

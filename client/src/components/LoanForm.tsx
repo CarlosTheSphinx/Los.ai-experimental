@@ -28,6 +28,7 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
       interestOnly: "No",
       ficoScore: "740",
       dscr: "1.20x+",
+      prepaymentPenalty: "5-Year (54321)",
       testMode: false,
     },
   });
@@ -280,7 +281,7 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                   name="prepaymentPenalty"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-700">Prepayment Penalty (Optional)</FormLabel>
+                      <FormLabel className="text-slate-700">Prepayment Penalty</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
