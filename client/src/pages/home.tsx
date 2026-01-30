@@ -53,15 +53,6 @@ export default function Home() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="text-center mb-10 space-y-2">
-          <h2 className="text-3xl md:text-4xl font-display font-bold text-slate-900">
-            Get Your Custom Rate Quote
-          </h2>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Enter your loan scenario below to receive real-time pricing from our comprehensive lender network.
-          </p>
-        </div>
-
         <AnimatePresence mode="wait">
           {!result ? (
             <motion.div
