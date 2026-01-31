@@ -5,6 +5,9 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
 import { z } from "zod";
+import { v4 as uuidv4 } from 'uuid';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { sendSigningInvitation, sendCompletedDocument } from './email';
 
 // Initialize Apify client
 // In a real app, this should be an env var. Using the token from the provided code for fidelity.
@@ -651,6 +654,523 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting quote:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // ========== DOCUMENT SIGNING ENDPOINTS ==========
+
+  // Create a new document (upload PDF)
+  app.post('/api/documents', async (req, res) => {
+    try {
+      const { quoteId, name, fileName, fileData, pageCount } = req.body;
+      
+      if (!name || !fileName || !fileData) {
+        res.status(400).json({ success: false, error: 'Missing required fields' });
+        return;
+      }
+
+      const doc = await storage.createDocument({
+        quoteId: quoteId || null,
+        name,
+        fileName,
+        fileData,
+        pageCount: pageCount || 1,
+        status: 'draft'
+      });
+
+      await storage.createAuditLog({
+        documentId: doc.id,
+        action: 'created',
+        details: `Document "${name}" created`,
+        ipAddress: req.ip
+      });
+
+      res.json({ success: true, document: doc });
+    } catch (error) {
+      console.error('Error creating document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // List all documents
+  app.get('/api/documents', async (req, res) => {
+    try {
+      const docs = await storage.getDocuments();
+      res.json({ success: true, documents: docs });
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get document by ID
+  app.get('/api/documents/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const doc = await storage.getDocumentById(id);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+      
+      const signers = await storage.getSignersByDocumentId(id);
+      const fields = await storage.getFieldsByDocumentId(id);
+      
+      res.json({ success: true, document: doc, signers, fields });
+    } catch (error) {
+      console.error('Error fetching document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get documents by quote ID
+  app.get('/api/quotes/:quoteId/documents', async (req, res) => {
+    try {
+      const quoteId = parseInt(req.params.quoteId);
+      const docs = await storage.getDocumentsByQuoteId(quoteId);
+      res.json({ success: true, documents: docs });
+    } catch (error) {
+      console.error('Error fetching documents for quote:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Delete document
+  app.delete('/api/documents/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteDocument(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Add signer to document
+  app.post('/api/documents/:id/signers', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { name, email, color, signingOrder } = req.body;
+
+      if (!name || !email) {
+        res.status(400).json({ success: false, error: 'Name and email are required' });
+        return;
+      }
+
+      const signer = await storage.createSigner({
+        documentId,
+        name,
+        email,
+        color: color || '#3B82F6',
+        signingOrder: signingOrder || 1,
+        status: 'pending'
+      });
+
+      res.json({ success: true, signer });
+    } catch (error) {
+      console.error('Error adding signer:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Delete signer
+  app.delete('/api/signers/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteSigner(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting signer:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Add field to document
+  app.post('/api/documents/:id/fields', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { signerId, pageNumber, fieldType, x, y, width, height, required, label } = req.body;
+
+      const field = await storage.createField({
+        documentId,
+        signerId: signerId || null,
+        pageNumber: pageNumber || 1,
+        fieldType,
+        x,
+        y,
+        width,
+        height,
+        required: required !== false,
+        label
+      });
+
+      res.json({ success: true, field });
+    } catch (error) {
+      console.error('Error adding field:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Update field
+  app.patch('/api/fields/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const field = await storage.updateField(id, updates);
+      res.json({ success: true, field });
+    } catch (error) {
+      console.error('Error updating field:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Delete field
+  app.delete('/api/fields/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteField(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting field:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Save all fields for a document (bulk update)
+  app.post('/api/documents/:id/fields/bulk', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { fields } = req.body;
+
+      // Delete existing fields
+      await storage.deleteFieldsByDocumentId(documentId);
+
+      // Create new fields
+      const createdFields = [];
+      for (const field of fields) {
+        const created = await storage.createField({
+          documentId,
+          signerId: field.signerId || null,
+          pageNumber: field.pageNumber || 1,
+          fieldType: field.fieldType,
+          x: field.x,
+          y: field.y,
+          width: field.width,
+          height: field.height,
+          required: field.required !== false,
+          label: field.label
+        });
+        createdFields.push(created);
+      }
+
+      res.json({ success: true, fields: createdFields });
+    } catch (error) {
+      console.error('Error saving fields:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Send document for signing
+  app.post('/api/documents/:id/send', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { senderName } = req.body;
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      const signers = await storage.getSignersByDocumentId(documentId);
+      if (signers.length === 0) {
+        res.status(400).json({ success: false, error: 'No signers added to document' });
+        return;
+      }
+
+      const fields = await storage.getFieldsByDocumentId(documentId);
+      if (fields.length === 0) {
+        res.status(400).json({ success: false, error: 'No signature fields added to document' });
+        return;
+      }
+
+      // Generate tokens for each signer and send emails
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const emailResults = [];
+
+      for (const signer of signers) {
+        const token = uuidv4();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        await storage.updateSigner(signer.id, {
+          token,
+          tokenExpiresAt: expiresAt,
+          status: 'sent'
+        });
+
+        const signingLink = `${baseUrl}/sign/${token}`;
+        
+        const emailResult = await sendSigningInvitation(
+          signer.email,
+          signer.name,
+          doc.name,
+          senderName || 'Sphinx Capital',
+          signingLink
+        );
+
+        emailResults.push({ signerId: signer.id, email: signer.email, ...emailResult });
+      }
+
+      // Update document status
+      await storage.updateDocumentStatus(documentId, 'sent');
+
+      await storage.createAuditLog({
+        documentId,
+        action: 'sent',
+        details: `Document sent to ${signers.length} signer(s)`,
+        ipAddress: req.ip
+      });
+
+      res.json({ success: true, emailResults });
+    } catch (error) {
+      console.error('Error sending document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get signing page data by token
+  app.get('/api/sign/:token', async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const signer = await storage.getSignerByToken(token);
+      if (!signer) {
+        res.status(404).json({ success: false, error: 'Invalid signing link' });
+        return;
+      }
+
+      if (signer.tokenExpiresAt && new Date(signer.tokenExpiresAt) < new Date()) {
+        res.status(410).json({ success: false, error: 'Signing link has expired' });
+        return;
+      }
+
+      if (signer.status === 'signed') {
+        res.status(400).json({ success: false, error: 'Document already signed' });
+        return;
+      }
+
+      const doc = await storage.getDocumentById(signer.documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      // Get only fields assigned to this signer
+      const allFields = await storage.getFieldsByDocumentId(signer.documentId);
+      const signerFields = allFields.filter(f => f.signerId === signer.id);
+
+      // Update signer status to viewed
+      if (signer.status === 'sent') {
+        await storage.updateSigner(signer.id, { status: 'viewed' });
+        await storage.createAuditLog({
+          documentId: doc.id,
+          signerId: signer.id,
+          action: 'viewed',
+          details: `${signer.name} viewed the document`,
+          ipAddress: req.ip
+        });
+      }
+
+      res.json({
+        success: true,
+        document: {
+          id: doc.id,
+          name: doc.name,
+          fileData: doc.fileData,
+          pageCount: doc.pageCount
+        },
+        signer: {
+          id: signer.id,
+          name: signer.name,
+          email: signer.email,
+          color: signer.color
+        },
+        fields: signerFields
+      });
+    } catch (error) {
+      console.error('Error fetching signing page:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Complete signing
+  app.post('/api/sign/:token/complete', async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { fieldValues } = req.body; // { fieldId: value }
+
+      const signer = await storage.getSignerByToken(token);
+      if (!signer) {
+        res.status(404).json({ success: false, error: 'Invalid signing link' });
+        return;
+      }
+
+      if (signer.status === 'signed') {
+        res.status(400).json({ success: false, error: 'Already signed' });
+        return;
+      }
+
+      const doc = await storage.getDocumentById(signer.documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      // Update field values
+      for (const [fieldIdStr, value] of Object.entries(fieldValues)) {
+        const fieldId = parseInt(fieldIdStr);
+        await storage.updateField(fieldId, { value: value as string });
+      }
+
+      // Update signer status
+      await storage.updateSigner(signer.id, {
+        status: 'signed',
+        signedAt: new Date()
+      });
+
+      await storage.createAuditLog({
+        documentId: doc.id,
+        signerId: signer.id,
+        action: 'signed',
+        details: `${signer.name} signed the document`,
+        ipAddress: req.ip
+      });
+
+      // Check if all signers have signed
+      const allSigners = await storage.getSignersByDocumentId(doc.id);
+      const allSigned = allSigners.every(s => s.status === 'signed');
+
+      if (allSigned) {
+        // Mark document as completed
+        await storage.updateDocumentStatus(doc.id, 'completed', new Date());
+
+        await storage.createAuditLog({
+          documentId: doc.id,
+          action: 'completed',
+          details: 'All signers have completed signing',
+          ipAddress: req.ip
+        });
+
+        // Generate signed PDF and send to all parties
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const downloadLink = `${baseUrl}/api/documents/${doc.id}/download`;
+        
+        const signerNames = allSigners.map(s => s.name);
+        const allEmails = allSigners.map(s => s.email);
+        
+        // Send completion email to all signers
+        for (const s of allSigners) {
+          await sendCompletedDocument(
+            s.email,
+            s.name,
+            doc.name,
+            signerNames,
+            downloadLink
+          );
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        completed: allSigned,
+        message: allSigned ? 'Document fully signed!' : 'Your signature has been recorded'
+      });
+    } catch (error) {
+      console.error('Error completing signing:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Download signed document
+  app.get('/api/documents/:id/download', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      const fields = await storage.getFieldsByDocumentId(documentId);
+      const signers = await storage.getSignersByDocumentId(documentId);
+      const signerMap = new Map(signers.map(s => [s.id, s]));
+
+      // Load the PDF
+      const pdfBytes = Buffer.from(doc.fileData.split(',')[1] || doc.fileData, 'base64');
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const pages = pdfDoc.getPages();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      // Add field values to PDF
+      for (const field of fields) {
+        if (!field.value) continue;
+        
+        const pageIndex = field.pageNumber - 1;
+        if (pageIndex >= pages.length) continue;
+        
+        const page = pages[pageIndex];
+        const { height: pageHeight } = page.getSize();
+
+        if (field.fieldType === 'signature' || field.fieldType === 'initial') {
+          // Draw signature image
+          try {
+            const imgData = field.value.split(',')[1] || field.value;
+            const imgBytes = Buffer.from(imgData, 'base64');
+            const img = await pdfDoc.embedPng(imgBytes);
+            
+            page.drawImage(img, {
+              x: field.x,
+              y: pageHeight - field.y - field.height,
+              width: field.width,
+              height: field.height
+            });
+          } catch (imgError) {
+            console.error('Error embedding signature image:', imgError);
+          }
+        } else if (field.fieldType === 'text' || field.fieldType === 'date') {
+          // Draw text
+          page.drawText(field.value, {
+            x: field.x + 5,
+            y: pageHeight - field.y - field.height + 10,
+            size: 12,
+            font,
+            color: rgb(0, 0, 0)
+          });
+        }
+      }
+
+      const signedPdfBytes = await pdfDoc.save();
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.name}-signed.pdf"`);
+      res.send(Buffer.from(signedPdfBytes));
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get audit log for document
+  app.get('/api/documents/:id/audit', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const logs = await storage.getAuditLogsByDocumentId(documentId);
+      res.json({ success: true, logs });
+    } catch (error) {
+      console.error('Error fetching audit log:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
