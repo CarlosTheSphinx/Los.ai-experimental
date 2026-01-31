@@ -36,17 +36,14 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
       const rate = result.interestRate;
       const formattedRate = typeof rate === 'string' ? rate : (rate ? `${rate.toFixed(3)}%` : "N/A");
       
-      return apiRequest('/api/quotes', {
-        method: 'POST',
-        body: JSON.stringify({
+      return apiRequest('POST', '/api/quotes', {
           customerFirstName,
           customerLastName,
           propertyAddress,
           loanData: formData,
           interestRate: formattedRate,
           pointsCharged
-        })
-      });
+        });
     },
     onSuccess: () => {
       toast({

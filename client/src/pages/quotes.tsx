@@ -17,7 +17,7 @@ export default function Quotes() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/quotes/${id}`, { method: 'DELETE' });
+      return apiRequest('DELETE', `/api/quotes/${id}`);
     },
     onSuccess: () => {
       toast({ title: "Quote Deleted", description: "The quote has been removed." });
