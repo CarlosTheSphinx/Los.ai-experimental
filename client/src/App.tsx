@@ -7,12 +7,14 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Quotes from "@/pages/quotes";
 import SignPage from "@/pages/sign";
+import Documents from "@/pages/documents";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/quotes" component={Quotes} />
+      <Route path="/documents" component={Documents} />
       <Route path="/sign/:token" component={SignPage} />
       <Route component={NotFound} />
     </Switch>

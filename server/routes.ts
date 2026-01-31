@@ -697,7 +697,13 @@ export async function registerRoutes(
   app.get('/api/documents', async (req, res) => {
     try {
       const docs = await storage.getDocuments();
-      res.json({ success: true, documents: docs });
+      const documentsWithSigners = await Promise.all(
+        docs.map(async (doc) => {
+          const signers = await storage.getSignersByDocumentId(doc.id);
+          return { ...doc, signers };
+        })
+      );
+      res.json({ success: true, documents: documentsWithSigners });
     } catch (error) {
       console.error('Error fetching documents:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });

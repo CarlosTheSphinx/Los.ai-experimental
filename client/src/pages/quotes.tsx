@@ -48,12 +48,20 @@ export default function Quotes() {
               <p className="text-sm text-slate-500">View your commission details</p>
             </div>
           </div>
-          <Link href="/">
-            <Button variant="outline" data-testid="button-back-home">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              New Quote
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/documents">
+              <Button variant="outline" data-testid="button-view-documents">
+                <FileText className="mr-2 h-4 w-4" />
+                Documents
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" data-testid="button-back-home">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                New Quote
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
