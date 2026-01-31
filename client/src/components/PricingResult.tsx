@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PricingResponse, LoanPricingFormData } from "@shared/schema";
-import { CheckCircle2, RefreshCw, AlertCircle, FileText } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Download, AlertCircle, FileText } from "lucide-react";
 
 interface PricingResultProps {
   result: PricingResponse;
@@ -29,7 +29,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
         </CardContent>
         <CardFooter>
           <Button onClick={onReset} variant="outline" className="w-full border-red-200 text-red-700 hover:bg-red-100 hover:text-red-800">
-            Try Again
+            Edit Loan
           </Button>
         </CardFooter>
       </Card>
@@ -38,7 +38,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
 
   const rate = result.interestRate;
   // Format percentage nicely
-  const formattedRate = rate ? `${rate.toFixed(3)}%` : "N/A";
+  const formattedRate = typeof rate === 'string' ? rate : (rate ? `${rate.toFixed(3)}%` : "N/A");
 
   return (
     <Card className="w-full bg-white shadow-xl border-primary/10 overflow-hidden animate-in">
@@ -72,7 +72,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
               </div>
               <div>
                 <dt className="text-slate-500">LTV</dt>
-                <dd className="font-medium text-slate-900">{formData?.ltv}%</dd>
+                <dd className="font-medium text-slate-900">{formData?.ltv}</dd>
               </div>
               <div>
                 <dt className="text-slate-500">FICO Score</dt>
@@ -96,10 +96,23 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
       </CardContent>
 
       <CardFooter className="bg-slate-50 p-6 border-t border-slate-100">
-        <Button onClick={onReset} className="w-full" variant="outline">
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Calculate Another Scenario
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-4 w-full">
+          <Button 
+            onClick={onReset} 
+            variant="outline" 
+            className="flex-1 h-12 text-lg font-semibold"
+          >
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Edit Loan
+          </Button>
+          <Button 
+            onClick={() => window.print()} 
+            className="flex-1 h-12 text-lg font-semibold shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-blue-600"
+          >
+            <Download className="mr-2 h-5 w-5" />
+            Download PDF
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   );
