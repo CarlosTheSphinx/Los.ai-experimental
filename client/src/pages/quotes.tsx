@@ -1,15 +1,18 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowLeft, Trash2, DollarSign, MapPin, User, Calendar, Percent, FileText } from "lucide-react";
+import { ArrowLeft, Trash2, DollarSign, MapPin, User, Calendar, Percent, FileText, Send } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedQuote } from "@shared/schema";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
+import { DocumentSigningModal } from "@/components/DocumentSigningModal";
 
 export default function Quotes() {
   const { toast } = useToast();
+  const [signingQuote, setSigningQuote] = useState<SavedQuote | null>(null);
 
   const { data, isLoading } = useQuery<{ success: boolean; quotes: SavedQuote[] }>({
     queryKey: ['/api/quotes']
@@ -165,6 +168,17 @@ export default function Quotes() {
                         ${quote.commission?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                       </span>
                     </div>
+
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <Button
+                        onClick={() => setSigningQuote(quote)}
+                        className="w-full"
+                        data-testid={`button-send-signature-${quote.id}`}
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Quote for Signature
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -172,6 +186,14 @@ export default function Quotes() {
           </div>
         )}
       </main>
+
+      {signingQuote && (
+        <DocumentSigningModal
+          open={!!signingQuote}
+          onClose={() => setSigningQuote(null)}
+          quote={signingQuote}
+        />
+      )}
     </div>
   );
 }

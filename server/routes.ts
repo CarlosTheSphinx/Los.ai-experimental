@@ -545,7 +545,7 @@ export async function registerRoutes(
             apifyRunId: run.id
           });
         } else if (result.success && result.interestRate) {
-          let parsedRate = parseFloat(result.interestRate.replace('%', ''));
+          let parsedRate = parseFloat(String(result.interestRate).replace('%', ''));
           res.json({
             success: true,
             interestRate: parsedRate,
