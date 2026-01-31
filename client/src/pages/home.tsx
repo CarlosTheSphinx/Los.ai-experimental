@@ -1,16 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LoanForm } from "@/components/LoanForm";
 import { PricingResult } from "@/components/PricingResult";
 import { usePricing } from "@/hooks/use-pricing";
 import { type LoanPricingFormData, type PricingResponse } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
+import { Progress } from "@/components/ui/progress";
+
+const progressSteps = [
+  { percent: 10, message: "Initializing pricing engine..." },
+  { percent: 25, message: "Ron is racing down the hall to collect quotes..." },
+  { percent: 45, message: "Terry is texting Tom to solidify the rate..." },
+  { percent: 65, message: "Analyzing lender network availability..." },
+  { percent: 85, message: "Finalizing your custom quote..." },
+  { percent: 95, message: "Almost there! Just a few more seconds..." },
+];
 
 export default function Home() {
   const [result, setResult] = useState<PricingResponse | null>(null);
   const [lastFormData, setLastFormData] = useState<LoanPricingFormData | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
   
   const { mutate: getPricing, isPending } = usePricing();
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isPending) {
+      setProgress(0);
+      let stepIdx = 0;
+      setProgressMessage(progressSteps[0].message);
+      
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          const next = prev + (100 / 30); // Reach 100% in about 30s roughly, or until it finishes
+          if (next >= 100) return 99;
+          
+          // Update message based on progress
+          const currentStep = progressSteps.findLast(step => next >= step.percent);
+          if (currentStep) setProgressMessage(currentStep.message);
+          
+          return next;
+        });
+      }, 1000);
+    } else {
+      setProgress(0);
+      setProgressMessage("");
+    }
+    return () => clearInterval(interval);
+  }, [isPending]);
 
   const handleSubmit = (data: LoanPricingFormData) => {
     setLastFormData(data);
@@ -54,7 +92,22 @@ export default function Home() {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <AnimatePresence mode="wait">
-          {!result ? (
+          {isPending ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6 text-center py-20"
+            >
+              <div className="max-w-md mx-auto space-y-4">
+                <Progress value={progress} className="h-3 w-full" />
+                <p className="text-lg font-medium text-slate-700 animate-pulse">
+                  {progressMessage}
+                </p>
+              </div>
+            </motion.div>
+          ) : !result ? (
             <motion.div
               key="form"
               initial={{ opacity: 0, y: 20 }}
