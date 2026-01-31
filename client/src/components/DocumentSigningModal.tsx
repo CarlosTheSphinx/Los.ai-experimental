@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,16 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
   const [selectedSignerIndex, setSelectedSignerIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [senderName, setSenderName] = useState("Sphinx Capital");
+  const [dragState, setDragState] = useState<{
+    fieldIndex: number;
+    mode: 'move' | 'resize';
+    startX: number;
+    startY: number;
+    startFieldX: number;
+    startFieldY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
   
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -254,6 +264,65 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
   const removeField = (index: number) => {
     setFields(prev => prev.filter((_, i) => i !== index));
   };
+
+  const handleFieldMouseDown = (e: React.MouseEvent, fieldIndex: number, mode: 'move' | 'resize') => {
+    e.stopPropagation();
+    e.preventDefault();
+    const field = fields[fieldIndex];
+    if (!field) return;
+    
+    setDragState({
+      fieldIndex,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      startFieldX: field.x,
+      startFieldY: field.y,
+      startWidth: field.width,
+      startHeight: field.height
+    });
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragState) return;
+    
+    const deltaX = e.clientX - dragState.startX;
+    const deltaY = e.clientY - dragState.startY;
+    
+    setFields(prev => prev.map((field, i) => {
+      if (i !== dragState.fieldIndex) return field;
+      
+      if (dragState.mode === 'move') {
+        return {
+          ...field,
+          x: Math.max(0, dragState.startFieldX + deltaX),
+          y: Math.max(0, dragState.startFieldY + deltaY)
+        };
+      } else {
+        return {
+          ...field,
+          width: Math.max(40, dragState.startWidth + deltaX),
+          height: Math.max(20, dragState.startHeight + deltaY)
+        };
+      }
+    }));
+  }, [dragState]);
+
+  const handleMouseUp = useCallback(() => {
+    setDragState(null);
+  }, []);
+
+  // Add global mouse event listeners for drag/resize
+  useEffect(() => {
+    if (dragState) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [dragState, handleMouseMove, handleMouseUp]);
 
   const currentPageFields = fields.filter(f => f.pageNumber === currentPage);
 
@@ -531,13 +600,15 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                   )}
 
                   {currentPageFields.map((field, i) => {
+                    const globalIndex = fields.findIndex(f => f === field);
                     const signer = signers.find(s => s.id === field.signerId);
                     const isPrepopulated = PREPOPULATED_FIELD_TYPES.some(f => f.type === field.fieldType);
                     const fieldLabel = [...SIGNATURE_FIELD_TYPES, ...PREPOPULATED_FIELD_TYPES].find(f => f.type === field.fieldType)?.label || field.fieldType;
+                    const isDragging = dragState?.fieldIndex === globalIndex;
                     return (
                       <div
                         key={i}
-                        className="absolute border-2 rounded flex items-center justify-center cursor-move group overflow-hidden"
+                        className={`absolute border-2 rounded flex items-center justify-center cursor-move group ${isDragging ? 'opacity-80 z-50' : ''}`}
                         style={{
                           left: field.x,
                           top: field.y,
@@ -546,16 +617,25 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                           borderColor: signer?.color || '#3B82F6',
                           backgroundColor: isPrepopulated ? '#FEF3C7' : `${signer?.color || '#3B82F6'}20`
                         }}
+                        onMouseDown={(e) => handleFieldMouseDown(e, globalIndex, 'move')}
                       >
-                        <span className="text-xs font-medium truncate px-1" style={{ color: isPrepopulated ? '#92400E' : signer?.color }}>
+                        <span className="text-xs font-medium truncate px-1 select-none" style={{ color: isPrepopulated ? '#92400E' : signer?.color }}>
                           {isPrepopulated && field.value ? field.value : fieldLabel}
                         </span>
+                        {/* Delete button */}
                         <button
-                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                          onClick={(e) => { e.stopPropagation(); removeField(i); }}
+                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10"
+                          onClick={(e) => { e.stopPropagation(); removeField(globalIndex); }}
+                          onMouseDown={(e) => e.stopPropagation()}
                         >
                           <X className="w-3 h-3" />
                         </button>
+                        {/* Resize handle */}
+                        <div
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-slate-600 cursor-se-resize opacity-0 group-hover:opacity-100 transition-opacity"
+                          onMouseDown={(e) => handleFieldMouseDown(e, globalIndex, 'resize')}
+                          style={{ borderTopLeftRadius: '2px' }}
+                        />
                       </div>
                     );
                   })}
