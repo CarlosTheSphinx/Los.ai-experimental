@@ -7,7 +7,7 @@ import { ApifyClient } from 'apify-client';
 import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { sendSigningInvitation, sendCompletedDocument } from './email';
+import { sendSigningInvitation, sendCompletedDocument, sendVoidNotification, sendSigningReminder } from './email';
 
 // Initialize Apify client
 // In a real app, this should be an env var. Using the token from the provided code for fidelity.
@@ -1213,6 +1213,497 @@ export async function registerRoutes(
       res.json({ success: true, logs });
     } catch (error) {
       console.error('Error fetching audit log:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // ========== AGREEMENTS API ENDPOINTS ==========
+
+  // Get agreements list with signer counts
+  app.get('/api/esignature/agreements', async (req, res) => {
+    try {
+      const docs = await storage.getDocuments();
+      
+      const agreements = await Promise.all(docs.map(async (doc) => {
+        const docSigners = await storage.getSignersByDocumentId(doc.id);
+        const signedCount = docSigners.filter(s => s.status === 'signed').length;
+        
+        return {
+          id: doc.id,
+          title: doc.name,
+          status: doc.status,
+          createdAt: doc.createdAt,
+          sentAt: doc.sentAt,
+          completedAt: doc.completedAt,
+          voidedAt: doc.voidedAt,
+          totalSigners: docSigners.length,
+          signedCount,
+          signers: docSigners.map(s => ({
+            id: s.id,
+            name: s.name,
+            email: s.email,
+            status: s.status,
+            signedAt: s.signedAt,
+            tokenExpiresAt: s.tokenExpiresAt
+          }))
+        };
+      }));
+      
+      res.json({ success: true, agreements });
+    } catch (error) {
+      console.error('Error fetching agreements:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Get single agreement detail with signers and fields
+  app.get('/api/esignature/agreements/:id', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const doc = await storage.getDocumentById(documentId);
+      
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      const docSigners = await storage.getSignersByDocumentId(documentId);
+      const fields = await storage.getFieldsByDocumentId(documentId);
+      
+      // Create a map of signer IDs to signer info for field display
+      const signerMap = new Map(docSigners.map(s => [s.id, s]));
+      
+      const agreement = {
+        id: doc.id,
+        title: doc.name,
+        fileName: doc.fileName,
+        fileData: doc.fileData,
+        pageCount: doc.pageCount,
+        status: doc.status,
+        createdAt: doc.createdAt,
+        sentAt: doc.sentAt,
+        completedAt: doc.completedAt,
+        voidedAt: doc.voidedAt,
+        voidedReason: doc.voidedReason,
+        signers: docSigners.map(s => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          color: s.color,
+          status: s.status,
+          signedAt: s.signedAt,
+          tokenExpiresAt: s.tokenExpiresAt,
+          token: s.token
+        })),
+        fields: fields.map(f => {
+          const signer = f.signerId ? signerMap.get(f.signerId) : null;
+          return {
+            id: f.id,
+            fieldType: f.fieldType,
+            signerId: f.signerId,
+            signerName: signer?.name || null,
+            signerColor: signer?.color || '#3B82F6',
+            pageNumber: f.pageNumber,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            value: f.value,
+            label: f.label,
+            signed: f.value !== null
+          };
+        })
+      };
+      
+      res.json({ success: true, agreement });
+    } catch (error) {
+      console.error('Error fetching agreement detail:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Void/Cancel document
+  app.post('/api/esignature/agreements/:id/void', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { reason } = req.body;
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      // Only allow voiding sent or in_progress documents
+      if (!['sent', 'in_progress', 'pending'].includes(doc.status)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Can only void documents that are sent or in progress' 
+        });
+      }
+      
+      // Update document status
+      await storage.updateDocument(documentId, {
+        status: 'voided',
+        voidedAt: new Date(),
+        voidedReason: reason || null
+      });
+      
+      // Disable all signing tokens
+      const docSigners = await storage.getSignersByDocumentId(documentId);
+      for (const signer of docSigners) {
+        await storage.updateSigner(signer.id, { token: null });
+        
+        // Send void notification to all signers
+        try {
+          await sendVoidNotification(
+            signer.email,
+            signer.name,
+            doc.name,
+            'Sphinx Capital',
+            reason
+          );
+        } catch (emailError) {
+          console.error('Failed to send void notification to', signer.email, emailError);
+        }
+      }
+      
+      // Log action
+      await storage.createAuditLog({
+        documentId,
+        action: 'voided',
+        details: reason || 'Document voided by sender'
+      });
+      
+      res.json({ success: true, message: 'Document voided successfully' });
+    } catch (error) {
+      console.error('Error voiding document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Edit & Resend - creates a copy of the document
+  app.post('/api/esignature/agreements/:id/edit', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      // Can't edit completed documents
+      if (doc.status === 'completed') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Cannot edit completed documents' 
+        });
+      }
+      
+      // Mark original as voided_edited
+      await storage.updateDocument(documentId, {
+        status: 'voided_edited',
+        voidedAt: new Date(),
+        voidedReason: 'Edited and replaced with new version'
+      });
+      
+      // Disable old tokens
+      const oldSigners = await storage.getSignersByDocumentId(documentId);
+      for (const signer of oldSigners) {
+        await storage.updateSigner(signer.id, { token: null });
+      }
+      
+      // Create new document as copy
+      const newDoc = await storage.createDocument({
+        quoteId: doc.quoteId,
+        name: doc.name.includes('(Revised)') ? doc.name : `${doc.name} (Revised)`,
+        fileName: doc.fileName,
+        fileData: doc.fileData,
+        pageCount: doc.pageCount,
+        status: 'draft'
+      });
+      
+      // Copy signers (new tokens will be generated when sent)
+      const signerIdMap = new Map<number, number>();
+      for (const oldSigner of oldSigners) {
+        const newSigner = await storage.createSigner({
+          documentId: newDoc.id,
+          name: oldSigner.name,
+          email: oldSigner.email,
+          color: oldSigner.color,
+          signingOrder: oldSigner.signingOrder,
+          status: 'pending'
+        });
+        signerIdMap.set(oldSigner.id, newSigner.id);
+      }
+      
+      // Copy fields
+      const oldFields = await storage.getFieldsByDocumentId(documentId);
+      for (const oldField of oldFields) {
+        const newSignerId = oldField.signerId ? signerIdMap.get(oldField.signerId) : null;
+        await storage.createField({
+          documentId: newDoc.id,
+          signerId: newSignerId,
+          pageNumber: oldField.pageNumber,
+          fieldType: oldField.fieldType,
+          x: oldField.x,
+          y: oldField.y,
+          width: oldField.width,
+          height: oldField.height,
+          required: oldField.required,
+          label: oldField.label,
+          value: null // Reset values for new version
+        });
+      }
+      
+      // Log action
+      await storage.createAuditLog({
+        documentId,
+        action: 'voided_edited',
+        details: `Document edited and replaced with new version (ID: ${newDoc.id})`
+      });
+      
+      await storage.createAuditLog({
+        documentId: newDoc.id,
+        action: 'created',
+        details: `Created as revision of document ID: ${documentId}`
+      });
+      
+      res.json({ 
+        success: true, 
+        newDocumentId: newDoc.id,
+        message: 'Document copied. You can now edit and resend it.'
+      });
+    } catch (error) {
+      console.error('Error editing document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Resend to all pending signers
+  app.post('/api/esignature/agreements/:id/resend-all', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { senderName } = req.body;
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      if (!['sent', 'in_progress', 'pending'].includes(doc.status)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Can only resend documents that are sent or in progress' 
+        });
+      }
+      
+      const docSigners = await storage.getSignersByDocumentId(documentId);
+      const pendingSigners = docSigners.filter(s => s.status !== 'signed');
+      
+      let resentCount = 0;
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : 'http://localhost:5000';
+      
+      for (const signer of pendingSigners) {
+        if (signer.token) {
+          const signingLink = `${baseUrl}/sign/${signer.token}`;
+          
+          try {
+            await sendSigningInvitation(
+              signer.email,
+              signer.name,
+              doc.name,
+              senderName || 'Sphinx Capital',
+              signingLink
+            );
+            
+            await storage.updateSigner(signer.id, { 
+              lastReminderSent: new Date(),
+              status: 'sent'
+            });
+            resentCount++;
+          } catch (emailError) {
+            console.error('Failed to resend to', signer.email, emailError);
+          }
+        }
+      }
+      
+      // Log action
+      await storage.createAuditLog({
+        documentId,
+        action: 'resent_all',
+        details: `Resent to ${resentCount} pending signers`
+      });
+      
+      res.json({ 
+        success: true, 
+        resentCount,
+        message: `Signing request resent to ${resentCount} signers` 
+      });
+    } catch (error) {
+      console.error('Error resending to all:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Resend to individual signer
+  app.post('/api/esignature/agreements/:id/resend-signer/:signerId', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const signerId = parseInt(req.params.signerId);
+      const { senderName } = req.body;
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      const signer = await storage.getSignerById(signerId);
+      if (!signer || signer.documentId !== documentId) {
+        return res.status(404).json({ success: false, error: 'Signer not found' });
+      }
+      
+      if (signer.status === 'signed') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Signer has already signed' 
+        });
+      }
+      
+      if (!signer.token) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Signer has no valid signing token' 
+        });
+      }
+      
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : 'http://localhost:5000';
+      const signingLink = `${baseUrl}/sign/${signer.token}`;
+      
+      await sendSigningInvitation(
+        signer.email,
+        signer.name,
+        doc.name,
+        senderName || 'Sphinx Capital',
+        signingLink
+      );
+      
+      await storage.updateSigner(signer.id, { 
+        lastReminderSent: new Date(),
+        status: 'sent'
+      });
+      
+      // Log action
+      await storage.createAuditLog({
+        documentId,
+        signerId: signer.id,
+        action: 'resent',
+        details: `Resent to ${signer.name} (${signer.email})`
+      });
+      
+      res.json({ 
+        success: true, 
+        message: `Email resent to ${signer.name}` 
+      });
+    } catch (error) {
+      console.error('Error resending to signer:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Send reminder to all pending signers
+  app.post('/api/esignature/agreements/:id/remind', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { senderName } = req.body;
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      if (!['sent', 'in_progress', 'pending'].includes(doc.status)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Can only send reminders for documents that are sent or in progress' 
+        });
+      }
+      
+      const docSigners = await storage.getSignersByDocumentId(documentId);
+      const pendingSigners = docSigners.filter(s => s.status !== 'signed');
+      
+      let reminderCount = 0;
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : 'http://localhost:5000';
+      
+      for (const signer of pendingSigners) {
+        if (signer.token) {
+          const signingLink = `${baseUrl}/sign/${signer.token}`;
+          
+          try {
+            await sendSigningReminder(
+              signer.email,
+              signer.name,
+              doc.name,
+              senderName || 'Sphinx Capital',
+              signingLink
+            );
+            
+            await storage.updateSigner(signer.id, { 
+              lastReminderSent: new Date()
+            });
+            reminderCount++;
+          } catch (emailError) {
+            console.error('Failed to send reminder to', signer.email, emailError);
+          }
+        }
+      }
+      
+      // Log action
+      await storage.createAuditLog({
+        documentId,
+        action: 'reminder_sent',
+        details: `Reminder sent to ${reminderCount} pending signers`
+      });
+      
+      res.json({ 
+        success: true, 
+        reminderCount,
+        message: `Reminder sent to ${reminderCount} signers` 
+      });
+    } catch (error) {
+      console.error('Error sending reminders:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Delete draft document
+  app.delete('/api/esignature/agreements/:id', async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Agreement not found' });
+      }
+      
+      // Only allow deleting draft documents
+      if (doc.status !== 'draft') {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Only draft documents can be deleted' 
+        });
+      }
+      
+      // Delete document (cascades to signers, fields, audit log)
+      await storage.deleteDocument(documentId);
+      
+      res.json({ success: true, message: 'Draft deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting draft:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });

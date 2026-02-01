@@ -100,6 +100,120 @@ export async function sendSigningInvitation(
   }
 }
 
+export async function sendVoidNotification(
+  signerEmail: string,
+  signerName: string,
+  documentName: string,
+  senderName: string,
+  reason?: string
+) {
+  try {
+    const { client } = await getResendClient();
+    
+    const result = await client.emails.send({
+      from: 'Sphinx Capital <onboarding@resend.dev>',
+      to: signerEmail,
+      subject: `Document Cancelled: ${documentName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
+            .footer { text-align: center; color: #64748b; font-size: 12px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Document Cancelled</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${signerName},</p>
+              <p>The document <strong>"${documentName}"</strong> that was sent to you for signature has been cancelled by ${senderName}.</p>
+              ${reason ? `<p>Reason: ${reason}</p>` : ''}
+              <p>No further action is required on your part.</p>
+              <p>If you have any questions, please contact ${senderName} directly.</p>
+            </div>
+            <div class="footer">
+              <p>Powered by Sphinx Capital</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+    
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Failed to send void notification:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendSigningReminder(
+  signerEmail: string,
+  signerName: string,
+  documentName: string,
+  senderName: string,
+  signingLink: string
+) {
+  try {
+    const { client } = await getResendClient();
+    
+    const result = await client.emails.send({
+      from: 'Sphinx Capital <onboarding@resend.dev>',
+      to: signerEmail,
+      subject: `Reminder: Document Waiting for Your Signature - ${documentName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #f59e0b; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { display: inline-block; background-color: #1e40af; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+            .footer { text-align: center; color: #64748b; font-size: 12px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Signature Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${signerName},</p>
+              <p>This is a friendly reminder that <strong>${senderName}</strong> is waiting for your signature on:</p>
+              <p style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                <strong>${documentName}</strong>
+              </p>
+              <p>Please take a moment to review and sign the document:</p>
+              <div style="text-align: center;">
+                <a href="${signingLink}" class="button">Review & Sign Document</a>
+              </div>
+              <p style="color: #64748b; font-size: 14px;">This link is unique to you. Please do not share it with others.</p>
+            </div>
+            <div class="footer">
+              <p>Powered by Sphinx Capital</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+    
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Failed to send signing reminder:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendCompletedDocument(
   recipientEmail: string,
   recipientName: string,
