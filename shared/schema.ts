@@ -76,9 +76,12 @@ export const documents = pgTable("documents", {
   fileName: text("file_name").notNull(),
   fileData: text("file_data").notNull(), // Base64 encoded PDF
   pageCount: integer("page_count").notNull().default(1),
-  status: text("status").notNull().default("draft"), // draft, sent, completed, archived
+  status: text("status").notNull().default("draft"), // draft, sent, in_progress, completed, voided, voided_edited
   createdAt: timestamp("created_at").defaultNow(),
+  sentAt: timestamp("sent_at"),
   completedAt: timestamp("completed_at"),
+  voidedAt: timestamp("voided_at"),
+  voidedReason: text("voided_reason"),
 });
 
 export const signers = pgTable("signers", {
@@ -92,6 +95,7 @@ export const signers = pgTable("signers", {
   token: text("token"), // Unique signing token
   tokenExpiresAt: timestamp("token_expires_at"),
   signedAt: timestamp("signed_at"),
+  lastReminderSent: timestamp("last_reminder_sent"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

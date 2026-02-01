@@ -21,6 +21,7 @@ export interface IStorage {
   getDocumentById(id: number): Promise<Document | undefined>;
   getDocumentsByQuoteId(quoteId: number): Promise<Document[]>;
   updateDocumentStatus(id: number, status: string, completedAt?: Date): Promise<Document | undefined>;
+  updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined>;
   deleteDocument(id: number): Promise<void>;
   
   // Signer methods
@@ -30,6 +31,7 @@ export interface IStorage {
   getSignerByToken(token: string): Promise<Signer | undefined>;
   updateSigner(id: number, updates: Partial<Signer>): Promise<Signer | undefined>;
   deleteSigner(id: number): Promise<void>;
+  deleteSignersByDocumentId(documentId: number): Promise<void>;
   
   // Field methods
   createField(field: InsertDocumentField): Promise<DocumentField>;
@@ -94,6 +96,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined> {
+    const [updated] = await db.update(documents).set(updates).where(eq(documents.id, id)).returning();
+    return updated;
+  }
+
   async deleteDocument(id: number): Promise<void> {
     await db.delete(documentAuditLog).where(eq(documentAuditLog.documentId, id));
     await db.delete(documentFields).where(eq(documentFields.documentId, id));
@@ -129,6 +136,10 @@ export class DatabaseStorage implements IStorage {
   async deleteSigner(id: number): Promise<void> {
     await db.delete(documentFields).where(eq(documentFields.signerId, id));
     await db.delete(signers).where(eq(signers.id, id));
+  }
+
+  async deleteSignersByDocumentId(documentId: number): Promise<void> {
+    await db.delete(signers).where(eq(signers.documentId, documentId));
   }
 
   // Field methods

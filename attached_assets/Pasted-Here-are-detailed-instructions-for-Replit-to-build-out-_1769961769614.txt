@@ -1,0 +1,669 @@
+Here are detailed instructions for Replit to build out the agreements page functionality:
+
+---
+
+# Agreements Page - Full Functionality Instructions
+
+## Overview
+Build a comprehensive agreements management page similar to DocuSign where users can view, manage, edit, cancel, and resend documents they've sent for signature.
+
+---
+
+## Page Structure
+
+### 1. Agreements List Page (`/agreements`)
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Agreements                          [+ New Agreement]  │
+├─────────────────────────────────────────────────────────┤
+│  [All] [Draft] [Sent] [In Progress] [Completed] [Void] │
+├─────────────────────────────────────────────────────────┤
+│  📄 Document Name    Status    Signers    Date    Actions│
+│  ───────────────────────────────────────────────────────│
+│  Letter of Intent    Sent     2/3       Jan 31    [...]│
+│  BPL Term Loan       Completed 3/3       Jan 28    [...]│
+│  Property Agreement  Draft     0/2       Jan 25    [...]│
+└─────────────────────────────────────────────────────────┘
+```
+
+**Table Columns:**
+- **Document Name** (clickable to open detail view)
+- **Status Badge** (color-coded: Draft=gray, Sent=blue, In Progress=yellow, Completed=green, Voided=red)
+- **Signers Progress** (e.g., "2/3 signed")
+- **Date** (Created for drafts, Sent date for sent docs, Completed date for finished)
+- **Actions** (dropdown menu with context-appropriate options)
+
+**Status Filter Tabs:**
+- All (shows everything)
+- Draft (not yet sent)
+- Sent (sent but no signatures yet)
+- In Progress (at least 1 signature received)
+- Completed (all signatures received)
+- Voided (cancelled/recalled)
+
+**API Endpoint:**
+```javascript
+GET /api/esignature/agreements
+Response: {
+  agreements: [
+    {
+      id: 1,
+      title: "Letter of Intent - BPL Term Loan",
+      status: "sent",
+      created_at: "2026-01-31T10:00:00Z",
+      sent_at: "2026-01-31T14:30:00Z",
+      completed_at: null,
+      total_signers: 3,
+      signed_count: 2,
+      signers: [
+        { name: "Carlos Velez", email: "carlos@example.com", status: "signed" },
+        { name: "John Doe", email: "john@example.com", status: "signed" },
+        { name: "Jane Smith", email: "jane@example.com", status: "pending" }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 2. Agreement Detail View (`/agreements/:id`)
+
+**Layout:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ← Back to Agreements                                        │
+├──────────────────────────────────────────────────────────────┤
+│  Letter of Intent - BPL Term Loan           [Sent] Badge    │
+│  Sent Jan 31, 2026 at 2:30 PM                               │
+│                                                              │
+│  [Actions Dropdown ▼]  [Download PDF]                       │
+│    - Void/Cancel Document                                   │
+│    - Resend to All                                          │
+│    - Edit & Resend                                          │
+│    - Send Reminder                                          │
+│    - Download                                               │
+│    - Delete (Draft only)                                    │
+├──────────────────────────────────────────────────────────────┤
+│  📋 Signers (2/3 Signed)                                     │
+│  ✓ Carlos Velez (carlos@example.com) - Signed Jan 31 2:45PM│
+│  ✓ John Doe (john@example.com) - Signed Jan 31 3:15PM      │
+│  ⏱ Jane Smith (jane@example.com) - Pending                  │
+│     [Resend Email]                                          │
+├──────────────────────────────────────────────────────────────┤
+│  📄 Document Preview                                         │
+│  [PDF Viewer with Fields Highlighted]                       │
+│  - Signature fields shown in signer colors                  │
+│  - Completed fields show signature/data                     │
+│  - Pending fields shown empty with border                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**API Endpoint:**
+```javascript
+GET /api/esignature/agreements/:id
+Response: {
+  agreement: {
+    id: 1,
+    title: "Letter of Intent - BPL Term Loan",
+    filename: "letter_of_intent.pdf",
+    file_path: "/uploads/documents/...",
+    status: "in_progress",
+    created_at: "2026-01-31T10:00:00Z",
+    sent_at: "2026-01-31T14:30:00Z",
+    completed_at: null,
+    signers: [...],
+    fields: [
+      {
+        id: 1,
+        field_type: "signature",
+        signer_id: 1,
+        signer_name: "Carlos Velez",
+        signer_color: "#3b82f6",
+        page_number: 1,
+        x_position: 450,
+        y_position: 650,
+        width: 200,
+        height: 60,
+        value: "data:image/png;base64,...", // If signed
+        signed: true
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 3. Action Functionalities
+
+### A. **View Agreement (Click document name)**
+
+**Behavior:**
+- Navigate to `/agreements/:id`
+- Load document with PDF viewer
+- Display all fields overlaid on PDF
+- Show completed fields with actual signatures/data
+- Show pending fields as empty boxes with colored borders
+- Fields should NOT be draggable/editable in view mode
+- Add visual indicator (checkmark icon) on completed fields
+
+**Implementation:**
+```javascript
+// In agreement detail page
+const ViewOnlyField = ({ field }) => {
+  const isSigned = field.value !== null;
+  
+  return (
+    <div style={{
+      position: 'absolute',
+      left: field.x_position,
+      top: field.y_position,
+      width: field.width,
+      height: field.height,
+      border: `2px ${isSigned ? 'solid' : 'dashed'} ${field.signer_color}`,
+      backgroundColor: isSigned ? 'transparent' : `${field.signer_color}10`,
+      pointerEvents: 'none' // Not draggable
+    }}>
+      {isSigned && field.field_type === 'signature' && (
+        <img src={field.value} alt="Signature" style={{ width: '100%', height: '100%' }} />
+      )}
+      {isSigned && field.field_type === 'text' && (
+        <div style={{ padding: '4px' }}>{field.value}</div>
+      )}
+      {isSigned && field.field_type === 'date' && (
+        <div style={{ padding: '4px' }}>{field.value}</div>
+      )}
+      {isSigned && (
+        <div style={{ position: 'absolute', top: -10, right: -10 }}>
+          ✓
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+---
+
+### B. **Cancel/Void Document**
+
+**When Available:**
+- Status: "sent" or "in_progress"
+- NOT available for: "draft", "completed", "voided"
+
+**Behavior:**
+1. Show confirmation modal: "Are you sure you want to void this document? All signers will be notified and signing links will be disabled."
+2. Update document status to "voided"
+3. Send email notification to all signers (signed and pending)
+4. Disable all signing tokens
+5. Log action in audit trail
+
+**API Endpoint:**
+```javascript
+POST /api/esignature/agreements/:id/void
+
+Request: {
+  reason: "Document no longer needed" // Optional
+}
+
+Implementation:
+- UPDATE documents SET status = 'voided', voided_at = NOW() WHERE id = :id
+- UPDATE signers SET token = NULL WHERE document_id = :id
+- INSERT INTO audit_log (document_id, action) VALUES (:id, 'voided')
+- Send email to all signers: "The document 'X' has been cancelled by the sender"
+
+Response: {
+  success: true,
+  message: "Document voided successfully"
+}
+```
+
+**Email Template for Void Notification:**
+```html
+Subject: Document Cancelled - [Document Name]
+
+Dear [Signer Name],
+
+The document "[Document Name]" that was sent to you for signature has been cancelled by [Sender Name].
+
+No further action is required on your part.
+
+If you have questions, please contact [Sender Name] at [Sender Email].
+
+Best regards,
+[Your App Name]
+```
+
+---
+
+### C. **Edit & Resend**
+
+**When Available:**
+- Status: "draft", "sent", "in_progress", "voided"
+- NOT available for: "completed"
+
+**Behavior:**
+1. Show confirmation modal: "Editing this document will void the current version. All signers will need to sign the new version."
+2. Create a COPY of the document (new ID, new tokens)
+3. Mark original as "voided_edited" (new status)
+4. Open PDF editor with existing fields pre-loaded
+5. Allow user to:
+   - Modify field positions
+   - Add/remove fields
+   - Add/remove signers
+   - Change signer information
+6. Save as new draft
+7. User can then send the edited version
+
+**API Endpoint:**
+```javascript
+POST /api/esignature/agreements/:id/edit
+
+Implementation:
+1. UPDATE original document: SET status = 'voided_edited'
+2. Create new document:
+   INSERT INTO documents (user_id, title, filename, file_path, status)
+   SELECT user_id, title || ' (Revised)', filename, file_path, 'draft'
+   FROM documents WHERE id = :id
+   
+3. Copy signers (with new tokens):
+   INSERT INTO signers (document_id, name, email, signing_order, color)
+   SELECT :new_doc_id, name, email, signing_order, color
+   FROM signers WHERE document_id = :id
+   
+4. Copy fields:
+   INSERT INTO signature_fields (document_id, signer_id, field_type, page_number, x_position, y_position, width, height)
+   SELECT :new_doc_id, :new_signer_id, field_type, page_number, x_position, y_position, width, height
+   FROM signature_fields WHERE document_id = :id
+
+Response: {
+  new_document_id: 123,
+  redirect_to: "/esignature/edit/123"
+}
+```
+
+**Frontend Flow:**
+```javascript
+const handleEditResend = async (agreementId) => {
+  const confirm = await showConfirmDialog(
+    "Edit & Resend",
+    "This will void the current document. All signers will need to sign the new version. Continue?"
+  );
+  
+  if (!confirm) return;
+  
+  const response = await fetch(`/api/esignature/agreements/${agreementId}/edit`, {
+    method: 'POST'
+  });
+  
+  const data = await response.json();
+  
+  // Redirect to editor with pre-loaded fields
+  navigate(`/esignature/edit/${data.new_document_id}`);
+};
+```
+
+---
+
+### D. **Resend to All**
+
+**When Available:**
+- Status: "sent", "in_progress"
+
+**Behavior:**
+1. Show confirmation: "Resend signing request to all pending signers?"
+2. Send fresh emails to ALL signers who haven't signed yet
+3. Use existing tokens (don't generate new ones)
+4. Log action in audit trail
+
+**API Endpoint:**
+```javascript
+POST /api/esignature/agreements/:id/resend-all
+
+Implementation:
+- Get all signers with status = 'pending'
+- For each pending signer:
+  - Send email with existing signing link
+  - UPDATE signers SET last_reminder_sent = NOW() WHERE id = :signer_id
+- Log: INSERT INTO audit_log (document_id, action) VALUES (:id, 'resent_all')
+
+Response: {
+  success: true,
+  resent_count: 2,
+  message: "Signing request resent to 2 signers"
+}
+```
+
+---
+
+### E. **Resend to Individual Signer**
+
+**When Available:**
+- Signer status: "pending"
+
+**Behavior:**
+1. Click "Resend Email" button next to pending signer
+2. Send fresh email to that specific signer only
+3. Show toast notification: "Email resent to [Signer Name]"
+
+**API Endpoint:**
+```javascript
+POST /api/esignature/agreements/:id/resend-signer/:signerId
+
+Implementation:
+- Get signer with id = :signerId
+- Send email with signing link
+- UPDATE signers SET last_reminder_sent = NOW() WHERE id = :signerId
+
+Response: {
+  success: true,
+  message: "Email resent to Jane Smith"
+}
+```
+
+---
+
+### F. **Download PDF**
+
+**When Available:**
+- All statuses
+
+**Behavior:**
+- For "draft", "sent", "in_progress": Download original PDF (no signatures)
+- For "completed": Download final signed PDF with all signatures merged
+- Filename: `[DocumentName]_[Status]_[Date].pdf`
+
+**API Endpoint:**
+```javascript
+GET /api/esignature/agreements/:id/download
+
+Implementation:
+if (status === 'completed') {
+  // Return signed PDF from /uploads/signed/
+  res.download(signed_pdf_path);
+} else {
+  // Return original PDF from /uploads/documents/
+  res.download(original_pdf_path);
+}
+```
+
+---
+
+### G. **Send Reminder**
+
+**When Available:**
+- Status: "sent", "in_progress"
+
+**Behavior:**
+1. Same as "Resend to All" but different email subject/body
+2. Subject: "Reminder: Document Waiting for Your Signature"
+3. More gentle tone than initial request
+
+---
+
+### H. **Delete Document (Draft Only)**
+
+**When Available:**
+- Status: "draft" ONLY
+
+**Behavior:**
+1. Show confirmation: "Delete this draft? This cannot be undone."
+2. Delete document, signers, and fields from database
+3. Delete PDF file from filesystem
+4. Redirect to agreements list
+
+**API Endpoint:**
+```javascript
+DELETE /api/esignature/agreements/:id
+
+Implementation:
+- Check: status = 'draft' (403 error if not)
+- DELETE FROM signature_fields WHERE document_id = :id (cascades)
+- DELETE FROM signers WHERE document_id = :id (cascades)
+- DELETE FROM documents WHERE id = :id
+- fs.unlink(file_path) // Delete PDF file
+
+Response: {
+  success: true,
+  message: "Draft deleted"
+}
+```
+
+---
+
+## 4. Status Logic & Transitions
+
+```
+Draft → Sent → In Progress → Completed
+  ↓       ↓         ↓
+Voided  Voided    Voided
+  ↓
+Voided_Edited (when editing)
+```
+
+**Status Update Logic:**
+```javascript
+// When a signer signs
+const updateDocumentStatus = async (documentId) => {
+  const result = await db.query(`
+    SELECT 
+      COUNT(*) as total_signers,
+      COUNT(*) FILTER (WHERE status = 'signed') as signed_count
+    FROM signers
+    WHERE document_id = $1
+  `, [documentId]);
+  
+  const { total_signers, signed_count } = result.rows[0];
+  
+  let newStatus;
+  if (signed_count === 0) {
+    newStatus = 'sent';
+  } else if (signed_count < total_signers) {
+    newStatus = 'in_progress';
+  } else {
+    newStatus = 'completed';
+    // Trigger PDF generation with all signatures
+    await generateSignedPDF(documentId);
+    // Send completion emails to all parties
+    await sendCompletionEmails(documentId);
+  }
+  
+  await db.query(
+    'UPDATE documents SET status = $1, completed_at = $2 WHERE id = $3',
+    [newStatus, newStatus === 'completed' ? new Date() : null, documentId]
+  );
+};
+```
+
+---
+
+## 5. UI Components Needed
+
+### AgreementsList Component
+```jsx
+const AgreementsList = () => {
+  const [agreements, setAgreements] = useState([]);
+  const [filter, setFilter] = useState('all');
+  
+  return (
+    <div>
+      <header>
+        <h1>Agreements</h1>
+        <button onClick={() => navigate('/esignature/new')}>+ New Agreement</button>
+      </header>
+      
+      <FilterTabs value={filter} onChange={setFilter} />
+      
+      <AgreementsTable 
+        agreements={agreements.filter(a => filter === 'all' || a.status === filter)}
+        onView={(id) => navigate(`/agreements/${id}`)}
+      />
+    </div>
+  );
+};
+```
+
+### AgreementDetail Component
+```jsx
+const AgreementDetail = () => {
+  const { id } = useParams();
+  const [agreement, setAgreement] = useState(null);
+  
+  return (
+    <div>
+      <BackButton />
+      <AgreementHeader agreement={agreement} />
+      <ActionsDropdown agreement={agreement} />
+      <SignersSection signers={agreement.signers} />
+      <PDFViewer 
+        pdfUrl={agreement.file_path}
+        fields={agreement.fields}
+        viewOnly={true}
+      />
+    </div>
+  );
+};
+```
+
+### ActionsDropdown Component
+```jsx
+const ActionsDropdown = ({ agreement }) => {
+  const actions = [];
+  
+  if (['sent', 'in_progress'].includes(agreement.status)) {
+    actions.push(
+      { label: 'Void Document', onClick: handleVoid },
+      { label: 'Resend to All', onClick: handleResendAll },
+      { label: 'Send Reminder', onClick: handleReminder }
+    );
+  }
+  
+  if (['draft', 'sent', 'in_progress', 'voided'].includes(agreement.status)) {
+    actions.push({ label: 'Edit & Resend', onClick: handleEditResend });
+  }
+  
+  if (agreement.status === 'draft') {
+    actions.push({ label: 'Delete', onClick: handleDelete, danger: true });
+  }
+  
+  actions.push({ label: 'Download PDF', onClick: handleDownload });
+  
+  return <Dropdown items={actions} />;
+};
+```
+
+---
+
+## 6. Database Schema Updates
+
+Add status tracking columns:
+```sql
+ALTER TABLE documents 
+ADD COLUMN sent_at TIMESTAMP,
+ADD COLUMN voided_at TIMESTAMP,
+ADD COLUMN voided_reason TEXT;
+
+ALTER TABLE signers
+ADD COLUMN last_reminder_sent TIMESTAMP;
+```
+
+---
+
+## Complete Instructions for Replit Agent
+
+Build a full-featured agreements management page with DocuSign-like functionality:
+
+**1. Agreements List Page (`/agreements`):**
+- Create table showing all documents with columns: name, status badge, signer progress (X/Y signed), date, actions dropdown
+- Add filter tabs: All, Draft, Sent, In Progress, Completed, Voided
+- Make document names clickable to open detail view
+- Implement GET `/api/esignature/agreements` endpoint returning all user documents with signer counts
+
+**2. Agreement Detail View (`/agreements/:id`):**
+- Show document header with title, status badge, sent date
+- Display actions dropdown with context-appropriate options based on status
+- Show signers list with status (✓ signed with timestamp, or ⏱ pending with resend button)
+- Render PDF with fields overlaid (completed fields show actual signatures/data, pending fields show empty colored boxes)
+- Fields should NOT be draggable in view mode (view-only)
+- Implement GET `/api/esignature/agreements/:id` endpoint returning full document details with signers and fields
+
+**3. Void/Cancel Functionality:**
+- Available for: "sent" and "in_progress" statuses only
+- Show confirmation modal
+- Implement POST `/api/esignature/agreements/:id/void`:
+  - Update status to 'voided'
+  - Disable all signing tokens (SET token = NULL)
+  - Send cancellation email to all signers
+  - Log to audit_log
+- Email template: notify signers document was cancelled
+
+**4. Edit & Resend Functionality:**
+- Available for: "draft", "sent", "in_progress", "voided" (NOT "completed")
+- Show confirmation: "This will void current version"
+- Implement POST `/api/esignature/agreements/:id/edit`:
+  - Mark original document status as 'voided_edited'
+  - Create NEW document as copy with fresh ID
+  - Copy all signers with new tokens generated
+  - Copy all fields to new document
+  - Return new document ID
+- Redirect to `/esignature/edit/:newId` with fields pre-loaded in editor
+- User can modify fields, signers, then save and send new version
+
+**5. Resend Functionality:**
+- **Resend to All**: Available for "sent" and "in_progress" statuses
+  - POST `/api/esignature/agreements/:id/resend-all`
+  - Send email to ALL pending signers (status != 'signed')
+  - Use existing tokens (don't regenerate)
+  - Update last_reminder_sent timestamp
+- **Resend to Individual**: Button next to each pending signer
+  - POST `/api/esignature/agreements/:id/resend-signer/:signerId`
+  - Send email to specific signer only
+
+**6. Download PDF:**
+- Available for all statuses
+- GET `/api/esignature/agreements/:id/download`
+- If completed: return signed PDF with merged signatures
+- Otherwise: return original PDF
+
+**7. Delete (Draft Only):**
+- Only available for status = "draft"
+- DELETE `/api/esignature/agreements/:id`
+- Check status (return 403 if not draft)
+- Delete from signature_fields, signers, documents tables
+- Delete PDF file from filesystem
+- Redirect to agreements list
+
+**8. Send Reminder:**
+- Same as resend but with different email subject/body
+
+**9. Status Logic:**
+- Auto-update document status when signers sign:
+  - 0 signed = "sent"
+  - Some signed = "in_progress"
+  - All signed = "completed" → generate signed PDF → send completion emails
+- Add database columns: sent_at, voided_at, voided_reason, last_reminder_sent
+
+**10. UI Components:**
+- AgreementsList with filter tabs
+- AgreementsTable with sortable columns
+- AgreementDetail with header, actions dropdown, signers section, PDF viewer
+- ActionsDropdown showing context-appropriate actions based on status
+- Confirmation modals for destructive actions (void, delete, edit & resend)
+- Toast notifications for actions (resent, voided, deleted)
+
+**11. View-Only PDF Display:**
+- Render PDF with react-pdf
+- Overlay fields at exact positions from database
+- Completed fields show signatures/text/dates (not editable)
+- Pending fields show empty colored boxes (not draggable)
+- Add checkmark icon on completed fields
+- Color-code fields by signer
+
+Make sure all actions are logged to audit_log table. Implement proper error handling and loading states. Use existing authentication to filter agreements by logged-in user.
+
+---
+
+This gives you the complete DocuSign-like functionality. Let me know if you need any clarification!
