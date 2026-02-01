@@ -99,6 +99,7 @@ export default function AgreementDetailPage() {
   const [scale, setScale] = useState(1);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [voidReason, setVoidReason] = useState('');
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery<{ success: boolean; agreement: AgreementDetail }>({
     queryKey: ['/api/esignature/agreements', agreementId],
@@ -231,8 +232,11 @@ export default function AgreementDetailPage() {
 
   const currentPageFields = agreement?.fields.filter(f => f.pageNumber === currentPage) || [];
 
+  // Handle both cases: fileData with or without the data URL prefix
   const pdfDataUrl = agreement?.fileData 
-    ? `data:application/pdf;base64,${agreement.fileData}`
+    ? (agreement.fileData.startsWith('data:') 
+        ? agreement.fileData 
+        : `data:application/pdf;base64,${agreement.fileData}`)
     : null;
 
   if (isLoading) {
@@ -418,7 +422,14 @@ export default function AgreementDetailPage() {
 
               <div className="relative bg-slate-200 rounded overflow-auto max-h-[600px] flex justify-center">
                 <div className="relative">
-                  {pdfDataUrl && (
+                  {pdfError && (
+                    <div className="flex flex-col items-center justify-center p-20 text-center">
+                      <XCircle className="w-12 h-12 text-red-400 mb-4" />
+                      <p className="text-slate-600 mb-2">Unable to load PDF preview</p>
+                      <p className="text-sm text-slate-400">{pdfError}</p>
+                    </div>
+                  )}
+                  {pdfDataUrl && !pdfError && (
                     <Document
                       file={pdfDataUrl}
                       loading={
@@ -426,6 +437,11 @@ export default function AgreementDetailPage() {
                           <Loader2 className="w-8 h-8 animate-spin text-primary" />
                         </div>
                       }
+                      onLoadError={(error) => {
+                        console.error('PDF load error:', error);
+                        setPdfError(error?.message || 'Failed to load PDF');
+                      }}
+                      onLoadSuccess={() => setPdfError(null)}
                     >
                       <Page
                         pageNumber={currentPage}
