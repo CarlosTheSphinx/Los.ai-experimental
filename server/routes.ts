@@ -916,7 +916,15 @@ export async function registerRoutes(
       }
 
       // Generate tokens for each signer and send emails
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      // Use Replit's public URL in production, fallback to request host for local dev
+      let baseUrl: string;
+      if (process.env.REPLIT_DEV_DOMAIN) {
+        baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+      } else if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+        baseUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      } else {
+        baseUrl = `${req.protocol}://${req.get('host')}`;
+      }
       console.log(`📧 Base URL for signing links: ${baseUrl}`);
       const emailResults = [];
 
