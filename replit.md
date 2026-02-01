@@ -24,7 +24,18 @@ Preferred communication style: Simple, everyday language.
 The frontend uses a left sidebar navigation (Shadcn Sidebar) with three main pages:
 1. New Quote (/) - Loan pricing form with real-time LTV/DSCR calculations
 2. Saved Quotes (/quotes) - View and manage saved pricing quotes with document status tracking
-3. Agreements (/agreements) - Track sent documents with signer status, expiration dates, and resend capabilities
+3. Agreements (/agreements) - Comprehensive agreement management with:
+   - Filter tabs (All, Drafts, Sent, In Progress, Completed, Voided)
+   - Search functionality
+   - Actions dropdown (Resend, Remind, Edit & Resend, Void, Delete)
+   - Click-through to agreement detail page
+
+4. Agreement Detail (/agreements/:id) - Full document view with:
+   - PDF viewer with page navigation and zoom
+   - Field overlays showing signature positions
+   - Signers panel with status and resend options
+   - Document timeline (created, sent, completed, voided)
+   - Actions (Resend All, Send Reminder, Void Document)
 
 The signing page (/sign/:token) is rendered outside the sidebar layout for a focused signing experience.
 
@@ -55,9 +66,14 @@ The core pricing functionality uses Apify's Puppeteer Scraper actor to:
 6. User can save quote with customer details and commission calculations
 
 ### Database Schema
-Two tables defined in `shared/schema.ts`:
+Tables defined in `shared/schema.ts`:
 - `pricing_requests` - Logs all pricing API requests with status
 - `saved_quotes` - Stores saved quotes with customer info, loan data, and commission calculations
+- `documents` - E-signature documents with status tracking (draft/sent/in_progress/completed/voided)
+  - Fields: sentAt, completedAt, voidedAt, voidedReason for timeline tracking
+- `signers` - Document signers with email, token, status, and lastReminderSent
+- `document_fields` - Signature/form fields positioned on document pages
+- `audit_logs` - Tracks all document actions for compliance
 
 ## External Dependencies
 

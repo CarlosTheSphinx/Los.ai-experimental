@@ -170,7 +170,13 @@ export default function AgreementDetailPage() {
     if (agreement?.fileData) {
       const loadPdf = async () => {
         try {
-          const pdfData = atob(agreement.fileData);
+          let base64Data = agreement.fileData;
+          if (base64Data.includes(',')) {
+            base64Data = base64Data.split(',')[1];
+          }
+          base64Data = base64Data.replace(/[\s\r\n]+/g, '');
+          
+          const pdfData = atob(base64Data);
           const pdfArray = new Uint8Array(pdfData.length);
           for (let i = 0; i < pdfData.length; i++) {
             pdfArray[i] = pdfData.charCodeAt(i);

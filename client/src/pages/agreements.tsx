@@ -160,10 +160,12 @@ export default function Agreements() {
       return apiRequest('POST', `/api/esignature/agreements/${id}/edit`);
     },
     onSuccess: (data: any) => {
-      toast({ title: "Document Copied", description: "You can now edit and resend the document." });
       queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
       if (data.newDocumentId) {
-        setLocation(`/quotes`);
+        toast({ title: "Document Copied", description: "Opening the new draft for editing." });
+        setLocation(`/agreements/${data.newDocumentId}`);
+      } else {
+        toast({ title: "Document Copied", description: "You can now edit and resend the document." });
       }
     },
     onError: () => {

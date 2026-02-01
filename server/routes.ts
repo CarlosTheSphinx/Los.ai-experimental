@@ -965,8 +965,11 @@ export async function registerRoutes(
         emailResults.push({ signerId: signer.id, email: signer.email, ...emailResult });
       }
 
-      // Update document status
-      await storage.updateDocumentStatus(documentId, 'sent');
+      // Update document status and sentAt
+      await storage.updateDocument(documentId, {
+        status: 'sent',
+        sentAt: new Date()
+      });
 
       await storage.createAuditLog({
         documentId,
