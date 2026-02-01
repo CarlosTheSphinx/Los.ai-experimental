@@ -10,7 +10,8 @@ import {
   AlertCircle,
   Calendar,
   Send,
-  RefreshCw
+  RefreshCw,
+  ClipboardList
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -111,7 +112,7 @@ export default function Agreements() {
       <header className="bg-white/80 backdrop-blur-md border-b border-primary/10 sticky top-0 z-40">
         <div className="px-6 py-4">
           <div className="flex items-center gap-3">
-            <ClipboardListIcon className="w-6 h-6 text-primary" />
+            <ClipboardList className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-xl font-bold text-primary">Agreements</h1>
               <p className="text-sm text-slate-500">Track documents sent for signature</p>
@@ -145,7 +146,8 @@ export default function Agreements() {
 
             {sentDocuments.map((doc) => {
               const sentDate = new Date(doc.createdAt);
-              const firstSigner = doc.signers[0];
+              const signers = doc.signers || [];
+              const firstSigner = signers.length > 0 ? signers[0] : null;
               const expirationDate = firstSigner ? getExpirationDate(firstSigner) : null;
               const expired = firstSigner ? isExpired(firstSigner) : false;
 
@@ -180,25 +182,27 @@ export default function Agreements() {
                           )}
                         </div>
 
-                        <div className="border-t pt-4">
-                          <p className="text-sm font-medium text-slate-600 mb-2 flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            Signers
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {doc.signers.map((signer) => (
-                              <div
-                                key={signer.id}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full text-sm"
-                                data-testid={`signer-chip-${signer.id}`}
-                              >
-                                {getSignerStatusIcon(signer.status)}
-                                <span className="font-medium">{signer.name}</span>
-                                <span className="text-slate-400">({signer.email})</span>
-                              </div>
-                            ))}
+                        {signers.length > 0 && (
+                          <div className="border-t pt-4">
+                            <p className="text-sm font-medium text-slate-600 mb-2 flex items-center gap-2">
+                              <Users className="w-4 h-4" />
+                              Signers
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {signers.map((signer) => (
+                                <div
+                                  key={signer.id}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full text-sm"
+                                  data-testid={`signer-chip-${signer.id}`}
+                                >
+                                  {getSignerStatusIcon(signer.status)}
+                                  <span className="font-medium">{signer.name}</span>
+                                  <span className="text-slate-400">({signer.email})</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -224,29 +228,5 @@ export default function Agreements() {
         )}
       </div>
     </div>
-  );
-}
-
-function ClipboardListIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <path d="M12 11h4" />
-      <path d="M12 16h4" />
-      <path d="M8 11h.01" />
-      <path d="M8 16h.01" />
-    </svg>
   );
 }
