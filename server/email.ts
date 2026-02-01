@@ -47,10 +47,11 @@ export async function sendSigningInvitation(
   signingLink: string
 ) {
   try {
-    const { client, fromEmail } = await getResendClient();
+    const { client } = await getResendClient();
     
+    // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: fromEmail || 'Sphinx Capital <noreply@resend.dev>',
+      from: 'Sphinx Capital <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Document Ready for Signature: ${documentName}`,
       html: `
@@ -107,10 +108,11 @@ export async function sendCompletedDocument(
   downloadLink: string
 ) {
   try {
-    const { client, fromEmail } = await getResendClient();
+    const { client } = await getResendClient();
     
+    // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: fromEmail || 'Sphinx Capital <noreply@resend.dev>',
+      from: 'Sphinx Capital <onboarding@resend.dev>',
       to: recipientEmail,
       subject: `Document Completed: ${documentName}`,
       html: `
