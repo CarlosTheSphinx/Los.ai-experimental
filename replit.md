@@ -21,9 +21,12 @@ Preferred communication style: Simple, everyday language.
 - **Form Handling**: React Hook Form with Zod validation
 - **Build Tool**: Vite
 
-The frontend has two main pages:
-1. Home - Loan pricing form with real-time LTV/DSCR calculations
-2. Quotes - View and manage saved pricing quotes
+The frontend uses a left sidebar navigation (Shadcn Sidebar) with three main pages:
+1. New Quote (/) - Loan pricing form with real-time LTV/DSCR calculations
+2. Saved Quotes (/quotes) - View and manage saved pricing quotes with document status tracking
+3. Agreements (/agreements) - Track sent documents with signer status, expiration dates, and resend capabilities
+
+The signing page (/sign/:token) is rendered outside the sidebar layout for a focused signing experience.
 
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript
