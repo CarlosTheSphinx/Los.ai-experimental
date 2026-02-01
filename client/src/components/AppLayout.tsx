@@ -2,7 +2,8 @@ import { Link, useLocation } from "wouter";
 import { 
   Calculator, 
   FileText, 
-  ClipboardList
+  ClipboardList,
+  LogOut
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -13,9 +14,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
   SidebarProvider,
   SidebarTrigger
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
 interface AppLayoutProps {
@@ -30,6 +34,11 @@ const navItems = [
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   const style = {
     "--sidebar-width": "16rem",
@@ -80,6 +89,25 @@ export function AppLayout({ children }: AppLayoutProps) {
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
+          <SidebarFooter className="border-t border-sidebar-border p-2">
+            <div className="flex flex-col gap-2">
+              {user && (
+                <div className="px-2 py-1 text-sm text-muted-foreground truncate group-data-[collapsible=icon]:hidden">
+                  {user.firstName} {user.lastName}
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="w-full justify-start gap-2"
+                data-testid="button-logout"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="group-data-[collapsible=icon]:hidden">Sign Out</span>
+              </Button>
+            </div>
+          </SidebarFooter>
         </Sidebar>
 
         <div className="flex flex-col flex-1 overflow-hidden">
