@@ -1416,6 +1416,104 @@ export async function registerRoutes(
             downloadLink
           );
         }
+        
+        // Auto-create project from signed agreement
+        try {
+          const borrowerSigner = allSigners[0]; // First signer is typically the borrower
+          const projectNumber = await storage.generateProjectNumber();
+          const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+          
+          // Get quote data if linked
+          let loanData: Record<string, unknown> = {};
+          if (doc.quoteId) {
+            const quote = await storage.getQuoteById(doc.quoteId, doc.userId!);
+            if (quote) {
+              loanData = {
+                loanAmount: Number(quote.loanAmount),
+                interestRate: Number(quote.interestRate),
+                loanTermMonths: Number(quote.loanTermMonths) || 12,
+                loanType: quote.loanType,
+                propertyAddress: quote.propertyAddress,
+              };
+            }
+          }
+          
+          const project = await storage.createProject({
+            userId: doc.userId!,
+            projectName: `${borrowerSigner.name} - ${doc.name}`,
+            projectNumber,
+            loanAmount: loanData.loanAmount as number || null,
+            interestRate: loanData.interestRate as number || null,
+            loanTermMonths: loanData.loanTermMonths as number || null,
+            loanType: loanData.loanType as string || null,
+            propertyAddress: loanData.propertyAddress as string || null,
+            borrowerName: borrowerSigner.name,
+            borrowerEmail: borrowerSigner.email,
+            status: 'active',
+            currentStage: 'documentation',
+            progressPercentage: 0,
+            applicationDate: new Date(),
+            targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
+            borrowerPortalToken: borrowerToken,
+            borrowerPortalEnabled: true,
+            sourceDocumentId: doc.id,
+          });
+          
+          // Create stages and tasks from template
+          const { LOAN_CLOSING_STAGES } = await import('./config/loanStages');
+          
+          for (const stageTemplate of LOAN_CLOSING_STAGES) {
+            const stage = await storage.createProjectStage({
+              projectId: project.id,
+              stageName: stageTemplate.stage_name,
+              stageKey: stageTemplate.stage_key,
+              stageOrder: stageTemplate.stage_order,
+              stageDescription: stageTemplate.stage_description,
+              estimatedDurationDays: stageTemplate.estimated_duration_days,
+              status: stageTemplate.stage_order === 1 ? 'in_progress' : 'pending',
+              visibleToBorrower: stageTemplate.visible_to_borrower,
+              startedAt: stageTemplate.stage_order === 1 ? new Date() : null,
+            });
+            
+            for (const taskTemplate of stageTemplate.tasks) {
+              await storage.createProjectTask({
+                projectId: project.id,
+                stageId: stage.id,
+                taskTitle: taskTemplate.task_title,
+                taskType: taskTemplate.task_type,
+                priority: taskTemplate.priority,
+                requiresDocument: taskTemplate.requires_document || false,
+                visibleToBorrower: taskTemplate.visible_to_borrower,
+                borrowerActionRequired: taskTemplate.borrower_action_required || false,
+                status: 'pending',
+              });
+            }
+          }
+          
+          // Log activity
+          await storage.createProjectActivity({
+            projectId: project.id,
+            userId: doc.userId!,
+            activityType: 'project_created',
+            activityDescription: `Project ${projectNumber} auto-created from signed agreement "${doc.name}"`,
+            visibleToBorrower: true,
+          });
+          
+          // Trigger webhook
+          const { triggerWebhook } = await import('./utils/webhooks');
+          await triggerWebhook(project.id, 'project_created', {
+            project_number: projectNumber,
+            created_from_agreement: true,
+            agreement_id: doc.id,
+            agreement_name: doc.name,
+          });
+          
+          console.log(`✓ Project ${projectNumber} auto-created from signed agreement ${doc.id}`);
+          
+        } catch (projectError) {
+          console.error('Error creating project from agreement:', projectError);
+          // Don't fail the signing just because project creation failed
+        }
       }
 
       res.json({ 
