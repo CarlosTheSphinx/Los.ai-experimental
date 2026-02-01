@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,8 +33,6 @@ import {
   Bell,
   Ban,
   User,
-  Mail,
-  Calendar,
   Eye,
   ChevronLeft,
   ChevronRight,
@@ -44,9 +42,9 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import * as pdfjsLib from "pdfjs-dist";
+import { Document, Page, pdfjs } from "react-pdf";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Signer {
   id: number;
@@ -100,10 +98,6 @@ export default function AgreementDetailPage() {
   const [scale, setScale] = useState(1);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [voidReason, setVoidReason] = useState('');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [rendering, setRendering] = useState(false);
 
   const { data, isLoading, error } = useQuery<{ success: boolean; agreement: AgreementDetail }>({
     queryKey: ['/api/esignature/agreements', agreementId],
@@ -166,64 +160,6 @@ export default function AgreementDetailPage() {
     }
   });
 
-  useEffect(() => {
-    if (agreement?.fileData) {
-      const loadPdf = async () => {
-        try {
-          let base64Data = agreement.fileData;
-          if (base64Data.includes(',')) {
-            base64Data = base64Data.split(',')[1];
-          }
-          base64Data = base64Data.replace(/[\s\r\n]+/g, '');
-          
-          const pdfData = atob(base64Data);
-          const pdfArray = new Uint8Array(pdfData.length);
-          for (let i = 0; i < pdfData.length; i++) {
-            pdfArray[i] = pdfData.charCodeAt(i);
-          }
-          const doc = await pdfjsLib.getDocument({ data: pdfArray }).promise;
-          setPdfDoc(doc);
-        } catch (err) {
-          console.error('Error loading PDF:', err);
-        }
-      };
-      loadPdf();
-    }
-  }, [agreement?.fileData]);
-
-  const renderPage = useCallback(async () => {
-    if (!pdfDoc || !canvasRef.current || rendering) return;
-    setRendering(true);
-
-    try {
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale });
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (context) {
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        await page.render({
-          canvasContext: context,
-          viewport: viewport,
-          canvas: canvas
-        } as any).promise;
-      }
-    } catch (err) {
-      console.error('Error rendering page:', err);
-    } finally {
-      setRendering(false);
-    }
-  }, [pdfDoc, currentPage, scale, rendering]);
-
-  useEffect(() => {
-    if (pdfDoc) {
-      renderPage();
-    }
-  }, [pdfDoc, currentPage, scale]);
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'draft':
@@ -272,6 +208,10 @@ export default function AgreementDetailPage() {
   const canRemind = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
 
   const currentPageFields = agreement?.fields.filter(f => f.pageNumber === currentPage) || [];
+
+  const pdfDataUrl = agreement?.fileData 
+    ? `data:application/pdf;base64,${agreement.fileData}`
+    : null;
 
   if (isLoading) {
     return (
@@ -434,9 +374,25 @@ export default function AgreementDetailPage() {
                 </div>
               </div>
 
-              <div ref={containerRef} className="relative bg-slate-200 rounded overflow-auto max-h-[600px] flex justify-center">
+              <div className="relative bg-slate-200 rounded overflow-auto max-h-[600px] flex justify-center">
                 <div className="relative">
-                  <canvas ref={canvasRef} className="shadow-lg" />
+                  {pdfDataUrl && (
+                    <Document
+                      file={pdfDataUrl}
+                      loading={
+                        <div className="flex items-center justify-center p-20">
+                          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        </div>
+                      }
+                    >
+                      <Page
+                        pageNumber={currentPage}
+                        scale={scale}
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                      />
+                    </Document>
+                  )}
                   {currentPageFields.map(field => (
                     <div
                       key={field.id}
