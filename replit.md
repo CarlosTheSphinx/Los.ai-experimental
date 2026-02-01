@@ -21,7 +21,7 @@ Preferred communication style: Simple, everyday language.
 - **Form Handling**: React Hook Form with Zod validation
 - **Build Tool**: Vite
 
-The frontend uses a left sidebar navigation (Shadcn Sidebar) with three main pages:
+The frontend uses a left sidebar navigation (Shadcn Sidebar) with four main pages:
 1. New Quote (/) - Loan pricing form with real-time LTV/DSCR calculations
 2. Saved Quotes (/quotes) - View and manage saved pricing quotes with document status tracking
 3. Agreements (/agreements) - Comprehensive agreement management with:
@@ -37,7 +37,28 @@ The frontend uses a left sidebar navigation (Shadcn Sidebar) with three main pag
    - Document timeline (created, sent, completed, voided)
    - Actions (Resend All, Send Reminder, Void Document)
 
-The signing page (/sign/:token) is rendered outside the sidebar layout for a focused signing experience.
+5. Projects (/projects) - Loan closing progress management with:
+   - Project cards with progress bars and task counts
+   - Filter tabs (All, Active, On Hold, Completed)
+   - Search by project number, name, borrower, or address
+   - New Project button for manual project creation
+
+6. Project Detail (/projects/:id) - Full project management with:
+   - Progress tracker showing 9-stage loan closing process
+   - Task checklist organized by stage with priority badges
+   - Activity timeline
+   - Documents tab
+   - Loan details (amount, rate, term, property info)
+   - Borrower portal link sharing
+   - Push to external LOS integration
+
+7. Borrower Portal (/portal/:token) - Public portal for borrowers:
+   - Token-based access (no login required)
+   - Read-only view of loan progress and tasks
+   - Only shows borrower-visible stages and tasks
+   - Activity updates visible to borrowers
+
+The signing page (/sign/:token) and borrower portal (/portal/:token) are rendered outside the sidebar layout for a focused experience.
 
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript
@@ -78,6 +99,18 @@ Public Routes (token-based or no auth):
 - `/sign/:token` - Document signing page (uses signing token, not user auth)
 - `/api/sign/:token` - Get signing data by token
 - `/api/sign/:token/complete` - Complete document signing
+- `/portal/:token` - Borrower portal page (uses borrower portal token)
+- `/api/portal/:token` - Get borrower-visible project data
+
+**Projects Routes (Protected):**
+- GET `/api/projects` - List all projects with optional status/archived filters
+- POST `/api/projects` - Create project manually
+- GET `/api/projects/:id` - Get project with stages, tasks, activity
+- PUT `/api/projects/:id` - Update project details
+- PATCH `/api/projects/:projectId/tasks/:taskId` - Update task status
+- GET `/api/projects/:id/borrower-link` - Get borrower portal URL
+- PATCH `/api/projects/:id/toggle-portal` - Enable/disable borrower portal
+- POST `/api/projects/:id/push-to-los` - Trigger external LOS webhook
 
 Frontend Auth Components:
 - `client/src/hooks/use-auth.tsx` - AuthContext and useAuth hook
@@ -112,7 +145,31 @@ Tables defined in `shared/schema.ts`:
 - `document_fields` - Signature/form fields positioned on document pages
 - `audit_logs` - Tracks all document actions for compliance
 
-Note: `saved_quotes` and `documents` have `user_id` foreign keys with CASCADE delete to ensure data isolation.
+**Projects System Tables:**
+- `projects` - Loan closing projects with borrower info, loan details, progress tracking
+  - Links to source document via sourceDocumentId
+  - Unique project number format: PRJ-YYYY-####
+  - borrowerPortalToken for public access
+  - externalSyncStatus for LOS integration
+- `project_stages` - 9-stage loan closing process per project
+  - Stages: documentation, underwriting, appraisal, title_review, insurance, conditions, closing_prep, funding, post_closing
+  - status: pending, in_progress, completed, skipped
+- `project_tasks` - Individual tasks within stages
+  - Types: document_upload, review, approval, collection, scheduling, verification
+  - Priorities: critical, high, medium, low
+  - visibleToBorrower and borrowerActionRequired flags
+- `project_activity` - Timeline of project events
+  - visibleToBorrower flag for borrower portal filtering
+- `project_documents` - Documents uploaded to projects
+- `project_webhooks` - Webhook integration logs for n8n and external LOS
+
+**Auto-Project Creation:**
+When an agreement is fully signed, a project is automatically created with:
+- 9 stages and all associated tasks from template
+- Loan data populated from linked quote (if available)
+- Borrower portal enabled by default
+
+Note: `saved_quotes`, `documents`, and `projects` have `user_id` foreign keys with CASCADE delete to ensure data isolation.
 
 ## External Dependencies
 
@@ -125,6 +182,12 @@ Note: `saved_quotes` and `documents` have `user_id` foreign keys with CASCADE de
 - `APIFY_TOKEN` - API token for Apify client (has fallback in code)
 - `JWT_SECRET` - Secret key for JWT token signing (required for production)
 - `SESSION_SECRET` - Secret for session management
+
+### Optional Environment Variables (Projects/Webhooks)
+- `N8N_WEBHOOK_URL` - Webhook URL for n8n automation
+- `EXTERNAL_LOS_WEBHOOK_URL` - Webhook URL for external Loan Origination System
+- `WEBHOOK_URLS` - JSON array of additional webhook endpoints
+- `BASE_URL` - Base URL for generating borrower portal links
 
 ### Key NPM Packages
 - `apify-client` - Apify API integration

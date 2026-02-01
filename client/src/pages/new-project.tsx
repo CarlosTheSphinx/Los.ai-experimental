@@ -32,7 +32,13 @@ export default function NewProject() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest('POST', '/api/projects', data);
+      const payload = {
+        ...data,
+        loanAmount: data.loanAmount ? parseFloat(data.loanAmount) : null,
+        interestRate: data.interestRate ? parseFloat(data.interestRate) : null,
+        loanTermMonths: data.loanTermMonths ? parseInt(data.loanTermMonths) : null,
+      };
+      return apiRequest('POST', '/api/projects', payload);
     },
     onSuccess: async (res) => {
       const { project } = await res.json();
