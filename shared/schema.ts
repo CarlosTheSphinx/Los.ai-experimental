@@ -1,7 +1,31 @@
 
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Users table for multi-tenancy
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).unique().notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  fullName: varchar("full_name", { length: 255 }),
+  companyName: varchar("company_name", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastLoginAt: timestamp("last_login_at"),
+  emailVerified: boolean("email_verified").default(false),
+  isActive: boolean("is_active").default(true),
+  passwordResetToken: varchar("password_reset_token", { length: 255 }),
+  passwordResetExpires: timestamp("password_reset_expires"),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ 
+  id: true, 
+  createdAt: true, 
+  lastLoginAt: true 
+});
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
 
 // We'll store request logs
 export const pricingRequests = pgTable("pricing_requests", {
@@ -15,6 +39,7 @@ export const pricingRequests = pgTable("pricing_requests", {
 // Saved quotes table
 export const savedQuotes = pgTable("saved_quotes", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
   customerFirstName: text("customer_first_name").notNull(),
   customerLastName: text("customer_last_name").notNull(),
   propertyAddress: text("property_address").notNull(),
@@ -71,6 +96,7 @@ export type PricingResponse = z.infer<typeof pricingResponseSchema>;
 // Document signing tables
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
   quoteId: integer("quote_id").references(() => savedQuotes.id),
   name: text("name").notNull(),
   fileName: text("file_name").notNull(),
