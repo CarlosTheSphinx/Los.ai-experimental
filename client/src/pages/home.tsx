@@ -4,11 +4,8 @@ import { PricingResult } from "@/components/PricingResult";
 import { usePricing } from "@/hooks/use-pricing";
 import { type LoanPricingFormData, type PricingResponse } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
-import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { FileText } from "lucide-react";
+import { Calculator } from "lucide-react";
 
 const progressSteps = [
   { percent: 10, message: "Initializing pricing engine..." },
@@ -36,10 +33,9 @@ export default function Home() {
       
       interval = setInterval(() => {
         setProgress((prev) => {
-          const next = prev + (100 / 30); // Reach 100% in about 30s roughly, or until it finishes
+          const next = prev + (100 / 30);
           if (next >= 100) return 99;
           
-          // Update message based on progress
           const currentStep = progressSteps.findLast(step => next >= step.percent);
           if (currentStep) setProgressMessage(currentStep.message);
           
@@ -58,7 +54,6 @@ export default function Home() {
     getPricing(data, {
       onSuccess: (response) => {
         setResult(response);
-        // Scroll to top to show result nicely on mobile
         window.scrollTo({ top: 0, behavior: 'smooth' });
       },
     });
@@ -69,37 +64,20 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 font-sans pb-20">
-      {/* Header Section */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary rounded-lg p-1.5">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+    <div className="min-h-screen">
+      <header className="bg-white/80 backdrop-blur-md border-b border-primary/10 sticky top-0 z-40">
+        <div className="px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Calculator className="w-6 h-6 text-primary" />
+            <div>
+              <h1 className="text-xl font-bold text-primary">New Quote</h1>
+              <p className="text-sm text-slate-500">Generate loan pricing</p>
             </div>
-            <h1 className="text-xl font-display font-bold text-slate-900 tracking-tight">
-              Rate<span className="text-primary">Master</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/quotes">
-              <Button variant="outline" size="sm" data-testid="button-view-quotes">
-                <FileText className="mr-2 h-4 w-4" />
-                Saved Quotes
-              </Button>
-            </Link>
-            <img 
-              src={sphinxLogo} 
-              alt="Sphinx Capital" 
-              className="h-16 w-auto object-contain"
-            />
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="p-6">
         <AnimatePresence mode="wait">
           {isPending ? (
             <motion.div
@@ -145,7 +123,7 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
-      </main>
+      </div>
     </div>
   );
 }

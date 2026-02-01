@@ -730,12 +730,21 @@ export async function registerRoutes(
     }
   });
 
-  // Get documents by quote ID
+  // Get documents by quote ID with signers
   app.get('/api/quotes/:quoteId/documents', async (req, res) => {
     try {
       const quoteId = parseInt(req.params.quoteId);
       const docs = await storage.getDocumentsByQuoteId(quoteId);
-      res.json({ success: true, documents: docs });
+      
+      // Fetch signers for each document
+      const documentsWithSigners = await Promise.all(
+        docs.map(async (doc) => {
+          const signers = await storage.getSignersByDocumentId(doc.id);
+          return { ...doc, signers };
+        })
+      );
+      
+      res.json({ success: true, documents: documentsWithSigners });
     } catch (error) {
       console.error('Error fetching documents for quote:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });

@@ -2,13 +2,148 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { ArrowLeft, Trash2, DollarSign, MapPin, User, Calendar, Percent, FileText, Send } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Trash2, 
+  DollarSign, 
+  MapPin, 
+  User, 
+  Calendar, 
+  Percent, 
+  FileText, 
+  Send,
+  RefreshCw,
+  Clock,
+  CheckCircle
+} from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedQuote } from "@shared/schema";
-import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 import { DocumentSigningModal } from "@/components/DocumentSigningModal";
+
+interface DocumentInfo {
+  id: number;
+  status: 'draft' | 'pending' | 'completed' | 'expired';
+  createdAt: string;
+  signers: Array<{
+    id: number;
+    name: string;
+    email: string;
+    status: string;
+    tokenExpiresAt?: string;
+  }>;
+}
+
+function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
+  const { toast } = useToast();
+
+  const { data, isLoading } = useQuery<{ success: boolean; documents: DocumentInfo[] }>({
+    queryKey: ['/api/quotes', quoteId, 'documents'],
+    queryFn: async () => {
+      const res = await fetch(`/api/quotes/${quoteId}/documents`);
+      return res.json();
+    }
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async (documentId: number) => {
+      return apiRequest('POST', `/api/documents/${documentId}/send`, {
+        senderName: "Sphinx Capital"
+      });
+    },
+    onSuccess: () => {
+      toast({ 
+        title: "Email Resent", 
+        description: "The signing request has been resent." 
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId, 'documents'] });
+    },
+    onError: () => {
+      toast({ 
+        title: "Error", 
+        description: "Failed to resend signing request", 
+        variant: "destructive" 
+      });
+    }
+  });
+
+  if (isLoading) {
+    return null;
+  }
+
+  const documents = data?.documents || [];
+  const latestDoc = documents.find(d => d.status !== 'draft');
+
+  if (!latestDoc || !latestDoc.signers || latestDoc.signers.length === 0) {
+    return null;
+  }
+
+  const sentDate = new Date(latestDoc.createdAt);
+  const firstSigner = latestDoc.signers[0];
+  const expirationDate = firstSigner?.tokenExpiresAt ? new Date(firstSigner.tokenExpiresAt) : null;
+  const isExpired = expirationDate ? expirationDate < new Date() : false;
+  const effectiveStatus = isExpired && latestDoc.status === 'pending' ? 'expired' : latestDoc.status;
+
+  const getStatusBadge = () => {
+    switch (effectiveStatus) {
+      case 'pending':
+        return (
+          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+            <Clock className="w-3 h-3 mr-1" />
+            Awaiting Signature
+          </Badge>
+        );
+      case 'completed':
+        return (
+          <Badge className="bg-green-100 text-green-700 border-green-200">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            Signed
+          </Badge>
+        );
+      case 'expired':
+        return (
+          <Badge variant="destructive">
+            <Clock className="w-3 h-3 mr-1" />
+            Expired
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {getStatusBadge()}
+          <span className="text-sm text-slate-600 flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" />
+            Sent: {sentDate.toLocaleDateString()}
+          </span>
+          {expirationDate && (
+            <span className={`text-sm flex items-center gap-1 ${isExpired ? 'text-red-500' : 'text-slate-500'}`}>
+              <Clock className="w-3.5 h-3.5" />
+              {isExpired ? 'Expired' : 'Expires'}: {expirationDate.toLocaleDateString()}
+            </span>
+          )}
+        </div>
+        {(effectiveStatus === 'pending' || effectiveStatus === 'expired') && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => resendMutation.mutate(latestDoc.id)}
+            disabled={resendMutation.isPending}
+            data-testid={`button-resend-${latestDoc.id}`}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${resendMutation.isPending ? 'animate-spin' : ''}`} />
+            Resend
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Quotes() {
   const { toast } = useToast();
@@ -34,38 +169,20 @@ export default function Quotes() {
   const quotes = data?.quotes || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-      <header className="bg-white/80 backdrop-blur-md border-b border-primary/10 sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+    <div className="min-h-screen">
+      <header className="bg-white/80 backdrop-blur-md border-b border-primary/10 sticky top-0 z-40">
+        <div className="px-6 py-4">
           <div className="flex items-center gap-3">
-            <img 
-              src={sphinxLogo} 
-              alt="Sphinx Capital" 
-              className="h-16 w-auto object-contain rounded-lg shadow-sm"
-            />
+            <FileText className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-xl font-bold text-primary">Saved Quotes</h1>
               <p className="text-sm text-slate-500">View your commission details</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Link href="/documents">
-              <Button variant="outline" data-testid="button-view-documents">
-                <FileText className="mr-2 h-4 w-4" />
-                Documents
-              </Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" data-testid="button-back-home">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                New Quote
-              </Button>
-            </Link>
-          </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <div className="p-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -75,10 +192,7 @@ export default function Quotes() {
             <CardContent>
               <FileText className="w-16 h-16 mx-auto text-slate-300 mb-4" />
               <h3 className="text-xl font-semibold text-slate-600 mb-2">No Saved Quotes</h3>
-              <p className="text-slate-400 mb-6">Generate a loan pricing quote and save it to see it here.</p>
-              <Link href="/">
-                <Button data-testid="button-create-first-quote">Create Your First Quote</Button>
-              </Link>
+              <p className="text-slate-400">Generate a loan pricing quote and save it to see it here.</p>
             </CardContent>
           </Card>
         ) : (
@@ -88,7 +202,7 @@ export default function Quotes() {
               const createdAt = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString() : 'N/A';
               
               return (
-                <Card key={quote.id} className="overflow-hidden hover-elevate" data-testid={`card-quote-${quote.id}`}>
+                <Card key={quote.id} className="overflow-hidden" data-testid={`card-quote-${quote.id}`}>
                   <CardHeader className="bg-slate-50 border-b border-slate-100 py-4">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
@@ -177,6 +291,8 @@ export default function Quotes() {
                       </span>
                     </div>
 
+                    <QuoteDocumentStatus quoteId={quote.id} />
+
                     <div className="mt-4 pt-4 border-t border-slate-100">
                       <Button
                         onClick={() => setSigningQuote(quote)}
@@ -193,12 +309,15 @@ export default function Quotes() {
             })}
           </div>
         )}
-      </main>
+      </div>
 
       {signingQuote && (
         <DocumentSigningModal
           open={!!signingQuote}
-          onClose={() => setSigningQuote(null)}
+          onClose={() => {
+            setSigningQuote(null);
+            queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
+          }}
           quote={signingQuote}
         />
       )}
