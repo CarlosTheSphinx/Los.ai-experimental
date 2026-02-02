@@ -372,7 +372,7 @@ export default function PricingRulesPage() {
               <SelectValue placeholder="Choose a loan program to configure pricing" />
             </SelectTrigger>
             <SelectContent>
-              {programsData?.programs.map((program) => (
+              {(programsData?.programs ?? []).map((program) => (
                 <SelectItem key={program.id} value={program.id.toString()}>
                   <div className="flex items-center gap-2">
                     <Badge variant={program.loanType === 'rtl' ? 'default' : 'secondary'} className="text-xs">

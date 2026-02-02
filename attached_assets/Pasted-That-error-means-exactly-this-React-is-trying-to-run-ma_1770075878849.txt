@@ -1,0 +1,131 @@
+That error means exactly this:
+
+✅ React is trying to run `.map()` on something that is **undefined**.
+
+In your screenshot, the line is:
+
+```tsx
+{programsData?.programs.map((program) => (
+```
+
+Even though you used optional chaining on `programsData`, you did **not** optional-chain `programs`.
+
+So if `programsData` exists but `programsData.programs` is `undefined` (common while loading, or if the API shape differs), it crashes.
+
+---
+
+## Fix option A (fastest): optional chain the programs array
+
+Change that line to:
+
+```tsx
+{programsData?.programs?.map((program) => (
+```
+
+That alone prevents the crash.
+
+---
+
+## Fix option B (best practice): default to an empty array
+
+This is my favorite because it keeps your JSX clean and predictable:
+
+```tsx
+{(programsData?.programs ?? []).map((program) => (
+```
+
+This guarantees `.map()` always runs on an array.
+
+---
+
+## Fix option C: initialize state correctly
+
+If `programsData` comes from state, initialize it with a safe default:
+
+```tsx
+const [programsData, setProgramsData] = useState<{ programs: any[] }>({ programs: [] });
+```
+
+Then your original map line works because `programs` always exists:
+
+```tsx
+{programsData.programs.map(...)}
+```
+
+---
+
+## The deeper cause (why it happened)
+
+One of these is true:
+
+1. Your API returns a different shape than your UI expects
+   Example: API returns `[]` but UI expects `{ programs: [] }`
+
+2. `programsData` starts as `{}` or `null` and gets filled later
+
+3. Your fetch failed, so `programsData.programs` never got set
+
+---
+
+## Quick sanity check: confirm the API response shape
+
+Right before the map, temporarily add:
+
+```tsx
+<pre>{JSON.stringify(programsData, null, 2)}</pre>
+```
+
+If you see something like:
+
+* `[{...}, {...}]` (array)
+  then you should map `programsData` directly.
+
+* `{ programs: [...] }` (object)
+  then your current structure is right, but you need safe defaults.
+
+---
+
+## What to do in Replit (step-by-step)
+
+1. Open the file shown in the error:
+   `/client/src/pages/admin/pricing-rules.tsx`
+
+2. Go to the exact line (around 375)
+
+3. Replace:
+
+```tsx
+{programsData?.programs.map((program) => (
+```
+
+with:
+
+```tsx
+{(programsData?.programs ?? []).map((program) => (
+```
+
+4. Save the file. Vite hot reload should fix instantly.
+
+---
+
+## If you want the “never breaks again” version
+
+Do this combo:
+
+### 1) Safe initial state
+
+```tsx
+const [programsData, setProgramsData] = useState({ programs: [] });
+```
+
+### 2) In render
+
+```tsx
+{programsData.programs.map(...)}
+```
+
+This removes the need for optional chaining entirely.
+
+---
+
+If you paste the `fetch` code where you set `programsData` (the API call), I’ll tell you which of the three root causes is happening in your app and the cleanest permanent fix.
