@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates } from "@shared/schema";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray } from "drizzle-orm";
 import { api } from "@shared/routes";
@@ -3796,6 +3796,305 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete partner error:', error);
       res.status(500).json({ error: 'Failed to delete partner' });
+    }
+  });
+
+  // ==================== LOAN PROGRAMS ROUTES ====================
+  
+  // Get all loan programs with their document and task templates
+  app.get('/api/admin/programs', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const programs = await db.select().from(loanPrograms).orderBy(loanPrograms.sortOrder);
+      
+      // Get document and task counts for each program
+      const programsWithCounts = await Promise.all(programs.map(async (program) => {
+        const docs = await db.select().from(programDocumentTemplates).where(eq(programDocumentTemplates.programId, program.id));
+        const tasks = await db.select().from(programTaskTemplates).where(eq(programTaskTemplates.programId, program.id));
+        
+        return {
+          ...program,
+          documentCount: docs.length,
+          taskCount: tasks.length,
+        };
+      }));
+      
+      res.json(programsWithCounts);
+    } catch (error) {
+      console.error('Get programs error:', error);
+      res.status(500).json({ error: 'Failed to load programs' });
+    }
+  });
+  
+  // Get single program with documents and tasks
+  app.get('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+      
+      const documents = await db.select().from(programDocumentTemplates)
+        .where(eq(programDocumentTemplates.programId, program.id))
+        .orderBy(programDocumentTemplates.sortOrder);
+      
+      const tasks = await db.select().from(programTaskTemplates)
+        .where(eq(programTaskTemplates.programId, program.id))
+        .orderBy(programTaskTemplates.sortOrder);
+      
+      res.json({ program, documents, tasks });
+    } catch (error) {
+      console.error('Get program error:', error);
+      res.status(500).json({ error: 'Failed to load program' });
+    }
+  });
+  
+  // Create loan program
+  app.post('/api/admin/programs', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { 
+        name, description, loanType, 
+        minLoanAmount, maxLoanAmount, 
+        minLtv, maxLtv, 
+        minInterestRate, maxInterestRate,
+        termOptions, eligiblePropertyTypes,
+        isActive
+      } = req.body;
+      
+      if (!name || !loanType) {
+        return res.status(400).json({ error: 'Name and loan type are required' });
+      }
+      
+      const [program] = await db.insert(loanPrograms).values({
+        name,
+        description,
+        loanType,
+        minLoanAmount: minLoanAmount ? parseFloat(minLoanAmount) : 100000,
+        maxLoanAmount: maxLoanAmount ? parseFloat(maxLoanAmount) : 5000000,
+        minLtv: minLtv ? parseFloat(minLtv) : 50,
+        maxLtv: maxLtv ? parseFloat(maxLtv) : 80,
+        minInterestRate: minInterestRate ? parseFloat(minInterestRate) : 8,
+        maxInterestRate: maxInterestRate ? parseFloat(maxInterestRate) : 15,
+        termOptions,
+        eligiblePropertyTypes: eligiblePropertyTypes || [],
+        isActive: isActive !== false,
+      }).returning();
+      
+      res.json({ program });
+    } catch (error) {
+      console.error('Create program error:', error);
+      res.status(500).json({ error: 'Failed to create program' });
+    }
+  });
+  
+  // Update loan program
+  app.put('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { 
+        name, description, loanType, 
+        minLoanAmount, maxLoanAmount, 
+        minLtv, maxLtv, 
+        minInterestRate, maxInterestRate,
+        termOptions, eligiblePropertyTypes,
+        isActive
+      } = req.body;
+      
+      const updateData: any = { updatedAt: new Date() };
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (loanType !== undefined) updateData.loanType = loanType;
+      if (minLoanAmount !== undefined) updateData.minLoanAmount = parseFloat(minLoanAmount);
+      if (maxLoanAmount !== undefined) updateData.maxLoanAmount = parseFloat(maxLoanAmount);
+      if (minLtv !== undefined) updateData.minLtv = parseFloat(minLtv);
+      if (maxLtv !== undefined) updateData.maxLtv = parseFloat(maxLtv);
+      if (minInterestRate !== undefined) updateData.minInterestRate = parseFloat(minInterestRate);
+      if (maxInterestRate !== undefined) updateData.maxInterestRate = parseFloat(maxInterestRate);
+      if (termOptions !== undefined) updateData.termOptions = termOptions;
+      if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      
+      const [program] = await db.update(loanPrograms)
+        .set(updateData)
+        .where(eq(loanPrograms.id, parseInt(id)))
+        .returning();
+      
+      res.json({ program });
+    } catch (error) {
+      console.error('Update program error:', error);
+      res.status(500).json({ error: 'Failed to update program' });
+    }
+  });
+  
+  // Toggle program active status
+  app.patch('/api/admin/programs/:id/toggle', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+      
+      const [updated] = await db.update(loanPrograms)
+        .set({ isActive: !program.isActive, updatedAt: new Date() })
+        .where(eq(loanPrograms.id, parseInt(id)))
+        .returning();
+      
+      res.json({ program: updated });
+    } catch (error) {
+      console.error('Toggle program error:', error);
+      res.status(500).json({ error: 'Failed to toggle program' });
+    }
+  });
+  
+  // Delete loan program
+  app.delete('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      await db.delete(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete program error:', error);
+      res.status(500).json({ error: 'Failed to delete program' });
+    }
+  });
+  
+  // ==================== PROGRAM DOCUMENT TEMPLATES ROUTES ====================
+  
+  // Add document template to program
+  app.post('/api/admin/programs/:programId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder } = req.body;
+      
+      if (!documentName || !documentCategory) {
+        return res.status(400).json({ error: 'Document name and category are required' });
+      }
+      
+      const [doc] = await db.insert(programDocumentTemplates).values({
+        programId: parseInt(programId),
+        documentName,
+        documentCategory,
+        documentDescription,
+        isRequired: isRequired !== false,
+        sortOrder: sortOrder || 0,
+      }).returning();
+      
+      res.json({ document: doc });
+    } catch (error) {
+      console.error('Add program document error:', error);
+      res.status(500).json({ error: 'Failed to add document template' });
+    }
+  });
+  
+  // Update document template
+  app.put('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { docId } = req.params;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder } = req.body;
+      
+      const updateData: any = {};
+      if (documentName !== undefined) updateData.documentName = documentName;
+      if (documentCategory !== undefined) updateData.documentCategory = documentCategory;
+      if (documentDescription !== undefined) updateData.documentDescription = documentDescription;
+      if (isRequired !== undefined) updateData.isRequired = isRequired;
+      if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+      
+      const [doc] = await db.update(programDocumentTemplates)
+        .set(updateData)
+        .where(eq(programDocumentTemplates.id, parseInt(docId)))
+        .returning();
+      
+      res.json({ document: doc });
+    } catch (error) {
+      console.error('Update program document error:', error);
+      res.status(500).json({ error: 'Failed to update document template' });
+    }
+  });
+  
+  // Delete document template
+  app.delete('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { docId } = req.params;
+      
+      await db.delete(programDocumentTemplates).where(eq(programDocumentTemplates.id, parseInt(docId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete program document error:', error);
+      res.status(500).json({ error: 'Failed to delete document template' });
+    }
+  });
+  
+  // ==================== PROGRAM TASK TEMPLATES ROUTES ====================
+  
+  // Add task template to program
+  app.post('/api/admin/programs/:programId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder } = req.body;
+      
+      if (!taskName) {
+        return res.status(400).json({ error: 'Task name is required' });
+      }
+      
+      const [task] = await db.insert(programTaskTemplates).values({
+        programId: parseInt(programId),
+        taskName,
+        taskDescription,
+        taskCategory,
+        priority: priority || 'medium',
+        sortOrder: sortOrder || 0,
+      }).returning();
+      
+      res.json({ task });
+    } catch (error) {
+      console.error('Add program task error:', error);
+      res.status(500).json({ error: 'Failed to add task template' });
+    }
+  });
+  
+  // Update task template
+  app.put('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { taskId } = req.params;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder } = req.body;
+      
+      const updateData: any = {};
+      if (taskName !== undefined) updateData.taskName = taskName;
+      if (taskDescription !== undefined) updateData.taskDescription = taskDescription;
+      if (taskCategory !== undefined) updateData.taskCategory = taskCategory;
+      if (priority !== undefined) updateData.priority = priority;
+      if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+      
+      const [task] = await db.update(programTaskTemplates)
+        .set(updateData)
+        .where(eq(programTaskTemplates.id, parseInt(taskId)))
+        .returning();
+      
+      res.json({ task });
+    } catch (error) {
+      console.error('Update program task error:', error);
+      res.status(500).json({ error: 'Failed to update task template' });
+    }
+  });
+  
+  // Delete task template
+  app.delete('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { taskId } = req.params;
+      
+      await db.delete(programTaskTemplates).where(eq(programTaskTemplates.id, parseInt(taskId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete program task error:', error);
+      res.status(500).json({ error: 'Failed to delete task template' });
     }
   });
 
