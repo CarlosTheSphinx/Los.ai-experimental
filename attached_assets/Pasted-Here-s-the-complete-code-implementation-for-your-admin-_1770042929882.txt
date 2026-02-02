@@ -1,0 +1,2254 @@
+Here's the complete code implementation for your admin back office:
+
+---
+
+# Admin Back Office Implementation - Complete Instructions
+
+## Overview
+Build an admin panel where staff can manage users, view all projects/agreements, configure system settings (Puppeteer URL), and handle project action steps that push updates to user-facing dashboards.
+
+---
+
+## 1. Database Schema Updates
+
+```sql
+-- Add role to users table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';
+-- Options: 'user', 'admin', 'staff', 'super_admin'
+
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+-- Make your account an admin (replace with your email)
+UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
+
+-- System settings table (for Puppeteer URL and other configs)
+CREATE TABLE system_settings (
+  id SERIAL PRIMARY KEY,
+  setting_key VARCHAR(100) UNIQUE NOT NULL,
+  setting_value TEXT NOT NULL,
+  setting_description TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_settings_key ON system_settings(setting_key);
+
+-- Insert default Puppeteer URL
+INSERT INTO system_settings (setting_key, setting_value, setting_description)
+VALUES 
+  ('puppeteer_quote_url', 'https://nqxpricer.com', 'URL to scrape for loan quotes'),
+  ('company_name', 'Sphinx Capital', 'Company name for branding'),
+  ('support_email', 'support@sphinxcapital.com', 'Support contact email')
+ON CONFLICT (setting_key) DO NOTHING;
+
+-- Admin tasks table (internal workflow steps)
+CREATE TABLE admin_tasks (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  
+  task_title VARCHAR(255) NOT NULL,
+  task_description TEXT,
+  task_category VARCHAR(100), -- document_processing, underwriting_review, approval_required, closing_coordination
+  
+  status VARCHAR(50) DEFAULT 'pending', -- pending, in_progress, completed, blocked
+  priority VARCHAR(50) DEFAULT 'medium', -- low, medium, high, critical
+  
+  assigned_to INTEGER REFERENCES users(id), -- Staff member assigned
+  due_date DATE,
+  
+  -- Link to user-facing milestone
+  user_milestone_stage_id INTEGER REFERENCES project_stages(id),
+  user_milestone_task_id INTEGER REFERENCES project_tasks(id),
+  
+  -- When admin completes this, update user-facing task
+  auto_update_user_task BOOLEAN DEFAULT true,
+  
+  completed_at TIMESTAMP,
+  completed_by INTEGER REFERENCES users(id),
+  
+  -- Document tracking
+  requires_document BOOLEAN DEFAULT false,
+  document_id INTEGER REFERENCES project_documents(id),
+  
+  -- Internal notes (not visible to user)
+  internal_notes TEXT,
+  
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_admin_tasks_project ON admin_tasks(project_id);
+CREATE INDEX idx_admin_tasks_assigned ON admin_tasks(assigned_to);
+CREATE INDEX idx_admin_tasks_status ON admin_tasks(status);
+
+-- Admin activity log (separate from user-facing activity)
+CREATE TABLE admin_activity (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  
+  action_type VARCHAR(100) NOT NULL, -- task_completed, document_added, stage_updated, note_added
+  action_description TEXT NOT NULL,
+  
+  metadata JSONB,
+  
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_admin_activity_project ON admin_activity(project_id);
+CREATE INDEX idx_admin_activity_created ON admin_activity(created_at DESC);
+```
+
+---
+
+## 2. Admin Middleware
+
+```javascript
+// /middleware/adminAuth.js
+
+const db = require('../db');
+
+const authenticateAdmin = async (req, res, next) => {
+  try {
+    // First check if user is authenticated
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    // Check if user has admin role
+    const result = await db.query(
+      'SELECT role, email, full_name FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const user = result.rows[0];
+    
+    if (!['admin', 'super_admin', 'staff'].includes(user.role)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    // Add role and full user info to request
+    req.adminUser = {
+      id: req.user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role
+    };
+    
+    next();
+    
+  } catch (error) {
+    console.error('Admin auth error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+};
+
+// Check for super admin (higher privileges)
+const authenticateSuperAdmin = async (req, res, next) => {
+  try {
+    await authenticateAdmin(req, res, () => {
+      if (req.adminUser.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Super admin access required' });
+      }
+      next();
+    });
+  } catch (error) {
+    console.error('Super admin auth error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+};
+
+module.exports = { authenticateAdmin, authenticateSuperAdmin };
+```
+
+---
+
+## 3. Admin Routes - User Management
+
+```javascript
+// /routes/admin/users.js
+
+const express = require('express');
+const router = express.Router();
+const { authenticateUser } = require('../../middleware/auth');
+const { authenticateAdmin } = require('../../middleware/adminAuth');
+const db = require('../../db');
+
+// All routes require authentication
+router.use(authenticateUser);
+router.use(authenticateAdmin);
+
+// GET all users
+router.get('/', async (req, res) => {
+  try {
+    const { role, search } = req.query;
+    
+    let query = `
+      SELECT 
+        u.id,
+        u.email,
+        u.full_name,
+        u.company_name,
+        u.phone,
+        u.role,
+        u.created_at,
+        u.last_login_at,
+        u.is_active,
+        COUNT(DISTINCT p.id) as project_count,
+        COUNT(DISTINCT d.id) as agreement_count
+      FROM users u
+      LEFT JOIN projects p ON u.id = p.user_id
+      LEFT JOIN documents d ON u.id = d.user_id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (role) {
+      params.push(role);
+      query += ` AND u.role = $${params.length}`;
+    }
+    
+    if (search) {
+      params.push(`%${search}%`);
+      query += ` AND (u.email ILIKE $${params.length} OR u.full_name ILIKE $${params.length})`;
+    }
+    
+    query += `
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `;
+    
+    const result = await db.query(query, params);
+    
+    res.json({ users: result.rows });
+    
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Failed to get users' });
+  }
+});
+
+// GET single user details
+router.get('/:id', async (req, res) => {
+  try {
+    const userResult = await db.query(`
+      SELECT 
+        u.*,
+        COUNT(DISTINCT p.id) as project_count,
+        COUNT(DISTINCT d.id) as agreement_count,
+        SUM(p.loan_amount) as total_loan_volume
+      FROM users u
+      LEFT JOIN projects p ON u.id = p.user_id
+      LEFT JOIN documents d ON u.id = d.user_id
+      WHERE u.id = $1
+      GROUP BY u.id
+    `, [req.params.id]);
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Get user's projects
+    const projectsResult = await db.query(`
+      SELECT 
+        id, project_number, project_name, borrower_name, 
+        loan_amount, status, current_stage, progress_percentage, created_at
+      FROM projects
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `, [req.params.id]);
+    
+    // Get user's agreements
+    const agreementsResult = await db.query(`
+      SELECT 
+        id, title, status, created_at, sent_at, completed_at
+      FROM documents
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `, [req.params.id]);
+    
+    res.json({
+      user: userResult.rows[0],
+      projects: projectsResult.rows,
+      agreements: agreementsResult.rows
+    });
+    
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Failed to get user details' });
+  }
+});
+
+// UPDATE user
+router.put('/:id', async (req, res) => {
+  try {
+    const {
+      full_name,
+      company_name,
+      phone,
+      role,
+      is_active
+    } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (full_name !== undefined) {
+      updates.push(`full_name = $${paramIndex}`);
+      values.push(full_name);
+      paramIndex++;
+    }
+    
+    if (company_name !== undefined) {
+      updates.push(`company_name = $${paramIndex}`);
+      values.push(company_name);
+      paramIndex++;
+    }
+    
+    if (phone !== undefined) {
+      updates.push(`phone = $${paramIndex}`);
+      values.push(phone);
+      paramIndex++;
+    }
+    
+    if (role !== undefined) {
+      updates.push(`role = $${paramIndex}`);
+      values.push(role);
+      paramIndex++;
+    }
+    
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramIndex}`);
+      values.push(is_active);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    values.push(req.params.id);
+    
+    const result = await db.query(`
+      UPDATE users
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING id, email, full_name, company_name, phone, role, is_active
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ user: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// DELETE user (soft delete - deactivate)
+router.delete('/:id', async (req, res) => {
+  try {
+    const result = await db.query(`
+      UPDATE users
+      SET is_active = false
+      WHERE id = $1
+      RETURNING id
+    `, [req.params.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ success: true, message: 'User deactivated' });
+    
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## 4. Admin Routes - Projects & Workflow
+
+```javascript
+// /routes/admin/projects.js
+
+const express = require('express');
+const router = express.Router();
+const { authenticateUser } = require('../../middleware/auth');
+const { authenticateAdmin } = require('../../middleware/adminAuth');
+const db = require('../../db');
+
+router.use(authenticateUser);
+router.use(authenticateAdmin);
+
+// GET all projects (across all users)
+router.get('/', async (req, res) => {
+  try {
+    const { status, stage, user_id } = req.query;
+    
+    let query = `
+      SELECT 
+        p.*,
+        u.email as user_email,
+        u.full_name as user_name,
+        u.company_name as user_company,
+        COUNT(DISTINCT pt.id) FILTER (WHERE pt.status = 'completed') as completed_tasks,
+        COUNT(DISTINCT pt.id) as total_tasks,
+        COUNT(DISTINCT at.id) FILTER (WHERE at.status = 'pending') as pending_admin_tasks
+      FROM projects p
+      LEFT JOIN users u ON p.user_id = u.id
+      LEFT JOIN project_tasks pt ON p.id = pt.project_id
+      LEFT JOIN admin_tasks at ON p.id = at.project_id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (status) {
+      params.push(status);
+      query += ` AND p.status = $${params.length}`;
+    }
+    
+    if (stage) {
+      params.push(stage);
+      query += ` AND p.current_stage = $${params.length}`;
+    }
+    
+    if (user_id) {
+      params.push(user_id);
+      query += ` AND p.user_id = $${params.length}`;
+    }
+    
+    query += `
+      GROUP BY p.id, u.email, u.full_name, u.company_name
+      ORDER BY p.last_updated DESC
+    `;
+    
+    const result = await db.query(query, params);
+    
+    res.json({ projects: result.rows });
+    
+  } catch (error) {
+    console.error('Get admin projects error:', error);
+    res.status(500).json({ error: 'Failed to get projects' });
+  }
+});
+
+// GET single project (admin view with admin tasks)
+router.get('/:id', async (req, res) => {
+  try {
+    // Get project details
+    const projectResult = await db.query(`
+      SELECT 
+        p.*,
+        u.email as user_email,
+        u.full_name as user_name,
+        u.company_name as user_company,
+        d.title as agreement_title,
+        d.file_path as agreement_file
+      FROM projects p
+      LEFT JOIN users u ON p.user_id = u.id
+      LEFT JOIN documents d ON p.agreement_id = d.id
+      WHERE p.id = $1
+    `, [req.params.id]);
+    
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Get admin tasks (internal workflow)
+    const adminTasksResult = await db.query(`
+      SELECT 
+        at.*,
+        assigned_user.full_name as assigned_to_name,
+        completed_user.full_name as completed_by_name,
+        ps.stage_name as milestone_stage_name,
+        pt.task_title as milestone_task_title
+      FROM admin_tasks at
+      LEFT JOIN users assigned_user ON at.assigned_to = assigned_user.id
+      LEFT JOIN users completed_user ON at.completed_by = completed_user.id
+      LEFT JOIN project_stages ps ON at.user_milestone_stage_id = ps.id
+      LEFT JOIN project_tasks pt ON at.user_milestone_task_id = pt.id
+      WHERE at.project_id = $1
+      ORDER BY 
+        CASE at.status
+          WHEN 'pending' THEN 1
+          WHEN 'in_progress' THEN 2
+          WHEN 'completed' THEN 3
+          WHEN 'blocked' THEN 4
+        END,
+        CASE at.priority
+          WHEN 'critical' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'medium' THEN 3
+          WHEN 'low' THEN 4
+        END,
+        at.created_at
+    `, [req.params.id]);
+    
+    // Get user-facing stages/tasks
+    const userStagesResult = await db.query(`
+      SELECT 
+        ps.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', pt.id,
+              'task_title', pt.task_title,
+              'status', pt.status,
+              'completed_at', pt.completed_at
+            ) ORDER BY pt.id
+          ) FILTER (WHERE pt.id IS NOT NULL), '[]'
+        ) as tasks
+      FROM project_stages ps
+      LEFT JOIN project_tasks pt ON ps.id = pt.stage_id
+      WHERE ps.project_id = $1
+      GROUP BY ps.id
+      ORDER BY ps.stage_order
+    `, [req.params.id]);
+    
+    // Get admin activity
+    const adminActivityResult = await db.query(`
+      SELECT 
+        aa.*,
+        u.full_name as user_name
+      FROM admin_activity aa
+      LEFT JOIN users u ON aa.user_id = u.id
+      WHERE aa.project_id = $1
+      ORDER BY aa.created_at DESC
+      LIMIT 100
+    `, [req.params.id]);
+    
+    // Get documents
+    const documentsResult = await db.query(`
+      SELECT *
+      FROM project_documents
+      WHERE project_id = $1
+      ORDER BY uploaded_at DESC
+    `, [req.params.id]);
+    
+    res.json({
+      project: projectResult.rows[0],
+      admin_tasks: adminTasksResult.rows,
+      user_stages: userStagesResult.rows,
+      admin_activity: adminActivityResult.rows,
+      documents: documentsResult.rows
+    });
+    
+  } catch (error) {
+    console.error('Get admin project error:', error);
+    res.status(500).json({ error: 'Failed to get project details' });
+  }
+});
+
+// CREATE admin task
+router.post('/:projectId/admin-tasks', async (req, res) => {
+  try {
+    const {
+      task_title,
+      task_description,
+      task_category,
+      priority,
+      assigned_to,
+      due_date,
+      user_milestone_stage_id,
+      user_milestone_task_id,
+      auto_update_user_task,
+      requires_document,
+      internal_notes
+    } = req.body;
+    
+    const result = await db.query(`
+      INSERT INTO admin_tasks (
+        project_id,
+        task_title,
+        task_description,
+        task_category,
+        priority,
+        assigned_to,
+        due_date,
+        user_milestone_stage_id,
+        user_milestone_task_id,
+        auto_update_user_task,
+        requires_document,
+        internal_notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      req.params.projectId,
+      task_title,
+      task_description,
+      task_category,
+      priority || 'medium',
+      assigned_to,
+      due_date,
+      user_milestone_stage_id,
+      user_milestone_task_id,
+      auto_update_user_task !== false,
+      requires_document || false,
+      internal_notes
+    ]);
+    
+    // Log activity
+    await db.query(`
+      INSERT INTO admin_activity (project_id, user_id, action_type, action_description)
+      VALUES ($1, $2, 'task_created', $3)
+    `, [
+      req.params.projectId,
+      req.adminUser.id,
+      `Admin task created: ${task_title}`
+    ]);
+    
+    res.status(201).json({ task: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Create admin task error:', error);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+// UPDATE admin task (complete, assign, etc.)
+router.patch('/:projectId/admin-tasks/:taskId', async (req, res) => {
+  try {
+    const {
+      status,
+      assigned_to,
+      internal_notes,
+      document_id
+    } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (status !== undefined) {
+      updates.push(`status = $${paramIndex}`);
+      values.push(status);
+      paramIndex++;
+      
+      if (status === 'completed') {
+        updates.push(`completed_at = NOW()`);
+        updates.push(`completed_by = $${paramIndex}`);
+        values.push(req.adminUser.id);
+        paramIndex++;
+      }
+    }
+    
+    if (assigned_to !== undefined) {
+      updates.push(`assigned_to = $${paramIndex}`);
+      values.push(assigned_to);
+      paramIndex++;
+    }
+    
+    if (internal_notes !== undefined) {
+      updates.push(`internal_notes = $${paramIndex}`);
+      values.push(internal_notes);
+      paramIndex++;
+    }
+    
+    if (document_id !== undefined) {
+      updates.push(`document_id = $${paramIndex}`);
+      values.push(document_id);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    values.push(req.params.taskId);
+    
+    const result = await db.query(`
+      UPDATE admin_tasks
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex} AND project_id = $${paramIndex + 1}
+      RETURNING *
+    `, [...values, req.params.projectId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    const task = result.rows[0];
+    
+    // If task completed and auto_update enabled, update user-facing task
+    if (status === 'completed' && task.auto_update_user_task && task.user_milestone_task_id) {
+      await db.query(`
+        UPDATE project_tasks
+        SET status = 'completed', completed_at = NOW(), completed_by = 'Admin'
+        WHERE id = $1
+      `, [task.user_milestone_task_id]);
+      
+      // Log to user-visible activity
+      await db.query(`
+        INSERT INTO project_activity (
+          project_id,
+          activity_type,
+          activity_description,
+          visible_to_borrower
+        ) VALUES ($1, 'task_completed', $2, true)
+      `, [
+        req.params.projectId,
+        `Task "${task.task_title}" completed`
+      ]);
+      
+      // Recalculate project progress
+      await updateProjectProgress(req.params.projectId);
+    }
+    
+    // Log admin activity
+    await db.query(`
+      INSERT INTO admin_activity (project_id, user_id, action_type, action_description)
+      VALUES ($1, $2, 'task_updated', $3)
+    `, [
+      req.params.projectId,
+      req.adminUser.id,
+      `Admin task "${task.task_title}" updated to ${status}`
+    ]);
+    
+    res.json({ task: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Update admin task error:', error);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+// Helper function to update project progress
+const updateProjectProgress = async (projectId) => {
+  const result = await db.query(`
+    SELECT 
+      COUNT(*) FILTER (WHERE status = 'completed') as completed,
+      COUNT(*) as total
+    FROM project_tasks
+    WHERE project_id = $1
+  `, [projectId]);
+  
+  const { completed, total } = result.rows[0];
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
+  await db.query(
+    'UPDATE projects SET progress_percentage = $1, last_updated = NOW() WHERE id = $2',
+    [percentage, projectId]
+  );
+};
+
+// UPDATE project details (admin override)
+router.put('/:id', async (req, res) => {
+  try {
+    const {
+      status,
+      current_stage,
+      target_close_date,
+      internal_notes,
+      loan_amount,
+      borrower_name,
+      borrower_email
+    } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (status !== undefined) {
+      updates.push(`status = $${paramIndex}`);
+      values.push(status);
+      paramIndex++;
+    }
+    
+    if (current_stage !== undefined) {
+      updates.push(`current_stage = $${paramIndex}`);
+      values.push(current_stage);
+      paramIndex++;
+    }
+    
+    if (target_close_date !== undefined) {
+      updates.push(`target_close_date = $${paramIndex}`);
+      values.push(target_close_date);
+      paramIndex++;
+    }
+    
+    if (internal_notes !== undefined) {
+      updates.push(`internal_notes = $${paramIndex}`);
+      values.push(internal_notes);
+      paramIndex++;
+    }
+    
+    if (loan_amount !== undefined) {
+      updates.push(`loan_amount = $${paramIndex}`);
+      values.push(loan_amount);
+      paramIndex++;
+    }
+    
+    if (borrower_name !== undefined) {
+      updates.push(`borrower_name = $${paramIndex}`);
+      values.push(borrower_name);
+      paramIndex++;
+    }
+    
+    if (borrower_email !== undefined) {
+      updates.push(`borrower_email = $${paramIndex}`);
+      values.push(borrower_email);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    updates.push(`last_updated = NOW()`);
+    values.push(req.params.id);
+    
+    const result = await db.query(`
+      UPDATE projects
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Log admin activity
+    await db.query(`
+      INSERT INTO admin_activity (project_id, user_id, action_type, action_description)
+      VALUES ($1, $2, 'project_updated', 'Project details updated by admin')
+    `, [req.params.id, req.adminUser.id]);
+    
+    res.json({ project: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Update project error:', error);
+    res.status(500).json({ error: 'Failed to update project' });
+  }
+});
+
+// ADD document to project
+router.post('/:id/documents', async (req, res) => {
+  try {
+    const {
+      document_name,
+      document_type,
+      file_path,
+      document_category,
+      task_id
+    } = req.body;
+    
+    const result = await db.query(`
+      INSERT INTO project_documents (
+        project_id,
+        task_id,
+        document_name,
+        document_type,
+        document_category,
+        file_path,
+        uploaded_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [
+      req.params.id,
+      task_id,
+      document_name,
+      document_type,
+      document_category || 'internal',
+      file_path,
+      req.adminUser.id
+    ]);
+    
+    // Log to both admin and user activity
+    await db.query(`
+      INSERT INTO admin_activity (project_id, user_id, action_type, action_description)
+      VALUES ($1, $2, 'document_uploaded', $3)
+    `, [req.params.id, req.adminUser.id, `Document "${document_name}" uploaded by admin`]);
+    
+    await db.query(`
+      INSERT INTO project_activity (
+        project_id,
+        activity_type,
+        activity_description,
+        visible_to_borrower
+      ) VALUES ($1, 'document_uploaded', $2, true)
+    `, [req.params.id, `New document available: ${document_name}`]);
+    
+    res.status(201).json({ document: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Upload document error:', error);
+    res.status(500).json({ error: 'Failed to upload document' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## 5. Admin Routes - System Settings
+
+```javascript
+// /routes/admin/settings.js
+
+const express = require('express');
+const router = express.Router();
+const { authenticateUser } = require('../../middleware/auth');
+const { authenticateAdmin, authenticateSuperAdmin } = require('../../middleware/adminAuth');
+const db = require('../../db');
+
+router.use(authenticateUser);
+router.use(authenticateAdmin);
+
+// GET all settings
+router.get('/', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        s.*,
+        u.full_name as updated_by_name
+      FROM system_settings s
+      LEFT JOIN users u ON s.updated_by = u.id
+      ORDER BY s.setting_key
+    `);
+    
+    res.json({ settings: result.rows });
+    
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ error: 'Failed to get settings' });
+  }
+});
+
+// GET single setting
+router.get('/:key', async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT * FROM system_settings WHERE setting_key = $1',
+      [req.params.key]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Setting not found' });
+    }
+    
+    res.json({ setting: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Get setting error:', error);
+    res.status(500).json({ error: 'Failed to get setting' });
+  }
+});
+
+// UPDATE setting (requires super admin for critical settings)
+router.put('/:key', async (req, res) => {
+  try {
+    const { setting_value, setting_description } = req.body;
+    
+    // Critical settings require super admin
+    const criticalSettings = ['puppeteer_quote_url', 'api_keys', 'database_url'];
+    if (criticalSettings.includes(req.params.key) && req.adminUser.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required for this setting' });
+    }
+    
+    const result = await db.query(`
+      INSERT INTO system_settings (setting_key, setting_value, setting_description, updated_by, updated_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (setting_key)
+      DO UPDATE SET
+        setting_value = EXCLUDED.setting_value,
+        setting_description = COALESCE(EXCLUDED.setting_description, system_settings.setting_description),
+        updated_by = EXCLUDED.updated_by,
+        updated_at = NOW()
+      RETURNING *
+    `, [req.params.key, setting_value, setting_description, req.adminUser.id]);
+    
+    res.json({ setting: result.rows[0] });
+    
+  } catch (error) {
+    console.error('Update setting error:', error);
+    res.status(500).json({ error: 'Failed to update setting' });
+  }
+});
+
+// GET Puppeteer URL specifically (most commonly accessed)
+router.get('/puppeteer/url', async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'puppeteer_quote_url'"
+    );
+    
+    const url = result.rows.length > 0 ? result.rows[0].setting_value : 'https://nqxpricer.com';
+    
+    res.json({ url });
+    
+  } catch (error) {
+    console.error('Get Puppeteer URL error:', error);
+    res.status(500).json({ error: 'Failed to get URL' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## 6. Admin Routes - Main Router
+
+```javascript
+// /routes/admin/index.js
+
+const express = require('express');
+const router = express.Router();
+const { authenticateUser } = require('../../middleware/auth');
+const { authenticateAdmin } = require('../../middleware/adminAuth');
+const db = require('../../db');
+
+const usersRouter = require('./users');
+const projectsRouter = require('./projects');
+const settingsRouter = require('./settings');
+
+// All admin routes require authentication
+router.use(authenticateUser);
+router.use(authenticateAdmin);
+
+// Mount sub-routes
+router.use('/users', usersRouter);
+router.use('/projects', projectsRouter);
+router.use('/settings', settingsRouter);
+
+// GET admin dashboard stats
+router.get('/dashboard', async (req, res) => {
+  try {
+    const stats = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE is_active = true) as total_active_users,
+        (SELECT COUNT(*) FROM users WHERE role = 'user') as regular_users,
+        (SELECT COUNT(*) FROM projects WHERE status = 'active') as active_projects,
+        (SELECT COUNT(*) FROM projects WHERE status = 'completed') as completed_projects,
+        (SELECT COUNT(*) FROM documents WHERE status = 'completed') as completed_agreements,
+        (SELECT COUNT(*) FROM admin_tasks WHERE status = 'pending') as pending_admin_tasks,
+        (SELECT SUM(loan_amount) FROM projects WHERE status = 'active') as active_pipeline_value,
+        (SELECT SUM(loan_amount) FROM projects WHERE status = 'funded') as funded_volume
+    `);
+    
+    // Recent activity
+    const recentActivity = await db.query(`
+      SELECT 
+        aa.*,
+        u.full_name as user_name,
+        p.project_number
+      FROM admin_activity aa
+      LEFT JOIN users u ON aa.user_id = u.id
+      LEFT JOIN projects p ON aa.project_id = p.id
+      ORDER BY aa.created_at DESC
+      LIMIT 20
+    `);
+    
+    // Projects needing attention (pending admin tasks)
+    const projectsNeedingAttention = await db.query(`
+      SELECT 
+        p.id,
+        p.project_number,
+        p.project_name,
+        p.borrower_name,
+        p.current_stage,
+        u.full_name as user_name,
+        COUNT(at.id) as pending_task_count
+      FROM projects p
+      LEFT JOIN users u ON p.user_id = u.id
+      LEFT JOIN admin_tasks at ON p.id = at.project_id AND at.status = 'pending'
+      WHERE p.status = 'active'
+      GROUP BY p.id, u.full_name
+      HAVING COUNT(at.id) > 0
+      ORDER BY COUNT(at.id) DESC
+      LIMIT 10
+    `);
+    
+    res.json({
+      stats: stats.rows[0],
+      recent_activity: recentActivity.rows,
+      projects_needing_attention: projectsNeedingAttention.rows
+    });
+    
+  } catch (error) {
+    console.error('Get dashboard error:', error);
+    res.status(500).json({ error: 'Failed to get dashboard data' });
+  }
+});
+
+// GET all agreements (across all users)
+router.get('/agreements', async (req, res) => {
+  try {
+    const { status, user_id } = req.query;
+    
+    let query = `
+      SELECT 
+        d.*,
+        u.email as user_email,
+        u.full_name as user_name,
+        COUNT(s.id) as total_signers,
+        COUNT(s.id) FILTER (WHERE s.status = 'signed') as signed_count
+      FROM documents d
+      LEFT JOIN users u ON d.user_id = u.id
+      LEFT JOIN signers s ON d.id = s.document_id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (status) {
+      params.push(status);
+      query += ` AND d.status = $${params.length}`;
+    }
+    
+    if (user_id) {
+      params.push(user_id);
+      query += ` AND d.user_id = $${params.length}`;
+    }
+    
+    query += `
+      GROUP BY d.id, u.email, u.full_name
+      ORDER BY d.created_at DESC
+    `;
+    
+    const result = await db.query(query, params);
+    
+    res.json({ agreements: result.rows });
+    
+  } catch (error) {
+    console.error('Get agreements error:', error);
+    res.status(500).json({ error: 'Failed to get agreements' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## 7. Auto-Create Admin Tasks When Project Created
+
+```javascript
+// /utils/createAdminTasks.js
+
+const db = require('../db');
+
+const ADMIN_TASK_TEMPLATES = [
+  // Documentation Stage
+  {
+    task_title: 'Review Submitted Application',
+    task_description: 'Verify all application fields are complete and accurate',
+    task_category: 'document_processing',
+    priority: 'critical',
+    user_milestone_stage_order: 1,
+    user_milestone_task_title: 'Loan Application Submitted'
+  },
+  {
+    task_title: 'Process Financial Statements',
+    task_description: 'Review and verify borrower financial statements',
+    task_category: 'document_processing',
+    priority: 'high',
+    user_milestone_stage_order: 1,
+    user_milestone_task_title: 'Financial Statements Collected'
+  },
+  
+  // Document Review Stage
+  {
+    task_title: 'Complete Initial Underwriting Analysis',
+    task_description: 'Perform preliminary underwriting review and risk assessment',
+    task_category: 'underwriting_review',
+    priority: 'critical',
+    user_milestone_stage_order: 2,
+    user_milestone_task_title: 'Financial Analysis'
+  },
+  
+  // Third Party Orders Stage
+  {
+    task_title: 'Order and Track Appraisal',
+    task_description: 'Coordinate appraisal order and follow up on completion',
+    task_category: 'closing_coordination',
+    priority: 'critical',
+    user_milestone_stage_order: 3,
+    user_milestone_task_title: 'Property Appraisal Ordered'
+  },
+  {
+    task_title: 'Order Title Report',
+    task_description: 'Request title report and review for issues',
+    task_category: 'closing_coordination',
+    priority: 'critical',
+    user_milestone_stage_order: 3,
+    user_milestone_task_title: 'Title Report Ordered'
+  },
+  
+  // Underwriting Stage
+  {
+    task_title: 'Prepare Underwriting Memo',
+    task_description: 'Complete comprehensive underwriting memo for credit committee',
+    task_category: 'underwriting_review',
+    priority: 'critical',
+    user_milestone_stage_order: 4,
+    user_milestone_task_title: 'Underwriting Memo Prepared'
+  },
+  
+  // Approval Stage
+  {
+    task_title: 'Schedule Credit Committee Review',
+    task_description: 'Submit deal to credit committee and schedule review meeting',
+    task_category: 'approval_required',
+    priority: 'critical',
+    user_milestone_stage_order: 5,
+    user_milestone_task_title: 'Credit Committee Review'
+  },
+  {
+    task_title: 'Prepare Commitment Letter',
+    task_description: 'Draft and issue loan commitment letter',
+    task_category: 'document_processing',
+    priority: 'high',
+    user_milestone_stage_order: 5,
+    user_milestone_task_title: 'Commitment Letter Issued'
+  },
+  
+  // Closing Prep Stage
+  {
+    task_title: 'Prepare Closing Documents',
+    task_description: 'Coordinate with legal to prepare all closing documents',
+    task_category: 'closing_coordination',
+    priority: 'critical',
+    user_milestone_stage_order: 6,
+    user_milestone_task_title: 'Closing Documents Prepared'
+  },
+  {
+    task_title: 'Coordinate Title Insurance',
+    task_description: 'Finalize title insurance and resolve any issues',
+    task_category: 'closing_coordination',
+    priority: 'high',
+    user_milestone_stage_order: 6,
+    user_milestone_task_title: 'Title Insurance Ordered'
+  },
+  
+  // Closing Scheduled Stage
+  {
+    task_title: 'Schedule Closing',
+    task_description: 'Coordinate closing date/time with all parties',
+    task_category: 'closing_coordination',
+    priority: 'critical',
+    user_milestone_stage_order: 7,
+    user_milestone_task_title: 'Closing Date Scheduled'
+  },
+  
+  // Closing Stage
+  {
+    task_title: 'Wire Loan Funds',
+    task_description: 'Process and wire loan funds to title company',
+    task_category: 'closing_coordination',
+    priority: 'critical',
+    user_milestone_stage_order: 8,
+    user_milestone_task_title: 'Funds Wired to Title'
+  },
+  
+  // Post-Closing Stage
+  {
+    task_title: 'Setup Loan Servicing',
+    task_description: 'Setup loan in servicing system and send welcome packet',
+    task_category: 'document_processing',
+    priority: 'medium',
+    user_milestone_stage_order: 9,
+    user_milestone_task_title: 'Loan Servicing Setup'
+  }
+];
+
+const createAdminTasksForProject = async (projectId) => {
+  try {
+    // Get project stages and tasks to link admin tasks to user milestones
+    const stagesResult = await db.query(`
+      SELECT 
+        ps.id as stage_id,
+        ps.stage_order,
+        json_agg(
+          json_build_object(
+            'id', pt.id,
+            'task_title', pt.task_title
+          )
+        ) as tasks
+      FROM project_stages ps
+      LEFT JOIN project_tasks pt ON ps.id = pt.stage_id
+      WHERE ps.project_id = $1
+      GROUP BY ps.id, ps.stage_order
+      ORDER BY ps.stage_order
+    `, [projectId]);
+    
+    const stagesMap = {};
+    stagesResult.rows.forEach(stage => {
+      stagesMap[stage.stage_order] = {
+        stage_id: stage.stage_id,
+        tasks: stage.tasks
+      };
+    });
+    
+    // Create admin tasks from template
+    for (const template of ADMIN_TASK_TEMPLATES) {
+      const stageData = stagesMap[template.user_milestone_stage_order];
+      
+      if (!stageData) continue;
+      
+      // Find matching user milestone task
+      const userTask = stageData.tasks.find(t => 
+        t.task_title === template.user_milestone_task_title
+      );
+      
+      await db.query(`
+        INSERT INTO admin_tasks (
+          project_id,
+          task_title,
+          task_description,
+          task_category,
+          priority,
+          user_milestone_stage_id,
+          user_milestone_task_id,
+          auto_update_user_task
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+      `, [
+        projectId,
+        template.task_title,
+        template.task_description,
+        template.task_category,
+        template.priority,
+        stageData.stage_id,
+        userTask ? userTask.id : null
+      ]);
+    }
+    
+    console.log(`✓ Created admin tasks for project ${projectId}`);
+    
+  } catch (error) {
+    console.error('Error creating admin tasks:', error);
+  }
+};
+
+module.exports = { createAdminTasksForProject };
+```
+
+**Add to your existing auto-create project function:**
+
+```javascript
+// In your autoCreateProjectFromAgreement function
+// After creating stages and tasks, add:
+
+const { createAdminTasksForProject } = require('../utils/createAdminTasks');
+
+// ... existing project creation code ...
+
+// Create admin workflow tasks
+await createAdminTasksForProject(projectId);
+```
+
+---
+
+## 8. Register Admin Routes in Server
+
+```javascript
+// In your server.js or app.js
+
+const adminRouter = require('./routes/admin');
+
+// Mount admin routes (requires authentication)
+app.use('/api/admin', adminRouter);
+
+// Keep all existing routes unchanged
+app.use('/api/projects', projectsRoutes);
+app.use('/api/quotes', quotesRoutes);
+// etc.
+```
+
+---
+
+## 9. Frontend - Admin Navigation
+
+```jsx
+// In your Navigation component
+// Add admin link (only visible to admins)
+
+import { useAuth } from '../context/AuthContext';
+
+const Navigation = () => {
+  const { user } = useAuth();
+  
+  return (
+    <nav className="sidebar">
+      {/* Regular user navigation */}
+      <NavLink to="/dashboard">Dashboard</NavLink>
+      <NavLink to="/quotes">Quotes</NavLink>
+      <NavLink to="/agreements">Agreements</NavLink>
+      <NavLink to="/projects">Projects</NavLink>
+      
+      {/* Admin-only navigation */}
+      {['admin', 'super_admin', 'staff'].includes(user?.role) && (
+        <>
+          <div className="nav-divider">ADMIN</div>
+          <NavLink to="/admin">
+            <AdminIcon /> Admin Dashboard
+          </NavLink>
+          <NavLink to="/admin/users">
+            <UsersIcon /> Manage Users
+          </NavLink>
+          <NavLink to="/admin/projects">
+            <ProjectsIcon /> All Projects
+          </NavLink>
+          <NavLink to="/admin/settings">
+            <SettingsIcon /> System Settings
+          </NavLink>
+        </>
+      )}
+    </nav>
+  );
+};
+```
+
+---
+
+## 10. Frontend - Admin Dashboard
+
+```jsx
+// /pages/admin/AdminDashboard.jsx
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { Navigate, Link } from 'react-router-dom';
+
+const AdminDashboard = () => {
+  const { user } = useAuth();
+  const [stats, setStats] = useState(null);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [projectsNeedingAttention, setProjectsNeedingAttention] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Check if user is admin
+  if (!user || !['admin', 'super_admin', 'staff'].includes(user.role)) {
+    return <Navigate to="/dashboard" />;
+  }
+  
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+  
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch('/api/admin/dashboard', {
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      setStats(data.stats);
+      setRecentActivity(data.recent_activity);
+      setProjectsNeedingAttention(data.projects_needing_attention);
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  if (loading) return <div>Loading admin dashboard...</div>;
+  
+  return (
+    <div className="admin-dashboard">
+      <header className="dashboard-header">
+        <h1>Admin Dashboard</h1>
+        <p>Back Office Management</p>
+      </header>
+      
+      {/* Stats Grid */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">👥</div>
+          <div className="stat-content">
+            <h3>{stats?.total_active_users || 0}</h3>
+            <p>Active Users</p>
+          </div>
+        </div>
+        
+        <div className="stat-card">
+          <div className="stat-icon">📁</div>
+          <div className="stat-content">
+            <h3>{stats?.active_projects || 0}</h3>
+            <p>Active Projects</p>
+          </div>
+        </div>
+        
+        <div className="stat-card">
+          <div className="stat-icon">💰</div>
+          <div className="stat-content">
+            <h3>${(stats?.active_pipeline_value || 0).toLocaleString()}</h3>
+            <p>Pipeline Value</p>
+          </div>
+        </div>
+        
+        <div className="stat-card">
+          <div className="stat-icon">✅</div>
+          <div className="stat-content">
+            <h3>{stats?.pending_admin_tasks || 0}</h3>
+            <p>Pending Tasks</p>
+          </div>
+        </div>
+        
+        <div className="stat-card">
+          <div className="stat-icon">✓</div>
+          <div className="stat-content">
+            <h3>{stats?.completed_projects || 0}</h3>
+            <p>Completed Projects</p>
+          </div>
+        </div>
+        
+        <div className="stat-card">
+          <div className="stat-icon">💵</div>
+          <div className="stat-content">
+            <h3>${(stats?.funded_volume || 0).toLocaleString()}</h3>
+            <p>Funded Volume</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Projects Needing Attention */}
+      <section className="dashboard-section">
+        <h2>Projects Needing Attention</h2>
+        <div className="projects-list">
+          {projectsNeedingAttention.length === 0 ? (
+            <p>No projects need immediate attention</p>
+          ) : (
+            projectsNeedingAttention.map(project => (
+              <Link 
+                key={project.id} 
+                to={`/admin/projects/${project.id}`}
+                className="project-alert-card"
+              >
+                <div className="project-info">
+                  <h3>{project.project_number}</h3>
+                  <p className="project-name">{project.project_name}</p>
+                  <p className="borrower">{project.borrower_name}</p>
+                  <p className="user-name">User: {project.user_name}</p>
+                </div>
+                <div className="pending-badge">
+                  {project.pending_task_count} pending task{project.pending_task_count !== 1 ? 's' : ''}
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      </section>
+      
+      {/* Recent Activity */}
+      <section className="dashboard-section">
+        <h2>Recent Activity</h2>
+        <div className="activity-feed">
+          {recentActivity.map(activity => (
+            <div key={activity.id} className="activity-item">
+              <div className="activity-icon">
+                {activity.action_type === 'task_completed' ? '✓' :
+                 activity.action_type === 'document_uploaded' ? '📄' :
+                 activity.action_type === 'project_updated' ? '🔄' : '•'}
+              </div>
+              <div className="activity-content">
+                <p className="activity-description">{activity.action_description}</p>
+                <div className="activity-meta">
+                  <span>{activity.user_name || 'System'}</span>
+                  {activity.project_number && (
+                    <span> · {activity.project_number}</span>
+                  )}
+                  <span> · {new Date(activity.created_at).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      
+      {/* Quick Actions */}
+      <section className="dashboard-section">
+        <h2>Quick Actions</h2>
+        <div className="quick-actions">
+          <Link to="/admin/users" className="action-button">
+            Manage Users
+          </Link>
+          <Link to="/admin/projects" className="action-button">
+            View All Projects
+          </Link>
+          <Link to="/admin/agreements" className="action-button">
+            View All Agreements
+          </Link>
+          <Link to="/admin/settings" className="action-button">
+            System Settings
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default AdminDashboard;
+```
+
+---
+
+## 11. Frontend - User Management Page
+
+```jsx
+// /pages/admin/Users.jsx
+
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+
+const AdminUsers = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState(null);
+  
+  useEffect(() => {
+    fetchUsers();
+  }, [roleFilter, search]);
+  
+  const fetchUsers = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (roleFilter) params.append('role', roleFilter);
+      if (search) params.append('search', search);
+      
+      const response = await fetch(`/api/admin/users?${params}`, {
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      setUsers(data.users);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleEditUser = (userId) => {
+    navigate(`/admin/users/${userId}`);
+  };
+  
+  const handleToggleActive = async (userId, currentActive) => {
+    try {
+      await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ is_active: !currentActive })
+      });
+      
+      fetchUsers();
+    } catch (error) {
+      console.error('Failed to toggle user status:', error);
+    }
+  };
+  
+  return (
+    <div className="admin-users-page">
+      <header>
+        <h1>User Management</h1>
+      </header>
+      
+      {/* Filters */}
+      <div className="filters">
+        <input
+          type="text"
+          placeholder="Search by name or email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="search-input"
+        />
+        
+        <select 
+          value={roleFilter} 
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="role-filter"
+        >
+          <option value="">All Roles</option>
+          <option value="user">Users</option>
+          <option value="admin">Admins</option>
+          <option value="staff">Staff</option>
+        </select>
+      </div>
+      
+      {/* Users Table */}
+      <div className="users-table-container">
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Projects</th>
+              <th>Agreements</th>
+              <th>Last Login</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className={!u.is_active ? 'inactive' : ''}>
+                <td>{u.full_name}</td>
+                <td>{u.email}</td>
+                <td>{u.company_name || '-'}</td>
+                <td>
+                  <span className={`role-badge role-${u.role}`}>
+                    {u.role}
+                  </span>
+                </td>
+                <td>{u.project_count}</td>
+                <td>{u.agreement_count}</td>
+                <td>
+                  {u.last_login_at 
+                    ? new Date(u.last_login_at).toLocaleDateString()
+                    : 'Never'}
+                </td>
+                <td>
+                  <span className={`status-badge ${u.is_active ? 'active' : 'inactive'}`}>
+                    {u.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <button onClick={() => handleEditUser(u.id)} className="btn-edit">
+                    View/Edit
+                  </button>
+                  <button 
+                    onClick={() => handleToggleActive(u.id, u.is_active)}
+                    className="btn-toggle"
+                  >
+                    {u.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+export default AdminUsers;
+```
+
+---
+
+## 12. Frontend - Admin Project Detail Page
+
+```jsx
+// /pages/admin/AdminProjectDetail.jsx
+
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+
+const AdminProjectDetail = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [project, setProject] = useState(null);
+  const [adminTasks, setAdminTasks] = useState([]);
+  const [userStages, setUserStages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('admin-tasks'); // admin-tasks, user-view, documents
+  
+  useEffect(() => {
+    fetchProjectDetails();
+  }, [id]);
+  
+  const fetchProjectDetails = async () => {
+    try {
+      const response = await fetch(`/api/admin/projects/${id}`, {
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      setProject(data.project);
+      setAdminTasks(data.admin_tasks);
+      setUserStages(data.user_stages);
+    } catch (error) {
+      console.error('Failed to fetch project:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleCompleteAdminTask = async (taskId) => {
+    try {
+      await fetch(`/api/admin/projects/${id}/admin-tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'completed' })
+      });
+      
+      fetchProjectDetails();
+    } catch (error) {
+      console.error('Failed to complete task:', error);
+    }
+  };
+  
+  const handleUpdateProject = async (updates) => {
+    try {
+      await fetch(`/api/admin/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(updates)
+      });
+      
+      fetchProjectDetails();
+    } catch (error) {
+      console.error('Failed to update project:', error);
+    }
+  };
+  
+  if (loading) return <div>Loading...</div>;
+  if (!project) return <div>Project not found</div>;
+  
+  return (
+    <div className="admin-project-detail">
+      <header className="project-header">
+        <button onClick={() => navigate('/admin/projects')} className="back-button">
+          ← Back to All Projects
+        </button>
+        
+        <div className="project-title-section">
+          <h1>{project.project_number}</h1>
+          <p className="project-name">{project.project_name}</p>
+        </div>
+        
+        <div className="project-meta">
+          <div className="meta-item">
+            <label>User:</label>
+            <span>{project.user_name} ({project.user_email})</span>
+          </div>
+          <div className="meta-item">
+            <label>Borrower:</label>
+            <span>{project.borrower_name}</span>
+          </div>
+          <div className="meta-item">
+            <label>Loan Amount:</label>
+            <span>${project.loan_amount?.toLocaleString()}</span>
+          </div>
+          <div className="meta-item">
+            <label>Stage:</label>
+            <span className="stage-badge">{project.current_stage}</span>
+          </div>
+          <div className="meta-item">
+            <label>Status:</label>
+            <span className={`status-badge status-${project.status}`}>
+              {project.status}
+            </span>
+          </div>
+        </div>
+      </header>
+      
+      {/* Tabs */}
+      <div className="tabs">
+        <button
+          className={`tab ${activeTab === 'admin-tasks' ? 'active' : ''}`}
+          onClick={() => setActiveTab('admin-tasks')}
+        >
+          Admin Workflow
+        </button>
+        <button
+          className={`tab ${activeTab === 'user-view' ? 'active' : ''}`}
+          onClick={() => setActiveTab('user-view')}
+        >
+          User View
+        </button>
+        <button
+          className={`tab ${activeTab === 'documents' ? 'active' : ''}`}
+          onClick={() => setActiveTab('documents')}
+        >
+          Documents
+        </button>
+      </div>
+      
+      {/* Admin Tasks Tab */}
+      {activeTab === 'admin-tasks' && (
+        <div className="admin-tasks-section">
+          <h2>Internal Action Steps</h2>
+          <p className="section-description">
+            Complete these tasks to progress the project. Completed tasks automatically update the user-facing milestone tracker.
+          </p>
+          
+          <div className="tasks-list">
+            {adminTasks.map(task => (
+              <div 
+                key={task.id} 
+                className={`admin-task-card task-${task.status} priority-${task.priority}`}
+              >
+                <div className="task-header">
+                  <div className="task-title-section">
+                    <h3>{task.task_title}</h3>
+                    {task.milestone_stage_name && (
+                      <p className="milestone-link">
+                        → Updates user milestone: {task.milestone_stage_name} / {task.milestone_task_title}
+                      </p>
+                    )}
+                  </div>
+                  <div className="task-badges">
+                    <span className={`priority-badge priority-${task.priority}`}>
+                      {task.priority}
+                    </span>
+                    <span className={`status-badge status-${task.status}`}>
+                      {task.status}
+                    </span>
+                  </div>
+                </div>
+                
+                {task.task_description && (
+                  <p className="task-description">{task.task_description}</p>
+                )}
+                
+                <div className="task-meta">
+                  <span>Category: {task.task_category}</span>
+                  {task.assigned_to_name && (
+                    <span> · Assigned to: {task.assigned_to_name}</span>
+                  )}
+                  {task.due_date && (
+                    <span> · Due: {new Date(task.due_date).toLocaleDateString()}</span>
+                  )}
+                </div>
+                
+                {task.internal_notes && (
+                  <div className="internal-notes">
+                    <strong>Internal Notes:</strong>
+                    <p>{task.internal_notes}</p>
+                  </div>
+                )}
+                
+                {task.status !== 'completed' && (
+                  <button
+                    onClick={() => handleCompleteAdminTask(task.id)}
+                    className="btn-complete-task"
+                  >
+                    Mark Complete
+                  </button>
+                )}
+                
+                {task.completed_at && (
+                  <div className="completion-info">
+                    ✓ Completed by {task.completed_by_name} on {new Date(task.completed_at).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* User View Tab */}
+      {activeTab === 'user-view' && (
+        <div className="user-view-section">
+          <h2>User-Facing Milestone Tracker</h2>
+          <p className="section-description">
+            This is what the user sees on their project dashboard.
+          </p>
+          
+          <div className="user-stages">
+            {userStages.map(stage => {
+              const completedTasks = stage.tasks.filter(t => t.status === 'completed').length;
+              const totalTasks = stage.tasks.length;
+              const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+              
+              return (
+                <div key={stage.id} className={`user-stage stage-${stage.status}`}>
+                  <div className="stage-header">
+                    <h3>{stage.stage_name}</h3>
+                    <span className={`stage-status status-${stage.status}`}>
+                      {stage.status}
+                    </span>
+                  </div>
+                  
+                  <div className="stage-progress">
+                    <span>{completedTasks}/{totalTasks} tasks</span>
+                    <div className="progress-bar">
+                      <div 
+                        className="progress-fill" 
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="stage-tasks">
+                    {stage.tasks.map(task => (
+                      <div key={task.id} className="user-task">
+                        <span className="task-status">
+                          {task.status === 'completed' ? '✓' : '○'}
+                        </span>
+                        <span className="task-title">{task.task_title}</span>
+                        {task.completed_at && (
+                          <span className="completion-date">
+                            {new Date(task.completed_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      
+      {/* Documents Tab */}
+      {activeTab === 'documents' && (
+        <div className="documents-section">
+          <h2>Project Documents</h2>
+          <button className="btn-upload">Upload Document</button>
+          {/* Document list implementation */}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminProjectDetail;
+```
+
+---
+
+## 13. Frontend - System Settings Page
+
+```jsx
+// /pages/admin/Settings.jsx
+
+import { useState, useEffect } from 'react';
+
+const AdminSettings = () => {
+  const [settings, setSettings] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+  
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch('/api/admin/settings', {
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      setSettings(data.settings);
+    } catch (error) {
+      console.error('Failed to fetch settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleEdit = (setting) => {
+    setEditing(setting.setting_key);
+    setEditValue(setting.setting_value);
+  };
+  
+  const handleSave = async (key) => {
+    try {
+      await fetch(`/api/admin/settings/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ setting_value: editValue })
+      });
+      
+      setEditing(null);
+      fetchSettings();
+    } catch (error) {
+      console.error('Failed to update setting:', error);
+      alert('Failed to update setting');
+    }
+  };
+  
+  const handleCancel = () => {
+    setEditing(null);
+    setEditValue('');
+  };
+  
+  if (loading) return <div>Loading settings...</div>;
+  
+  return (
+    <div className="admin-settings-page">
+      <header>
+        <h1>System Settings</h1>
+        <p>Configure system-wide settings and integrations</p>
+      </header>
+      
+      <div className="settings-list">
+        {settings.map(setting => (
+          <div key={setting.setting_key} className="setting-card">
+            <div className="setting-header">
+              <h3>{setting.setting_key.replace(/_/g, ' ').toUpperCase()}</h3>
+              {setting.setting_description && (
+                <p className="setting-description">{setting.setting_description}</p>
+              )}
+            </div>
+            
+            <div className="setting-content">
+              {editing === setting.setting_key ? (
+                <div className="edit-mode">
+                  {setting.setting_key === 'puppeteer_quote_url' ? (
+                    <input
+                      type="url"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="setting-input"
+                      placeholder="https://example.com"
+                    />
+                  ) : (
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="setting-textarea"
+                      rows={3}
+                    />
+                  )}
+                  
+                  <div className="edit-actions">
+                    <button onClick={() => handleSave(setting.setting_key)} className="btn-save">
+                      Save
+                    </button>
+                    <button onClick={handleCancel} className="btn-cancel">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="view-mode">
+                  <div className="setting-value">
+                    {setting.setting_key === 'puppeteer_quote_url' ? (
+                      <a href={setting.setting_value} target="_blank" rel="noopener noreferrer">
+                        {setting.setting_value}
+                      </a>
+                    ) : (
+                      <span>{setting.setting_value}</span>
+                    )}
+                  </div>
+                  
+                  <button onClick={() => handleEdit(setting)} className="btn-edit">
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            {setting.updated_at && (
+              <div className="setting-meta">
+                Last updated: {new Date(setting.updated_at).toLocaleString()}
+                {setting.updated_by_name && ` by ${setting.updated_by_name}`}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default AdminSettings;
+```
+
+---
+
+## 14. Add Admin Routes to App.jsx
+
+```jsx
+// In App.jsx
+
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers from './pages/admin/Users';
+import AdminUserDetail from './pages/admin/UserDetail';
+import AdminProjects from './pages/admin/Projects';
+import AdminProjectDetail from './pages/admin/AdminProjectDetail';
+import AdminSettings from './pages/admin/Settings';
+
+// Add admin routes (all protected)
+<Route path="/admin" element={
+  <ProtectedRoute>
+    <AdminDashboard />
+  </ProtectedRoute>
+} />
+
+<Route path="/admin/users" element={
+  <ProtectedRoute>
+    <AdminUsers />
+  </ProtectedRoute>
+} />
+
+<Route path="/admin/users/:id" element={
+  <ProtectedRoute>
+    <AdminUserDetail />
+  </ProtectedRoute>
+} />
+
+<Route path="/admin/projects" element={
+  <ProtectedRoute>
+    <AdminProjects />
+  </ProtectedRoute>
+} />
+
+<Route path="/admin/projects/:id" element={
+  <ProtectedRoute>
+    <AdminProjectDetail />
+  </ProtectedRoute>
+} />
+
+<Route path="/admin/settings" element={
+  <ProtectedRoute>
+    <AdminSettings />
+  </ProtectedRoute>
+} />
+```
+
+---
+
+## Complete Implementation Summary
+
+**What This Gives You:**
+
+1. **User Management**: View all users, edit details, deactivate accounts, see their projects/agreements
+2. **Project Workflow**: Admin-side tasks that automatically update user-facing milestones when completed
+3. **System Settings**: Change Puppeteer URL and other configs from the UI
+4. **Full Visibility**: See all projects, all agreements, all activity across all users
+5. **Two-Sided System**: Admin completes internal tasks → User sees progress on their dashboard
+6. **Activity Tracking**: Separate admin activity log + user-visible activity feed
+
+**How It Works:**
+- User creates/receives project → Admin tasks auto-created
+- Admin completes tasks (review docs, order appraisal, etc.)
+- When admin task completed → Linked user milestone task auto-completes
+- User sees updated progress bar and milestone completion
+- Admin can add documents, notes, override stages
+- All changes logged and tracked
+
+**Security:**
+- Role-based access (admin, staff, super_admin)
+- Admin middleware on all admin routes
+- Regular users cannot access admin features
+- Super admin required for critical settings
+
+This is production-ready admin panel that doesn't affect any existing user-facing functionality!

@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   fullName: varchar("full_name", { length: 255 }),
   companyName: varchar("company_name", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
+  role: varchar("role", { length: 50 }).default("user").notNull(), // user, admin, staff, super_admin
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
   emailVerified: boolean("email_verified").default(false),
@@ -344,3 +345,71 @@ export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
 export type ProjectWebhook = typeof projectWebhooks.$inferSelect;
 export type InsertProjectWebhook = z.infer<typeof insertProjectWebhookSchema>;
+
+// System settings table for admin configuration
+export const systemSettings = pgTable("system_settings", {
+  id: serial("id").primaryKey(),
+  settingKey: varchar("setting_key", { length: 100 }).unique().notNull(),
+  settingValue: text("setting_value").notNull(),
+  settingDescription: text("setting_description"),
+  updatedBy: integer("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Admin tasks table - internal workflow steps
+export const adminTasks = pgTable("admin_tasks", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+  
+  taskTitle: varchar("task_title", { length: 255 }).notNull(),
+  taskDescription: text("task_description"),
+  taskCategory: varchar("task_category", { length: 100 }), // document_processing, underwriting_review, approval_required, closing_coordination
+  
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed, blocked
+  priority: varchar("priority", { length: 50 }).default("medium"), // low, medium, high, critical
+  
+  assignedTo: integer("assigned_to").references(() => users.id),
+  dueDate: timestamp("due_date"),
+  
+  userMilestoneStageId: integer("user_milestone_stage_id").references(() => projectStages.id),
+  userMilestoneTaskId: integer("user_milestone_task_id").references(() => projectTasks.id),
+  
+  autoUpdateUserTask: boolean("auto_update_user_task").default(true),
+  
+  completedAt: timestamp("completed_at"),
+  completedBy: integer("completed_by").references(() => users.id),
+  
+  requiresDocument: boolean("requires_document").default(false),
+  documentId: integer("document_id").references(() => projectDocuments.id),
+  
+  internalNotes: text("internal_notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Admin activity log - separate from user-facing activity
+export const adminActivity = pgTable("admin_activity", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").references(() => users.id),
+  
+  actionType: varchar("action_type", { length: 100 }).notNull(), // task_completed, document_added, stage_updated, note_added
+  actionDescription: text("action_description").notNull(),
+  
+  metadata: jsonb("metadata"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas for admin tables
+export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({ id: true, updatedAt: true });
+export const insertAdminTaskSchema = createInsertSchema(adminTasks).omit({ id: true, createdAt: true, completedAt: true });
+export const insertAdminActivitySchema = createInsertSchema(adminActivity).omit({ id: true, createdAt: true });
+
+// Admin types
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+export type AdminTask = typeof adminTasks.$inferSelect;
+export type InsertAdminTask = z.infer<typeof insertAdminTaskSchema>;
+export type AdminActivity = typeof adminActivity.$inferSelect;
+export type InsertAdminActivity = z.infer<typeof insertAdminActivitySchema>;
