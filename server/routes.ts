@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates } from "@shared/schema";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
 import { z } from "zod";
@@ -3216,19 +3216,65 @@ export async function registerRoutes(
         stage: stage || 'initial-review',
       }).returning();
       
-      const documentTemplates = getDocumentTemplatesForLoanType(effectiveLoanType);
-      const documentEntries = documentTemplates.map((template, index) => ({
-        dealId: deal.id,
-        documentName: template.name,
-        documentCategory: template.category,
-        documentDescription: template.description || null,
-        isRequired: template.isRequired,
-        sortOrder: index,
-        status: 'pending',
-      }));
+      // Try to get templates from an active program first
+      const [activeProgram] = await db.select().from(loanPrograms)
+        .where(and(
+          eq(loanPrograms.loanType, effectiveLoanType),
+          eq(loanPrograms.isActive, true)
+        ))
+        .limit(1);
+      
+      let documentEntries: any[] = [];
+      let taskEntries: any[] = [];
+      
+      if (activeProgram) {
+        // Get document templates from program
+        const programDocs = await db.select().from(programDocumentTemplates)
+          .where(eq(programDocumentTemplates.programId, activeProgram.id))
+          .orderBy(programDocumentTemplates.sortOrder);
+        
+        documentEntries = programDocs.map((doc, index) => ({
+          dealId: deal.id,
+          documentName: doc.documentName,
+          documentCategory: doc.documentCategory,
+          documentDescription: doc.documentDescription,
+          isRequired: doc.isRequired,
+          sortOrder: doc.sortOrder || index,
+          status: 'pending',
+        }));
+        
+        // Get task templates from program
+        const programTasks = await db.select().from(programTaskTemplates)
+          .where(eq(programTaskTemplates.programId, activeProgram.id))
+          .orderBy(programTaskTemplates.sortOrder);
+        
+        taskEntries = programTasks.map((task, index) => ({
+          dealId: deal.id,
+          taskName: task.taskName,
+          taskDescription: task.taskDescription,
+          priority: task.priority,
+          status: 'pending',
+        }));
+      } else {
+        // Fall back to hardcoded templates
+        const documentTemplates = getDocumentTemplatesForLoanType(effectiveLoanType);
+        documentEntries = documentTemplates.map((template, index) => ({
+          dealId: deal.id,
+          documentName: template.name,
+          documentCategory: template.category,
+          documentDescription: template.description || null,
+          isRequired: template.isRequired,
+          sortOrder: index,
+          status: 'pending',
+        }));
+      }
       
       if (documentEntries.length > 0) {
         await db.insert(dealDocuments).values(documentEntries);
+      }
+      
+      if (taskEntries.length > 0) {
+        await db.insert(dealTasks).values(taskEntries);
       }
       
       res.json({ deal });
