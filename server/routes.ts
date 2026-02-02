@@ -3,7 +3,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema } from "@shared/schema";
+import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { api } from "@shared/routes";
@@ -4182,6 +4183,418 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete program task error:', error);
       res.status(500).json({ error: 'Failed to delete task template' });
+    }
+  });
+
+  // ==================== PRICING RULESETS ROUTES ====================
+  
+  // List rulesets for a program
+  app.get('/api/admin/programs/:programId/rulesets', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      
+      const rulesets = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.programId, parseInt(programId)))
+        .orderBy(desc(pricingRulesets.version));
+      
+      res.json({ rulesets });
+    } catch (error) {
+      console.error('List rulesets error:', error);
+      res.status(500).json({ error: 'Failed to list rulesets' });
+    }
+  });
+  
+  // Get single ruleset
+  app.get('/api/admin/rulesets/:rulesetId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { rulesetId } = req.params;
+      
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'Ruleset not found' });
+      }
+      
+      res.json({ ruleset });
+    } catch (error) {
+      console.error('Get ruleset error:', error);
+      res.status(500).json({ error: 'Failed to get ruleset' });
+    }
+  });
+  
+  // Get active ruleset for a program
+  app.get('/api/programs/:programId/active-ruleset', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(and(
+          eq(pricingRulesets.programId, parseInt(programId)),
+          eq(pricingRulesets.status, 'active')
+        ));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'No active ruleset found' });
+      }
+      
+      res.json({ ruleset });
+    } catch (error) {
+      console.error('Get active ruleset error:', error);
+      res.status(500).json({ error: 'Failed to get active ruleset' });
+    }
+  });
+  
+  // Create new ruleset version
+  app.post('/api/admin/programs/:programId/rulesets', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const { name, description, rulesJson } = req.body;
+      
+      // Validate the rules JSON
+      const parseResult = pricingRulesSchema.safeParse(rulesJson);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: 'Invalid rules JSON', 
+          details: parseResult.error.errors 
+        });
+      }
+      
+      // Get the next version number
+      const existingRulesets = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.programId, parseInt(programId)))
+        .orderBy(desc(pricingRulesets.version))
+        .limit(1);
+      
+      const nextVersion = (existingRulesets[0]?.version ?? 0) + 1;
+      
+      const [ruleset] = await db.insert(pricingRulesets)
+        .values({
+          programId: parseInt(programId),
+          version: nextVersion,
+          name: name || `Version ${nextVersion}`,
+          description,
+          rulesJson: parseResult.data,
+          status: 'draft',
+          createdBy: req.user!.id
+        })
+        .returning();
+      
+      res.status(201).json({ ruleset });
+    } catch (error) {
+      console.error('Create ruleset error:', error);
+      res.status(500).json({ error: 'Failed to create ruleset' });
+    }
+  });
+  
+  // Update ruleset
+  app.put('/api/admin/rulesets/:rulesetId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { rulesetId } = req.params;
+      const { name, description, rulesJson } = req.body;
+      
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      
+      if (rulesJson !== undefined) {
+        const parseResult = pricingRulesSchema.safeParse(rulesJson);
+        if (!parseResult.success) {
+          return res.status(400).json({ 
+            error: 'Invalid rules JSON', 
+            details: parseResult.error.errors 
+          });
+        }
+        updateData.rulesJson = parseResult.data;
+      }
+      
+      const [ruleset] = await db.update(pricingRulesets)
+        .set(updateData)
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)))
+        .returning();
+      
+      res.json({ ruleset });
+    } catch (error) {
+      console.error('Update ruleset error:', error);
+      res.status(500).json({ error: 'Failed to update ruleset' });
+    }
+  });
+  
+  // Activate a ruleset (and deactivate others for same program)
+  app.post('/api/admin/rulesets/:rulesetId/activate', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { rulesetId } = req.params;
+      
+      // Get the ruleset to find its program
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'Ruleset not found' });
+      }
+      
+      // Deactivate all other rulesets for this program
+      await db.update(pricingRulesets)
+        .set({ status: 'archived', archivedAt: new Date() })
+        .where(and(
+          eq(pricingRulesets.programId, ruleset.programId),
+          eq(pricingRulesets.status, 'active')
+        ));
+      
+      // Activate the selected ruleset
+      const [activated] = await db.update(pricingRulesets)
+        .set({ status: 'active', activatedAt: new Date() })
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)))
+        .returning();
+      
+      res.json({ ruleset: activated });
+    } catch (error) {
+      console.error('Activate ruleset error:', error);
+      res.status(500).json({ error: 'Failed to activate ruleset' });
+    }
+  });
+  
+  // Delete ruleset (only if draft)
+  app.delete('/api/admin/rulesets/:rulesetId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { rulesetId } = req.params;
+      
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'Ruleset not found' });
+      }
+      
+      if (ruleset.status === 'active') {
+        return res.status(400).json({ error: 'Cannot delete active ruleset' });
+      }
+      
+      await db.delete(pricingRulesets).where(eq(pricingRulesets.id, parseInt(rulesetId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete ruleset error:', error);
+      res.status(500).json({ error: 'Failed to delete ruleset' });
+    }
+  });
+  
+  // Create sample ruleset for a program
+  app.post('/api/admin/programs/:programId/rulesets/sample', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      
+      // Get the program to determine loan type
+      const [program] = await db.select()
+        .from(loanPrograms)
+        .where(eq(loanPrograms.id, parseInt(programId)));
+      
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+      
+      // Choose sample ruleset based on loan type
+      const sampleRules = program.loanType === 'dscr' ? SAMPLE_DSCR_RULESET : SAMPLE_RTL_RULESET;
+      
+      // Get the next version number
+      const existingRulesets = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.programId, parseInt(programId)))
+        .orderBy(desc(pricingRulesets.version))
+        .limit(1);
+      
+      const nextVersion = (existingRulesets[0]?.version ?? 0) + 1;
+      
+      const [ruleset] = await db.insert(pricingRulesets)
+        .values({
+          programId: parseInt(programId),
+          version: nextVersion,
+          name: `Sample ${program.loanType.toUpperCase()} Ruleset`,
+          description: 'Auto-generated sample ruleset with typical pricing rules',
+          rulesJson: sampleRules,
+          status: 'draft',
+          createdBy: req.user!.id
+        })
+        .returning();
+      
+      res.status(201).json({ ruleset });
+    } catch (error) {
+      console.error('Create sample ruleset error:', error);
+      res.status(500).json({ error: 'Failed to create sample ruleset' });
+    }
+  });
+  
+  // ==================== PRICING QUOTE ROUTES ====================
+  
+  // Calculate price using active ruleset
+  app.post('/api/pricing/calculate', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId, inputs } = req.body;
+      
+      if (!programId || !inputs) {
+        return res.status(400).json({ error: 'programId and inputs are required' });
+      }
+      
+      // Get the active ruleset for this program
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(and(
+          eq(pricingRulesets.programId, parseInt(programId)),
+          eq(pricingRulesets.status, 'active')
+        ));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'No active pricing ruleset for this program' });
+      }
+      
+      // Calculate pricing
+      const result = priceQuote(ruleset.rulesJson as any, inputs as PricingInputs);
+      
+      // Log the quote
+      await db.insert(pricingQuoteLogs).values({
+        programId: parseInt(programId),
+        rulesetId: ruleset.id,
+        userId: req.user!.id,
+        inputsJson: inputs,
+        outputsJson: result,
+        eligible: result.eligible,
+        finalRate: result.finalRate,
+        points: result.points
+      });
+      
+      res.json({ 
+        result,
+        rulesetId: ruleset.id,
+        rulesetVersion: ruleset.version
+      });
+    } catch (error) {
+      console.error('Calculate pricing error:', error);
+      res.status(500).json({ error: 'Failed to calculate pricing' });
+    }
+  });
+  
+  // Test pricing with a specific ruleset (admin only)
+  app.post('/api/admin/rulesets/:rulesetId/test', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { rulesetId } = req.params;
+      const { inputs } = req.body;
+      
+      const [ruleset] = await db.select()
+        .from(pricingRulesets)
+        .where(eq(pricingRulesets.id, parseInt(rulesetId)));
+      
+      if (!ruleset) {
+        return res.status(404).json({ error: 'Ruleset not found' });
+      }
+      
+      const result = priceQuote(ruleset.rulesJson as any, inputs as PricingInputs);
+      
+      res.json({ result });
+    } catch (error) {
+      console.error('Test ruleset error:', error);
+      res.status(500).json({ error: 'Failed to test ruleset' });
+    }
+  });
+  
+  // ==================== RULE PROPOSALS ROUTES ====================
+  
+  // List proposals for a program
+  app.get('/api/admin/programs/:programId/proposals', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const { status } = req.query;
+      
+      let query = db.select()
+        .from(ruleProposals)
+        .where(eq(ruleProposals.programId, parseInt(programId)));
+      
+      if (status && typeof status === 'string') {
+        query = db.select()
+          .from(ruleProposals)
+          .where(and(
+            eq(ruleProposals.programId, parseInt(programId)),
+            eq(ruleProposals.status, status)
+          ));
+      }
+      
+      const proposals = await query.orderBy(desc(ruleProposals.createdAt));
+      
+      res.json({ proposals });
+    } catch (error) {
+      console.error('List proposals error:', error);
+      res.status(500).json({ error: 'Failed to list proposals' });
+    }
+  });
+  
+  // Accept/reject a proposal
+  app.post('/api/admin/proposals/:proposalId/review', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { proposalId } = req.params;
+      const { status, reviewNotes, modifiedProposal } = req.body;
+      
+      if (!['accepted', 'rejected', 'modified'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      
+      const updateData: any = {
+        status,
+        reviewedBy: req.user!.id,
+        reviewedAt: new Date(),
+        reviewNotes
+      };
+      
+      if (status === 'modified' && modifiedProposal) {
+        updateData.proposalJson = modifiedProposal;
+      }
+      
+      const [proposal] = await db.update(ruleProposals)
+        .set(updateData)
+        .where(eq(ruleProposals.id, parseInt(proposalId)))
+        .returning();
+      
+      res.json({ proposal });
+    } catch (error) {
+      console.error('Review proposal error:', error);
+      res.status(500).json({ error: 'Failed to review proposal' });
+    }
+  });
+  
+  // Get programs with active rulesets (for quote page)
+  app.get('/api/programs-with-pricing', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      // Get all active programs
+      const programs = await db.select()
+        .from(loanPrograms)
+        .where(eq(loanPrograms.isActive, true))
+        .orderBy(loanPrograms.sortOrder);
+      
+      // Check which have active rulesets
+      const programsWithStatus = await Promise.all(programs.map(async (program) => {
+        const [activeRuleset] = await db.select()
+          .from(pricingRulesets)
+          .where(and(
+            eq(pricingRulesets.programId, program.id),
+            eq(pricingRulesets.status, 'active')
+          ));
+        
+        return {
+          ...program,
+          hasActiveRuleset: !!activeRuleset,
+          activeRulesetId: activeRuleset?.id,
+          activeRulesetVersion: activeRuleset?.version
+        };
+      }));
+      
+      res.json({ programs: programsWithStatus });
+    } catch (error) {
+      console.error('Get programs with pricing error:', error);
+      res.status(500).json({ error: 'Failed to get programs' });
     }
   });
 
