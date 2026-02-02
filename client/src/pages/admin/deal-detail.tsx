@@ -180,6 +180,7 @@ function getCategoryLabel(category: string | null): string {
     property_docs: "Property Documents",
     financial_docs: "Financial Documents",
     closing_docs: "Closing Documents",
+    lender_ordered: "Ordered by Lender",
   };
   return labels[category || ""] || "Other";
 }
@@ -196,6 +197,8 @@ function getCategoryIcon(category: string | null) {
       return <DollarSign className="h-4 w-4" />;
     case "closing_docs":
       return <FileText className="h-4 w-4" />;
+    case "lender_ordered":
+      return <FileCheck className="h-4 w-4" />;
     default:
       return <Folder className="h-4 w-4" />;
   }
