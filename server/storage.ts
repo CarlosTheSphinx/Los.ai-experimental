@@ -3,15 +3,18 @@ import { db } from "./db";
 import { 
   pricingRequests, savedQuotes, documents, signers, documentFields, documentAuditLog, users,
   projects, projectStages, projectTasks, projectActivity, projectDocuments, projectWebhooks,
+  systemSettings, adminTasks, adminActivity,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
   type User, type InsertUser,
   type Project, type InsertProject, type ProjectStage, type InsertProjectStage,
   type ProjectTask, type InsertProjectTask, type ProjectActivity, type InsertProjectActivity,
-  type ProjectDocument, type InsertProjectDocument, type ProjectWebhook, type InsertProjectWebhook
+  type ProjectDocument, type InsertProjectDocument, type ProjectWebhook, type InsertProjectWebhook,
+  type SystemSetting, type InsertSystemSetting, type AdminTask, type InsertAdminTask,
+  type AdminActivity, type InsertAdminActivity
 } from "@shared/schema";
-import { desc, eq, and, gt, like, sql, asc } from "drizzle-orm";
+import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -409,6 +412,189 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(projectWebhooks)
       .where(eq(projectWebhooks.projectId, projectId))
       .orderBy(desc(projectWebhooks.triggeredAt));
+  }
+
+  // Admin methods - System Settings
+  async getAllSettings(): Promise<SystemSetting[]> {
+    return await db.select().from(systemSettings).orderBy(asc(systemSettings.settingKey));
+  }
+
+  async getSettingByKey(key: string): Promise<SystemSetting | undefined> {
+    const [setting] = await db.select().from(systemSettings).where(eq(systemSettings.settingKey, key));
+    return setting;
+  }
+
+  async upsertSetting(key: string, value: string, description: string | null, updatedBy: number): Promise<SystemSetting> {
+    const existing = await this.getSettingByKey(key);
+    if (existing) {
+      const [updated] = await db.update(systemSettings)
+        .set({ settingValue: value, settingDescription: description, updatedBy, updatedAt: new Date() })
+        .where(eq(systemSettings.settingKey, key))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(systemSettings)
+        .values({ settingKey: key, settingValue: value, settingDescription: description, updatedBy })
+        .returning();
+      return created;
+    }
+  }
+
+  // Admin methods - Get all users (admin view)
+  async getAllUsers(filters?: { role?: string; search?: string }): Promise<User[]> {
+    let query = db.select().from(users);
+    const conditions = [];
+    
+    if (filters?.role) {
+      conditions.push(eq(users.role, filters.role));
+    }
+    if (filters?.search) {
+      conditions.push(or(
+        like(users.email, `%${filters.search}%`),
+        like(users.fullName, `%${filters.search}%`)
+      ));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(users).where(and(...conditions)).orderBy(desc(users.createdAt));
+    }
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  // Admin methods - Get all projects (across all users)
+  async getAllProjects(filters?: { status?: string; stage?: string; userId?: number }): Promise<Project[]> {
+    const conditions = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(projects.status, filters.status));
+    }
+    if (filters?.stage) {
+      conditions.push(eq(projects.currentStage, filters.stage));
+    }
+    if (filters?.userId) {
+      conditions.push(eq(projects.userId, filters.userId));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(projects).where(and(...conditions)).orderBy(desc(projects.lastUpdated));
+    }
+    return await db.select().from(projects).orderBy(desc(projects.lastUpdated));
+  }
+
+  // Admin methods - Get all documents (across all users)
+  async getAllDocuments(filters?: { status?: string; userId?: number }): Promise<Document[]> {
+    const conditions = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(documents.status, filters.status));
+    }
+    if (filters?.userId) {
+      conditions.push(eq(documents.userId, filters.userId));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(documents).where(and(...conditions)).orderBy(desc(documents.createdAt));
+    }
+    return await db.select().from(documents).orderBy(desc(documents.createdAt));
+  }
+
+  // Admin Task methods
+  async createAdminTask(task: InsertAdminTask): Promise<AdminTask> {
+    const [created] = await db.insert(adminTasks).values(task).returning();
+    return created;
+  }
+
+  async getAdminTasksByProjectId(projectId: number): Promise<AdminTask[]> {
+    return await db.select().from(adminTasks)
+      .where(eq(adminTasks.projectId, projectId))
+      .orderBy(asc(adminTasks.createdAt));
+  }
+
+  async updateAdminTask(id: number, updates: Partial<AdminTask>): Promise<AdminTask | undefined> {
+    const [updated] = await db.update(adminTasks)
+      .set(updates)
+      .where(eq(adminTasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getPendingAdminTasksCount(): Promise<number> {
+    const result = await db.select({ count: count() }).from(adminTasks).where(eq(adminTasks.status, 'pending'));
+    return result[0]?.count ?? 0;
+  }
+
+  // Admin Activity methods
+  async createAdminActivity(activity: InsertAdminActivity): Promise<AdminActivity> {
+    const [created] = await db.insert(adminActivity).values(activity).returning();
+    return created;
+  }
+
+  async getAdminActivityByProjectId(projectId: number): Promise<AdminActivity[]> {
+    return await db.select().from(adminActivity)
+      .where(eq(adminActivity.projectId, projectId))
+      .orderBy(desc(adminActivity.createdAt))
+      .limit(100);
+  }
+
+  async getRecentAdminActivity(limit: number = 20): Promise<AdminActivity[]> {
+    return await db.select().from(adminActivity)
+      .orderBy(desc(adminActivity.createdAt))
+      .limit(limit);
+  }
+
+  // Dashboard stats
+  async getAdminDashboardStats(): Promise<{
+    totalActiveUsers: number;
+    regularUsers: number;
+    activeProjects: number;
+    completedProjects: number;
+    completedAgreements: number;
+    pendingAdminTasks: number;
+    activePipelineValue: number;
+    fundedVolume: number;
+  }> {
+    const [userStats] = await db.select({ 
+      totalActive: count() 
+    }).from(users).where(eq(users.isActive, true));
+    
+    const [regularUserStats] = await db.select({ 
+      count: count() 
+    }).from(users).where(eq(users.role, 'user'));
+    
+    const [activeProjectStats] = await db.select({ 
+      count: count() 
+    }).from(projects).where(eq(projects.status, 'active'));
+    
+    const [completedProjectStats] = await db.select({ 
+      count: count() 
+    }).from(projects).where(eq(projects.status, 'completed'));
+    
+    const [completedAgreementStats] = await db.select({ 
+      count: count() 
+    }).from(documents).where(eq(documents.status, 'completed'));
+    
+    const [pendingTaskStats] = await db.select({ 
+      count: count() 
+    }).from(adminTasks).where(eq(adminTasks.status, 'pending'));
+    
+    const activePipelineResult = await db.select({ 
+      total: sql<number>`COALESCE(SUM(${projects.loanAmount}), 0)` 
+    }).from(projects).where(eq(projects.status, 'active'));
+    
+    const fundedResult = await db.select({ 
+      total: sql<number>`COALESCE(SUM(${projects.loanAmount}), 0)` 
+    }).from(projects).where(eq(projects.status, 'funded'));
+    
+    return {
+      totalActiveUsers: userStats?.totalActive ?? 0,
+      regularUsers: regularUserStats?.count ?? 0,
+      activeProjects: activeProjectStats?.count ?? 0,
+      completedProjects: completedProjectStats?.count ?? 0,
+      completedAgreements: completedAgreementStats?.count ?? 0,
+      pendingAdminTasks: pendingTaskStats?.count ?? 0,
+      activePipelineValue: activePipelineResult[0]?.total ?? 0,
+      fundedVolume: fundedResult[0]?.total ?? 0
+    };
   }
 }
 
