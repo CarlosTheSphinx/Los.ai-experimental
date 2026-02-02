@@ -37,10 +37,30 @@ export const pricingRequests = pgTable("pricing_requests", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Partners table - for tracking referral partners who bring deals
+export const partners = pgTable("partners", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  companyName: varchar("company_name", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  entityType: varchar("entity_type", { length: 50 }), // LLC, Corporation, Partnership, Individual
+  experienceLevel: varchar("experience_level", { length: 50 }).default("beginner"), // beginner, intermediate, experienced
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPartnerSchema = createInsertSchema(partners).omit({ id: true, createdAt: true });
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = z.infer<typeof insertPartnerSchema>;
+
 // Saved quotes table
 export const savedQuotes = pgTable("saved_quotes", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  partnerId: integer("partner_id").references(() => partners.id, { onDelete: 'set null' }),
+  partnerName: varchar("partner_name", { length: 255 }), // For manually typed partner names
   customerFirstName: text("customer_first_name").notNull(),
   customerLastName: text("customer_last_name").notNull(),
   customerEmail: text("customer_email"),
