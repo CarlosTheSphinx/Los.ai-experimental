@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners } from "@shared/schema";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray } from "drizzle-orm";
 import { api } from "@shared/routes";
@@ -3646,6 +3646,135 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin get team members error:', error);
       res.status(500).json({ error: 'Failed to load team members' });
+    }
+  });
+
+  // ==================== PARTNERS ROUTES ====================
+  
+  // Get all partners
+  app.get('/api/admin/partners', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const search = req.query.search as string | undefined;
+      
+      let partnersList = await db.select().from(partners).orderBy(desc(partners.createdAt));
+      
+      if (search) {
+        const searchLower = search.toLowerCase();
+        partnersList = partnersList.filter(p => 
+          p.name.toLowerCase().includes(searchLower) ||
+          p.companyName?.toLowerCase().includes(searchLower) ||
+          p.email?.toLowerCase().includes(searchLower) ||
+          p.phone?.includes(search)
+        );
+      }
+      
+      // Get loan counts for each partner
+      const partnersWithStats = await Promise.all(partnersList.map(async (partner) => {
+        const deals = await db.select().from(savedQuotes).where(eq(savedQuotes.partnerId, partner.id));
+        const activeDeals = deals.filter(d => !['closed', 'voided', 'cancelled'].includes(d.stage));
+        return {
+          ...partner,
+          loansInProcess: activeDeals.length,
+          allTimeLoans: deals.length,
+        };
+      }));
+      
+      res.json({ partners: partnersWithStats });
+    } catch (error) {
+      console.error('Get partners error:', error);
+      res.status(500).json({ error: 'Failed to load partners' });
+    }
+  });
+  
+  // Get partner by ID
+  app.get('/api/admin/partners/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const partner = await db.select().from(partners).where(eq(partners.id, parseInt(id))).limit(1);
+      
+      if (!partner.length) {
+        return res.status(404).json({ error: 'Partner not found' });
+      }
+      
+      // Get associated deals
+      const deals = await db.select().from(savedQuotes).where(eq(savedQuotes.partnerId, parseInt(id)));
+      
+      res.json({ partner: partner[0], deals });
+    } catch (error) {
+      console.error('Get partner error:', error);
+      res.status(500).json({ error: 'Failed to load partner' });
+    }
+  });
+  
+  // Create new partner
+  app.post('/api/admin/partners', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, companyName, email, phone, entityType, experienceLevel, notes } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ error: 'Partner name is required' });
+      }
+      
+      const [newPartner] = await db.insert(partners).values({
+        name,
+        companyName: companyName || null,
+        email: email || null,
+        phone: phone || null,
+        entityType: entityType || null,
+        experienceLevel: experienceLevel || 'beginner',
+        notes: notes || null,
+        isActive: true,
+      }).returning();
+      
+      res.json({ partner: newPartner });
+    } catch (error) {
+      console.error('Create partner error:', error);
+      res.status(500).json({ error: 'Failed to create partner' });
+    }
+  });
+  
+  // Update partner
+  app.put('/api/admin/partners/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, companyName, email, phone, entityType, experienceLevel, notes, isActive } = req.body;
+      
+      const [updated] = await db.update(partners)
+        .set({
+          name,
+          companyName,
+          email,
+          phone,
+          entityType,
+          experienceLevel,
+          notes,
+          isActive,
+        })
+        .where(eq(partners.id, parseInt(id)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Partner not found' });
+      }
+      
+      res.json({ partner: updated });
+    } catch (error) {
+      console.error('Update partner error:', error);
+      res.status(500).json({ error: 'Failed to update partner' });
+    }
+  });
+  
+  // Delete partner
+  app.delete('/api/admin/partners/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      await db.delete(partners).where(eq(partners.id, parseInt(id)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete partner error:', error);
+      res.status(500).json({ error: 'Failed to delete partner' });
     }
   });
 
