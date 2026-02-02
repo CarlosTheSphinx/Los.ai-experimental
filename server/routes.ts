@@ -3,7 +3,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users } from "@shared/schema";
+import { savedQuotes, users, dealDocuments } from "@shared/schema";
+import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc } from "drizzle-orm";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
@@ -3111,6 +3112,8 @@ export async function registerRoutes(
       const propertyValueNum = propertyValue ? parseFloat(propertyValue) : loanAmountNum * 1.25;
       const ltv = ((loanAmountNum / propertyValueNum) * 100).toFixed(0) + '%';
       
+      const effectiveLoanType = loanType || 'rtl';
+      
       const [deal] = await db.insert(savedQuotes).values({
         userId: req.user!.id,
         customerFirstName,
@@ -3120,7 +3123,7 @@ export async function registerRoutes(
           loanAmount: loanAmountNum,
           propertyValue: propertyValueNum,
           ltv,
-          loanType: loanType || 'rtl',
+          loanType: effectiveLoanType,
           loanPurpose: 'purchase',
           propertyType: propertyType || 'single-family',
           loanTerm: '12 months',
@@ -3133,6 +3136,21 @@ export async function registerRoutes(
         commission: 0,
         stage: stage || 'initial-review',
       }).returning();
+      
+      const documentTemplates = getDocumentTemplatesForLoanType(effectiveLoanType);
+      const documentEntries = documentTemplates.map((template, index) => ({
+        dealId: deal.id,
+        documentName: template.name,
+        documentCategory: template.category,
+        documentDescription: template.description || null,
+        isRequired: template.isRequired,
+        sortOrder: index,
+        status: 'pending',
+      }));
+      
+      if (documentEntries.length > 0) {
+        await db.insert(dealDocuments).values(documentEntries);
+      }
       
       res.json({ deal });
     } catch (error) {
@@ -3173,10 +3191,68 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Deal not found' });
       }
       
-      res.json({ deal });
+      const documents = await db.select()
+        .from(dealDocuments)
+        .where(eq(dealDocuments.dealId, dealId))
+        .orderBy(dealDocuments.sortOrder);
+      
+      res.json({ deal, documents });
     } catch (error) {
       console.error('Admin get deal error:', error);
       res.status(500).json({ error: 'Failed to load deal' });
+    }
+  });
+
+  // Admin - Get deal documents
+  app.get('/api/admin/deals/:dealId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      const documents = await db.select()
+        .from(dealDocuments)
+        .where(eq(dealDocuments.dealId, dealId))
+        .orderBy(dealDocuments.sortOrder);
+      
+      res.json({ documents });
+    } catch (error) {
+      console.error('Admin deal documents error:', error);
+      res.status(500).json({ error: 'Failed to load documents' });
+    }
+  });
+
+  // Admin - Update deal document status
+  app.patch('/api/admin/deals/:dealId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const { status, reviewNotes } = req.body;
+      
+      const validStatuses = ['pending', 'uploaded', 'approved', 'rejected', 'not_applicable'];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      
+      const updateData: Record<string, any> = {};
+      if (status) updateData.status = status;
+      if (reviewNotes !== undefined) updateData.reviewNotes = reviewNotes;
+      
+      if (status === 'approved' || status === 'rejected') {
+        updateData.reviewedAt = new Date();
+        updateData.reviewedBy = req.user!.id;
+      }
+      
+      const [updated] = await db.update(dealDocuments)
+        .set(updateData)
+        .where(eq(dealDocuments.id, docId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      res.json({ document: updated });
+    } catch (error) {
+      console.error('Admin update document error:', error);
+      res.status(500).json({ error: 'Failed to update document' });
     }
   });
 
