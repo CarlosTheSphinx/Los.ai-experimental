@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   ArrowLeft,
   DollarSign,
@@ -15,8 +16,17 @@ import {
   CheckSquare,
   Mail,
   Pencil,
+  Check,
+  Clock,
+  Upload,
+  AlertCircle,
+  XCircle,
+  FileCheck,
+  Folder,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Deal {
   id: number;
@@ -43,6 +53,32 @@ interface Deal {
   createdAt: string;
   userName: string | null;
   userEmail: string | null;
+}
+
+interface DealDocument {
+  id: number;
+  dealId: number;
+  documentName: string;
+  documentCategory: string | null;
+  documentDescription: string | null;
+  status: string;
+  isRequired: boolean | null;
+  filePath: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedAt: string | null;
+  uploadedBy: number | null;
+  reviewedAt: string | null;
+  reviewedBy: number | null;
+  reviewNotes: string | null;
+  sortOrder: number | null;
+  createdAt: string;
+}
+
+interface DealDetailResponse {
+  deal: Deal;
+  documents: DealDocument[];
 }
 
 function getStageColor(stage: string): string {
@@ -100,16 +136,96 @@ function parseAddress(address: string) {
   return { street, city, state: state || "", zip: zip || "" };
 }
 
+function getDocumentStatusIcon(status: string) {
+  switch (status) {
+    case "approved":
+      return <Check className="h-4 w-4 text-green-600" />;
+    case "uploaded":
+      return <FileCheck className="h-4 w-4 text-blue-600" />;
+    case "rejected":
+      return <XCircle className="h-4 w-4 text-red-600" />;
+    case "not_applicable":
+      return <AlertCircle className="h-4 w-4 text-gray-400" />;
+    default:
+      return <Clock className="h-4 w-4 text-yellow-600" />;
+  }
+}
+
+function getDocumentStatusBadge(status: string) {
+  const styles: Record<string, string> = {
+    pending: "bg-yellow-100 text-yellow-800",
+    uploaded: "bg-blue-100 text-blue-800",
+    approved: "bg-green-100 text-green-800",
+    rejected: "bg-red-100 text-red-800",
+    not_applicable: "bg-gray-100 text-gray-500",
+  };
+  const labels: Record<string, string> = {
+    pending: "Pending",
+    uploaded: "Uploaded",
+    approved: "Approved",
+    rejected: "Rejected",
+    not_applicable: "N/A",
+  };
+  return (
+    <Badge className={cn("text-xs", styles[status] || "bg-gray-100 text-gray-800")}>
+      {labels[status] || status}
+    </Badge>
+  );
+}
+
+function getCategoryLabel(category: string | null): string {
+  const labels: Record<string, string> = {
+    borrower_docs: "Borrower Documents",
+    entity_docs: "Entity Documents",
+    property_docs: "Property Documents",
+    financial_docs: "Financial Documents",
+    closing_docs: "Closing Documents",
+  };
+  return labels[category || ""] || "Other";
+}
+
+function getCategoryIcon(category: string | null) {
+  switch (category) {
+    case "borrower_docs":
+      return <User className="h-4 w-4" />;
+    case "entity_docs":
+      return <Building className="h-4 w-4" />;
+    case "property_docs":
+      return <Building className="h-4 w-4" />;
+    case "financial_docs":
+      return <DollarSign className="h-4 w-4" />;
+    case "closing_docs":
+      return <FileText className="h-4 w-4" />;
+    default:
+      return <Folder className="h-4 w-4" />;
+  }
+}
+
 export default function AdminDealDetail() {
   const [, params] = useRoute("/admin/deals/:id");
   const dealId = params?.id;
+  const { toast } = useToast();
 
-  const { data, isLoading, error } = useQuery<{ deal: Deal }>({
+  const { data, isLoading, error } = useQuery<DealDetailResponse>({
     queryKey: [`/api/admin/deals/${dealId}`],
     enabled: !!dealId,
   });
 
+  const updateDocumentStatus = useMutation({
+    mutationFn: async ({ docId, status }: { docId: number; status: string }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/documents/${docId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      toast({
+        title: "Document updated",
+        description: "The document status has been updated.",
+      });
+    },
+  });
+
   const deal = data?.deal;
+  const documents = data?.documents || [];
 
   if (isLoading) {
     return (
@@ -189,7 +305,7 @@ export default function AdminDealDetail() {
           <TabsTrigger value="documents" className="flex items-center gap-2" data-testid="tab-documents">
             <FileText className="h-4 w-4" />
             Documents
-            <Badge variant="secondary" className="ml-1 text-xs" data-testid="badge-documents-count">0</Badge>
+            <Badge variant="secondary" className="ml-1 text-xs" data-testid="badge-documents-count">{documents.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="tasks" className="flex items-center gap-2" data-testid="tab-tasks">
             <CheckSquare className="h-4 w-4" />
@@ -344,13 +460,141 @@ export default function AdminDealDetail() {
         </TabsContent>
 
         <TabsContent value="documents" className="mt-6">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No documents yet</h3>
-              <p className="text-muted-foreground">Documents will appear here once uploaded</p>
-            </CardContent>
-          </Card>
+          {documents.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No documents yet</h3>
+                <p className="text-muted-foreground">Documents will appear here once the deal is created with a loan type</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5" />
+                    Required Documents
+                  </CardTitle>
+                  <CardDescription>
+                    {getLoanTypeLabel(deal.loanData?.loanType)} Loan Document Checklist
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Progress</span>
+                      <span className="text-sm font-medium">
+                        {documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length} of {documents.length} complete
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length / documents.length) * 100} 
+                    />
+                  </div>
+                  
+                  {(() => {
+                    const categories = Array.from(new Set(documents.map(d => d.documentCategory)));
+                    return categories.map((category) => (
+                      <div key={category} className="mb-6 last:mb-0">
+                        <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
+                          {getCategoryIcon(category)}
+                          {getCategoryLabel(category)}
+                        </div>
+                        <div className="space-y-2">
+                          {documents
+                            .filter(d => d.documentCategory === category)
+                            .map((doc) => (
+                              <div
+                                key={doc.id}
+                                className="flex items-center justify-between p-3 border rounded-lg hover-elevate"
+                                data-testid={`doc-row-${doc.id}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  {getDocumentStatusIcon(doc.status)}
+                                  <div>
+                                    <p className="font-medium text-sm">{doc.documentName}</p>
+                                    {doc.documentDescription && (
+                                      <p className="text-xs text-muted-foreground">{doc.documentDescription}</p>
+                                    )}
+                                  </div>
+                                  {doc.isRequired && (
+                                    <Badge variant="outline" className="text-xs">Required</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {getDocumentStatusBadge(doc.status)}
+                                  <div className="flex gap-1">
+                                    {doc.status === 'pending' && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'not_applicable' })}
+                                          disabled={updateDocumentStatus.isPending}
+                                          data-testid={`button-na-${doc.id}`}
+                                        >
+                                          N/A
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'uploaded' })}
+                                          disabled={updateDocumentStatus.isPending}
+                                          data-testid={`button-upload-${doc.id}`}
+                                        >
+                                          <Upload className="h-3 w-3 mr-1" />
+                                          Mark Uploaded
+                                        </Button>
+                                      </>
+                                    )}
+                                    {doc.status === 'uploaded' && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'rejected' })}
+                                          disabled={updateDocumentStatus.isPending}
+                                          data-testid={`button-reject-${doc.id}`}
+                                        >
+                                          <XCircle className="h-3 w-3 mr-1" />
+                                          Reject
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="default"
+                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'approved' })}
+                                          disabled={updateDocumentStatus.isPending}
+                                          data-testid={`button-approve-${doc.id}`}
+                                        >
+                                          <Check className="h-3 w-3 mr-1" />
+                                          Approve
+                                        </Button>
+                                      </>
+                                    )}
+                                    {doc.status === 'rejected' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'pending' })}
+                                        disabled={updateDocumentStatus.isPending}
+                                        data-testid={`button-reset-${doc.id}`}
+                                      >
+                                        Reset
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-6">
