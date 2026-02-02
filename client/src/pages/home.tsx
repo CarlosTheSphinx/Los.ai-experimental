@@ -9,10 +9,12 @@ import { Calculator } from "lucide-react";
 
 const progressSteps = [
   { percent: 10, message: "Initializing pricing engine..." },
-  { percent: 25, message: "Ron is racing down the hall to collect quotes..." },
-  { percent: 45, message: "Terry is texting Tom to solidify the rate..." },
-  { percent: 65, message: "Analyzing lender network availability..." },
-  { percent: 85, message: "Finalizing your custom quote..." },
+  { percent: 20, message: "Ron is racing down the hall to collect quotes..." },
+  { percent: 35, message: "Lance is going to the beach..." },
+  { percent: 50, message: "Terry is texting Tom to solidify the rate..." },
+  { percent: 65, message: "Warren is lifting weights..." },
+  { percent: 80, message: "Analyzing lender network availability..." },
+  { percent: 90, message: "Finalizing your custom quote..." },
   { percent: 95, message: "Almost there! Just a few more seconds..." },
 ];
 
