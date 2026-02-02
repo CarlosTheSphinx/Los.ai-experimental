@@ -44,6 +44,7 @@ import {
   Rocket,
   Settings2,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +121,19 @@ export default function PricingRulesPage() {
   const [showDeployDialog, setShowDeployDialog] = useState(false);
   const [deployName, setDeployName] = useState("");
   const [activateImmediately, setActivateImmediately] = useState(true);
+  const [showAddProgramDialog, setShowAddProgramDialog] = useState(false);
+  const [newProgramData, setNewProgramData] = useState({
+    name: "",
+    description: "",
+    loanType: "rtl",
+    minLoanAmount: 100000,
+    maxLoanAmount: 5000000,
+    minLtv: 50,
+    maxLtv: 85,
+    minInterestRate: 8,
+    maxInterestRate: 15,
+    termOptions: "12, 24, 36",
+  });
 
   // Fetch programs
   const { data: programsData, isLoading: programsLoading } = useQuery<{ programs: LoanProgram[] }>({
@@ -184,6 +198,41 @@ export default function PricingRulesPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete ruleset", variant: "destructive" });
+    },
+  });
+
+  // Create program mutation
+  const createProgramMutation = useMutation({
+    mutationFn: async (data: typeof newProgramData) => {
+      const res = await apiRequest("POST", "/api/admin/programs", {
+        ...data,
+        eligiblePropertyTypes: ["single-family", "multi-family"],
+        isActive: true,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      setShowAddProgramDialog(false);
+      setNewProgramData({
+        name: "",
+        description: "",
+        loanType: "rtl",
+        minLoanAmount: 100000,
+        maxLoanAmount: 5000000,
+        minLtv: 50,
+        maxLtv: 85,
+        minInterestRate: 8,
+        maxInterestRate: 15,
+        termOptions: "12, 24, 36",
+      });
+      toast({ title: "Program created", description: "You can now configure pricing rules for this program." });
+      if (data.program?.id) {
+        setSelectedProgramId(data.program.id);
+      }
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create program", variant: "destructive" });
     },
   });
 
@@ -361,29 +410,39 @@ export default function PricingRulesPage() {
           <CardTitle className="text-lg">Select Program</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select
-            value={selectedProgramId?.toString() || ""}
-            onValueChange={(v) => {
-              setSelectedProgramId(parseInt(v));
-              setCurrentProposal(null);
-            }}
-          >
-            <SelectTrigger className="w-full max-w-md" data-testid="select-program">
-              <SelectValue placeholder="Choose a loan program to configure pricing" />
-            </SelectTrigger>
-            <SelectContent>
-              {(programsData?.programs ?? []).map((program) => (
-                <SelectItem key={program.id} value={program.id.toString()}>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={program.loanType === 'rtl' ? 'default' : 'secondary'} className="text-xs">
-                      {program.loanType.toUpperCase()}
-                    </Badge>
-                    {program.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-3">
+            <Select
+              value={selectedProgramId?.toString() || ""}
+              onValueChange={(v) => {
+                setSelectedProgramId(parseInt(v));
+                setCurrentProposal(null);
+              }}
+            >
+              <SelectTrigger className="w-full max-w-md" data-testid="select-program">
+                <SelectValue placeholder="Choose a loan program to configure pricing" />
+              </SelectTrigger>
+              <SelectContent>
+                {(programsData?.programs ?? []).map((program) => (
+                  <SelectItem key={program.id} value={program.id.toString()}>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={program.loanType === 'rtl' ? 'default' : 'secondary'} className="text-xs">
+                        {program.loanType.toUpperCase()}
+                      </Badge>
+                      {program.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={() => setShowAddProgramDialog(true)}
+              data-testid="button-add-program"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Program
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -895,6 +954,150 @@ export default function PricingRulesPage() {
                 <Rocket className="h-4 w-4 mr-2" />
               )}
               Deploy
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Program Dialog */}
+      <Dialog open={showAddProgramDialog} onOpenChange={setShowAddProgramDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add New Loan Program</DialogTitle>
+            <DialogDescription>
+              Create a new loan program to configure pricing rules for.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="program-name">Program Name *</Label>
+              <Input
+                id="program-name"
+                value={newProgramData.name}
+                onChange={(e) => setNewProgramData({ ...newProgramData, name: e.target.value })}
+                placeholder="e.g., RTL Light Rehab 2026"
+                data-testid="input-program-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="program-description">Description</Label>
+              <Textarea
+                id="program-description"
+                value={newProgramData.description}
+                onChange={(e) => setNewProgramData({ ...newProgramData, description: e.target.value })}
+                placeholder="Brief description of the loan program"
+                data-testid="input-program-description"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loan-type">Loan Type *</Label>
+              <Select
+                value={newProgramData.loanType}
+                onValueChange={(v) => setNewProgramData({ ...newProgramData, loanType: v })}
+              >
+                <SelectTrigger data-testid="select-loan-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rtl">RTL (Residential Transitional Loan)</SelectItem>
+                  <SelectItem value="dscr">DSCR (Debt Service Coverage Ratio)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="min-loan">Min Loan Amount</Label>
+                <Input
+                  id="min-loan"
+                  type="number"
+                  value={newProgramData.minLoanAmount}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, minLoanAmount: parseInt(e.target.value) || 0 })}
+                  data-testid="input-min-loan"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-loan">Max Loan Amount</Label>
+                <Input
+                  id="max-loan"
+                  type="number"
+                  value={newProgramData.maxLoanAmount}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, maxLoanAmount: parseInt(e.target.value) || 0 })}
+                  data-testid="input-max-loan"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="min-ltv">Min LTV (%)</Label>
+                <Input
+                  id="min-ltv"
+                  type="number"
+                  value={newProgramData.minLtv}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, minLtv: parseInt(e.target.value) || 0 })}
+                  data-testid="input-min-ltv"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-ltv">Max LTV (%)</Label>
+                <Input
+                  id="max-ltv"
+                  type="number"
+                  value={newProgramData.maxLtv}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, maxLtv: parseInt(e.target.value) || 0 })}
+                  data-testid="input-max-ltv"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="min-rate">Min Interest Rate (%)</Label>
+                <Input
+                  id="min-rate"
+                  type="number"
+                  step="0.25"
+                  value={newProgramData.minInterestRate}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, minInterestRate: parseFloat(e.target.value) || 0 })}
+                  data-testid="input-min-rate"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-rate">Max Interest Rate (%)</Label>
+                <Input
+                  id="max-rate"
+                  type="number"
+                  step="0.25"
+                  value={newProgramData.maxInterestRate}
+                  onChange={(e) => setNewProgramData({ ...newProgramData, maxInterestRate: parseFloat(e.target.value) || 0 })}
+                  data-testid="input-max-rate"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="term-options">Term Options (comma-separated months)</Label>
+              <Input
+                id="term-options"
+                value={newProgramData.termOptions}
+                onChange={(e) => setNewProgramData({ ...newProgramData, termOptions: e.target.value })}
+                placeholder="12, 24, 36"
+                data-testid="input-term-options"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddProgramDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createProgramMutation.mutate(newProgramData)}
+              disabled={createProgramMutation.isPending || !newProgramData.name}
+              data-testid="button-create-program"
+            >
+              {createProgramMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4 mr-2" />
+              )}
+              Create Program
             </Button>
           </DialogFooter>
         </DialogContent>
