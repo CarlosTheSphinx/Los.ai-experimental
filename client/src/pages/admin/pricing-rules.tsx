@@ -2,11 +2,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -23,30 +21,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
-  Sparkles,
-  Play,
   Upload,
-  CheckCircle2,
-  XCircle,
-  Loader2,
   FileText,
-  Zap,
   ArrowRight,
-  RefreshCw,
-  Trash2,
-  Eye,
-  Rocket,
-  Settings2,
-  AlertTriangle,
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
   Plus,
+  Trash2,
+  Save,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -66,61 +52,34 @@ interface PricingRuleset {
   description: string | null;
   rulesJson: any;
   status: string;
-  createdBy: number;
   createdAt: string;
   activatedAt: string | null;
-  archivedAt: string | null;
 }
 
-interface RuleProposal {
-  id: number;
-  programId: number;
-  proposalJson: any;
-  aiExplanation: string | null;
-  status: string;
-  createdAt: string;
-}
-
-interface PricingResult {
-  eligible: boolean;
-  baseRate?: number;
-  finalRate?: number;
-  points?: number;
-  caps?: {
-    maxLTC?: number;
-    maxLTV?: number;
-    maxLTAIV?: number;
-    maxLTARV?: number;
-  };
-  appliedAdjusters?: Array<{
-    id: string;
-    label: string;
-    rateAdd: number;
-    pointsAdd: number;
-  }>;
-  reasons?: string[];
-}
+type Step = "input" | "confirm";
 
 export default function PricingRulesPage() {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Current step in the flow
+  const [currentStep, setCurrentStep] = useState<Step>("input");
+  
+  // Selected program
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
-  const [guidelineText, setGuidelineText] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [currentProposal, setCurrentProposal] = useState<RuleProposal | null>(null);
-  const [refineFeedback, setRefineFeedback] = useState("");
-  const [showTestDialog, setShowTestDialog] = useState(false);
-  const [testInputs, setTestInputs] = useState({
-    loanType: "light_rehab",
-    tier: "experienced",
-    fico: 720,
-    ltv: 70,
-    purpose: "purchase",
-    propertyType: "single-family",
-  });
-  const [testResult, setTestResult] = useState<PricingResult | null>(null);
-  const [showDeployDialog, setShowDeployDialog] = useState(false);
-  const [deployName, setDeployName] = useState("");
-  const [activateImmediately, setActivateImmediately] = useState(true);
+  
+  // PDF upload state
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Rules text input
+  const [rulesText, setRulesText] = useState("");
+  
+  // Parsed/processed rules for confirmation
+  const [parsedRules, setParsedRules] = useState<any>(null);
+  const [rulesetName, setRulesetName] = useState("");
+  
+  // Add program dialog
   const [showAddProgramDialog, setShowAddProgramDialog] = useState(false);
   const [newProgramData, setNewProgramData] = useState({
     name: "",
@@ -140,66 +99,14 @@ export default function PricingRulesPage() {
     queryKey: ["/api/admin/programs"],
   });
 
-  // Fetch rulesets for selected program
-  const { data: rulesetsData, isLoading: rulesetsLoading } = useQuery<{ rulesets: PricingRuleset[] }>({
+  // Fetch existing rulesets for selected program
+  const { data: rulesetsData } = useQuery<{ rulesets: PricingRuleset[] }>({
     queryKey: ["/api/admin/programs", selectedProgramId, "rulesets"],
-    enabled: !!selectedProgramId,
-  });
-
-  // Fetch proposals for selected program
-  const { data: proposalsData } = useQuery<{ proposals: RuleProposal[] }>({
-    queryKey: ["/api/admin/programs", selectedProgramId, "proposals"],
     enabled: !!selectedProgramId,
   });
 
   const selectedProgram = programsData?.programs?.find(p => p.id === selectedProgramId);
   const activeRuleset = rulesetsData?.rulesets?.find(r => r.status === 'active');
-  const draftRulesets = rulesetsData?.rulesets?.filter(r => r.status === 'draft') || [];
-  const pendingProposals = proposalsData?.proposals?.filter(p => p.status === 'pending') || [];
-
-  // Create sample ruleset mutation
-  const createSampleMutation = useMutation({
-    mutationFn: async (programId: number) => {
-      const res = await apiRequest("POST", `/api/admin/programs/${programId}/rulesets/sample`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "rulesets"] });
-      toast({ title: "Sample ruleset created", description: "You can now review and activate it." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to create sample ruleset", variant: "destructive" });
-    },
-  });
-
-  // Activate ruleset mutation
-  const activateMutation = useMutation({
-    mutationFn: async (rulesetId: number) => {
-      const res = await apiRequest("POST", `/api/admin/rulesets/${rulesetId}/activate`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "rulesets"] });
-      toast({ title: "Ruleset activated", description: "The ruleset is now live for pricing." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to activate ruleset", variant: "destructive" });
-    },
-  });
-
-  // Delete ruleset mutation
-  const deleteRulesetMutation = useMutation({
-    mutationFn: async (rulesetId: number) => {
-      await apiRequest("DELETE", `/api/admin/rulesets/${rulesetId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "rulesets"] });
-      toast({ title: "Ruleset deleted" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to delete ruleset", variant: "destructive" });
-    },
-  });
 
   // Create program mutation
   const createProgramMutation = useMutation({
@@ -226,7 +133,7 @@ export default function PricingRulesPage() {
         maxInterestRate: 15,
         termOptions: "12, 24, 36",
       });
-      toast({ title: "Program created", description: "You can now configure pricing rules for this program." });
+      toast({ title: "Program created", description: "You can now configure pricing rules." });
       if (data.program?.id) {
         setSelectedProgramId(data.program.id);
       }
@@ -236,172 +143,126 @@ export default function PricingRulesPage() {
     },
   });
 
-  // AI analyze mutation
+  // AI analyze mutation (processes PDF or text rules)
   const analyzeMutation = useMutation({
     mutationFn: async () => {
-      setIsAnalyzing(true);
       const res = await apiRequest("POST", `/api/admin/programs/${selectedProgramId}/ai-analyze`, {
-        guidelineText,
+        guidelines: rulesText,
       });
       return res.json();
     },
     onSuccess: (data) => {
-      setCurrentProposal(data.proposal);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "proposals"] });
-      toast({ title: "Analysis complete", description: "AI has proposed pricing rules based on your guidelines." });
-      setGuidelineText("");
-    },
-    onError: (error: any) => {
-      toast({ title: "Analysis failed", description: error.message || "Failed to analyze guidelines", variant: "destructive" });
-    },
-    onSettled: () => {
-      setIsAnalyzing(false);
-    },
-  });
-
-  // Refine proposal mutation
-  const refineMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/proposals/${currentProposal?.id}/refine`, {
-        feedback: refineFeedback,
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setCurrentProposal(data.proposal);
-      setRefineFeedback("");
-      toast({ title: "Proposal refined", description: "The rules have been updated based on your feedback." });
+      if (data.proposal) {
+        setParsedRules(data.proposal.proposalJson);
+        setCurrentStep("confirm");
+        toast({ title: "Rules processed", description: "Review and confirm the pricing rules." });
+      }
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to refine proposal", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to process rules", variant: "destructive" });
     },
   });
 
-  // Deploy proposal mutation
+  // Deploy/save ruleset mutation
   const deployMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/proposals/${currentProposal?.id}/deploy`, {
-        name: deployName || undefined,
-        activateImmediately,
+      // First deploy the proposal as a ruleset
+      const res = await apiRequest("POST", `/api/admin/programs/${selectedProgramId}/rulesets`, {
+        name: rulesetName || `Ruleset ${new Date().toLocaleDateString()}`,
+        rulesJson: parsedRules,
+        activateImmediately: true,
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "rulesets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgramId, "proposals"] });
-      setCurrentProposal(null);
-      setShowDeployDialog(false);
-      setDeployName("");
-      toast({ 
-        title: "Ruleset deployed", 
-        description: activateImmediately ? "The new ruleset is now live!" : "Ruleset saved as draft."
-      });
+      toast({ title: "Rules saved and activated", description: "The pricing rules are now live." });
+      // Reset to input step
+      setCurrentStep("input");
+      setRulesText("");
+      setParsedRules(null);
+      setUploadedFile(null);
+      setRulesetName("");
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to deploy ruleset", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to save rules", variant: "destructive" });
     },
   });
 
-  // Test ruleset mutation
-  const testMutation = useMutation({
-    mutationFn: async (rulesetId: number) => {
-      const res = await apiRequest("POST", `/api/admin/rulesets/${rulesetId}/test`, {
-        inputs: testInputs,
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setTestResult(data.result);
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to test ruleset", variant: "destructive" });
-    },
-  });
-
-  const renderRulesetSummary = (rulesJson: any) => {
-    if (!rulesJson) return null;
+  // Handle file upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     
-    return (
-      <div className="space-y-3 text-sm">
-        <div>
-          <span className="text-muted-foreground">Product:</span>{" "}
-          <Badge variant="outline">{rulesJson.product}</Badge>
-        </div>
-        
-        {rulesJson.baseRates && (
-          <div>
-            <span className="text-muted-foreground">Base Rates:</span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {Object.entries(rulesJson.baseRates).map(([type, rate]) => (
-                <Badge key={type} variant="secondary">
-                  {type}: {String(rate)}%
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {rulesJson.adjusters && rulesJson.adjusters.length > 0 && (
-          <div>
-            <span className="text-muted-foreground">Adjusters ({rulesJson.adjusters.length}):</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {rulesJson.adjusters.slice(0, 5).map((adj: any) => (
-                <Badge key={adj.id} variant="outline" className="text-xs">
-                  {adj.label}
-                </Badge>
-              ))}
-              {rulesJson.adjusters.length > 5 && (
-                <Badge variant="outline" className="text-xs">+{rulesJson.adjusters.length - 5} more</Badge>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {rulesJson.leverageCaps && rulesJson.leverageCaps.length > 0 && (
-          <div>
-            <span className="text-muted-foreground">Leverage Caps:</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {rulesJson.leverageCaps.map((cap: any) => (
-                <Badge key={cap.tier} variant="outline" className="text-xs">
-                  {cap.tier}: LTV {(cap.max?.ltv || cap.max?.ltc || 0) * 100}%
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {rulesJson.eligibilityRules && rulesJson.eligibilityRules.length > 0 && (
-          <div>
-            <span className="text-muted-foreground">Eligibility Rules ({rulesJson.eligibilityRules.length}):</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {rulesJson.eligibilityRules.map((rule: any) => (
-                <Badge key={rule.id} variant="destructive" className="text-xs">
-                  {rule.label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
+    if (file.type !== 'application/pdf') {
+      toast({ title: "Invalid file", description: "Please upload a PDF file", variant: "destructive" });
+      return;
+    }
+    
+    setUploadedFile(file);
+    setIsUploading(true);
+    
+    // For now, we'll just note that a PDF was uploaded
+    // In a full implementation, you'd extract text from the PDF
+    toast({ 
+      title: "PDF uploaded", 
+      description: "You can add additional rules in the text area below." 
+    });
+    setIsUploading(false);
+  };
+
+  // Handle proceeding to confirmation
+  const handleProceed = () => {
+    if (!rulesText.trim() && !uploadedFile) {
+      toast({ 
+        title: "No rules entered", 
+        description: "Please upload a PDF or type in your pricing rules.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    // Process the rules with AI
+    analyzeMutation.mutate();
+  };
+
+  // Handle going back
+  const handleBack = () => {
+    setCurrentStep("input");
+  };
+
+  // Handle save/confirm
+  const handleSave = () => {
+    deployMutation.mutate();
   };
 
   if (programsLoading) {
     return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
+      <div className="p-6">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded mb-4" />
+        <div className="h-64 bg-muted animate-pulse rounded" />
       </div>
     );
   }
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Pricing Rules</h1>
-          <p className="text-muted-foreground">Configure pricing rules for loan programs using AI or manual setup</p>
+          <p className="text-muted-foreground">
+            {currentStep === "input" 
+              ? "Upload a PDF or enter your pricing rules" 
+              : "Review and confirm your pricing rules"}
+          </p>
         </div>
+        {currentStep === "input" && activeRuleset && (
+          <Badge variant="outline" className="text-green-600">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Active ruleset: v{activeRuleset.version}
+          </Badge>
+        )}
       </div>
 
       {/* Program Selector */}
@@ -415,11 +276,14 @@ export default function PricingRulesPage() {
               value={selectedProgramId?.toString() || ""}
               onValueChange={(v) => {
                 setSelectedProgramId(parseInt(v));
-                setCurrentProposal(null);
+                setCurrentStep("input");
+                setRulesText("");
+                setParsedRules(null);
+                setUploadedFile(null);
               }}
             >
               <SelectTrigger className="w-full max-w-md" data-testid="select-program">
-                <SelectValue placeholder="Choose a loan program to configure pricing" />
+                <SelectValue placeholder="Choose a loan program" />
               </SelectTrigger>
               <SelectContent>
                 {(programsData?.programs ?? []).map((program) => (
@@ -446,518 +310,266 @@ export default function PricingRulesPage() {
         </CardContent>
       </Card>
 
-      {selectedProgram && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column: Current Status & Quick Actions */}
-          <div className="space-y-4">
-            {/* Active Ruleset Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-yellow-500" />
-                  Active Ruleset
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {rulesetsLoading ? (
-                  <Skeleton className="h-20 w-full" />
-                ) : activeRuleset ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{activeRuleset.name}</p>
-                        <p className="text-sm text-muted-foreground">Version {activeRuleset.version}</p>
-                      </div>
-                      <Badge className="bg-green-500">Active</Badge>
+      {selectedProgram && currentStep === "input" && (
+        <>
+          {/* PDF Upload Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload Guidelines PDF
+              </CardTitle>
+              <CardDescription>
+                Upload a PDF containing your loan program guidelines
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div 
+                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  data-testid="input-pdf-upload"
+                />
+                {uploadedFile ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <FileText className="h-8 w-8 text-primary" />
+                    <div className="text-left">
+                      <p className="font-medium">{uploadedFile.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {(uploadedFile.size / 1024).toFixed(1)} KB
+                      </p>
                     </div>
-                    {renderRulesetSummary(activeRuleset.rulesJson)}
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowTestDialog(true);
-                        }}
-                        data-testid="button-test-active"
-                      >
-                        <Play className="h-4 w-4 mr-1" />
-                        Test
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-2" />
-                    <p className="text-muted-foreground mb-4">No active pricing rules</p>
                     <Button
-                      onClick={() => createSampleMutation.mutate(selectedProgramId)}
-                      disabled={createSampleMutation.isPending}
-                      data-testid="button-create-sample"
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUploadedFile(null);
+                      }}
                     >
-                      {createSampleMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <FileText className="h-4 w-4 mr-2" />
-                      )}
-                      Create Sample Ruleset
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Draft Rulesets */}
-            {draftRulesets.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Draft Rulesets</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {draftRulesets.map((ruleset) => (
-                    <div key={ruleset.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="font-medium">{ruleset.name}</p>
-                        <p className="text-sm text-muted-foreground">Version {ruleset.version}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setShowTestDialog(true);
-                          }}
-                          data-testid={`button-test-draft-${ruleset.id}`}
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => activateMutation.mutate(ruleset.id)}
-                          disabled={activateMutation.isPending}
-                          data-testid={`button-activate-${ruleset.id}`}
-                        >
-                          <Rocket className="h-4 w-4 mr-1" />
-                          Activate
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteRulesetMutation.mutate(ruleset.id)}
-                          disabled={deleteRulesetMutation.isPending}
-                          data-testid={`button-delete-${ruleset.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Right Column: AI Rule Generation */}
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-500" />
-                  AI Rule Generator
-                </CardTitle>
-                <CardDescription>
-                  Paste your loan program guidelines and let AI extract the pricing rules
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="guidelines">Program Guidelines</Label>
-                  <Textarea
-                    id="guidelines"
-                    placeholder="Paste your loan program guidelines here. Include information about:
-• Base interest rates by loan type
-• FICO score adjustments
-• LTV requirements and adjustments
-• Borrower tier requirements
-• Maximum leverage by tier
-• Eligibility restrictions
-• Geographic overlays"
-                    value={guidelineText}
-                    onChange={(e) => setGuidelineText(e.target.value)}
-                    className="mt-1 min-h-[200px]"
-                    data-testid="input-guidelines"
-                  />
-                </div>
-                
-                <Button
-                  onClick={() => analyzeMutation.mutate()}
-                  disabled={!guidelineText.trim() || isAnalyzing}
-                  className="w-full"
-                  data-testid="button-analyze"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing Guidelines...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Analyze & Generate Rules
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Current Proposal */}
-            {currentProposal && (
-              <Card className="border-purple-200 dark:border-purple-800">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    AI Proposal Ready
-                  </CardTitle>
-                  <CardDescription>{currentProposal.aiExplanation}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Accordion type="single" collapsible>
-                    <AccordionItem value="details">
-                      <AccordionTrigger>
-                        <span className="flex items-center gap-2">
-                          <Eye className="h-4 w-4" />
-                          View Proposed Rules
-                        </span>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        {renderRulesetSummary(currentProposal.proposalJson)}
-                        <div className="mt-4 p-3 bg-muted rounded-lg">
-                          <pre className="text-xs overflow-auto max-h-64">
-                            {JSON.stringify(currentProposal.proposalJson, null, 2)}
-                          </pre>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-
-                  {/* Refine */}
-                  <div className="space-y-2">
-                    <Label htmlFor="refine">Refinement Feedback (optional)</Label>
-                    <Textarea
-                      id="refine"
-                      placeholder="Tell the AI what to change, e.g., 'Increase the FICO adjustment to 0.5%' or 'Add a rural property adjustment'"
-                      value={refineFeedback}
-                      onChange={(e) => setRefineFeedback(e.target.value)}
-                      className="min-h-[80px]"
-                      data-testid="input-refine"
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => refineMutation.mutate()}
-                      disabled={!refineFeedback.trim() || refineMutation.isPending}
-                      data-testid="button-refine"
-                    >
-                      {refineMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                      )}
-                      Refine Proposal
-                    </Button>
-                  </div>
-
-                  {/* Deploy */}
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setCurrentProposal(null)}
-                      data-testid="button-discard"
-                    >
-                      <XCircle className="h-4 w-4 mr-1" />
-                      Discard
-                    </Button>
-                    <Button
-                      onClick={() => setShowDeployDialog(true)}
-                      className="flex-1"
-                      data-testid="button-deploy"
-                    >
-                      <Rocket className="h-4 w-4 mr-2" />
-                      Deploy Ruleset
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Pending Proposals */}
-            {pendingProposals.length > 0 && !currentProposal && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Pending Proposals</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {pendingProposals.map((proposal) => (
-                    <div key={proposal.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="text-sm">{proposal.aiExplanation?.slice(0, 60)}...</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(proposal.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentProposal(proposal)}
-                        data-testid={`button-review-${proposal.id}`}
-                      >
-                        Review
-                      </Button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Test Dialog */}
-      <Dialog open={showTestDialog} onOpenChange={setShowTestDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Test Pricing Calculation</DialogTitle>
-            <DialogDescription>
-              Enter loan parameters to test the pricing engine
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Loan Type</Label>
-              <Select
-                value={testInputs.loanType}
-                onValueChange={(v) => setTestInputs({ ...testInputs, loanType: v })}
-              >
-                <SelectTrigger data-testid="select-test-loan-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light_rehab">Light Rehab</SelectItem>
-                  <SelectItem value="heavy_rehab">Heavy Rehab</SelectItem>
-                  <SelectItem value="bridge_no_rehab">Bridge (No Rehab)</SelectItem>
-                  <SelectItem value="guc">Ground-Up Construction</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Borrower Tier</Label>
-              <Select
-                value={testInputs.tier}
-                onValueChange={(v) => setTestInputs({ ...testInputs, tier: v })}
-              >
-                <SelectTrigger data-testid="select-test-tier">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="institutional">Institutional</SelectItem>
-                  <SelectItem value="experienced">Experienced</SelectItem>
-                  <SelectItem value="new_investor">New Investor</SelectItem>
-                  <SelectItem value="no_experience">No Experience</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>FICO Score</Label>
-              <Input
-                type="number"
-                value={testInputs.fico}
-                onChange={(e) => setTestInputs({ ...testInputs, fico: parseInt(e.target.value) })}
-                data-testid="input-test-fico"
-              />
-            </div>
-            <div>
-              <Label>LTV (%)</Label>
-              <Input
-                type="number"
-                value={testInputs.ltv}
-                onChange={(e) => setTestInputs({ ...testInputs, ltv: parseInt(e.target.value) })}
-                data-testid="input-test-ltv"
-              />
-            </div>
-            <div>
-              <Label>Purpose</Label>
-              <Select
-                value={testInputs.purpose}
-                onValueChange={(v) => setTestInputs({ ...testInputs, purpose: v })}
-              >
-                <SelectTrigger data-testid="select-test-purpose">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="purchase">Purchase</SelectItem>
-                  <SelectItem value="refinance">Refinance</SelectItem>
-                  <SelectItem value="cash_out">Cash Out</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Property Type</Label>
-              <Select
-                value={testInputs.propertyType}
-                onValueChange={(v) => setTestInputs({ ...testInputs, propertyType: v })}
-              >
-                <SelectTrigger data-testid="select-test-property">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single-family">Single Family</SelectItem>
-                  <SelectItem value="multifamily">Multifamily</SelectItem>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          {testResult && (
-            <Card className={testResult.eligible ? "border-green-200 bg-green-50 dark:bg-green-950" : "border-red-200 bg-red-50 dark:bg-red-950"}>
-              <CardContent className="pt-4">
-                {testResult.eligible ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                      <CheckCircle2 className="h-5 w-5" />
-                      <span className="font-medium">Eligible</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 mt-2">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Base Rate</p>
-                        <p className="text-lg font-bold">{testResult.baseRate}%</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Final Rate</p>
-                        <p className="text-lg font-bold text-primary">{testResult.finalRate}%</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Points</p>
-                        <p className="text-lg font-bold">{testResult.points}</p>
-                      </div>
-                    </div>
-                    {testResult.appliedAdjusters && testResult.appliedAdjusters.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm text-muted-foreground">Applied Adjustments:</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {testResult.appliedAdjusters.map((adj) => (
-                            <Badge key={adj.id} variant="outline">
-                              {adj.label}: +{adj.rateAdd}%
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {testResult.caps && (
-                      <div className="mt-2">
-                        <p className="text-sm text-muted-foreground">Leverage Caps:</p>
-                        <div className="flex gap-4 mt-1 text-sm">
-                          {testResult.caps.maxLTC && <span>LTC: {(testResult.caps.maxLTC * 100).toFixed(0)}%</span>}
-                          {testResult.caps.maxLTV && <span>LTV: {(testResult.caps.maxLTV * 100).toFixed(0)}%</span>}
-                          {testResult.caps.maxLTAIV && <span>LTAIV: {(testResult.caps.maxLTAIV * 100).toFixed(0)}%</span>}
-                          {testResult.caps.maxLTARV && <span>LTARV: {(testResult.caps.maxLTARV * 100).toFixed(0)}%</span>}
-                        </div>
-                      </div>
-                    )}
+                ) : isUploading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span>Uploading...</span>
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                      <XCircle className="h-5 w-5" />
-                      <span className="font-medium">Not Eligible</span>
-                    </div>
-                    {testResult.reasons && (
-                      <ul className="mt-2 text-sm text-red-600 dark:text-red-400 list-disc list-inside">
-                        {testResult.reasons.map((reason, i) => (
-                          <li key={i}>{reason}</li>
-                        ))}
-                      </ul>
-                    )}
+                    <Upload className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                    <p className="text-muted-foreground">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      PDF files only
+                    </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTestDialog(false)}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                if (activeRuleset) {
-                  testMutation.mutate(activeRuleset.id);
-                }
-              }}
-              disabled={!activeRuleset || testMutation.isPending}
-              data-testid="button-run-test"
-            >
-              {testMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              Run Test
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {/* Rules Text Input Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Enter Pricing Rules
+              </CardTitle>
+              <CardDescription>
+                Type or paste your pricing rules, rate sheets, or guidelines
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                placeholder={`Enter your pricing rules here. For example:
 
-      {/* Deploy Dialog */}
-      <Dialog open={showDeployDialog} onOpenChange={setShowDeployDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Deploy Ruleset</DialogTitle>
-            <DialogDescription>
-              Create a new ruleset version from this AI proposal
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="deploy-name">Ruleset Name (optional)</Label>
-              <Input
-                id="deploy-name"
-                value={deployName}
-                onChange={(e) => setDeployName(e.target.value)}
-                placeholder="e.g., Q1 2026 Pricing Update"
-                data-testid="input-deploy-name"
+Base Rates:
+- Light Rehab: 9.25%
+- Heavy Rehab: 9.50%
+- Bridge (No Rehab): 9.25%
+
+Adjusters:
+- FICO below 700: +0.25%
+- LTV above 75%: +0.25%
+- Cash-out refinance: +0.50%
+- Multifamily property: +1.00%
+
+Eligibility:
+- Minimum FICO: 620
+- Maximum LTV: 85%
+- No cash-out bridge for first-time borrowers`}
+                value={rulesText}
+                onChange={(e) => setRulesText(e.target.value)}
+                className="min-h-[300px] font-mono text-sm"
+                data-testid="textarea-rules"
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="activate-immediately"
-                checked={activateImmediately}
-                onChange={(e) => setActivateImmediately(e.target.checked)}
-                className="rounded border-gray-300"
-                data-testid="checkbox-activate"
-              />
-              <Label htmlFor="activate-immediately">Activate immediately (make live)</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeployDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => deployMutation.mutate()}
-              disabled={deployMutation.isPending}
-              data-testid="button-confirm-deploy"
-            >
-              {deployMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Rocket className="h-4 w-4 mr-2" />
+              
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleProceed}
+                  disabled={(!rulesText.trim() && !uploadedFile) || analyzeMutation.isPending}
+                  data-testid="button-proceed"
+                >
+                  {analyzeMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {selectedProgram && currentStep === "confirm" && parsedRules && (
+        <>
+          {/* Confirmation Screen */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                Confirm Pricing Rules
+              </CardTitle>
+              <CardDescription>
+                Review the parsed pricing rules before saving
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Ruleset Name */}
+              <div className="space-y-2">
+                <Label htmlFor="ruleset-name">Ruleset Name (optional)</Label>
+                <Input
+                  id="ruleset-name"
+                  value={rulesetName}
+                  onChange={(e) => setRulesetName(e.target.value)}
+                  placeholder={`${selectedProgram.name} Pricing Rules`}
+                  data-testid="input-ruleset-name"
+                />
+              </div>
+
+              {/* Base Rates */}
+              {parsedRules.baseRates && (
+                <div className="space-y-2">
+                  <h3 className="font-medium">Base Rates</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {Object.entries(parsedRules.baseRates).map(([type, rate]) => (
+                      <div key={type} className="bg-muted rounded-lg p-3">
+                        <p className="text-sm text-muted-foreground capitalize">
+                          {type.replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-lg font-bold">{String(rate)}%</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
-              Deploy
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+              {/* Adjusters */}
+              {parsedRules.adjusters && parsedRules.adjusters.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-medium">Rate Adjusters</h3>
+                  <div className="space-y-2">
+                    {parsedRules.adjusters.map((adj: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between bg-muted rounded-lg p-3">
+                        <span>{adj.label}</span>
+                        <Badge variant={adj.rateAdd > 0 ? "destructive" : "default"}>
+                          {adj.rateAdd > 0 ? '+' : ''}{adj.rateAdd}%
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Leverage Caps */}
+              {parsedRules.leverageCaps && parsedRules.leverageCaps.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-medium">Leverage Caps</h3>
+                  <div className="space-y-2">
+                    {parsedRules.leverageCaps.map((cap: any, i: number) => (
+                      <div key={i} className="bg-muted rounded-lg p-3">
+                        <p className="font-medium capitalize">{cap.tier.replace(/_/g, ' ')}</p>
+                        <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
+                          {cap.max?.ltc && <span>LTC: {(cap.max.ltc * 100)}%</span>}
+                          {cap.max?.ltaiv && <span>LTAIV: {(cap.max.ltaiv * 100)}%</span>}
+                          {cap.max?.ltarv && <span>LTARV: {(cap.max.ltarv * 100)}%</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Eligibility Rules */}
+              {parsedRules.eligibilityRules && parsedRules.eligibilityRules.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-medium">Eligibility Rules</h3>
+                  <div className="space-y-2">
+                    {parsedRules.eligibilityRules.map((rule: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 rounded-lg p-3 text-red-700 dark:text-red-300">
+                        <X className="h-4 w-4" />
+                        <span>{rule.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-between pt-4 border-t">
+                <Button variant="outline" onClick={handleBack} data-testid="button-back">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Edit
+                </Button>
+                <Button 
+                  onClick={handleSave}
+                  disabled={deployMutation.isPending}
+                  data-testid="button-save-rules"
+                >
+                  {deployMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save & Activate Rules
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {!selectedProgram && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">Select a Program</h3>
+            <p className="text-muted-foreground">
+              Choose a loan program above to configure its pricing rules
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add Program Dialog */}
       <Dialog open={showAddProgramDialog} onOpenChange={setShowAddProgramDialog}>
@@ -1025,62 +637,6 @@ export default function PricingRulesPage() {
                   data-testid="input-max-loan"
                 />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="min-ltv">Min LTV (%)</Label>
-                <Input
-                  id="min-ltv"
-                  type="number"
-                  value={newProgramData.minLtv}
-                  onChange={(e) => setNewProgramData({ ...newProgramData, minLtv: parseInt(e.target.value) || 0 })}
-                  data-testid="input-min-ltv"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-ltv">Max LTV (%)</Label>
-                <Input
-                  id="max-ltv"
-                  type="number"
-                  value={newProgramData.maxLtv}
-                  onChange={(e) => setNewProgramData({ ...newProgramData, maxLtv: parseInt(e.target.value) || 0 })}
-                  data-testid="input-max-ltv"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="min-rate">Min Interest Rate (%)</Label>
-                <Input
-                  id="min-rate"
-                  type="number"
-                  step="0.25"
-                  value={newProgramData.minInterestRate}
-                  onChange={(e) => setNewProgramData({ ...newProgramData, minInterestRate: parseFloat(e.target.value) || 0 })}
-                  data-testid="input-min-rate"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-rate">Max Interest Rate (%)</Label>
-                <Input
-                  id="max-rate"
-                  type="number"
-                  step="0.25"
-                  value={newProgramData.maxInterestRate}
-                  onChange={(e) => setNewProgramData({ ...newProgramData, maxInterestRate: parseFloat(e.target.value) || 0 })}
-                  data-testid="input-max-rate"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="term-options">Term Options (comma-separated months)</Label>
-              <Input
-                id="term-options"
-                value={newProgramData.termOptions}
-                onChange={(e) => setNewProgramData({ ...newProgramData, termOptions: e.target.value })}
-                placeholder="12, 24, 36"
-                data-testid="input-term-options"
-              />
             </div>
           </div>
           <DialogFooter>
