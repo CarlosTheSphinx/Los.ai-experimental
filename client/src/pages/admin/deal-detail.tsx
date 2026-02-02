@@ -45,7 +45,12 @@ import {
   Download,
   Loader2,
   Phone,
+  Plus,
+  Circle,
+  CheckCircle2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -98,6 +103,28 @@ interface DealDocument {
   reviewNotes: string | null;
   sortOrder: number | null;
   createdAt: string;
+}
+
+interface DealTask {
+  id: number;
+  dealId: number;
+  taskName: string;
+  taskDescription: string | null;
+  status: string;
+  priority: string | null;
+  assignedTo: number | null;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+interface TeamMember {
+  id: number;
+  fullName: string | null;
+  email: string;
+  role: string;
 }
 
 interface DealDetailResponse {
@@ -249,10 +276,38 @@ export default function AdminDealDetail() {
     loanPurpose: "",
     propertyType: "",
   });
+  
+  // Task dialog state
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    taskName: "",
+    taskDescription: "",
+    priority: "medium",
+    assignedTo: "",
+    dueDate: "",
+  });
+  
+  // Document dialog state
+  const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
+  const [documentForm, setDocumentForm] = useState({
+    documentName: "",
+    documentCategory: "other",
+    documentDescription: "",
+    isRequired: true,
+  });
 
   const { data, isLoading, error } = useQuery<DealDetailResponse>({
     queryKey: [`/api/admin/deals/${dealId}`],
     enabled: !!dealId,
+  });
+  
+  const { data: tasksData } = useQuery<{ tasks: DealTask[] }>({
+    queryKey: [`/api/admin/deals/${dealId}/tasks`],
+    enabled: !!dealId,
+  });
+  
+  const { data: teamData } = useQuery<{ teamMembers: TeamMember[] }>({
+    queryKey: ['/api/admin/team-members'],
   });
 
   const updateDocumentStatus = useMutation({
@@ -306,6 +361,46 @@ export default function AdminDealDetail() {
       setEditDialogOpen(true);
     }
   };
+
+  const createTaskMutation = useMutation({
+    mutationFn: async (formData: typeof taskForm) => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/tasks`, formData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/tasks`] });
+      setTaskDialogOpen(false);
+      setTaskForm({ taskName: "", taskDescription: "", priority: "medium", assignedTo: "", dueDate: "" });
+      toast({ title: "Task created" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create task", variant: "destructive" });
+    },
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ taskId, status }: { taskId: number; status: string }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/tasks/${taskId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/tasks`] });
+      toast({ title: "Task updated" });
+    },
+  });
+
+  const createDocumentMutation = useMutation({
+    mutationFn: async (formData: typeof documentForm) => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/documents`, formData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setDocumentDialogOpen(false);
+      setDocumentForm({ documentName: "", documentCategory: "other", documentDescription: "", isRequired: true });
+      toast({ title: "Document requirement added" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add document", variant: "destructive" });
+    },
+  });
 
   const handleContactBorrower = () => {
     if (deal?.customerEmail) {
@@ -632,23 +727,36 @@ export default function AdminDealDetail() {
         <TabsContent value="documents" className="mt-6">
           {documents.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle>Documents</CardTitle>
+                <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document-empty">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Document
+                </Button>
+              </CardHeader>
+              <CardContent className="py-8 text-center">
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium">No documents yet</h3>
-                <p className="text-muted-foreground">Documents will appear here once the deal is created with a loan type</p>
+                <p className="text-muted-foreground">Click "Add Document" to add a document requirement</p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-6">
               <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <FileText className="h-5 w-5" />
-                    Required Documents
-                  </CardTitle>
-                  <CardDescription>
-                    {getLoanTypeLabel(deal.loanData?.loanType)} Loan Document Checklist
-                  </CardDescription>
+                <CardHeader className="pb-4 flex flex-row items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <FileText className="h-5 w-5" />
+                      Required Documents
+                    </CardTitle>
+                    <CardDescription>
+                      {getLoanTypeLabel(deal.loanData?.loanType)} Loan Document Checklist
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Document
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <div className="mb-6">
@@ -851,10 +959,81 @@ export default function AdminDealDetail() {
 
         <TabsContent value="tasks" className="mt-6">
           <Card>
-            <CardContent className="py-12 text-center">
-              <CheckSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No tasks yet</h3>
-              <p className="text-muted-foreground">Tasks will appear here once created</p>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Tasks</CardTitle>
+              <Button size="sm" onClick={() => setTaskDialogOpen(true)} data-testid="button-add-task">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Task
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {(!tasksData?.tasks || tasksData.tasks.length === 0) ? (
+                <div className="py-8 text-center">
+                  <CheckSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium">No tasks yet</h3>
+                  <p className="text-muted-foreground">Click "Add Task" to create a new task</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tasksData.tasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={cn(
+                        "flex items-start gap-3 p-3 rounded-lg border",
+                        task.status === "completed" && "bg-muted/50"
+                      )}
+                      data-testid={`task-item-${task.id}`}
+                    >
+                      <button
+                        onClick={() => updateTaskMutation.mutate({
+                          taskId: task.id,
+                          status: task.status === "completed" ? "pending" : "completed"
+                        })}
+                        className="mt-0.5"
+                        data-testid={`button-toggle-task-${task.id}`}
+                      >
+                        {task.status === "completed" ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={cn(
+                            "font-medium",
+                            task.status === "completed" && "line-through text-muted-foreground"
+                          )}>
+                            {task.taskName}
+                          </span>
+                          {task.priority && task.priority !== "medium" && (
+                            <Badge variant={task.priority === "high" || task.priority === "critical" ? "destructive" : "secondary"} className="text-xs">
+                              {task.priority}
+                            </Badge>
+                          )}
+                        </div>
+                        {task.taskDescription && (
+                          <p className="text-sm text-muted-foreground mt-1">{task.taskDescription}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+                          {task.assigneeName && (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {task.assigneeName}
+                            </span>
+                          )}
+                          {task.dueDate && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Due {new Date(task.dueDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1022,6 +1201,189 @@ export default function AdminDealDetail() {
                 </>
               ) : (
                 "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Task Dialog */}
+      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Task</DialogTitle>
+            <DialogDescription>
+              Create a task and assign it to a team member.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="taskName">Task Name</Label>
+              <Input
+                id="taskName"
+                value={taskForm.taskName}
+                onChange={(e) => setTaskForm({ ...taskForm, taskName: e.target.value })}
+                placeholder="e.g., Review appraisal report"
+                data-testid="input-task-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="taskDescription">Description (optional)</Label>
+              <Textarea
+                id="taskDescription"
+                value={taskForm.taskDescription}
+                onChange={(e) => setTaskForm({ ...taskForm, taskDescription: e.target.value })}
+                placeholder="Add details about this task..."
+                data-testid="input-task-description"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="taskPriority">Priority</Label>
+                <Select
+                  value={taskForm.priority}
+                  onValueChange={(value) => setTaskForm({ ...taskForm, priority: value })}
+                >
+                  <SelectTrigger data-testid="select-task-priority">
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="taskDueDate">Due Date (optional)</Label>
+                <Input
+                  id="taskDueDate"
+                  type="date"
+                  value={taskForm.dueDate}
+                  onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                  data-testid="input-task-due-date"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="taskAssignee">Assign To</Label>
+              <Select
+                value={taskForm.assignedTo}
+                onValueChange={(value) => setTaskForm({ ...taskForm, assignedTo: value })}
+              >
+                <SelectTrigger data-testid="select-task-assignee">
+                  <SelectValue placeholder="Select team member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamData?.teamMembers?.map((member) => (
+                    <SelectItem key={member.id} value={member.id.toString()}>
+                      {member.fullName || member.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTaskDialogOpen(false)} data-testid="button-cancel-task">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createTaskMutation.mutate(taskForm)}
+              disabled={!taskForm.taskName || createTaskMutation.isPending}
+              data-testid="button-save-task"
+            >
+              {createTaskMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Task"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Document Dialog */}
+      <Dialog open={documentDialogOpen} onOpenChange={setDocumentDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Document Requirement</DialogTitle>
+            <DialogDescription>
+              Add a new document to the checklist for this deal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="documentName">Document Name</Label>
+              <Input
+                id="documentName"
+                value={documentForm.documentName}
+                onChange={(e) => setDocumentForm({ ...documentForm, documentName: e.target.value })}
+                placeholder="e.g., Property Insurance Declaration"
+                data-testid="input-document-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="documentCategory">Category</Label>
+              <Select
+                value={documentForm.documentCategory}
+                onValueChange={(value) => setDocumentForm({ ...documentForm, documentCategory: value })}
+              >
+                <SelectTrigger data-testid="select-document-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="borrower_docs">Borrower Documents</SelectItem>
+                  <SelectItem value="entity_docs">Entity Documents</SelectItem>
+                  <SelectItem value="property_docs">Property Documents</SelectItem>
+                  <SelectItem value="financial_docs">Financial Documents</SelectItem>
+                  <SelectItem value="closing_docs">Closing Documents</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="documentDescription">Description (optional)</Label>
+              <Textarea
+                id="documentDescription"
+                value={documentForm.documentDescription}
+                onChange={(e) => setDocumentForm({ ...documentForm, documentDescription: e.target.value })}
+                placeholder="Additional details about this document..."
+                data-testid="input-document-description"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="isRequired"
+                checked={documentForm.isRequired}
+                onCheckedChange={(checked) => setDocumentForm({ ...documentForm, isRequired: checked as boolean })}
+                data-testid="checkbox-document-required"
+              />
+              <Label htmlFor="isRequired" className="font-normal">
+                This document is required
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDocumentDialogOpen(false)} data-testid="button-cancel-document">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createDocumentMutation.mutate(documentForm)}
+              disabled={!documentForm.documentName || createDocumentMutation.isPending}
+              data-testid="button-save-document"
+            >
+              {createDocumentMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Document"
               )}
             </Button>
           </DialogFooter>

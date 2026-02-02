@@ -3,9 +3,9 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks } from "@shared/schema";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
 import { z } from "zod";
@@ -3494,6 +3494,158 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin full deal update error:', error);
       res.status(500).json({ error: 'Failed to update deal' });
+    }
+  });
+
+  // Admin - Get deal tasks
+  app.get('/api/admin/deals/:dealId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      const tasks = await db.select({
+        id: dealTasks.id,
+        dealId: dealTasks.dealId,
+        taskName: dealTasks.taskName,
+        taskDescription: dealTasks.taskDescription,
+        status: dealTasks.status,
+        priority: dealTasks.priority,
+        assignedTo: dealTasks.assignedTo,
+        assigneeName: users.fullName,
+        assigneeEmail: users.email,
+        dueDate: dealTasks.dueDate,
+        completedAt: dealTasks.completedAt,
+        createdAt: dealTasks.createdAt,
+      })
+        .from(dealTasks)
+        .leftJoin(users, eq(dealTasks.assignedTo, users.id))
+        .where(eq(dealTasks.dealId, dealId))
+        .orderBy(dealTasks.createdAt);
+      
+      res.json({ tasks });
+    } catch (error) {
+      console.error('Admin get deal tasks error:', error);
+      res.status(500).json({ error: 'Failed to load tasks' });
+    }
+  });
+
+  // Admin - Create deal task
+  app.post('/api/admin/deals/:dealId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { taskName, taskDescription, priority, assignedTo, dueDate } = req.body;
+      
+      const [task] = await db.insert(dealTasks)
+        .values({
+          dealId,
+          taskName,
+          taskDescription,
+          priority: priority || 'medium',
+          assignedTo: assignedTo ? parseInt(assignedTo) : null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          createdBy: req.user!.id,
+        })
+        .returning();
+      
+      res.json({ task });
+    } catch (error) {
+      console.error('Admin create deal task error:', error);
+      res.status(500).json({ error: 'Failed to create task' });
+    }
+  });
+
+  // Admin - Update deal task
+  app.patch('/api/admin/deals/:dealId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      const { status, taskName, taskDescription, priority, assignedTo, dueDate } = req.body;
+      
+      const updateData: Record<string, unknown> = {};
+      if (status !== undefined) updateData.status = status;
+      if (taskName !== undefined) updateData.taskName = taskName;
+      if (taskDescription !== undefined) updateData.taskDescription = taskDescription;
+      if (priority !== undefined) updateData.priority = priority;
+      if (assignedTo !== undefined) updateData.assignedTo = assignedTo ? parseInt(assignedTo) : null;
+      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+      
+      if (status === 'completed') {
+        updateData.completedAt = new Date();
+        updateData.completedBy = req.user!.id;
+      }
+      
+      const [updated] = await db.update(dealTasks)
+        .set(updateData)
+        .where(eq(dealTasks.id, taskId))
+        .returning();
+      
+      res.json({ task: updated });
+    } catch (error) {
+      console.error('Admin update deal task error:', error);
+      res.status(500).json({ error: 'Failed to update task' });
+    }
+  });
+
+  // Admin - Delete deal task
+  app.delete('/api/admin/deals/:dealId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      
+      await db.delete(dealTasks).where(eq(dealTasks.id, taskId));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Admin delete deal task error:', error);
+      res.status(500).json({ error: 'Failed to delete task' });
+    }
+  });
+
+  // Admin - Create deal document manually
+  app.post('/api/admin/deals/:dealId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { documentName, documentCategory, documentDescription, isRequired } = req.body;
+      
+      // Get max sort order
+      const existing = await db.select({ maxOrder: dealDocuments.sortOrder })
+        .from(dealDocuments)
+        .where(eq(dealDocuments.dealId, dealId))
+        .orderBy(dealDocuments.sortOrder);
+      
+      const maxOrder = existing.length > 0 ? Math.max(...existing.map(d => d.maxOrder || 0)) : 0;
+      
+      const [doc] = await db.insert(dealDocuments)
+        .values({
+          dealId,
+          documentName,
+          documentCategory: documentCategory || 'other',
+          documentDescription,
+          isRequired: isRequired !== false,
+          sortOrder: maxOrder + 1,
+        })
+        .returning();
+      
+      res.json({ document: doc });
+    } catch (error) {
+      console.error('Admin create deal document error:', error);
+      res.status(500).json({ error: 'Failed to create document' });
+    }
+  });
+
+  // Admin - Get admin users (for task assignment)
+  app.get('/api/admin/team-members', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const teamMembers = await db.select({
+        id: users.id,
+        fullName: users.fullName,
+        email: users.email,
+        role: users.role,
+      })
+        .from(users)
+        .where(inArray(users.role, ['admin', 'staff', 'super_admin']));
+      
+      res.json({ teamMembers });
+    } catch (error) {
+      console.error('Admin get team members error:', error);
+      res.status(500).json({ error: 'Failed to load team members' });
     }
   });
 

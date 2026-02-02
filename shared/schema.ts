@@ -382,6 +382,31 @@ export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({
 export type DealDocument = typeof dealDocuments.$inferSelect;
 export type InsertDealDocument = z.infer<typeof insertDealDocumentSchema>;
 
+// Deal tasks - tasks assigned to team members for a deal
+export const dealTasks = pgTable("deal_tasks", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  
+  taskName: varchar("task_name", { length: 255 }).notNull(),
+  taskDescription: text("task_description"),
+  
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed
+  priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
+  
+  assignedTo: integer("assigned_to").references(() => users.id),
+  dueDate: timestamp("due_date"),
+  
+  completedAt: timestamp("completed_at"),
+  completedBy: integer("completed_by").references(() => users.id),
+  
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDealTaskSchema = createInsertSchema(dealTasks).omit({ id: true, createdAt: true, completedAt: true });
+export type DealTask = typeof dealTasks.$inferSelect;
+export type InsertDealTask = z.infer<typeof insertDealTaskSchema>;
+
 // System settings table for admin configuration
 export const systemSettings = pgTable("system_settings", {
   id: serial("id").primaryKey(),
