@@ -347,6 +347,39 @@ export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
 export type ProjectWebhook = typeof projectWebhooks.$inferSelect;
 export type InsertProjectWebhook = z.infer<typeof insertProjectWebhookSchema>;
 
+// Deal documents - required documents checklist per deal based on loan type
+export const dealDocuments = pgTable("deal_documents", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  
+  documentName: varchar("document_name", { length: 255 }).notNull(),
+  documentCategory: varchar("document_category", { length: 100 }), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
+  documentDescription: text("document_description"),
+  
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, uploaded, approved, rejected, not_applicable
+  isRequired: boolean("is_required").default(true),
+  
+  filePath: text("file_path"),
+  fileName: text("file_name"),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  
+  uploadedAt: timestamp("uploaded_at"),
+  uploadedBy: integer("uploaded_by").references(() => users.id),
+  
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewNotes: text("review_notes"),
+  
+  sortOrder: integer("sort_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({ id: true, createdAt: true, uploadedAt: true, reviewedAt: true });
+export type DealDocument = typeof dealDocuments.$inferSelect;
+export type InsertDealDocument = z.infer<typeof insertDealDocumentSchema>;
+
 // System settings table for admin configuration
 export const systemSettings = pgTable("system_settings", {
   id: serial("id").primaryKey(),
