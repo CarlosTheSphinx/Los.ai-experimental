@@ -51,6 +51,7 @@ export const savedQuotes = pgTable("saved_quotes", {
   tpoPremiumAmount: real("tpo_premium_amount").notNull().default(0),
   totalRevenue: real("total_revenue").notNull().default(0),
   commission: real("commission").notNull().default(0),
+  stage: varchar("stage", { length: 50 }).default("initial-review").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

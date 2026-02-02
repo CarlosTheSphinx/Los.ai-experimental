@@ -2988,6 +2988,7 @@ export async function registerRoutes(
         tpoPremiumAmount: savedQuotes.tpoPremiumAmount,
         totalRevenue: savedQuotes.totalRevenue,
         commission: savedQuotes.commission,
+        stage: savedQuotes.stage,
         createdAt: savedQuotes.createdAt,
         userName: users.fullName,
         userEmail: users.email,
@@ -3029,6 +3030,23 @@ export async function registerRoutes(
         loanTypeStats[loanType].amount += loanData?.loanAmount || 0;
       });
       
+      // Calculate pipeline by stage
+      const stageOrder = ['initial-review', 'term-sheet', 'onboarding', 'processing', 'underwriting', 'closing', 'closed'];
+      const stageLabels: Record<string, string> = {
+        'initial-review': 'Initial Review',
+        'term-sheet': 'Term Sheet',
+        'onboarding': 'Onboarding',
+        'processing': 'Processing',
+        'underwriting': 'Underwriting',
+        'closing': 'Closing',
+        'closed': 'Closed'
+      };
+      const stageStats = stageOrder.map(stage => ({
+        stage,
+        label: stageLabels[stage],
+        count: allQuotes.filter(q => q.stage === stage).length
+      }));
+      
       // Calculate deals by month (last 6 months)
       const now = new Date();
       const monthlyStats: { month: string; count: number; amount: number }[] = [];
@@ -3060,6 +3078,7 @@ export async function registerRoutes(
           totalRevenue,
           totalCommission,
           loanTypeStats,
+          stageStats,
           monthlyStats
         }
       });

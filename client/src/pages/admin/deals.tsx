@@ -32,6 +32,7 @@ interface Deal {
   loanData: {
     loanAmount: number;
     propertyValue: number;
+    ltv?: string;
     loanType: string;
     loanPurpose: string;
     propertyType: string;
@@ -42,9 +43,16 @@ interface Deal {
   tpoPremiumAmount: number;
   totalRevenue: number;
   commission: number;
+  stage: string;
   createdAt: string;
   userName: string | null;
   userEmail: string | null;
+}
+
+interface StageInfo {
+  stage: string;
+  label: string;
+  count: number;
 }
 
 interface DealsStats {
@@ -53,6 +61,7 @@ interface DealsStats {
   totalRevenue: number;
   totalCommission: number;
   loanTypeStats: Record<string, { count: number; amount: number }>;
+  stageStats: StageInfo[];
   monthlyStats: { month: string; count: number; amount: number }[];
 }
 
@@ -96,50 +105,74 @@ function StatsCard({
   );
 }
 
-function LoanTypeTracker({ loanTypeStats }: { loanTypeStats: Record<string, { count: number; amount: number }> }) {
-  const types = Object.entries(loanTypeStats);
-  const total = types.reduce((sum, [_, data]) => sum + data.count, 0);
-  
-  const typeColors: Record<string, string> = {
-    "DSCR": "bg-blue-500",
-    "Fix and Flip": "bg-orange-500",
-    "Ground Up": "bg-green-500",
-    "Bridge": "bg-purple-500",
-    "Unknown": "bg-gray-400",
+function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
+  const stageColors: Record<string, string> = {
+    "initial-review": "bg-yellow-500",
+    "term-sheet": "bg-blue-400",
+    "onboarding": "bg-purple-400",
+    "processing": "bg-red-500",
+    "underwriting": "bg-indigo-500",
+    "closing": "bg-teal-500",
+    "closed": "bg-green-500",
   };
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Pipeline by Loan Type</CardTitle>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">Pipeline by Stage</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
-          {types.map(([type, data], index) => (
-            <div key={type} className="flex flex-col items-center min-w-[100px]">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold">{data.count}</span>
-              </div>
-              <span className="text-xs text-muted-foreground text-center">{type}</span>
-              <div
-                className={cn(
-                  "h-2 w-full rounded-full mt-2",
-                  typeColors[type] || "bg-gray-400"
-                )}
-                style={{ opacity: data.count > 0 ? 1 : 0.2 }}
-              />
-              <span className="text-xs text-muted-foreground mt-1">
-                ${(data.amount / 1000000).toFixed(1)}M
+        <div className="flex items-center justify-between gap-1 overflow-x-auto pb-2">
+          {stageStats.map((stageInfo, index) => (
+            <div key={stageInfo.stage} className="flex flex-col items-center flex-1 min-w-[80px]">
+              <span className="text-2xl font-bold">{stageInfo.count}</span>
+              <span className="text-xs text-muted-foreground text-center whitespace-nowrap">
+                {stageInfo.label}
               </span>
-              {index < types.length - 1 && (
-                <span className="hidden md:block text-muted-foreground absolute right-0">→</span>
-              )}
+              <div className="flex items-center w-full mt-2 gap-1">
+                <div
+                  className={cn(
+                    "h-2 flex-1 rounded-full",
+                    stageColors[stageInfo.stage] || "bg-gray-400"
+                  )}
+                  style={{ opacity: stageInfo.count > 0 ? 1 : 0.3 }}
+                />
+                {index < stageStats.length - 1 && (
+                  <span className="text-muted-foreground text-xs">→</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function getStageColor(stage: string): string {
+  const colors: Record<string, string> = {
+    "initial-review": "bg-yellow-100 text-yellow-800",
+    "term-sheet": "bg-blue-100 text-blue-800",
+    "onboarding": "bg-purple-100 text-purple-800",
+    "processing": "bg-red-100 text-red-800",
+    "underwriting": "bg-indigo-100 text-indigo-800",
+    "closing": "bg-teal-100 text-teal-800",
+    "closed": "bg-green-100 text-green-800",
+  };
+  return colors[stage] || "bg-gray-100 text-gray-800";
+}
+
+function getStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    "initial-review": "Initial Review",
+    "term-sheet": "Term Sheet",
+    "onboarding": "Onboarding",
+    "processing": "Processing",
+    "underwriting": "Underwriting",
+    "closing": "Closing",
+    "closed": "Closed",
+  };
+  return labels[stage] || stage;
 }
 
 function formatCurrency(amount: number) {
@@ -209,8 +242,8 @@ export default function AdminDeals() {
         </div>
       )}
 
-      {stats?.loanTypeStats && Object.keys(stats.loanTypeStats).length > 0 && (
-        <LoanTypeTracker loanTypeStats={stats.loanTypeStats} />
+      {stats?.stageStats && stats.stageStats.length > 0 && (
+        <PipelineByStage stageStats={stats.stageStats} />
       )}
 
       <Card>
@@ -250,37 +283,30 @@ export default function AdminDeals() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Borrower</TableHead>
                     <TableHead>Property</TableHead>
-                    <TableHead>Loan Type</TableHead>
                     <TableHead className="text-right">Loan Amount</TableHead>
                     <TableHead className="text-right">Rate</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead>Submitted By</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">LTV</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Stage</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {deals.map((deal) => (
                     <TableRow key={deal.id} data-testid={`row-deal-${deal.id}`}>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">
-                            {deal.customerFirstName} {deal.customerLastName}
+                        <span className="font-medium">
+                          {deal.customerFirstName} {deal.customerLastName}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="max-w-[180px] truncate">{deal.propertyAddress?.split(',')[0]}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {deal.propertyAddress?.split(',').slice(1).join(',').trim()}
                           </span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Building className="h-4 w-4 text-muted-foreground" />
-                          <span className="max-w-[200px] truncate">{deal.propertyAddress}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {deal.loanData?.loanType || "N/A"}
-                        </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(deal.loanData?.loanAmount || 0)}
@@ -288,18 +314,18 @@ export default function AdminDeals() {
                       <TableCell className="text-right">
                         {deal.interestRate}
                       </TableCell>
-                      <TableCell className="text-right text-green-600 font-medium">
-                        {formatCurrency(deal.totalRevenue || 0)}
+                      <TableCell className="text-right">
+                        {deal.loanData?.ltv || "N/A"}
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {deal.userName || deal.userEmail || "Unknown"}
-                        </span>
+                        <Badge variant="outline">
+                          {deal.loanData?.loanType || "N/A"}
+                        </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {deal.createdAt
-                          ? new Date(deal.createdAt).toLocaleDateString()
-                          : "N/A"}
+                      <TableCell>
+                        <Badge className={cn("text-xs", getStageColor(deal.stage))}>
+                          {getStageLabel(deal.stage)}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
