@@ -956,7 +956,7 @@ export default function AdminDealDetail() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="loanType">Loan Type</Label>
+                <Label htmlFor="loanType">Loan Type (Document List)</Label>
                 <Select
                   value={editForm.loanType}
                   onValueChange={(value) => setEditForm({ ...editForm, loanType: value })}
@@ -967,10 +967,6 @@ export default function AdminDealDetail() {
                   <SelectContent>
                     <SelectItem value="rtl">RTL</SelectItem>
                     <SelectItem value="dscr">DSCR</SelectItem>
-                    <SelectItem value="fix-and-flip">Fix & Flip</SelectItem>
-                    <SelectItem value="bridge">Bridge</SelectItem>
-                    <SelectItem value="ground-up">Ground Up</SelectItem>
-                    <SelectItem value="rental">Rental</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
