@@ -142,7 +142,13 @@ The application includes a comprehensive admin back office for staff to manage u
    - Pending admin tasks
    - Recent admin activity
 
-9. User Management (/admin/users) - Manage all users:
+9. Deals Dashboard (/admin/deals) - Track all cumulative deals:
+   - Stats cards: Total Deals, Total Loan Volume, Total Revenue, Total Commission
+   - Pipeline by Loan Type tracker showing deal distribution
+   - Searchable table of all deals submitted by all users
+   - Revenue and commission tracking per deal
+
+10. User Management (/admin/users) - Manage all users:
    - Search by name or email
    - View user details and registration date
    - Change user roles (with appropriate permissions)
