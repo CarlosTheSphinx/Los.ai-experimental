@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Settings as SettingsIcon, RefreshCw, FolderCloud } from "lucide-react";
+import { Save, Settings as SettingsIcon, RefreshCw, HardDrive } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -194,7 +194,7 @@ export default function AdminSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FolderCloud className="h-5 w-5" />
+            <HardDrive className="h-5 w-5" />
             Google Drive Integration
           </CardTitle>
           <CardDescription>
