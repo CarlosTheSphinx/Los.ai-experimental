@@ -494,3 +494,71 @@ export type AdminTask = typeof adminTasks.$inferSelect;
 export type InsertAdminTask = z.infer<typeof insertAdminTaskSchema>;
 export type AdminActivity = typeof adminActivity.$inferSelect;
 export type InsertAdminActivity = z.infer<typeof insertAdminActivitySchema>;
+
+// Loan Programs - configurable loan program settings
+export const loanPrograms = pgTable("loan_programs", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  loanType: varchar("loan_type", { length: 50 }).notNull(), // rtl, dscr
+  
+  minLoanAmount: real("min_loan_amount").default(100000),
+  maxLoanAmount: real("max_loan_amount").default(5000000),
+  
+  minLtv: real("min_ltv").default(50),
+  maxLtv: real("max_ltv").default(80),
+  
+  minInterestRate: real("min_interest_rate").default(8),
+  maxInterestRate: real("max_interest_rate").default(15),
+  
+  termOptions: text("term_options"), // comma-separated: "6, 12, 18, 24"
+  eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family', 'multi-family', 'commercial']
+  
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLoanProgramSchema = createInsertSchema(loanPrograms).omit({ id: true, createdAt: true, updatedAt: true });
+export type LoanProgram = typeof loanPrograms.$inferSelect;
+export type InsertLoanProgram = z.infer<typeof insertLoanProgramSchema>;
+
+// Program Document Templates - documents required for each program
+export const programDocumentTemplates = pgTable("program_document_templates", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  
+  documentName: varchar("document_name", { length: 255 }).notNull(),
+  documentCategory: varchar("document_category", { length: 100 }).notNull(), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
+  documentDescription: text("document_description"),
+  
+  isRequired: boolean("is_required").default(true),
+  sortOrder: integer("sort_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProgramDocumentTemplateSchema = createInsertSchema(programDocumentTemplates).omit({ id: true, createdAt: true });
+export type ProgramDocumentTemplate = typeof programDocumentTemplates.$inferSelect;
+export type InsertProgramDocumentTemplate = z.infer<typeof insertProgramDocumentTemplateSchema>;
+
+// Program Task Templates - tasks required for each program
+export const programTaskTemplates = pgTable("program_task_templates", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  
+  taskName: varchar("task_name", { length: 255 }).notNull(),
+  taskDescription: text("task_description"),
+  taskCategory: varchar("task_category", { length: 100 }), // application_review, credit_check, appraisal, title_search, underwriting, closing
+  
+  priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
+  sortOrder: integer("sort_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProgramTaskTemplateSchema = createInsertSchema(programTaskTemplates).omit({ id: true, createdAt: true });
+export type ProgramTaskTemplate = typeof programTaskTemplates.$inferSelect;
+export type InsertProgramTaskTemplate = z.infer<typeof insertProgramTaskTemplateSchema>;
