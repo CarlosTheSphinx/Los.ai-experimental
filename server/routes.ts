@@ -3227,6 +3227,8 @@ export async function registerRoutes(
         userId: savedQuotes.userId,
         customerFirstName: savedQuotes.customerFirstName,
         customerLastName: savedQuotes.customerLastName,
+        customerEmail: savedQuotes.customerEmail,
+        customerPhone: savedQuotes.customerPhone,
         propertyAddress: savedQuotes.propertyAddress,
         loanData: savedQuotes.loanData,
         interestRate: savedQuotes.interestRate,
@@ -3426,6 +3428,71 @@ export async function registerRoutes(
       res.json({ deal: updated });
     } catch (error) {
       console.error('Admin update deal error:', error);
+      res.status(500).json({ error: 'Failed to update deal' });
+    }
+  });
+
+  // Admin - Full deal update (PUT)
+  app.put('/api/admin/deals/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.id);
+      const {
+        customerFirstName,
+        customerLastName,
+        customerEmail,
+        customerPhone,
+        propertyAddress,
+        loanAmount,
+        propertyValue,
+        interestRate,
+        loanType,
+        loanPurpose,
+        propertyType,
+      } = req.body;
+      
+      // Get current deal to preserve existing loanData
+      const [existingDeal] = await db.select()
+        .from(savedQuotes)
+        .where(eq(savedQuotes.id, dealId))
+        .limit(1);
+      
+      if (!existingDeal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+      
+      // Build updated loanData preserving fields that weren't updated
+      const existingLoanData = existingDeal.loanData as Record<string, unknown> || {};
+      const updatedLoanData = {
+        ...existingLoanData,
+        loanAmount: loanAmount ? parseFloat(loanAmount) : existingLoanData.loanAmount,
+        propertyValue: propertyValue ? parseFloat(propertyValue) : existingLoanData.propertyValue,
+        loanType: loanType || existingLoanData.loanType,
+        loanPurpose: loanPurpose || existingLoanData.loanPurpose,
+        propertyType: propertyType || existingLoanData.propertyType,
+      };
+      
+      // Calculate LTV if we have both values
+      if (updatedLoanData.loanAmount && updatedLoanData.propertyValue) {
+        const ltv = ((updatedLoanData.loanAmount as number) / (updatedLoanData.propertyValue as number)) * 100;
+        updatedLoanData.ltv = ltv.toFixed(2) + '%';
+      }
+      
+      const [updated] = await db.update(savedQuotes)
+        .set({
+          customerFirstName: customerFirstName || existingDeal.customerFirstName,
+          customerLastName: customerLastName || existingDeal.customerLastName,
+          customerEmail: customerEmail || existingDeal.customerEmail,
+          customerPhone: customerPhone || existingDeal.customerPhone,
+          propertyAddress: propertyAddress || existingDeal.propertyAddress,
+          interestRate: interestRate || existingDeal.interestRate,
+          loanData: updatedLoanData,
+        })
+        .where(eq(savedQuotes.id, dealId))
+        .returning();
+      
+      res.json({ deal: updated });
+    } catch (error) {
+      console.error('Admin full deal update error:', error);
       res.status(500).json({ error: 'Failed to update deal' });
     }
   });

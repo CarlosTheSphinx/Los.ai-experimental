@@ -7,6 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   DollarSign,
@@ -27,6 +44,7 @@ import {
   Eye,
   Download,
   Loader2,
+  Phone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -37,6 +55,8 @@ interface Deal {
   userId: number;
   customerFirstName: string;
   customerLastName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
   propertyAddress: string;
   loanData: {
     loanAmount: number;
@@ -215,6 +235,20 @@ export default function AdminDealDetail() {
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    customerFirstName: "",
+    customerLastName: "",
+    customerEmail: "",
+    customerPhone: "",
+    propertyAddress: "",
+    loanAmount: "",
+    propertyValue: "",
+    interestRate: "",
+    loanType: "",
+    loanPurpose: "",
+    propertyType: "",
+  });
 
   const { data, isLoading, error } = useQuery<DealDetailResponse>({
     queryKey: [`/api/admin/deals/${dealId}`],
@@ -233,6 +267,59 @@ export default function AdminDealDetail() {
       });
     },
   });
+
+  const updateDealMutation = useMutation({
+    mutationFn: async (formData: typeof editForm) => {
+      return apiRequest("PUT", `/api/admin/deals/${dealId}`, formData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setEditDialogOpen(false);
+      toast({
+        title: "Deal updated",
+        description: "The loan details have been saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Update failed",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openEditDialog = () => {
+    if (deal) {
+      setEditForm({
+        customerFirstName: deal.customerFirstName || "",
+        customerLastName: deal.customerLastName || "",
+        customerEmail: deal.customerEmail || "",
+        customerPhone: deal.customerPhone || "",
+        propertyAddress: deal.propertyAddress || "",
+        loanAmount: deal.loanData?.loanAmount?.toString() || "",
+        propertyValue: deal.loanData?.propertyValue?.toString() || "",
+        interestRate: deal.interestRate || "",
+        loanType: deal.loanData?.loanType || "",
+        loanPurpose: deal.loanData?.loanPurpose || "",
+        propertyType: deal.loanData?.propertyType || "",
+      });
+      setEditDialogOpen(true);
+    }
+  };
+
+  const handleContactBorrower = () => {
+    if (deal?.customerEmail) {
+      const subject = encodeURIComponent(`Regarding Your Loan - ${deal.propertyAddress}`);
+      const body = encodeURIComponent(`Dear ${deal.customerFirstName},\n\n`);
+      window.open(`mailto:${deal.customerEmail}?subject=${subject}&body=${body}`, "_blank");
+    } else {
+      toast({
+        title: "No email available",
+        description: "Please add the borrower's email address first.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleFileUpload = async (docId: number, file: File) => {
     setUploadingDocId(docId);
@@ -368,11 +455,11 @@ export default function AdminDealDetail() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" data-testid="button-edit-loan">
+          <Button variant="outline" onClick={openEditDialog} data-testid="button-edit-loan">
             <Pencil className="h-4 w-4 mr-2" />
             Edit Loan
           </Button>
-          <Button data-testid="button-contact-borrower">
+          <Button onClick={handleContactBorrower} data-testid="button-contact-borrower">
             <Mail className="h-4 w-4 mr-2" />
             Contact Borrower
           </Button>
@@ -772,6 +859,178 @@ export default function AdminDealDetail() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Loan Details</DialogTitle>
+            <DialogDescription>
+              Update the borrower and loan information for this deal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="customerFirstName">First Name</Label>
+                <Input
+                  id="customerFirstName"
+                  value={editForm.customerFirstName}
+                  onChange={(e) => setEditForm({ ...editForm, customerFirstName: e.target.value })}
+                  data-testid="input-customer-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customerLastName">Last Name</Label>
+                <Input
+                  id="customerLastName"
+                  value={editForm.customerLastName}
+                  onChange={(e) => setEditForm({ ...editForm, customerLastName: e.target.value })}
+                  data-testid="input-customer-last-name"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="customerEmail">Email</Label>
+                <Input
+                  id="customerEmail"
+                  type="email"
+                  value={editForm.customerEmail}
+                  onChange={(e) => setEditForm({ ...editForm, customerEmail: e.target.value })}
+                  placeholder="borrower@example.com"
+                  data-testid="input-customer-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customerPhone">Phone</Label>
+                <Input
+                  id="customerPhone"
+                  type="tel"
+                  value={editForm.customerPhone}
+                  onChange={(e) => setEditForm({ ...editForm, customerPhone: e.target.value })}
+                  placeholder="(555) 123-4567"
+                  data-testid="input-customer-phone"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="propertyAddress">Property Address</Label>
+              <Input
+                id="propertyAddress"
+                value={editForm.propertyAddress}
+                onChange={(e) => setEditForm({ ...editForm, propertyAddress: e.target.value })}
+                data-testid="input-property-address"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="loanAmount">Loan Amount</Label>
+                <Input
+                  id="loanAmount"
+                  type="number"
+                  value={editForm.loanAmount}
+                  onChange={(e) => setEditForm({ ...editForm, loanAmount: e.target.value })}
+                  data-testid="input-loan-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="propertyValue">Property Value</Label>
+                <Input
+                  id="propertyValue"
+                  type="number"
+                  value={editForm.propertyValue}
+                  onChange={(e) => setEditForm({ ...editForm, propertyValue: e.target.value })}
+                  data-testid="input-property-value"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="interestRate">Interest Rate</Label>
+                <Input
+                  id="interestRate"
+                  value={editForm.interestRate}
+                  onChange={(e) => setEditForm({ ...editForm, interestRate: e.target.value })}
+                  placeholder="8.5%"
+                  data-testid="input-interest-rate"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="loanType">Loan Type</Label>
+                <Select
+                  value={editForm.loanType}
+                  onValueChange={(value) => setEditForm({ ...editForm, loanType: value })}
+                >
+                  <SelectTrigger data-testid="select-loan-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="rtl">RTL</SelectItem>
+                    <SelectItem value="dscr">DSCR</SelectItem>
+                    <SelectItem value="fix-and-flip">Fix & Flip</SelectItem>
+                    <SelectItem value="bridge">Bridge</SelectItem>
+                    <SelectItem value="ground-up">Ground Up</SelectItem>
+                    <SelectItem value="rental">Rental</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="loanPurpose">Loan Purpose</Label>
+                <Select
+                  value={editForm.loanPurpose}
+                  onValueChange={(value) => setEditForm({ ...editForm, loanPurpose: value })}
+                >
+                  <SelectTrigger data-testid="select-loan-purpose">
+                    <SelectValue placeholder="Select purpose" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="purchase">Purchase</SelectItem>
+                    <SelectItem value="refinance">Refinance</SelectItem>
+                    <SelectItem value="cashout">Cash Out</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="propertyType">Property Type</Label>
+              <Select
+                value={editForm.propertyType}
+                onValueChange={(value) => setEditForm({ ...editForm, propertyType: value })}
+              >
+                <SelectTrigger data-testid="select-property-type">
+                  <SelectValue placeholder="Select property type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sfr">Single Family Residence</SelectItem>
+                  <SelectItem value="2-4unit">2-4 Unit</SelectItem>
+                  <SelectItem value="condo">Condo</SelectItem>
+                  <SelectItem value="townhouse">Townhouse</SelectItem>
+                  <SelectItem value="multifamily">Multifamily (5+)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} data-testid="button-cancel-edit">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => updateDealMutation.mutate(editForm)}
+              disabled={updateDealMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {updateDealMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

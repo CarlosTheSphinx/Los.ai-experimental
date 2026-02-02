@@ -43,6 +43,8 @@ export const savedQuotes = pgTable("saved_quotes", {
   userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
   customerFirstName: text("customer_first_name").notNull(),
   customerLastName: text("customer_last_name").notNull(),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
   propertyAddress: text("property_address").notNull(),
   loanData: jsonb("loan_data").notNull(),
   interestRate: text("interest_rate").notNull(),
