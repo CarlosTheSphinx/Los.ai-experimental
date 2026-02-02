@@ -22,6 +22,7 @@ import {
   clearAuthCookie,
   type AuthRequest 
 } from './auth';
+import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
 
 // Initialize Apify client
 // In a real app, this should be an env var. Using the token from the provided code for fidelity.
@@ -32,6 +33,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ==================== OBJECT STORAGE ROUTES ====================
+  registerObjectStorageRoutes(app);
+  const objectStorageService = new ObjectStorageService();
 
   // ==================== AUTH ROUTES (PUBLIC) ====================
   
@@ -3306,6 +3311,95 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin update document error:', error);
       res.status(500).json({ error: 'Failed to update document' });
+    }
+  });
+
+  // Admin - Upload document file (request presigned URL)
+  app.post('/api/admin/deals/:dealId/documents/:docId/upload-url', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const { name, size, contentType } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ error: 'File name is required' });
+      }
+      
+      // Get presigned URL for upload
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      
+      res.json({
+        uploadURL,
+        objectPath,
+        docId,
+        metadata: { name, size, contentType },
+      });
+    } catch (error) {
+      console.error('Admin upload URL error:', error);
+      res.status(500).json({ error: 'Failed to generate upload URL' });
+    }
+  });
+
+  // Admin - Complete document upload (update database after file is uploaded)
+  app.post('/api/admin/deals/:dealId/documents/:docId/upload-complete', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const { objectPath, fileName, fileSize, mimeType } = req.body;
+      
+      if (!objectPath) {
+        return res.status(400).json({ error: 'Object path is required' });
+      }
+      
+      const [updated] = await db.update(dealDocuments)
+        .set({
+          filePath: objectPath,
+          fileName: fileName || null,
+          fileSize: fileSize || null,
+          mimeType: mimeType || null,
+          status: 'uploaded',
+          uploadedAt: new Date(),
+          uploadedBy: req.user!.id,
+        })
+        .where(eq(dealDocuments.id, docId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      res.json({ document: updated });
+    } catch (error) {
+      console.error('Admin upload complete error:', error);
+      res.status(500).json({ error: 'Failed to update document record' });
+    }
+  });
+
+  // Admin - Download/view document file
+  app.get('/api/admin/deals/:dealId/documents/:docId/download', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      
+      const [doc] = await db.select()
+        .from(dealDocuments)
+        .where(eq(dealDocuments.id, docId))
+        .limit(1);
+      
+      if (!doc || !doc.filePath) {
+        return res.status(404).json({ error: 'Document file not found' });
+      }
+      
+      // Get the file and stream it
+      const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
+      
+      // Set content disposition for download
+      if (req.query.download === 'true' && doc.fileName) {
+        res.set('Content-Disposition', `attachment; filename="${doc.fileName}"`);
+      }
+      
+      await objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error('Admin document download error:', error);
+      res.status(500).json({ error: 'Failed to download document' });
     }
   });
 

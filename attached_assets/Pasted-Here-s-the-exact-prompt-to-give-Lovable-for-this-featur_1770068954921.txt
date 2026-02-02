@@ -1,0 +1,96 @@
+Here's the exact prompt to give Lovable for this feature:
+Add a document management feature to the loan detail page with these requirements:
+
+DOCUMENT UPLOAD & MANAGEMENT:
+
+1. DOCUMENT CHECKLIST
+- Display all required documents for the loan type in a checklist format
+- Each document row shows:
+  * Checkbox (checked when uploaded, unchecked when not)
+  * Document name
+  * Document category
+  * Upload button
+  * View button (only visible when uploaded)
+  * Download button (only visible when uploaded)
+  * Upload date and uploader name (when uploaded)
+
+2. FILE UPLOAD FUNCTIONALITY
+- Click upload button to open file picker
+- Support PDF, DOC, DOCX, XLS, XLSX, PNG, JPG file types
+- Show upload progress indicator
+- On successful upload:
+  * Automatically check the checkbox for that document
+  * Store file in Supabase Storage
+  * Update document status in database
+  * Show success toast notification
+
+3. FILE VIEWING
+- Click "View" button to open document in new tab/modal
+- Support in-browser preview for PDFs and images
+- For other file types, trigger download
+
+4. FILE DOWNLOAD
+- Click "Download" button to download file to user's device
+- Preserve original filename
+
+5. GOOGLE DRIVE INTEGRATION
+- When a new loan is created, automatically create a Google Drive folder
+- Folder structure: "Loans / [Borrower Name] - [Property Address] - [Loan ID]"
+- When a document is uploaded to the app:
+  * Also upload a copy to the loan's Google Drive folder
+  * Store Google Drive file ID in database
+  * Create subfolders by document category (e.g., "Financial Documents", "Property Documents", "Legal Documents")
+
+6. GOOGLE DRIVE SETUP
+- Add Google Drive API configuration
+- Create a settings page input where I can specify:
+  * Parent Google Drive folder ID where all loan folders should be created
+  * Google Drive service account credentials
+- Use Google Drive API v3 for folder/file operations
+
+TECHNICAL IMPLEMENTATION:
+
+1. Update Document type to include:
+   - fileUrl (Supabase Storage URL)
+   - googleDriveFileId
+   - googleDriveFolderId
+   - fileSize
+   - mimeType
+
+2. Create Supabase Storage bucket:
+   - Bucket name: "loan-documents"
+   - Path structure: {loanId}/{documentId}/{filename}
+   - Enable RLS policies for secure access
+
+3. Google Drive integration:
+   - Install google-auth-library and googleapis packages
+   - Create utility functions:
+     * createLoanFolder(loanId, borrowerName, propertyAddress)
+     * uploadFileToGoogleDrive(file, folderId, category)
+     * getGoogleDriveFileUrl(fileId)
+   - Store Google Drive credentials in environment variables
+
+4. Create components:
+   - DocumentChecklist component (displays all documents)
+   - DocumentUploadButton component (handles file selection and upload)
+   - DocumentViewer component (modal for viewing files)
+
+5. Add API endpoints/functions:
+   - uploadDocument(loanId, documentId, file)
+   - downloadDocument(documentId)
+   - viewDocument(documentId)
+   - createGoogleDriveFolder(loanId)
+   - syncToGoogleDrive(documentId)
+
+WORKFLOW:
+1. User goes to loan detail page
+2. Sees checklist of required documents (unchecked)
+3. Clicks "Upload" next to a document
+4. Selects file from computer
+5. File uploads to both Supabase Storage AND Google Drive
+6. Checkbox automatically marks as complete
+7. "View" and "Download" buttons become active
+8. User can click View to see document in browser
+9. User can click Download to save file locally
+
+Please provide complete code for all components, API functions, database schema updates, and Google Drive integration utilities.
