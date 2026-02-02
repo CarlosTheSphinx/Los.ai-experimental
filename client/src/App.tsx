@@ -26,6 +26,7 @@ import AdminSettings from "@/pages/admin/settings";
 import AdminDeals from "@/pages/admin/deals";
 import AdminDealDetail from "@/pages/admin/deal-detail";
 import AdminPartners from "@/pages/admin/partners";
+import AdminPrograms from "@/pages/admin/programs";
 import { AppLayout } from "@/components/AppLayout";
 import { Loader2 } from "lucide-react";
 
@@ -106,6 +107,7 @@ function MainRoutes() {
         <Route path="/admin/deals" component={() => <AdminProtectedRoute component={AdminDeals} />} />
         <Route path="/admin/deals/:id" component={() => <AdminProtectedRoute component={AdminDealDetail} />} />
         <Route path="/admin/partners" component={() => <AdminProtectedRoute component={AdminPartners} />} />
+        <Route path="/admin/programs" component={() => <AdminProtectedRoute component={AdminPrograms} />} />
         <Route path="/admin/users" component={() => <AdminProtectedRoute component={AdminUsers} />} />
         <Route path="/admin/projects" component={() => <AdminProtectedRoute component={AdminProjects} />} />
         <Route path="/admin/projects/:id" component={() => <AdminProtectedRoute component={AdminProjectDetail} />} />
