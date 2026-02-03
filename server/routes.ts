@@ -3575,6 +3575,130 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Deal Stages endpoints
+  app.get('/api/admin/deal-stages', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      // Seed default stages if none exist
+      await storage.seedDefaultDealStages();
+      const stages = await storage.getAllDealStages();
+      res.json({ stages });
+    } catch (error) {
+      console.error('Admin get deal stages error:', error);
+      res.status(500).json({ error: 'Failed to load deal stages' });
+    }
+  });
+
+  app.post('/api/admin/deal-stages', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { key, label, color, description } = req.body;
+      
+      if (!key || !label || !color) {
+        return res.status(400).json({ error: 'Key, label, and color are required' });
+      }
+
+      // Check for duplicate key
+      const existing = await storage.getDealStageByKey(key);
+      if (existing) {
+        return res.status(400).json({ error: 'A stage with this key already exists' });
+      }
+
+      // Get max sortOrder
+      const allStages = await storage.getAllDealStages();
+      const maxOrder = allStages.length > 0 ? Math.max(...allStages.map(s => s.sortOrder)) : -1;
+
+      const stage = await storage.createDealStage({
+        key,
+        label,
+        color,
+        description: description || null,
+        sortOrder: maxOrder + 1,
+        isActive: true
+      });
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'stage_created',
+        actionDescription: `Created deal stage: ${label}`,
+        metadata: { stageId: stage.id, key, label }
+      });
+
+      res.json({ stage });
+    } catch (error) {
+      console.error('Admin create deal stage error:', error);
+      res.status(500).json({ error: 'Failed to create deal stage' });
+    }
+  });
+
+  app.put('/api/admin/deal-stages/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { label, color, description, isActive } = req.body;
+
+      const stage = await storage.updateDealStage(id, { label, color, description, isActive });
+      
+      if (!stage) {
+        return res.status(404).json({ error: 'Stage not found' });
+      }
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'stage_updated',
+        actionDescription: `Updated deal stage: ${stage.label}`,
+        metadata: { stageId: id }
+      });
+
+      res.json({ stage });
+    } catch (error) {
+      console.error('Admin update deal stage error:', error);
+      res.status(500).json({ error: 'Failed to update deal stage' });
+    }
+  });
+
+  app.put('/api/admin/deal-stages/reorder', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { stageOrders } = req.body;
+      
+      if (!Array.isArray(stageOrders)) {
+        return res.status(400).json({ error: 'stageOrders array is required' });
+      }
+
+      await storage.updateDealStagesOrder(stageOrders);
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'stages_reordered',
+        actionDescription: 'Reordered deal stages',
+        metadata: { stageOrders }
+      });
+
+      const stages = await storage.getAllDealStages();
+      res.json({ stages });
+    } catch (error) {
+      console.error('Admin reorder deal stages error:', error);
+      res.status(500).json({ error: 'Failed to reorder deal stages' });
+    }
+  });
+
+  app.delete('/api/admin/deal-stages/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      await storage.deleteDealStage(id);
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'stage_deleted',
+        actionDescription: `Deleted deal stage`,
+        metadata: { stageId: id }
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Admin delete deal stage error:', error);
+      res.status(500).json({ error: 'Failed to delete deal stage' });
+    }
+  });
+
   // Admin - Check integration statuses
   app.get('/api/admin/integrations/status', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

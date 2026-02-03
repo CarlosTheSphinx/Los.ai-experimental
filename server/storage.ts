@@ -3,7 +3,7 @@ import { db } from "./db";
 import { 
   pricingRequests, savedQuotes, documents, signers, documentFields, documentAuditLog, users,
   projects, projectStages, projectTasks, projectActivity, projectDocuments, projectWebhooks,
-  systemSettings, adminTasks, adminActivity,
+  systemSettings, adminTasks, adminActivity, dealStages,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -12,7 +12,8 @@ import {
   type ProjectTask, type InsertProjectTask, type ProjectActivity, type InsertProjectActivity,
   type ProjectDocument, type InsertProjectDocument, type ProjectWebhook, type InsertProjectWebhook,
   type SystemSetting, type InsertSystemSetting, type AdminTask, type InsertAdminTask,
-  type AdminActivity, type InsertAdminActivity
+  type AdminActivity, type InsertAdminActivity,
+  type DealStage, type InsertDealStage
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
@@ -595,6 +596,65 @@ export class DatabaseStorage implements IStorage {
       activePipelineValue: activePipelineResult[0]?.total ?? 0,
       fundedVolume: fundedResult[0]?.total ?? 0
     };
+  }
+
+  // Deal Stages methods
+  async getAllDealStages(): Promise<DealStage[]> {
+    return db.select().from(dealStages).orderBy(asc(dealStages.sortOrder));
+  }
+
+  async getDealStageByKey(key: string): Promise<DealStage | undefined> {
+    const [stage] = await db.select().from(dealStages).where(eq(dealStages.key, key));
+    return stage;
+  }
+
+  async createDealStage(stage: InsertDealStage): Promise<DealStage> {
+    const [created] = await db.insert(dealStages).values(stage).returning();
+    return created;
+  }
+
+  async updateDealStage(id: number, updates: Partial<DealStage>): Promise<DealStage | undefined> {
+    const [updated] = await db.update(dealStages)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dealStages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDealStage(id: number): Promise<void> {
+    await db.delete(dealStages).where(eq(dealStages.id, id));
+  }
+
+  async updateDealStagesOrder(stageOrders: { id: number; sortOrder: number }[]): Promise<void> {
+    for (const { id, sortOrder } of stageOrders) {
+      await db.update(dealStages)
+        .set({ sortOrder, updatedAt: new Date() })
+        .where(eq(dealStages.id, id));
+    }
+  }
+
+  async seedDefaultDealStages(): Promise<void> {
+    const existing = await db.select().from(dealStages);
+    if (existing.length > 0) return;
+
+    const defaultStages: InsertDealStage[] = [
+      { key: "new", label: "New", color: "gray", sortOrder: 0 },
+      { key: "initial-review", label: "Initial Review", color: "yellow", sortOrder: 1 },
+      { key: "under-review", label: "Under Review", color: "orange", sortOrder: 2 },
+      { key: "term-sheet", label: "Term Sheet", color: "blue", sortOrder: 3 },
+      { key: "approved", label: "Approved", color: "emerald", sortOrder: 4 },
+      { key: "processing", label: "Processing", color: "cyan", sortOrder: 5 },
+      { key: "underwriting", label: "Underwriting", color: "indigo", sortOrder: 6 },
+      { key: "closing", label: "Closing", color: "teal", sortOrder: 7 },
+      { key: "funded", label: "Funded", color: "green", sortOrder: 8 },
+      { key: "closed", label: "Closed", color: "green", sortOrder: 9 },
+      { key: "declined", label: "Declined", color: "red", sortOrder: 10 },
+      { key: "withdrawn", label: "Withdrawn", color: "slate", sortOrder: 11 },
+    ];
+
+    for (const stage of defaultStages) {
+      await db.insert(dealStages).values(stage);
+    }
   }
 }
 
