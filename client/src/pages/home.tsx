@@ -198,7 +198,7 @@ export default function Home() {
                 <SelectItem value="dscr">
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">DSCR</Badge>
-                    <span>DSCR Loan (Debt Service Coverage Ratio)</span>
+                    <span>DSCR</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="rtl">
