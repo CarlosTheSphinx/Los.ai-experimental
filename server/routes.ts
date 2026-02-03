@@ -4098,6 +4098,7 @@ export async function registerRoutes(
   // Admin - Update deal document status
   app.patch('/api/admin/deals/:dealId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
+      const dealId = parseInt(req.params.dealId);
       const docId = parseInt(req.params.docId);
       const { status, reviewNotes } = req.body;
       
@@ -4122,6 +4123,35 @@ export async function registerRoutes(
       
       if (!updated) {
         return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      // Log to digest queue if document was approved or rejected
+      if (status === 'approved' || status === 'rejected') {
+        try {
+          // Find the project linked to this deal
+          const [project] = await db.select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.quoteId, dealId))
+            .limit(1);
+          
+          if (project) {
+            const actionText = status === 'approved' ? 'approved' : 'rejected';
+            await db.insert(loanUpdates).values({
+              projectId: project.id,
+              updateType: `doc_${status}`,
+              summary: `Document "${updated.documentName}" has been ${actionText}`,
+              meta: { 
+                documentId: docId, 
+                documentName: updated.documentName,
+                reviewNotes: reviewNotes || null 
+              },
+              performedBy: req.user!.id,
+            });
+          }
+        } catch (digestError) {
+          console.error('Failed to log document update for digest:', digestError);
+          // Don't fail the request if digest logging fails
+        }
       }
       
       res.json({ document: updated });
