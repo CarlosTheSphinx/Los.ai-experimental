@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { PricingResponse, LoanPricingFormData } from "@shared/schema";
-import { CheckCircle2, ArrowLeft, Download, AlertCircle, FileText, Save, DollarSign, Percent, User, MapPin } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Download, AlertCircle, FileText, Save, DollarSign, Percent, User } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
 interface PricingResultProps {
   result: PricingResponse;
@@ -195,15 +196,12 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address" className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />
-                  Property Address
-                </Label>
-                <Input
+                <Label htmlFor="address">Property Address</Label>
+                <AddressAutocomplete
                   id="address"
                   value={propertyAddress}
-                  onChange={(e) => setPropertyAddress(e.target.value)}
-                  placeholder="123 Main St, City, State 12345"
+                  onChange={setPropertyAddress}
+                  placeholder="Start typing an address..."
                   data-testid="input-property-address"
                 />
               </div>

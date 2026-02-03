@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Calculator, DollarSign, Building, User, FileText, CreditCard, Landmark } from "lucide-react";
 import { useEffect } from "react";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
 interface RTLLoanFormProps {
   onSubmit: (data: RTLPricingFormData) => void;
@@ -432,12 +433,12 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     <FormItem>
                       <FormLabel className="text-slate-700">Property Address</FormLabel>
                       <FormControl>
-                        <Input
-                          type="text"
+                        <AddressAutocomplete
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Start typing an address..."
                           className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                          placeholder="Enter full property address"
                           data-testid="input-property-address"
-                          {...field}
                         />
                       </FormControl>
                       <FormMessage />

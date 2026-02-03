@@ -39,6 +39,53 @@ export async function registerRoutes(
   registerObjectStorageRoutes(app);
   const objectStorageService = new ObjectStorageService();
 
+  // ==================== ADDRESS AUTOCOMPLETE (PUBLIC) ====================
+  
+  app.get('/api/address/autocomplete', async (req: Request, res: Response) => {
+    try {
+      const { text } = req.query;
+      
+      if (!text || typeof text !== 'string' || text.length < 3) {
+        return res.json({ features: [] });
+      }
+      
+      const apiKey = process.env.GEOAPIFY_API_KEY;
+      if (!apiKey) {
+        console.error('GEOAPIFY_API_KEY not configured');
+        return res.status(500).json({ error: 'Address service not configured' });
+      }
+      
+      const response = await fetch(
+        `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(text)}&filter=countrycode:us&format=json&apiKey=${apiKey}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Geoapify API error');
+      }
+      
+      const data = await response.json();
+      
+      // Transform to match expected format
+      const features = (data.results || []).map((result: any) => ({
+        formatted: result.formatted,
+        properties: {
+          formatted: result.formatted,
+          address_line1: result.address_line1,
+          address_line2: result.address_line2,
+          city: result.city,
+          state: result.state,
+          postcode: result.postcode,
+          country: result.country,
+        }
+      }));
+      
+      res.json({ features });
+    } catch (error) {
+      console.error('Address autocomplete error:', error);
+      res.status(500).json({ error: 'Failed to fetch address suggestions' });
+    }
+  });
+
   // ==================== AUTH ROUTES (PUBLIC) ====================
   
   // Register
