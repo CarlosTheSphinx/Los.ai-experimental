@@ -1,0 +1,557 @@
+Cool, we can build this as a **plug-in automation module** that sits next to your existing pipeline and never touches core deal logic except through **events + a “missing docs” view**.
+
+You’re on:
+
+* **Neon Postgres + Drizzle**
+* **JWT in httpOnly cookies**
+* **15s polling**
+* Need: **daily “Outstanding Docs Digest”** via **in-app message + email**, plus “any admin step becomes reflected tomorrow”.
+
+Below is the framework + the exact tables + routes + job runner pattern that fits Replit.
+
+---
+
+## The shape of the solution
+
+### Two parts
+
+1. **Automation Engine (generic)**
+   Admin creates automations: trigger → conditions → actions.
+2. **Daily Digest (special automation type)**
+   A scheduled job queries “missing docs” + “loan updates” and sends:
+
+   * **in-app notification** (your messages module)
+   * **email** (simple provider or SMTP)
+
+Everything is **data-driven** and stored in DB, so you can edit automations without code.
+
+---
+
+# A) Data model in Drizzle (Postgres)
+
+### 1) `automations` table
+
+Stores user-created automations.
+
+```ts
+// server/db/schema/automations.ts
+import { pgTable, text, boolean, timestamp, jsonb, uuid } from "drizzle-orm/pg-core";
+
+export const automations = pgTable("automations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+
+  // Examples: "daily_digest", "deal_stage_changed", "doc_uploaded", "inactivity"
+  triggerType: text("trigger_type").notNull(),
+  triggerConfig: jsonb("trigger_config").notNull().default({}),  // e.g. { hourLocal: 9 }
+
+  // array of rules: [{ field, op, value }]
+  conditions: jsonb("conditions").notNull().default([]),
+
+  // array of actions: [{ type, params }]
+  actions: jsonb("actions").notNull().default([]),
+
+  // optional: guardrails to prevent spam
+  throttle: jsonb("throttle").notNull().default({}),             // e.g. { maxPerDay: 1 }
+
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+### 2) `automation_runs` table
+
+Audit log, debugging, retries.
+
+```ts
+import { pgTable, text, timestamp, jsonb, uuid } from "drizzle-orm/pg-core";
+
+export const automationRuns = pgTable("automation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  automationId: uuid("automation_id").notNull(),
+  status: text("status").notNull(), // queued|running|success|failed|skipped
+  entityType: text("entity_type").notNull(), // loan|deal|user
+  entityId: text("entity_id").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+### 3) `automation_locks` table (so daily jobs don’t double-run)
+
+Neon + serverless-ish environments can run multiple instances; this prevents duplicates.
+
+```ts
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const automationLocks = pgTable("automation_locks", {
+  key: text("key").primaryKey(),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }).notNull(),
+});
+```
+
+### 4) `loan_updates` table (to track “admin steps happened”)
+
+This is the “event ledger” your daily digest uses.
+
+```ts
+import { pgTable, text, timestamp, jsonb, uuid } from "drizzle-orm/pg-core";
+
+export const loanUpdates = pgTable("loan_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  loanId: text("loan_id").notNull(),
+  userId: text("user_id").notNull(), // borrower/broker user who should receive digest
+  type: text("type").notNull(),       // stage_change|doc_request|uw_note|status|system
+  summary: text("summary").notNull(), // short human string
+  meta: jsonb("meta").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+> Key idea: whenever someone on admin side does something meaningful (stage change, conditions added, doc requested), you insert one row here. Your digest becomes easy and reliable.
+
+### 5) `loan_digest_state` table (so you only include “new since last digest”)
+
+```ts
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const loanDigestState = pgTable("loan_digest_state", {
+  loanId: text("loan_id").primaryKey(),
+  userId: text("user_id").notNull(),
+  lastDigestAt: timestamp("last_digest_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+---
+
+# B) Admin UI Automation DSL (simple but powerful)
+
+You don’t need a complex builder to start. Use a JSON form + guardrails.
+
+### Trigger types you support first
+
+* `daily_digest` (the big one)
+* `deal_stage_changed` (event-driven)
+* `doc_requested` (event-driven)
+* `doc_uploaded` (event-driven)
+* `inactivity` (scheduled)
+
+### Condition operators
+
+* `equals`, `in`, `gt`, `exists` (that’s enough to start)
+
+### Actions
+
+* `send_in_app_notification`
+* `send_in_app_message`
+* `send_email`
+* `create_internal_task`
+
+Everything else can come later.
+
+---
+
+# C) The Daily Outstanding Docs Digest automation
+
+This is the one you described:
+
+> “looks at every outstanding doc and every day makes a summary of these docs and messages the user via app + email, linking them into the portal.”
+
+### Data it needs
+
+For each loan in pipeline:
+
+* outstanding docs list
+* recent updates since last digest (from `loan_updates`)
+* link to upload docs page (deep link by loanId)
+
+We’ll assume you already have a docs table like `loan_documents` or similar.
+If not, create a view function `getOutstandingDocs(loanId)` that returns:
+
+* doc name
+* status: `missing|received|rejected|needs_revision`
+* optional notes
+
+---
+
+## Digest output format (simple + effective)
+
+**Subject:** `Daily Loan Update: {LoanName / Property / LoanId}`
+
+**In-app message body:**
+
+* “Here’s what we still need”
+* list of missing docs
+* list of updates since yesterday
+* button/link to portal
+
+This is intentionally boring and consistent. Lenders win by being relentlessly clear.
+
+---
+
+# D) Job runner with 15-minute cron + per-day schedule
+
+Since you said polling is fine, we’ll keep backend scheduling simple too.
+
+### Approach
+
+* Run a **cron** every 15 minutes (or every hour) on Replit Deployments.
+* The cron executes:
+
+  1. load enabled `daily_digest` automations
+  2. if it’s the right hour (e.g. 9am user timezone) and not already sent today:
+
+     * generate digests
+     * send
+
+### Locking
+
+Use `automation_locks` so it only runs once per interval even if multiple workers.
+
+---
+
+## Core daily digest job code (skeleton)
+
+```ts
+// server/jobs/dailyDigest.ts
+import { and, eq, gt, sql } from "drizzle-orm";
+import { db } from "../db/client";
+import { automations, automationLocks, loanDigestState, loanUpdates } from "../db/schema";
+import { sendEmail } from "../services/email";
+import { createOrGetThread, postMessage } from "../services/messages"; // your module
+
+function startOfTodayUTC() {
+  const d = new Date();
+  d.setUTCHours(0,0,0,0);
+  return d;
+}
+
+async function acquireLock(key: string, ttlSeconds: number) {
+  const lockedUntil = new Date(Date.now() + ttlSeconds * 1000);
+  // Use an UPSERT lock
+  const result = await db.execute(sql`
+    INSERT INTO automation_locks (key, locked_until)
+    VALUES (${key}, ${lockedUntil})
+    ON CONFLICT (key)
+    DO UPDATE SET locked_until = EXCLUDED.locked_until
+    WHERE automation_locks.locked_until < NOW()
+    RETURNING key;
+  `);
+  return (result.rows?.length ?? 0) > 0;
+}
+
+export async function runDailyDigests() {
+  const gotLock = await acquireLock("daily_digest_runner", 60); // 1 minute lock
+  if (!gotLock) return;
+
+  const autos = await db.select().from(automations).where(eq(automations.triggerType, "daily_digest"));
+  const now = new Date();
+
+  for (const a of autos) {
+    if (!a.isEnabled) continue;
+
+    const hourLocal = (a.triggerConfig as any)?.hourLocal ?? 9; // default 9am local
+    // Simple: run at approx that hour UTC for now
+    // Better: store user timezone and compute per user; can be v2.
+    if (now.getUTCHours() !== hourLocal) continue;
+
+    await runDigestForAutomation(a.id);
+  }
+}
+
+async function runDigestForAutomation(automationId: string) {
+  // Find loans/users that should receive digest.
+  // You’ll implement this based on your schema (loans in active pipeline).
+  const targets = await getActiveLoanTargets(); // [{ loanId, userId, userEmail, dealId? }]
+
+  for (const t of targets) {
+    const shouldSend = await shouldSendToday(t.loanId, t.userId);
+    if (!shouldSend) continue;
+
+    const outstandingDocs = await getOutstandingDocs(t.loanId);
+    const updates = await getUpdatesSinceLastDigest(t.loanId, t.userId);
+
+    // If nothing to say, you can skip (or still send a “no updates” message if you want).
+    if (outstandingDocs.length === 0 && updates.length === 0) {
+      await markDigestSent(t.loanId, t.userId);
+      continue;
+    }
+
+    const portalLink = `${process.env.APP_BASE_URL}/app/loans/${t.loanId}/documents`;
+
+    const body = renderDigestBody({ outstandingDocs, updates, portalLink });
+
+    // In-app: post as notification (or message)
+    const thread = await createOrGetThread({ userId: t.userId, dealId: t.dealId ?? null, subject: `Loan Updates` });
+    await postMessage({
+      threadId: thread.id,
+      senderRole: "system",
+      type: "notification",
+      body
+    });
+
+    // Email
+    await sendEmail({
+      to: t.userEmail,
+      subject: `Daily Loan Update: ${t.loanId}`,
+      html: renderDigestEmailHtml({ outstandingDocs, updates, portalLink })
+    });
+
+    await markDigestSent(t.loanId, t.userId);
+  }
+}
+
+async function shouldSendToday(loanId: string, userId: string) {
+  const state = await db.select().from(loanDigestState).where(eq(loanDigestState.loanId, loanId));
+  const row = state[0];
+
+  // If no state exists, send
+  if (!row) return true;
+
+  const last = new Date(row.lastDigestAt);
+  const today = startOfTodayUTC();
+  return last < today;
+}
+
+async function markDigestSent(loanId: string, userId: string) {
+  await db.execute(sql`
+    INSERT INTO loan_digest_state (loan_id, user_id, last_digest_at)
+    VALUES (${loanId}, ${userId}, NOW())
+    ON CONFLICT (loan_id)
+    DO UPDATE SET last_digest_at = NOW();
+  `);
+}
+
+async function getUpdatesSinceLastDigest(loanId: string, userId: string) {
+  const state = await db.select().from(loanDigestState).where(eq(loanDigestState.loanId, loanId));
+  const since = state[0]?.lastDigestAt ?? new Date(0);
+
+  const rows = await db
+    .select()
+    .from(loanUpdates)
+    .where(and(eq(loanUpdates.loanId, loanId), eq(loanUpdates.userId, userId), gt(loanUpdates.createdAt, since)));
+
+  return rows.map(r => r.summary);
+}
+
+function renderDigestBody({ outstandingDocs, updates, portalLink }: any) {
+  const lines: string[] = [];
+  if (updates.length) {
+    lines.push("✅ Updates since last check:");
+    for (const u of updates) lines.push(`• ${u}`);
+    lines.push("");
+  }
+  if (outstandingDocs.length) {
+    lines.push("📄 Outstanding documents needed:");
+    for (const d of outstandingDocs) lines.push(`• ${d.name}${d.note ? ` (${d.note})` : ""}`);
+    lines.push("");
+    lines.push(`Upload here: ${portalLink}`);
+  } else {
+    lines.push(`No outstanding documents right now. Portal: ${portalLink}`);
+  }
+  return lines.join("\n");
+}
+
+function renderDigestEmailHtml({ outstandingDocs, updates, portalLink }: any) {
+  const u = updates.map((x: string) => `<li>${escapeHtml(x)}</li>`).join("");
+  const d = outstandingDocs.map((x: any) => `<li>${escapeHtml(x.name)}${x.note ? ` (${escapeHtml(x.note)})` : ""}</li>`).join("");
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height:1.5">
+      ${updates.length ? `<h3>Updates since last check</h3><ul>${u}</ul>` : ""}
+      <h3>Outstanding documents</h3>
+      ${outstandingDocs.length ? `<ul>${d}</ul>` : "<p>None 🎉</p>"}
+      <p><a href="${portalLink}">Upload documents / view loan</a></p>
+    </div>
+  `;
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+}
+```
+
+This is the “daily digest machine”.
+
+### What you need to implement (two functions)
+
+* `getActiveLoanTargets()` (your loans pipeline list + user emails)
+* `getOutstandingDocs(loanId)` (your docs table / logic)
+
+Everything else is self-contained.
+
+---
+
+# E) How admin actions become “tomorrow’s digest”
+
+You said:
+
+> “Whenever a step happens on the lender/admin end that update is reflected on the summary sent the next day.”
+
+That’s exactly what `loan_updates` is for.
+
+### Add one helper function and use it anywhere relevant
+
+```ts
+// server/services/loanUpdates.ts
+import { db } from "../db/client";
+import { loanUpdates } from "../db/schema/loanUpdates";
+
+export async function recordLoanUpdate({
+  loanId,
+  userId,
+  type,
+  summary,
+  meta = {}
+}: {
+  loanId: string;
+  userId: string;
+  type: string;
+  summary: string;
+  meta?: any;
+}) {
+  await db.insert(loanUpdates).values({
+    loanId,
+    userId,
+    type,
+    summary,
+    meta
+  });
+}
+```
+
+Then anywhere in admin workflow you already have:
+
+* stage changed
+* doc requested
+* underwriting conditions added
+* appraisal ordered
+* clear to close
+* etc.
+
+You add **one line**:
+
+```ts
+await recordLoanUpdate({
+  loanId,
+  userId: borrowerOrBrokerUserId,
+  type: "stage_change",
+  summary: `Loan moved to Underwriting.`,
+  meta: { from: "Processing", to: "Underwriting" }
+});
+```
+
+This does not change existing logic. It just writes a ledger entry.
+
+---
+
+# F) The easiest admin UX for automations
+
+You want “easiest backend of all time”. So don’t build a complex Zapier clone first.
+
+### Admin → Automations page
+
+* List automations
+* “Create new”
+* A very simple form:
+
+**Automation type:** (dropdown)
+
+* Daily Digest
+* Stage Change Notification
+* Inactivity Nudge
+
+For “Daily Digest”:
+
+* time of day (default 9am)
+* which roles get it (borrower, broker)
+* send channels: in-app + email
+* include sections: outstanding docs, updates, both
+
+That generates the JSON under the hood. You never touch JSON manually unless you want “Advanced”.
+
+---
+
+# G) Security model (JWT cookies)
+
+Since you’re JWT in httpOnly cookies:
+
+* Admin UI calls `/api/automations/*` with `credentials: "include"`
+* Backend uses your existing `requireAuth` middleware
+* Only allow `role in ['admin','super_admin']` to create/edit automations.
+
+---
+
+# H) The exact “daily outstanding docs summary” logic (rules)
+
+This is the behavior you described, encoded:
+
+### Daily Digest includes:
+
+1. **Outstanding docs** (status in `missing | rejected | needs_revision`)
+2. **Updates since last digest** (from `loan_updates`)
+3. Always includes **portal link to upload**
+4. Send both:
+
+   * in-app notification
+   * email
+
+### Optional nice touches (still simple)
+
+* If a doc is “rejected” include rejection reason
+* Group docs by category: Identity, Entity, Property, Financials
+* If no docs and no updates: either skip or send “All good” (you decide)
+
+---
+
+# I) Hooking it up in Replit
+
+1. Add the Drizzle schema files
+2. Generate migrations
+3. Add a `POST /api/admin/automations` CRUD router
+4. Add the job runner:
+
+   * call `runDailyDigests()` inside a cron runner script or server interval
+
+### Minimal “interval runner” (works in one instance)
+
+In `server/index.ts`:
+
+```ts
+import { runDailyDigests } from "./jobs/dailyDigest";
+
+setInterval(() => {
+  runDailyDigests().catch(console.error);
+}, 15 * 60 * 1000);
+```
+
+Because we used the DB lock table, even if multiple instances exist, only one runs.
+
+---
+
+# J) What I need from you to finalize the drop-in code (no extra questions, just paste)
+
+Paste (or describe) where outstanding docs currently live:
+
+* Table name(s) and fields for documents
+* How a loan is tied to a user (borrower/broker)
+* Where user email lives
+
+Example:
+
+* `loan_documents (loanId, docType, status, note, updatedAt)`
+* `loans (id, borrowerUserId, brokerUserId, ...)`
+* `users (id, email, ...)`
+
+Once you paste that, I’ll return:
+
+* **exact Drizzle queries** for `getActiveLoanTargets()` and `getOutstandingDocs()`
+* the **admin CRUD routes** for automations
+* and the **daily digest automation JSON template** you can create in the UI immediately
+
+If you want, I can also wire the digest to your new Messages tab so the badge increments automatically (it will, since system posts are unread until the user visits).

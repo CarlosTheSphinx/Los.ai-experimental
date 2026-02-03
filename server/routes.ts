@@ -23,6 +23,14 @@ import {
   clearAuthCookie,
   type AuthRequest 
 } from './auth';
+import { 
+  runDigestJob, 
+  sendTestDigest, 
+  logLoanUpdate, 
+  getOutstandingDocuments, 
+  getRecentUpdates 
+} from './digestService';
+import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState } from '@shared/schema';
 import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
 
 // Initialize Apify client
@@ -2539,6 +2547,16 @@ export async function registerRoutes(
         visibleToBorrower: false,
       });
       
+      // Log for digest if status changed
+      if (updates.status && updates.status !== existingProject.status) {
+        await logLoanUpdate(
+          projectId,
+          'status_change',
+          `Loan status updated to: ${updates.status}`,
+          userId
+        );
+      }
+      
       res.json({ project: updated });
     } catch (error) {
       console.error('Update project error:', error);
@@ -2592,6 +2610,14 @@ export async function registerRoutes(
           task_title: task.taskTitle,
           task_type: task.taskType,
         });
+        
+        // Log for digest
+        await logLoanUpdate(
+          projectId,
+          'task_completed',
+          `Task completed: ${task.taskTitle}`,
+          userId
+        );
       }
       
       res.json({ task: updatedTask });
@@ -2650,6 +2676,14 @@ export async function registerRoutes(
             completed_stage: currentStage.stageKey,
             next_stage: nextStage.stageKey,
           });
+          
+          // Log for digest
+          await logLoanUpdate(
+            projectId,
+            'stage_change',
+            `Stage completed: ${currentStage.stageName}. Now in: ${nextStage.stageName}`,
+            userId
+          );
         }
       }
     }
@@ -5671,6 +5705,361 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Get onboarding users error:', error);
       res.status(500).json({ error: 'Failed to get users' });
+    }
+  });
+
+  // ==================== LOAN DIGEST NOTIFICATION ROUTES ====================
+
+  // Cron endpoint - runs digest job (should be called by external scheduler)
+  app.post('/api/cron/digests', async (req: Request, res: Response) => {
+    try {
+      // Simple API key auth for cron
+      const cronKey = req.headers['x-cron-key'];
+      const expectedKey = process.env.CRON_SECRET_KEY || 'sphinx-cron-2026';
+      
+      if (cronKey !== expectedKey) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      
+      const result = await runDigestJob();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error('Cron digest error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get digest config for a project
+  app.get('/api/projects/:projectId/digest', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.projectId, projectId));
+      
+      if (!config[0]) {
+        return res.json({ config: null, recipients: [] });
+      }
+      
+      const recipients = await db
+        .select()
+        .from(loanDigestRecipients)
+        .where(eq(loanDigestRecipients.configId, config[0].id));
+      
+      res.json({ config: config[0], recipients });
+    } catch (error: any) {
+      console.error('Get digest config error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create or update digest config for a project
+  app.post('/api/projects/:projectId/digest', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const { 
+        frequency, 
+        customDays, 
+        timeOfDay, 
+        timezone,
+        includeDocumentsNeeded,
+        includeNotes,
+        includeMessages,
+        includeGeneralUpdates,
+        isEnabled 
+      } = req.body;
+      
+      // Check if config exists
+      const existing = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.projectId, projectId));
+      
+      let configId: number;
+      
+      if (existing[0]) {
+        // Update existing
+        await db
+          .update(loanDigestConfigs)
+          .set({
+            frequency: frequency || existing[0].frequency,
+            customDays: customDays !== undefined ? customDays : existing[0].customDays,
+            timeOfDay: timeOfDay || existing[0].timeOfDay,
+            timezone: timezone || existing[0].timezone,
+            includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : existing[0].includeDocumentsNeeded,
+            includeNotes: includeNotes !== undefined ? includeNotes : existing[0].includeNotes,
+            includeMessages: includeMessages !== undefined ? includeMessages : existing[0].includeMessages,
+            includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : existing[0].includeGeneralUpdates,
+            isEnabled: isEnabled !== undefined ? isEnabled : existing[0].isEnabled,
+            updatedAt: new Date(),
+          })
+          .where(eq(loanDigestConfigs.id, existing[0].id));
+        
+        configId = existing[0].id;
+      } else {
+        // Create new
+        const result = await db
+          .insert(loanDigestConfigs)
+          .values({
+            projectId,
+            frequency: frequency || 'daily',
+            customDays,
+            timeOfDay: timeOfDay || '09:00',
+            timezone: timezone || 'America/New_York',
+            includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : true,
+            includeNotes: includeNotes !== undefined ? includeNotes : false,
+            includeMessages: includeMessages !== undefined ? includeMessages : false,
+            includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : true,
+            isEnabled: isEnabled !== undefined ? isEnabled : true,
+            createdBy: req.user?.id,
+          })
+          .returning({ id: loanDigestConfigs.id });
+        
+        configId = result[0].id;
+      }
+      
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.id, configId));
+      
+      res.json({ config: config[0] });
+    } catch (error: any) {
+      console.error('Save digest config error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add a recipient to digest config
+  app.post('/api/projects/:projectId/digest/recipients', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const { userId, recipientName, recipientEmail, recipientPhone, deliveryMethod } = req.body;
+      
+      // Get config for this project
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.projectId, projectId));
+      
+      if (!config[0]) {
+        return res.status(400).json({ error: 'Digest config not found. Create config first.' });
+      }
+      
+      // Validate delivery method vs contact info
+      if ((deliveryMethod === 'email' || deliveryMethod === 'both') && !recipientEmail && !userId) {
+        return res.status(400).json({ error: 'Email is required for email delivery' });
+      }
+      if ((deliveryMethod === 'sms' || deliveryMethod === 'both') && !recipientPhone && !userId) {
+        return res.status(400).json({ error: 'Phone number is required for SMS delivery' });
+      }
+      
+      const result = await db
+        .insert(loanDigestRecipients)
+        .values({
+          configId: config[0].id,
+          userId: userId || null,
+          recipientName: recipientName || null,
+          recipientEmail: recipientEmail || null,
+          recipientPhone: recipientPhone || null,
+          deliveryMethod: deliveryMethod || 'email',
+          isActive: true,
+        })
+        .returning();
+      
+      res.json({ recipient: result[0] });
+    } catch (error: any) {
+      console.error('Add digest recipient error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update a recipient
+  app.put('/api/digest/recipients/:recipientId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const recipientId = parseInt(req.params.recipientId);
+      const { recipientName, recipientEmail, recipientPhone, deliveryMethod, isActive } = req.body;
+      
+      await db
+        .update(loanDigestRecipients)
+        .set({
+          recipientName: recipientName !== undefined ? recipientName : undefined,
+          recipientEmail: recipientEmail !== undefined ? recipientEmail : undefined,
+          recipientPhone: recipientPhone !== undefined ? recipientPhone : undefined,
+          deliveryMethod: deliveryMethod !== undefined ? deliveryMethod : undefined,
+          isActive: isActive !== undefined ? isActive : undefined,
+        })
+        .where(eq(loanDigestRecipients.id, recipientId));
+      
+      const updated = await db
+        .select()
+        .from(loanDigestRecipients)
+        .where(eq(loanDigestRecipients.id, recipientId));
+      
+      res.json({ recipient: updated[0] });
+    } catch (error: any) {
+      console.error('Update digest recipient error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a recipient
+  app.delete('/api/digest/recipients/:recipientId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const recipientId = parseInt(req.params.recipientId);
+      
+      await db
+        .delete(loanDigestRecipients)
+        .where(eq(loanDigestRecipients.id, recipientId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete digest recipient error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Send a test digest
+  app.post('/api/projects/:projectId/digest/test', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const { recipientId } = req.body;
+      
+      // Get config
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.projectId, projectId));
+      
+      if (!config[0]) {
+        return res.status(400).json({ error: 'Digest config not found' });
+      }
+      
+      const result = await sendTestDigest(config[0].id, recipientId);
+      
+      if (result.success) {
+        res.json({ success: true, message: 'Test digest sent successfully' });
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error: any) {
+      console.error('Send test digest error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get digest history for a project
+  app.get('/api/projects/:projectId/digest/history', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      
+      const history = await db
+        .select()
+        .from(digestHistory)
+        .where(eq(digestHistory.projectId, projectId))
+        .orderBy(desc(digestHistory.sentAt))
+        .limit(50);
+      
+      res.json({ history });
+    } catch (error: any) {
+      console.error('Get digest history error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get loan updates for a project
+  app.get('/api/projects/:projectId/updates', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      
+      const updates = await getRecentUpdates(projectId);
+      
+      res.json({ updates });
+    } catch (error: any) {
+      console.error('Get loan updates error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get outstanding documents for a project (for digest preview)
+  app.get('/api/projects/:projectId/outstanding-docs', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      
+      const docs = await getOutstandingDocuments(projectId);
+      
+      res.json({ documents: docs });
+    } catch (error: any) {
+      console.error('Get outstanding docs error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get users for recipient dropdown (borrowers and partners related to project)
+  app.get('/api/projects/:projectId/potential-recipients', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      
+      // Get project to find associated users
+      const project = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId));
+      
+      if (!project[0]) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      // Get project owner and any borrower by email
+      const potentialRecipients = [];
+      
+      // Project owner (partner/broker)
+      if (project[0].userId) {
+        const owner = await db.select().from(users).where(eq(users.id, project[0].userId));
+        if (owner[0]) {
+          potentialRecipients.push({
+            userId: owner[0].id,
+            name: owner[0].fullName || owner[0].email,
+            email: owner[0].email,
+            phone: owner[0].phone,
+            role: 'Partner',
+          });
+        }
+      }
+      
+      // Look for borrower by email
+      if (project[0].borrowerEmail) {
+        const borrower = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, project[0].borrowerEmail));
+        
+        if (borrower[0]) {
+          potentialRecipients.push({
+            userId: borrower[0].id,
+            name: borrower[0].fullName || borrower[0].email,
+            email: borrower[0].email,
+            phone: borrower[0].phone,
+            role: 'Borrower',
+          });
+        } else {
+          // Borrower not in system, add as manual entry option
+          potentialRecipients.push({
+            userId: null,
+            name: project[0].borrowerName || 'Borrower',
+            email: project[0].borrowerEmail,
+            phone: project[0].borrowerPhone,
+            role: 'Borrower (Not Registered)',
+          });
+        }
+      }
+      
+      res.json({ recipients: potentialRecipients });
+    } catch (error: any) {
+      console.error('Get potential recipients error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

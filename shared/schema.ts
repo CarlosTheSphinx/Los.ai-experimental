@@ -932,3 +932,140 @@ export const userOnboardingProgress = pgTable("user_onboarding_progress", {
 export const insertUserOnboardingProgressSchema = createInsertSchema(userOnboardingProgress).omit({ id: true, createdAt: true });
 export type UserOnboardingProgress = typeof userOnboardingProgress.$inferSelect;
 export type InsertUserOnboardingProgress = z.infer<typeof insertUserOnboardingProgressSchema>;
+
+// ==================== LOAN DIGEST NOTIFICATION SYSTEM ====================
+
+// Frequency options for digest delivery
+export const digestFrequencyEnum = z.enum(["daily", "every_3_days", "weekly", "custom"]);
+export type DigestFrequency = z.infer<typeof digestFrequencyEnum>;
+
+// Delivery method options
+export const deliveryMethodEnum = z.enum(["email", "sms", "both"]);
+export type DeliveryMethod = z.infer<typeof deliveryMethodEnum>;
+
+// Content type options for digest
+export const digestContentTypeEnum = z.enum(["documents_needed", "notes", "messages", "general_updates"]);
+export type DigestContentType = z.infer<typeof digestContentTypeEnum>;
+
+// Loan digest configuration - per-project digest settings
+export const loanDigestConfigs = pgTable("loan_digest_configs", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  
+  // WHEN - frequency and timing
+  frequency: varchar("frequency", { length: 50 }).default("daily").notNull(), // daily, every_3_days, weekly, custom
+  customDays: integer("custom_days"), // For custom frequency, number of days between digests
+  timeOfDay: varchar("time_of_day", { length: 10 }).default("09:00").notNull(), // 24-hour format HH:MM
+  timezone: varchar("timezone", { length: 100 }).default("America/New_York").notNull(),
+  
+  // WHAT - content included in digest
+  includeDocumentsNeeded: boolean("include_documents_needed").default(true).notNull(), // THE MOST IMPORTANT
+  includeNotes: boolean("include_notes").default(false).notNull(),
+  includeMessages: boolean("include_messages").default(false).notNull(),
+  includeGeneralUpdates: boolean("include_general_updates").default(true).notNull(),
+  
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertLoanDigestConfigSchema = createInsertSchema(loanDigestConfigs).omit({ id: true, createdAt: true, updatedAt: true });
+export type LoanDigestConfig = typeof loanDigestConfigs.$inferSelect;
+export type InsertLoanDigestConfig = z.infer<typeof insertLoanDigestConfigSchema>;
+
+// Loan digest recipients - WHO receives the digest for each config
+export const loanDigestRecipients = pgTable("loan_digest_recipients", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
+  
+  // Can be linked to a user or manual contact info
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  
+  // Manual recipient info (if not linked to a user)
+  recipientName: varchar("recipient_name", { length: 255 }),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  recipientPhone: varchar("recipient_phone", { length: 50 }),
+  
+  // HOW - delivery method for this recipient
+  deliveryMethod: varchar("delivery_method", { length: 20 }).default("email").notNull(), // email, sms, both
+  
+  isActive: boolean("is_active").default(true).notNull(),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertLoanDigestRecipientSchema = createInsertSchema(loanDigestRecipients).omit({ id: true, createdAt: true });
+export type LoanDigestRecipient = typeof loanDigestRecipients.$inferSelect;
+export type InsertLoanDigestRecipient = z.infer<typeof insertLoanDigestRecipientSchema>;
+
+// Loan updates - event ledger for building digest content
+// Whenever admin actions happen, a row is added here so the digest can pick it up
+export const loanUpdates = pgTable("loan_updates", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  
+  // Type of update
+  updateType: varchar("update_type", { length: 50 }).notNull(), // doc_request, stage_change, note_added, task_assigned, task_completed, message, status_change
+  
+  // Human-readable summary for the digest
+  summary: text("summary").notNull(),
+  
+  // Additional metadata
+  meta: jsonb("meta"),
+  
+  // Who performed this action (null for system actions)
+  performedBy: integer("performed_by").references(() => users.id, { onDelete: 'set null' }),
+  
+  // Whether this update was included in a digest
+  includedInDigestAt: timestamp("included_in_digest_at"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertLoanUpdateSchema = createInsertSchema(loanUpdates).omit({ id: true, createdAt: true, includedInDigestAt: true });
+export type LoanUpdate = typeof loanUpdates.$inferSelect;
+export type InsertLoanUpdate = z.infer<typeof insertLoanUpdateSchema>;
+
+// Digest history - tracks when digests were sent (for audit and preventing duplicates)
+export const digestHistory = pgTable("digest_history", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
+  recipientId: integer("recipient_id").references(() => loanDigestRecipients.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  
+  // Delivery details
+  deliveryMethod: varchar("delivery_method", { length: 20 }).notNull(), // email, sms
+  recipientAddress: varchar("recipient_address", { length: 255 }).notNull(), // Email or phone
+  
+  // Content summary
+  documentsCount: integer("documents_count").default(0).notNull(),
+  updatesCount: integer("updates_count").default(0).notNull(),
+  
+  // Status
+  status: varchar("status", { length: 50 }).default("sent").notNull(), // sent, failed, bounced
+  errorMessage: text("error_message"),
+  
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+});
+
+export const insertDigestHistorySchema = createInsertSchema(digestHistory).omit({ id: true, sentAt: true });
+export type DigestHistory = typeof digestHistory.$inferSelect;
+export type InsertDigestHistory = z.infer<typeof insertDigestHistorySchema>;
+
+// Digest state - tracks the last digest sent per project/recipient to avoid duplicates
+export const digestState = pgTable("digest_state", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
+  recipientId: integer("recipient_id").references(() => loanDigestRecipients.id, { onDelete: 'cascade' }).notNull(),
+  
+  lastDigestSentAt: timestamp("last_digest_sent_at").notNull(),
+  nextDigestDueAt: timestamp("next_digest_due_at").notNull(),
+  
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDigestStateSchema = createInsertSchema(digestState).omit({ id: true, updatedAt: true });
+export type DigestState = typeof digestState.$inferSelect;
+export type InsertDigestState = z.infer<typeof insertDigestStateSchema>;
