@@ -61,7 +61,7 @@ export default function MessagesPage() {
 
   const { data: usersData } = useQuery<{ users: any[] }>({
     queryKey: ["/api/admin/users"],
-    enabled: isAdmin,
+    enabled: !!isAdmin,
   });
 
   const threads = threadsData?.threads || [];

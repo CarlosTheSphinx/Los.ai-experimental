@@ -11,6 +11,7 @@ import {
   Settings2,
   Shield,
   Handshake,
+  MessageSquare,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -29,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
+import { InboxBadge } from "@/components/InboxBadge";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
 interface AppLayoutProps {
@@ -40,6 +42,7 @@ const navItems = [
   { href: "/quotes", label: "Saved Quotes", icon: FileText },
   { href: "/agreements", label: "Agreements", icon: ClipboardList },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
 ];
 
 const adminNavItems = [
@@ -101,7 +104,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                             data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                           >
                             <Icon className="h-5 w-5" />
-                            <span>{item.label}</span>
+                            <span className="flex items-center gap-1">
+                              {item.label}
+                              {'showBadge' in item && item.showBadge && <InboxBadge />}
+                            </span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
