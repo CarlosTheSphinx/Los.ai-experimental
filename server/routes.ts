@@ -4344,30 +4344,43 @@ export async function registerRoutes(
       const newLoanType = updatedLoanData.loanType as string | undefined;
       
       if (newLoanType && newLoanType !== previousLoanType) {
-        // Check if deal already has documents
-        const existingDocs = await db.select({ id: dealDocuments.id })
-          .from(dealDocuments)
-          .where(eq(dealDocuments.dealId, dealId))
+        // Get loan program for new loan type
+        const [loanProgram] = await db.select()
+          .from(loanPrograms)
+          .where(and(
+            eq(loanPrograms.loanType, newLoanType),
+            eq(loanPrograms.isActive, true)
+          ))
           .limit(1);
         
-        // Only auto-populate if no documents exist
-        if (existingDocs.length === 0) {
-          const [loanProgram] = await db.select()
-            .from(loanPrograms)
+        if (loanProgram) {
+          // Delete documents that haven't been uploaded yet (no file attached)
+          // Keep documents with uploads (filePath is not null or status is uploaded/approved)
+          await db.delete(dealDocuments)
             .where(and(
-              eq(loanPrograms.loanType, newLoanType),
-              eq(loanPrograms.isActive, true)
-            ))
-            .limit(1);
+              eq(dealDocuments.dealId, dealId),
+              isNull(dealDocuments.filePath),
+              eq(dealDocuments.status, 'pending')
+            ));
           
-          if (loanProgram) {
-            const templates = await db.select()
-              .from(programDocumentTemplates)
-              .where(eq(programDocumentTemplates.programId, loanProgram.id))
-              .orderBy(programDocumentTemplates.sortOrder);
+          // Get templates for the new loan type
+          const templates = await db.select()
+            .from(programDocumentTemplates)
+            .where(eq(programDocumentTemplates.programId, loanProgram.id))
+            .orderBy(programDocumentTemplates.sortOrder);
+          
+          if (templates.length > 0) {
+            // Get remaining documents (ones with uploads) to avoid duplicates
+            const remainingDocs = await db.select({ documentName: dealDocuments.documentName })
+              .from(dealDocuments)
+              .where(eq(dealDocuments.dealId, dealId));
             
-            if (templates.length > 0) {
-              const documentEntries = templates.map((doc, index) => ({
+            const existingDocNames = new Set(remainingDocs.map(d => d.documentName.toLowerCase()));
+            
+            // Only add templates that don't already exist
+            const newDocuments = templates
+              .filter(doc => !existingDocNames.has(doc.documentName.toLowerCase()))
+              .map((doc, index) => ({
                 dealId,
                 documentName: doc.documentName,
                 documentCategory: doc.documentCategory,
@@ -4376,8 +4389,9 @@ export async function registerRoutes(
                 sortOrder: doc.sortOrder || index,
                 status: 'pending' as const,
               }));
-              
-              await db.insert(dealDocuments).values(documentEntries);
+            
+            if (newDocuments.length > 0) {
+              await db.insert(dealDocuments).values(newDocuments);
             }
           }
         }
