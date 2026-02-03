@@ -3,10 +3,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
-import { eq, desc, inArray, and } from "drizzle-orm";
+import { eq, desc, inArray, and, gt, sql, isNull } from "drizzle-orm";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
 import { z } from "zod";
@@ -2770,6 +2770,294 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Borrower portal error:', error);
       res.status(500).json({ error: 'Failed to load borrower portal' });
+    }
+  });
+
+  // ==================== MESSAGING ROUTES ====================
+  
+  const isAdminRole = (role: string | undefined) => role === 'admin' || role === 'super_admin' || role === 'staff';
+
+  // Get all threads (admin sees all, user sees only their own)
+  app.get('/api/messages/threads', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const role = req.user!.role;
+      const { dealId, userId: filterUserId } = req.query;
+
+      let threads;
+      if (isAdminRole(role)) {
+        // Admin can see all threads or filter by query params
+        if (dealId) {
+          threads = await db.select().from(messageThreads)
+            .where(eq(messageThreads.dealId, parseInt(dealId as string)))
+            .orderBy(desc(messageThreads.lastMessageAt))
+            .limit(100);
+        } else if (filterUserId) {
+          threads = await db.select().from(messageThreads)
+            .where(eq(messageThreads.userId, parseInt(filterUserId as string)))
+            .orderBy(desc(messageThreads.lastMessageAt))
+            .limit(100);
+        } else {
+          threads = await db.select().from(messageThreads)
+            .orderBy(desc(messageThreads.lastMessageAt))
+            .limit(100);
+        }
+      } else {
+        // User sees only their threads
+        threads = await db.select().from(messageThreads)
+          .where(eq(messageThreads.userId, userId))
+          .orderBy(desc(messageThreads.lastMessageAt))
+          .limit(100);
+      }
+
+      // Get user info for each thread
+      const threadsWithUsers = await Promise.all(threads.map(async (thread) => {
+        const user = await db.select({ fullName: users.fullName, email: users.email })
+          .from(users).where(eq(users.id, thread.userId)).limit(1);
+        return { ...thread, userName: user[0]?.fullName || user[0]?.email || 'Unknown' };
+      }));
+
+      res.json({ threads: threadsWithUsers });
+    } catch (error) {
+      console.error('Get threads error:', error);
+      res.status(500).json({ error: 'Failed to get threads' });
+    }
+  });
+
+  // Get single thread with messages
+  app.get('/api/messages/threads/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const threadId = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      const thread = await db.select().from(messageThreads)
+        .where(eq(messageThreads.id, threadId)).limit(1);
+
+      if (!thread[0]) {
+        return res.status(404).json({ error: 'Thread not found' });
+      }
+
+      // Auth check: user can only view own threads
+      if (!isAdminRole(role) && thread[0].userId !== userId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const threadMessages = await db.select().from(messages)
+        .where(eq(messages.threadId, threadId))
+        .orderBy(messages.createdAt)
+        .limit(500);
+
+      // Get sender names for messages
+      const messagesWithSenders = await Promise.all(threadMessages.map(async (msg) => {
+        if (msg.senderId) {
+          const sender = await db.select({ fullName: users.fullName, email: users.email })
+            .from(users).where(eq(users.id, msg.senderId)).limit(1);
+          return { ...msg, senderName: sender[0]?.fullName || sender[0]?.email || 'Unknown' };
+        }
+        return { ...msg, senderName: 'System' };
+      }));
+
+      res.json({ thread: thread[0], messages: messagesWithSenders });
+    } catch (error) {
+      console.error('Get thread error:', error);
+      res.status(500).json({ error: 'Failed to get thread' });
+    }
+  });
+
+  // Create or get thread (by dealId + userId)
+  app.post('/api/messages/threads', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { dealId = null, userId: targetUserId, subject = null } = req.body;
+      const requesterRole = req.user!.role;
+      const requesterId = req.user!.id;
+
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+
+      // Users can only create threads for themselves
+      if (!isAdminRole(requesterRole) && parseInt(targetUserId) !== requesterId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      // Check if thread already exists for this user + deal combination
+      let existing;
+      if (dealId) {
+        existing = await db.select().from(messageThreads)
+          .where(and(
+            eq(messageThreads.userId, parseInt(targetUserId)),
+            eq(messageThreads.dealId, parseInt(dealId))
+          )).limit(1);
+      } else {
+        existing = await db.select().from(messageThreads)
+          .where(and(
+            eq(messageThreads.userId, parseInt(targetUserId)),
+            isNull(messageThreads.dealId)
+          )).limit(1);
+      }
+
+      if (existing[0]) {
+        return res.json({ thread: existing[0] });
+      }
+
+      // Create new thread
+      const newThread = await db.insert(messageThreads).values({
+        dealId: dealId ? parseInt(dealId) : null,
+        userId: parseInt(targetUserId),
+        createdBy: requesterId,
+        subject: subject
+      }).returning();
+
+      // Initialize read receipt for the target user
+      await db.insert(messageReads).values({
+        threadId: newThread[0].id,
+        userId: parseInt(targetUserId),
+        lastReadAt: new Date('1970-01-01')
+      }).onConflictDoNothing();
+
+      res.json({ thread: newThread[0] });
+    } catch (error) {
+      console.error('Create thread error:', error);
+      res.status(500).json({ error: 'Failed to create thread' });
+    }
+  });
+
+  // Send message/notification
+  app.post('/api/messages/threads/:id/messages', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const threadId = parseInt(req.params.id);
+      const { body, type = 'message', meta = null } = req.body;
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      if (!body || typeof body !== 'string') {
+        return res.status(400).json({ error: 'body is required' });
+      }
+
+      if (!['message', 'notification'].includes(type)) {
+        return res.status(400).json({ error: 'invalid type' });
+      }
+
+      const thread = await db.select().from(messageThreads)
+        .where(eq(messageThreads.id, threadId)).limit(1);
+
+      if (!thread[0]) {
+        return res.status(404).json({ error: 'Thread not found' });
+      }
+
+      // Auth check: user can only post to own thread
+      if (!isAdminRole(role) && thread[0].userId !== userId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const senderRole = isAdminRole(role) ? 'admin' : 'user';
+
+      const newMessage = await db.insert(messages).values({
+        threadId,
+        senderId: userId,
+        senderRole,
+        type,
+        body,
+        meta
+      }).returning();
+
+      // Update thread's lastMessageAt
+      await db.update(messageThreads)
+        .set({ lastMessageAt: new Date() })
+        .where(eq(messageThreads.id, threadId));
+
+      res.json({ message: newMessage[0] });
+    } catch (error) {
+      console.error('Send message error:', error);
+      res.status(500).json({ error: 'Failed to send message' });
+    }
+  });
+
+  // Mark thread as read
+  app.post('/api/messages/threads/:id/read', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const threadId = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      const thread = await db.select().from(messageThreads)
+        .where(eq(messageThreads.id, threadId)).limit(1);
+
+      if (!thread[0]) {
+        return res.status(404).json({ error: 'Thread not found' });
+      }
+
+      if (!isAdminRole(role) && thread[0].userId !== userId) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      // Upsert read receipt
+      const existing = await db.select().from(messageReads)
+        .where(and(
+          eq(messageReads.threadId, threadId),
+          eq(messageReads.userId, userId)
+        )).limit(1);
+
+      if (existing[0]) {
+        await db.update(messageReads)
+          .set({ lastReadAt: new Date() })
+          .where(and(
+            eq(messageReads.threadId, threadId),
+            eq(messageReads.userId, userId)
+          ));
+      } else {
+        await db.insert(messageReads).values({
+          threadId,
+          userId,
+          lastReadAt: new Date()
+        });
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('Mark read error:', error);
+      res.status(500).json({ error: 'Failed to mark as read' });
+    }
+  });
+
+  // Get unread count for badge
+  app.get('/api/messages/unread-count', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      let unreadCount = 0;
+
+      if (isAdminRole(role)) {
+        // Admin unread = messages from users after admin's last_read_at
+        const result = await db.execute(sql`
+          SELECT COUNT(*)::int AS count
+          FROM messages m
+          JOIN message_threads t ON t.id = m.thread_id
+          LEFT JOIN message_reads r ON r.thread_id = t.id AND r.user_id = ${userId}
+          WHERE m.sender_role = 'user'
+            AND m.created_at > COALESCE(r.last_read_at, '1970-01-01')
+        `);
+        unreadCount = (result.rows[0] as any)?.count || 0;
+      } else {
+        // User unread = messages from admins/system after user's last_read_at
+        const result = await db.execute(sql`
+          SELECT COUNT(*)::int AS count
+          FROM messages m
+          JOIN message_threads t ON t.id = m.thread_id
+          LEFT JOIN message_reads r ON r.thread_id = t.id AND r.user_id = ${userId}
+          WHERE t.user_id = ${userId}
+            AND m.sender_role IN ('admin', 'system')
+            AND m.created_at > COALESCE(r.last_read_at, '1970-01-01')
+        `);
+        unreadCount = (result.rows[0] as any)?.count || 0;
+      }
+
+      res.json({ unreadCount });
+    } catch (error) {
+      console.error('Unread count error:', error);
+      res.status(500).json({ error: 'Failed to get unread count' });
     }
   });
 
