@@ -151,12 +151,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
                 <dt className="text-slate-500">Property Type</dt>
                 <dd className="font-medium text-slate-900">{formData?.propertyType}</dd>
               </div>
-              {formData?.tpoPremium && (
-                <div>
-                  <dt className="text-slate-500">TPO Premium</dt>
-                  <dd className="font-medium text-slate-900">{formData.tpoPremium}%</dd>
-                </div>
-              )}
+{/* TPO Premium is auto-included but hidden from user */}
             </dl>
           </div>
 
@@ -267,14 +262,6 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
                   <div className="flex justify-between">
                     <span className="text-slate-500">Points Amount ({pointsCharged.toFixed(2)}% of ${loanAmount.toLocaleString()})</span>
                     <span className="font-medium">${pointsAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">TPO Premium ({tpoPremiumPercent}% of ${loanAmount.toLocaleString()})</span>
-                    <span className="font-medium">${tpoPremiumAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold">
-                    <span className="text-slate-700">Total Revenue</span>
-                    <span className="text-primary">${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
 

@@ -34,6 +34,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
       calculatedDscr: "",
       dscr: "" as any,
       prepaymentPenalty: "" as any,
+      tpoPremium: "1", // Auto-set 1% TPO (hidden from user)
     },
   });
 
@@ -411,36 +412,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="tpoPremium"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-slate-700">TPO Premium</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
-                            <SelectValue placeholder="No TPO Premium" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="No TPO Premium">No TPO Premium</SelectItem>
-                          <SelectItem value="0.25%">0.25%</SelectItem>
-                          <SelectItem value="0.50%">0.50%</SelectItem>
-                          <SelectItem value="0.75%">0.75%</SelectItem>
-                          <SelectItem value="1.00%">1.00%</SelectItem>
-                          <SelectItem value="1.25%">1.25%</SelectItem>
-                          <SelectItem value="1.5%">1.5%</SelectItem>
-                          <SelectItem value="1.75%">1.75%</SelectItem>
-                          <SelectItem value="2.0%">2.0%</SelectItem>
-                          <SelectItem value="2.25%">2.25%</SelectItem>
-                          <SelectItem value="2.5%">2.5%</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+{/* TPO Premium is automatically set to 1% - hidden from user */}
               </div>
             </div>
 
