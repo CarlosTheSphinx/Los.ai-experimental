@@ -1,0 +1,226 @@
+Got you. What you’re describing is almost always one of these three things:
+
+1. **You’re authenticating successfully, but your role isn’t being loaded/recognized**, so you don’t get routed to the super admin dashboard.
+2. **You’re being routed correctly, but the admin layout/pages are hidden by a guard that thinks you’re not admin.**
+3. **You’re logging into the “user app” auth domain/store**, while the super admin is checking a different auth/session source.
+
+Here’s a clean, step-by-step way to diagnose and fix it in a Replit-style Express + React app.
+
+---
+
+## 0) Confirm what “success” looks like (in code)
+
+After login, your app should have **one source of truth** that contains:
+
+* `user.id`
+* `user.email`
+* `user.role` (or `roles[]`)
+* a valid session/JWT
+
+If any of those are missing, your UI will behave like “not admin.”
+
+---
+
+## 1) Start with the fastest sanity checks
+
+### A) Hard refresh + clear storage
+
+In the browser:
+
+* Open DevTools → Application
+* Clear:
+
+  * Local Storage
+  * Session Storage
+  * Cookies (for your domain)
+
+Then try logging in again.
+
+Why this matters: stale tokens often still “log in” but fail role fetch, leaving you in limbo.
+
+---
+
+### B) Watch the Network tab during login
+
+Open DevTools → Network and do the login.
+
+Look for:
+
+* `POST /api/auth/login` (or similar)
+* then a follow-up like `GET /api/me` or `GET /api/auth/session`
+
+You want to verify:
+
+* Login returns **200**
+* `/me` returns a JSON user object with `role: "super_admin"` (or contains it in `roles`)
+
+If `/me` returns:
+
+* 401/403 → session/token isn’t being stored or sent
+* 200 but role missing → your backend isn’t including role or the DB doesn’t have it
+
+---
+
+## 2) Most common bug: role isn’t included in the auth response
+
+If your React app sets auth state from login response, but that response doesn’t include `role`, your admin guard fails.
+
+### Fix pattern (Express)
+
+Make sure login returns the full user payload:
+
+```js
+// POST /api/auth/login
+res.json({
+  token,
+  user: {
+    id: user.id,
+    email: user.email,
+    role: user.role,        // IMPORTANT
+    // or roles: user.roles
+  }
+});
+```
+
+### Fix pattern (React)
+
+Make sure you store it:
+
+```ts
+setAuth({
+  token: data.token,
+  user: data.user
+});
+```
+
+If you only store `token` and later forget to call `/me`, your UI may not know role.
+
+---
+
+## 3) Second most common bug: you’re redirected to the wrong place
+
+Even if auth is correct, your redirect logic might send admins to `/` or `/dashboard` (user side), not `/admin`.
+
+### Check your post-login redirect
+
+Search in frontend for:
+
+* `navigate(`
+* `redirect`
+* `return <Navigate ... />`
+
+Your logic should look like:
+
+```ts
+if (user.role === "super_admin") navigate("/admin");
+else if (user.role === "admin") navigate("/admin");
+else navigate("/app"); // user dashboard
+```
+
+### Also check route guards
+
+If you have an AdminRoute:
+
+```tsx
+if (!user) return <Navigate to="/login" />;
+if (!["admin", "super_admin"].includes(user.role)) return <Navigate to="/app" />;
+return <Outlet />;
+```
+
+If your guard checks the wrong field (like `user.isAdmin` but you store `role`), it will fail.
+
+---
+
+## 4) Third common bug: “super admin dashboard not showing” = admin layout never mounts
+
+That happens when your router tree is wrong.
+
+You want something like:
+
+```tsx
+<Route path="/admin" element={<AdminLayout />}>
+  <Route index element={<AdminDashboard />} />
+  <Route path="pricing-rules" element={<PricingRulesPage />} />
+</Route>
+```
+
+If `/admin` points to user layout, you’ll never see the super admin UI.
+
+---
+
+## 5) The big one: backend authorization is blocking the admin data calls
+
+Sometimes login works, but your admin dashboard calls return 403.
+
+### Check dashboard API calls
+
+In Network tab, click the requests your admin dashboard makes (like `/api/admin/stats`, `/api/programs`, `/api/users`).
+
+If you see **403**, your backend middleware is rejecting you.
+
+Your Express middleware should look like:
+
+```js
+function requireAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+  if (!["admin", "super_admin"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Not authorized" });
+  }
+  next();
+}
+```
+
+And critically: `req.user` must be set by auth middleware **before** requireAdmin runs.
+
+---
+
+## 6) Quick DB verification (usually the root cause)
+
+If you have a Users table, confirm the admin accounts truly have the right role.
+
+Example:
+
+* `role = 'super_admin'`
+
+If the DB says `role = null` or `role = 'user'`, then no matter what password you use, your UI won’t show super admin features.
+
+If you’re using Prisma/Drizzle, check the seed script:
+
+* it might be creating admin emails but not setting `role`.
+
+---
+
+## 7) Make it impossible to “log in but not know role”
+
+Add a single canonical endpoint like `GET /api/me` that always returns the full user.
+
+**Frontend flow:**
+
+1. login
+2. store token
+3. immediately fetch `/api/me`
+4. store user with role
+5. route based on role
+
+This eliminates 90% of weird states.
+
+---
+
+# The fastest way to fix this with certainty
+
+Send me **any two** of these (copy/paste text, not screenshots if you can):
+
+1. Your login route code (`/api/auth/login`)
+2. Your `/api/me` or session route code
+3. Your React route guard / redirect logic (AdminRoute / ProtectedRoute)
+4. A sample of the login response JSON (remove secrets)
+
+And I’ll tell you exactly where the break is and what line to change.
+
+If you want a quick self-check right now: open DevTools → Console and run:
+
+```js
+localStorage.getItem("token")
+```
+
+Then hit your `/api/me` endpoint in the browser (or fetch it in console). If `/api/me` doesn’t return `{ role: "super_admin" }`, the issue is backend role/session wiring, not the UI.
