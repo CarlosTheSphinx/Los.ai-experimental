@@ -471,7 +471,7 @@ export default function AdminDealDetail() {
     if (deal?.customerEmail) {
       const subject = encodeURIComponent(`Regarding Your Loan - ${deal.propertyAddress}`);
       const body = encodeURIComponent(`Dear ${deal.customerFirstName},\n\n`);
-      window.open(`mailto:${deal.customerEmail}?subject=${subject}&body=${body}`, "_blank");
+      window.location.href = `mailto:${deal.customerEmail}?subject=${subject}&body=${body}`;
     } else {
       toast({
         title: "No email available",
