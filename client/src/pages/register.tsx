@@ -107,9 +107,6 @@ export default function RegisterPage() {
                           >
                             <Briefcase className="mb-3 h-6 w-6" />
                             <span className="font-semibold">Partner</span>
-                            <span className="text-xs text-muted-foreground text-center mt-1">
-                              I refer loans to Sphinx Capital
-                            </span>
                           </Label>
                         </div>
                         <div>
@@ -125,9 +122,6 @@ export default function RegisterPage() {
                           >
                             <Home className="mb-3 h-6 w-6" />
                             <span className="font-semibold">Borrower</span>
-                            <span className="text-xs text-muted-foreground text-center mt-1">
-                              I have a loan with Sphinx Capital
-                            </span>
                           </Label>
                         </div>
                       </RadioGroup>
