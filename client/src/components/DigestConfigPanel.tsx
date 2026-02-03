@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { 
@@ -25,7 +26,8 @@ import {
   ChevronDown, 
   ChevronUp,
   History,
-  Loader2
+  Loader2,
+  Edit2
 } from 'lucide-react';
 
 interface DigestConfig {
@@ -40,6 +42,9 @@ interface DigestConfig {
   includeNotes: boolean;
   includeMessages: boolean;
   includeGeneralUpdates: boolean;
+  emailSubject: string | null;
+  emailBody: string | null;
+  smsBody: string | null;
   isEnabled: boolean;
 }
 
@@ -77,10 +82,11 @@ interface DigestConfigPanelProps {
 }
 
 const FREQUENCY_OPTIONS = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'every_3_days', label: 'Every 3 Days' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'daily', label: 'Daily', days: 1 },
+  { value: 'every_2_days', label: 'Every 2 Days', days: 2 },
+  { value: 'every_3_days', label: 'Every 3 Days', days: 3 },
+  { value: 'weekly', label: 'Weekly', days: 7 },
+  { value: 'custom', label: 'Every X Days...', days: null },
 ];
 
 const DELIVERY_METHOD_OPTIONS = [
@@ -101,6 +107,7 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const queryClient = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
   const [showAddRecipient, setShowAddRecipient] = useState(false);
+  const [showMessageTemplate, setShowMessageTemplate] = useState(false);
   const [newRecipient, setNewRecipient] = useState({
     userId: null as number | null,
     recipientName: '',
@@ -320,33 +327,43 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Frequency</Label>
-              <Select 
-                value={config.frequency} 
-                onValueChange={(value) => handleConfigChange('frequency', value)}
-              >
-                <SelectTrigger data-testid="select-frequency">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FREQUENCY_OPTIONS.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {config.frequency === 'custom' && (
-              <div className="space-y-2">
-                <Label>Every X Days</Label>
-                <Input 
-                  type="number" 
-                  min={1} 
-                  max={30}
-                  value={config.customDays || 1}
-                  onChange={(e) => handleConfigChange('customDays', parseInt(e.target.value))}
-                  data-testid="input-custom-days"
-                />
+              <div className="flex gap-2">
+                <Select 
+                  value={config.frequency} 
+                  onValueChange={(value) => {
+                    handleConfigChange('frequency', value);
+                    // Set default customDays if switching to custom
+                    if (value === 'custom' && !config.customDays) {
+                      handleConfigChange('customDays', 2);
+                    }
+                  }}
+                >
+                  <SelectTrigger data-testid="select-frequency" className={config.frequency === 'custom' ? 'flex-1' : ''}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FREQUENCY_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {config.frequency === 'custom' && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-muted-foreground">Every</span>
+                    <Input 
+                      type="number" 
+                      min={1} 
+                      max={30}
+                      className="w-16"
+                      value={config.customDays || 2}
+                      onChange={(e) => handleConfigChange('customDays', parseInt(e.target.value) || 1)}
+                      data-testid="input-custom-days"
+                    />
+                    <span className="text-sm text-muted-foreground">days</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
             <div className="space-y-2">
               <Label>Time of Day</Label>
               <Select 
@@ -365,7 +382,7 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 col-span-2">
               <Label>Timezone</Label>
               <Select 
                 value={config.timezone} 
@@ -438,6 +455,71 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
               />
             </div>
           </div>
+        </div>
+
+        <Separator />
+
+        {/* Message Template */}
+        <div className="space-y-4">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-between p-0 h-auto"
+            onClick={() => setShowMessageTemplate(!showMessageTemplate)}
+            data-testid="button-toggle-message-template"
+          >
+            <h4 className="font-medium flex items-center gap-2">
+              <Edit2 className="h-4 w-4" />
+              Message Template
+            </h4>
+            {showMessageTemplate ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+
+          {showMessageTemplate && (
+            <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+              <div className="bg-muted/50 p-3 rounded text-xs text-muted-foreground">
+                <p className="font-medium mb-1">Available placeholders:</p>
+                <p>{"{{recipientName}}"} - Recipient's name</p>
+                <p>{"{{propertyAddress}}"} - Property address</p>
+                <p>{"{{documentsSection}}"} - List of outstanding documents</p>
+                <p>{"{{updatesSection}}"} - Recent updates</p>
+                <p>{"{{documentsCount}}"} - Number of documents needed</p>
+                <p>{"{{portalLink}}"} - Link to borrower portal</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Email Subject</Label>
+                <Input 
+                  value={config.emailSubject || 'Loan Update: Action Required'}
+                  onChange={(e) => handleConfigChange('emailSubject', e.target.value)}
+                  placeholder="Loan Update: Action Required"
+                  data-testid="input-email-subject"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Email Body</Label>
+                <Textarea 
+                  value={config.emailBody || "Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nSphinx Capital"}
+                  onChange={(e) => handleConfigChange('emailBody', e.target.value)}
+                  className="min-h-[200px] font-mono text-sm"
+                  placeholder="Enter email body template..."
+                  data-testid="input-email-body"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>SMS Message</Label>
+                <Textarea 
+                  value={config.smsBody || "Sphinx Capital: {{documentsCount}} docs needed for your loan. Log in to your portal for details."}
+                  onChange={(e) => handleConfigChange('smsBody', e.target.value)}
+                  className="min-h-[80px] font-mono text-sm"
+                  placeholder="Enter SMS template..."
+                  data-testid="input-sms-body"
+                />
+                <p className="text-xs text-muted-foreground">SMS messages should be concise (under 160 characters recommended)</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <Separator />

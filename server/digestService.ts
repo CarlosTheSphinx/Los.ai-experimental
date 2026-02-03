@@ -236,6 +236,9 @@ function calculateNextDueDate(frequency: string, customDays: number | null, last
     case 'daily':
       daysToAdd = 1;
       break;
+    case 'every_2_days':
+      daysToAdd = 2;
+      break;
     case 'every_3_days':
       daysToAdd = 3;
       break;
@@ -243,8 +246,10 @@ function calculateNextDueDate(frequency: string, customDays: number | null, last
       daysToAdd = 7;
       break;
     case 'custom':
-      daysToAdd = customDays || 1;
+      daysToAdd = Math.max(1, Math.min(30, customDays || 2));
       break;
+    default:
+      daysToAdd = 1;
   }
 
   next.setDate(next.getDate() + daysToAdd);
@@ -370,11 +375,77 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+// Apply template variables to custom message templates
+function applyTemplateVariables(template: string, content: DigestContent, portalLink: string): string {
+  const recipientName = content.project.borrowerName || 'Valued Customer';
+  const propertyAddress = content.project.propertyAddress || 'your property';
+  
+  // Generate documents section text
+  const documentsSection = content.outstandingDocs.length > 0
+    ? `Documents Needed:\n${content.outstandingDocs.map(d => `- ${d.name}${d.status === 'rejected' ? ' (Needs Revision)' : ''}`).join('\n')}`
+    : 'All documents are up to date.';
+  
+  // Generate updates section text
+  const updatesSection = content.recentUpdates.length > 0
+    ? `Recent Updates:\n${content.recentUpdates.map(u => `- ${u.summary}`).join('\n')}`
+    : '';
+  
+  return template
+    .replace(/\{\{recipientName\}\}/g, recipientName)
+    .replace(/\{\{propertyAddress\}\}/g, propertyAddress)
+    .replace(/\{\{documentsSection\}\}/g, documentsSection)
+    .replace(/\{\{updatesSection\}\}/g, updatesSection)
+    .replace(/\{\{documentsCount\}\}/g, String(content.outstandingDocs.length))
+    .replace(/\{\{portalLink\}\}/g, portalLink);
+}
+
+// Generate custom email HTML from template
+function generateCustomEmailHtml(template: string, content: DigestContent, portalLink: string): string {
+  const bodyText = applyTemplateVariables(template, content, portalLink);
+  
+  // Convert newlines to <br> for HTML
+  const bodyHtml = escapeHtml(bodyText).replace(/\n/g, '<br>');
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #1e40af; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background-color: #1e40af; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+        .footer { text-align: center; color: #64748b; font-size: 12px; margin-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 24px;">Sphinx Capital</h1>
+          <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;">Loan Status Update</p>
+        </div>
+        <div class="content">
+          <p>${bodyHtml}</p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${portalLink}" class="button">View Loan Portal</a>
+          </div>
+        </div>
+        <div class="footer">
+          <p>This is an automated message from Sphinx Capital.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // Send email digest
 async function sendEmailDigest(
   recipient: LoanDigestRecipient,
   content: DigestContent,
-  email: string
+  email: string,
+  config?: LoanDigestConfig
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { client } = await getResendClient();
@@ -383,11 +454,21 @@ async function sendEmailDigest(
       ? `${BASE_URL}/portal/${content.project.borrowerPortalToken}`
       : `${BASE_URL}/app/projects/${content.project.id}`;
     
+    // Use custom subject if provided
+    const subject = config?.emailSubject 
+      ? applyTemplateVariables(config.emailSubject, content, portalLink)
+      : `Loan Update: ${content.project.projectName} - ${content.outstandingDocs.length} Document(s) Needed`;
+    
+    // Use custom body if provided, otherwise use default HTML
+    const html = config?.emailBody
+      ? generateCustomEmailHtml(config.emailBody, content, portalLink)
+      : generateDigestEmailHtml(content, portalLink);
+    
     const result = await client.emails.send({
       from: 'Sphinx Capital <onboarding@resend.dev>',
       to: email,
-      subject: `Loan Update: ${content.project.projectName} - ${content.outstandingDocs.length} Document(s) Needed`,
-      html: generateDigestEmailHtml(content, portalLink),
+      subject,
+      html,
     });
     
     return { success: true };
@@ -401,15 +482,24 @@ async function sendEmailDigest(
 async function sendSmsDigest(
   recipient: LoanDigestRecipient,
   content: DigestContent,
-  phone: string
+  phone: string,
+  config?: LoanDigestConfig
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { sendDigestSms } = await import('./smsService');
+    const { sendDigestSms, sendCustomSms } = await import('./smsService');
     
     const portalLink = content.project.borrowerPortalToken
       ? `${BASE_URL}/portal/${content.project.borrowerPortalToken}`
       : `${BASE_URL}/app/projects/${content.project.id}`;
     
+    // Use custom SMS body if provided
+    if (config?.smsBody) {
+      const customMessage = applyTemplateVariables(config.smsBody, content, portalLink);
+      const result = await sendCustomSms(phone, customMessage);
+      return result;
+    }
+    
+    // Default SMS
     const result = await sendDigestSms(
       phone,
       content.project.projectName,
@@ -484,12 +574,12 @@ async function processDigest(
 
   // Send based on delivery method
   if ((recipient.deliveryMethod === 'email' || recipient.deliveryMethod === 'both') && email) {
-    const result = await sendEmailDigest(recipient, content, email);
+    const result = await sendEmailDigest(recipient, content, email, config);
     results.push({ method: 'email', success: result.success, address: email, error: result.error });
   }
 
   if ((recipient.deliveryMethod === 'sms' || recipient.deliveryMethod === 'both') && phone) {
-    const result = await sendSmsDigest(recipient, content, phone);
+    const result = await sendSmsDigest(recipient, content, phone, config);
     results.push({ method: 'sms', success: result.success, address: phone, error: result.error });
   }
 
@@ -770,13 +860,13 @@ async function processDigestForDeal(
   
   // Send the digest via email
   if ((recipient.deliveryMethod === 'email' || recipient.deliveryMethod === 'both') && email) {
-    const result = await sendEmailDigest(recipient, content, email);
+    const result = await sendEmailDigest(recipient, content, email, config);
     results.push({ method: 'email', success: result.success, address: email, error: result.error });
   }
   
   // Send the digest via SMS
   if ((recipient.deliveryMethod === 'sms' || recipient.deliveryMethod === 'both') && phone) {
-    const result = await sendSmsDigest(recipient, content, phone);
+    const result = await sendSmsDigest(recipient, content, phone, config);
     results.push({ method: 'sms', success: result.success, address: phone, error: result.error });
   }
   

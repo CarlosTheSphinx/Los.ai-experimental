@@ -6730,8 +6730,17 @@ export async function registerRoutes(
         includeNotes,
         includeMessages,
         includeGeneralUpdates,
+        emailSubject,
+        emailBody,
+        smsBody,
         isEnabled 
       } = req.body;
+      
+      // Validate customDays if provided (1-30 range)
+      let validatedCustomDays = customDays;
+      if (customDays !== undefined && customDays !== null) {
+        validatedCustomDays = Math.max(1, Math.min(30, parseInt(customDays) || 2));
+      }
       
       // Check if config exists for this deal
       const existing = await db
@@ -6747,13 +6756,16 @@ export async function registerRoutes(
           .update(loanDigestConfigs)
           .set({
             frequency: frequency || existing[0].frequency,
-            customDays: customDays !== undefined ? customDays : existing[0].customDays,
+            customDays: validatedCustomDays !== undefined ? validatedCustomDays : existing[0].customDays,
             timeOfDay: timeOfDay || existing[0].timeOfDay,
             timezone: timezone || existing[0].timezone,
             includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : existing[0].includeDocumentsNeeded,
             includeNotes: includeNotes !== undefined ? includeNotes : existing[0].includeNotes,
             includeMessages: includeMessages !== undefined ? includeMessages : existing[0].includeMessages,
             includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : existing[0].includeGeneralUpdates,
+            emailSubject: emailSubject !== undefined ? emailSubject : existing[0].emailSubject,
+            emailBody: emailBody !== undefined ? emailBody : existing[0].emailBody,
+            smsBody: smsBody !== undefined ? smsBody : existing[0].smsBody,
             isEnabled: isEnabled !== undefined ? isEnabled : existing[0].isEnabled,
             updatedAt: new Date(),
           })
@@ -6767,13 +6779,16 @@ export async function registerRoutes(
           .values({
             dealId,
             frequency: frequency || 'daily',
-            customDays,
+            customDays: validatedCustomDays,
             timeOfDay: timeOfDay || '09:00',
             timezone: timezone || 'America/New_York',
             includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : true,
             includeNotes: includeNotes !== undefined ? includeNotes : false,
             includeMessages: includeMessages !== undefined ? includeMessages : false,
             includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : true,
+            emailSubject: emailSubject || null,
+            emailBody: emailBody || null,
+            smsBody: smsBody || null,
             isEnabled: isEnabled !== undefined ? isEnabled : true,
             createdBy: req.user?.id,
           })

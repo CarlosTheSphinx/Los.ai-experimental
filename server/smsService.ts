@@ -114,3 +114,16 @@ export async function sendDigestSms(
   
   return sendSms(toPhoneNumber, message);
 }
+
+// Send a custom SMS with any message content
+export async function sendCustomSms(
+  toPhoneNumber: string,
+  message: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  // Truncate if message is too long (keep under 160 for single segment)
+  const truncatedMessage = message.length > 160 
+    ? message.substring(0, 157) + '...'
+    : message;
+  
+  return sendSms(toPhoneNumber, truncatedMessage);
+}

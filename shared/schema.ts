@@ -984,6 +984,11 @@ export const loanDigestConfigs = pgTable("loan_digest_configs", {
   includeMessages: boolean("include_messages").default(false).notNull(),
   includeGeneralUpdates: boolean("include_general_updates").default(true).notNull(),
   
+  // MESSAGE - customizable email/sms content
+  emailSubject: varchar("email_subject", { length: 255 }).default("Loan Update: Action Required"),
+  emailBody: text("email_body").default("Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nSphinx Capital"),
+  smsBody: text("sms_body").default("Sphinx Capital: {{documentsCount}} docs needed for your loan. Log in to your portal for details."),
+  
   isEnabled: boolean("is_enabled").default(true).notNull(),
   
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),

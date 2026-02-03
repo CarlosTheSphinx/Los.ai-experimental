@@ -87,8 +87,8 @@ The platform includes a deal-linked messaging system for communication between u
 
 **Loan Digest Notification System:**
 An automated notification system that sends periodic updates to borrowers and partners about their loan progress. Key features:
-- **Per-loan configuration**: Each project can have its own digest settings
-- **Configurable frequency**: Daily, every 3 days, weekly, or custom intervals
+- **Per-loan/deal configuration**: Each deal or project can have its own digest settings
+- **Configurable frequency**: Daily, every 2 days, every 3 days, weekly, or custom intervals (1-30 days)
 - **Configurable time of day**: Choose when digests are sent (9am, 10am, etc.)
 - **Multiple recipients**: Add borrowers, partners, or manual email/phone contacts
 - **Delivery methods**: Email (via Resend), SMS (via Twilio), or both
@@ -96,6 +96,9 @@ An automated notification system that sends periodic updates to borrowers and pa
   - Documents needed (most important - shows outstanding/missing docs)
   - General updates (stage changes, status updates)
   - Notes and messages from the lender
+- **Customizable message templates**: 
+  - Edit email subject, email body, and SMS message
+  - Available placeholders: {{recipientName}}, {{propertyAddress}}, {{documentsSection}}, {{updatesSection}}, {{documentsCount}}, {{portalLink}}
 - **Digest history**: Track all sent digests with delivery status
 - **Test digest**: Send a test to verify configuration
 - Key tables: `loan_digest_configs`, `loan_digest_recipients`, `loan_updates`, `digest_history`, `digest_state`
