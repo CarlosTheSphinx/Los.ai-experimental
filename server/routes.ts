@@ -3063,6 +3063,80 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== NOTIFICATION HELPER ====================
+  
+  // Internal helper to post a notification to a user's thread (creates thread if needed)
+  async function postDealNotification(userId: number, dealId: number, message: string, meta?: any) {
+    try {
+      // Find or create thread for this user + deal
+      let thread = await db.select().from(messageThreads)
+        .where(and(
+          eq(messageThreads.userId, userId),
+          eq(messageThreads.dealId, dealId)
+        )).limit(1);
+      
+      if (!thread[0]) {
+        // Create thread for this deal
+        const newThread = await db.insert(messageThreads).values({
+          dealId,
+          userId,
+          createdBy: null, // System created
+          subject: `Deal #${dealId} Updates`
+        }).returning();
+        thread = newThread;
+        
+        // Initialize read receipt
+        await db.insert(messageReads).values({
+          threadId: newThread[0].id,
+          userId,
+          lastReadAt: new Date('1970-01-01')
+        }).onConflictDoNothing();
+      }
+      
+      // Post notification message
+      await db.insert(messages).values({
+        threadId: thread[0].id,
+        senderId: null,
+        senderRole: 'system',
+        type: 'notification',
+        body: message,
+        meta
+      });
+      
+      // Update thread's lastMessageAt
+      await db.update(messageThreads)
+        .set({ lastMessageAt: new Date() })
+        .where(eq(messageThreads.id, thread[0].id));
+        
+      return thread[0];
+    } catch (error) {
+      console.error('Failed to post deal notification:', error);
+      return null;
+    }
+  }
+  
+  // API endpoint for posting notifications (admin only)
+  app.post('/api/messages/notify', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { userId, dealId, message, meta } = req.body;
+      
+      if (!userId || !message) {
+        return res.status(400).json({ error: 'userId and message are required' });
+      }
+      
+      const thread = await postDealNotification(userId, dealId || null, message, meta);
+      
+      if (!thread) {
+        return res.status(500).json({ error: 'Failed to send notification' });
+      }
+      
+      res.json({ success: true, threadId: thread.id });
+    } catch (error) {
+      console.error('Notify error:', error);
+      res.status(500).json({ error: 'Failed to send notification' });
+    }
+  });
+
   // ==================== ADMIN ROUTES ====================
 
   // Admin Dashboard Stats

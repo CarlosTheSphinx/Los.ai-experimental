@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { MessageSquare, Send, Bell, User, Clock, Plus, MessageCircle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { MessageSquare, Send, Bell, User, Clock, Plus, MessageCircle, Briefcase } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   listThreads, 
@@ -44,6 +45,8 @@ export default function MessagesPage() {
   const [isNewThreadDialogOpen, setIsNewThreadDialogOpen] = useState(false);
   const [newThreadSubject, setNewThreadSubject] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [selectedDealId, setSelectedDealId] = useState<string>("");
+  const [initialMessage, setInitialMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
@@ -62,6 +65,10 @@ export default function MessagesPage() {
   const { data: usersData } = useQuery<{ users: any[] }>({
     queryKey: ["/api/admin/users"],
     enabled: !!isAdmin,
+  });
+
+  const { data: quotesData } = useQuery<{ quotes: any[] }>({
+    queryKey: ["/api/saved-quotes"],
   });
 
   const threads = threadsData?.threads || [];
@@ -98,17 +105,27 @@ export default function MessagesPage() {
 
   const createThreadMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedUserId) return;
-      return createThread(parseInt(selectedUserId), undefined, newThreadSubject || undefined);
+      const targetUserId = isAdmin ? parseInt(selectedUserId) : user!.id;
+      if (!targetUserId) return;
+      const dealId = selectedDealId ? parseInt(selectedDealId) : undefined;
+      const result = await createThread(targetUserId, dealId, newThreadSubject || undefined);
+      
+      if (result?.thread && initialMessage.trim()) {
+        await sendMessage(result.thread.id, initialMessage.trim(), "message");
+      }
+      return result;
     },
     onSuccess: (data) => {
       if (data?.thread) {
         setActiveThreadId(data.thread.id);
         refetchThreads();
+        refetchThread();
       }
       setIsNewThreadDialogOpen(false);
       setNewThreadSubject("");
       setSelectedUserId("");
+      setSelectedDealId("");
+      setInitialMessage("");
     },
   });
 
@@ -138,22 +155,25 @@ export default function MessagesPage() {
           </div>
         </div>
         
-        {isAdmin && (
-          <Dialog open={isNewThreadDialogOpen} onOpenChange={setIsNewThreadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-new-thread">
-                <Plus className="h-4 w-4 mr-2" />
-                New Conversation
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Start New Conversation</DialogTitle>
-                <DialogDescription>
-                  Select a user to start a new conversation thread.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
+        <Dialog open={isNewThreadDialogOpen} onOpenChange={setIsNewThreadDialogOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-new-thread">
+              <Plus className="h-4 w-4 mr-2" />
+              {isAdmin ? "New Conversation" : "Message Lender"}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{isAdmin ? "Start New Conversation" : "Message Sphinx Capital"}</DialogTitle>
+              <DialogDescription>
+                {isAdmin 
+                  ? "Select a user to start a new conversation thread."
+                  : "Send a message to our team. We'll respond as soon as possible."
+                }
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {isAdmin && (
                 <div className="grid gap-2">
                   <Label htmlFor="user">Select User</Label>
                   <Select value={selectedUserId} onValueChange={setSelectedUserId}>
@@ -163,35 +183,67 @@ export default function MessagesPage() {
                     <SelectContent>
                       {usersData?.users?.map((u) => (
                         <SelectItem key={u.id} value={u.id.toString()}>
-                          {u.fullName || u.email}
+                          {u.fullName || u.email} {u.role === 'user' ? '(Broker)' : `(${u.role})`}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+              )}
+              
+              {quotesData?.quotes && quotesData.quotes.length > 0 && (
                 <div className="grid gap-2">
-                  <Label htmlFor="subject">Subject (optional)</Label>
-                  <Input
-                    id="subject"
-                    placeholder="e.g., Question about loan application"
-                    value={newThreadSubject}
-                    onChange={(e) => setNewThreadSubject(e.target.value)}
-                    data-testid="input-thread-subject"
-                  />
+                  <Label htmlFor="deal">Related Deal (optional)</Label>
+                  <Select value={selectedDealId} onValueChange={setSelectedDealId}>
+                    <SelectTrigger data-testid="select-deal">
+                      <SelectValue placeholder="Select a deal..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No specific deal</SelectItem>
+                      {quotesData.quotes.map((q) => (
+                        <SelectItem key={q.id} value={q.id.toString()}>
+                          {q.borrowerName || q.propertyAddress || `Quote #${q.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              )}
+              
+              <div className="grid gap-2">
+                <Label htmlFor="subject">Subject</Label>
+                <Input
+                  id="subject"
+                  placeholder="e.g., Question about loan application"
+                  value={newThreadSubject}
+                  onChange={(e) => setNewThreadSubject(e.target.value)}
+                  data-testid="input-thread-subject"
+                />
               </div>
-              <DialogFooter>
-                <Button
-                  onClick={() => createThreadMutation.mutate()}
-                  disabled={!selectedUserId || createThreadMutation.isPending}
-                  data-testid="button-create-thread"
-                >
-                  Start Conversation
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+              
+              <div className="grid gap-2">
+                <Label htmlFor="message">Message</Label>
+                <Textarea
+                  id="message"
+                  placeholder="Type your message here..."
+                  value={initialMessage}
+                  onChange={(e) => setInitialMessage(e.target.value)}
+                  rows={4}
+                  data-testid="input-initial-message"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => createThreadMutation.mutate()}
+                disabled={(isAdmin && !selectedUserId) || !initialMessage.trim() || createThreadMutation.isPending}
+                data-testid="button-create-thread"
+              >
+                Send Message
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex h-[calc(100vh-200px)] gap-4">
