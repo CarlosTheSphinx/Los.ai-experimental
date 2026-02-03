@@ -467,11 +467,30 @@ export default function AdminDealDetail() {
     },
   });
 
-  const handleContactBorrower = () => {
+  const handleContactBorrower = async () => {
     if (deal?.customerEmail) {
-      const subject = encodeURIComponent(`Regarding Your Loan - ${deal.propertyAddress}`);
-      const body = encodeURIComponent(`Dear ${deal.customerFirstName},\n\n`);
-      window.location.href = `mailto:${deal.customerEmail}?subject=${subject}&body=${body}`;
+      const subject = `Regarding Your Loan - ${deal.propertyAddress}`;
+      const mailtoLink = `mailto:${deal.customerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Dear ${deal.customerFirstName},\n\n`)}`;
+      
+      const link = document.createElement('a');
+      link.href = mailtoLink;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      try {
+        await navigator.clipboard.writeText(deal.customerEmail);
+        toast({
+          title: "Email address copied",
+          description: `${deal.customerEmail} copied to clipboard. If your email app didn't open, paste this address manually.`,
+        });
+      } catch {
+        toast({
+          title: "Borrower Email",
+          description: `${deal.customerEmail} - Copy this to email the borrower.`,
+        });
+      }
     } else {
       toast({
         title: "No email available",
