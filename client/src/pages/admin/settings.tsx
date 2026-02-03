@@ -296,8 +296,12 @@ export default function AdminSettings() {
     const { active, over } = event;
     
     if (over && active.id !== over.id) {
-      const oldIndex = stages.findIndex((s) => s.id === active.id);
-      const newIndex = stages.findIndex((s) => s.id === over.id);
+      const activeId = Number(active.id);
+      const overId = Number(over.id);
+      const oldIndex = stages.findIndex((s) => s.id === activeId);
+      const newIndex = stages.findIndex((s) => s.id === overId);
+      
+      if (oldIndex === -1 || newIndex === -1) return;
       
       const newStages = arrayMove(stages, oldIndex, newIndex);
       setStages(newStages);
