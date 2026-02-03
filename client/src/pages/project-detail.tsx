@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Building2,
   Calendar,
+  CalendarDays,
   DollarSign,
   User,
   Mail,
@@ -37,6 +38,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DigestConfigPanel } from "@/components/DigestConfigPanel";
 
 interface Task {
   id: number;
@@ -358,6 +360,10 @@ export default function ProjectDetail() {
             <FileText className="h-4 w-4 mr-2" />
             Documents
           </TabsTrigger>
+          <TabsTrigger value="digests" data-testid="tab-digests">
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Digests
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tasks" className="space-y-4">
@@ -458,6 +464,10 @@ export default function ProjectDetail() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="digests">
+          {projectId && <DigestConfigPanel projectId={projectId} />}
         </TabsContent>
       </Tabs>
     </div>
