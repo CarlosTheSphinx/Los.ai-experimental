@@ -152,80 +152,28 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
                   Loan Details
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="loanType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-slate-700">Loan Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-11 bg-slate-50 border-slate-200" data-testid="select-rtl-loan-type">
-                              <SelectValue placeholder="Select loan type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="light_rehab">Rehab</SelectItem>
-                            <SelectItem value="bridge_no_rehab">Bridge (No Rehab)</SelectItem>
-                            <SelectItem value="guc">Ground Up Construction (GUC)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="purpose"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-slate-700">Loan Purpose</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-11 bg-slate-50 border-slate-200" data-testid="select-rtl-purpose">
-                              <SelectValue placeholder="Select purpose" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="purchase">Purchase</SelectItem>
-                            <SelectItem value="refi">Refinance</SelectItem>
-                            <SelectItem value="cash_out">Cash-Out Refinance</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {purpose === "cash_out" && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="cashOutAmount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-slate-700">Cash-Out Amount ($)</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                              <Input
-                                type="number"
-                                className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                                placeholder="Enter cash-out amount"
-                                data-testid="input-rtl-cashout"
-                                {...field}
-                              />
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
+                <FormField
+                  control={form.control}
+                  name="loanType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Loan Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 bg-slate-50 border-slate-200" data-testid="select-rtl-loan-type">
+                            <SelectValue placeholder="Select loan type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="light_rehab">Rehab</SelectItem>
+                          <SelectItem value="bridge_no_rehab">Bridge (No Rehab)</SelectItem>
+                          <SelectItem value="guc">Ground Up Construction (GUC)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
