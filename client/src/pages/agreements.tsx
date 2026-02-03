@@ -48,7 +48,8 @@ import {
   ClipboardList,
   Users,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +71,7 @@ interface Agreement {
   sentAt?: string;
   completedAt?: string;
   voidedAt?: string;
+  quoteId?: number;
   totalSigners: number;
   signedCount: number;
   signers: Signer[];
@@ -370,6 +372,19 @@ export default function Agreements() {
                             View Details
                           </Link>
                         </DropdownMenuItem>
+                        
+                        {agreement.quoteId && (
+                          <DropdownMenuItem asChild>
+                            <Link 
+                              href={`/messages?dealId=${agreement.quoteId}&new=true`} 
+                              className="flex items-center gap-2"
+                              data-testid={`action-message-${agreement.id}`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              Message about Deal
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
                         
                         {canResend(agreement.status) && (
                           <DropdownMenuItem 

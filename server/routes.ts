@@ -1783,6 +1783,7 @@ export async function registerRoutes(
           sentAt: doc.sentAt,
           completedAt: doc.completedAt,
           voidedAt: doc.voidedAt,
+          quoteId: doc.quoteId,
           totalSigners: docSigners.length,
           signedCount,
           signers: docSigners.map(s => ({
@@ -2870,9 +2871,13 @@ export async function registerRoutes(
   // Create or get thread (by dealId + userId)
   app.post('/api/messages/threads', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      const { dealId = null, userId: targetUserId, subject = null } = req.body;
+      const { dealId, userId: targetUserId, subject = null } = req.body;
       const requesterRole = req.user!.role;
       const requesterId = req.user!.id;
+
+      if (!dealId) {
+        return res.status(400).json({ error: 'dealId is required' });
+      }
 
       if (!targetUserId) {
         return res.status(400).json({ error: 'userId is required' });
@@ -2884,20 +2889,11 @@ export async function registerRoutes(
       }
 
       // Check if thread already exists for this user + deal combination
-      let existing;
-      if (dealId) {
-        existing = await db.select().from(messageThreads)
-          .where(and(
-            eq(messageThreads.userId, parseInt(targetUserId)),
-            eq(messageThreads.dealId, parseInt(dealId))
-          )).limit(1);
-      } else {
-        existing = await db.select().from(messageThreads)
-          .where(and(
-            eq(messageThreads.userId, parseInt(targetUserId)),
-            isNull(messageThreads.dealId)
-          )).limit(1);
-      }
+      const existing = await db.select().from(messageThreads)
+        .where(and(
+          eq(messageThreads.userId, parseInt(targetUserId)),
+          eq(messageThreads.dealId, parseInt(dealId))
+        )).limit(1);
 
       if (existing[0]) {
         return res.json({ thread: existing[0] });
@@ -2905,7 +2901,7 @@ export async function registerRoutes(
 
       // Create new thread
       const newThread = await db.insert(messageThreads).values({
-        dealId: dealId ? parseInt(dealId) : null,
+        dealId: parseInt(dealId),
         userId: parseInt(targetUserId),
         createdBy: requesterId,
         subject: subject

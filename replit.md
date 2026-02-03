@@ -56,8 +56,17 @@ The admin system provides role-based access for managing users, deals, projects,
 **Data Flow:**
 User input from the frontend is validated, then the backend triggers an Apify actor with loan parameters. The Apify script scrapes the external pricing provider, and the interest rate is returned to the user. Users can save quotes with customer details and commission calculations.
 
+**Messaging System:**
+The platform includes a deal-linked messaging system for communication between users and admins. All message threads must be linked to a specific deal (saved quote). Key features:
+- **Message icons** on Saved Quotes, Agreements, and Projects for quick access
+- **Deal-required threads**: Every conversation is linked to a deal for context
+- **Automatic notifications**: System posts notifications to threads when documents are uploaded, deal stages change, or tasks are completed
+- **Role-based access**: Admins can message any user; non-admins can only create threads for themselves (to message the lender)
+- Message threads are stored in `message_threads` table with `dealId` (required), `userId`, and `subject`
+- Individual messages stored in `messages` table with sender info and type (message/notification)
+
 **Database Schema Highlights:**
-Key tables include `users`, `pricing_requests`, `saved_quotes`, `documents`, `signers`, `document_fields`, `audit_logs`, `projects`, `project_stages`, `project_tasks`, `project_activity`, `project_documents`, `project_webhooks`, `system_settings`, `admin_tasks`, `admin_activity`, `partners`, `loanPrograms`, `programDocumentTemplates`, and `programTaskTemplates`. Foreign keys with CASCADE delete ensure data integrity and isolation.
+Key tables include `users`, `pricing_requests`, `saved_quotes`, `documents`, `signers`, `document_fields`, `audit_logs`, `projects`, `project_stages`, `project_tasks`, `project_activity`, `project_documents`, `project_webhooks`, `system_settings`, `admin_tasks`, `admin_activity`, `partners`, `loanPrograms`, `programDocumentTemplates`, `programTaskTemplates`, `message_threads`, `messages`, and `message_reads`. Foreign keys with CASCADE delete ensure data integrity and isolation.
 
 ## External Dependencies
 

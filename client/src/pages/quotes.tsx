@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Clock,
   CheckCircle,
-  Edit
+  Edit,
+  MessageSquare
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -387,15 +388,25 @@ export default function Quotes() {
                     <QuoteDocumentStatus quoteId={quote.id} />
 
                     <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => handleEditQuote(quote)}
-                        className="w-full"
-                        data-testid={`button-edit-quote-${quote.id}`}
-                      >
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit Quote
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleEditQuote(quote)}
+                          className="flex-1"
+                          data-testid={`button-edit-quote-${quote.id}`}
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit Quote
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate(`/messages?dealId=${quote.id}&new=true`)}
+                          data-testid={`button-message-quote-${quote.id}`}
+                          title="Message about this deal"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </Button>
+                      </div>
                       <Button
                         onClick={() => setSigningQuote(quote)}
                         className="w-full"

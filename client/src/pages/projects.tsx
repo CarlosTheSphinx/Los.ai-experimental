@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { 
   FolderKanban, 
   Plus, 
@@ -11,7 +11,8 @@ import {
   User,
   CheckCircle2,
   Clock,
-  AlertCircle
+  AlertCircle,
+  MessageSquare
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,9 +38,11 @@ interface Project {
   createdAt: string;
   completedTasks: number;
   totalTasks: number;
+  quoteId?: number | null;
 }
 
 export default function Projects() {
+  const [, setLocation] = useLocation();
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -200,7 +203,24 @@ export default function Projects() {
                         {project.projectName}
                       </CardTitle>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-1" />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {project.quoteId && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setLocation(`/messages?dealId=${project.quoteId}&new=true`);
+                          }}
+                          title="Message about this deal"
+                          data-testid={`button-message-project-${project.id}`}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <ArrowRight className="h-4 w-4 text-muted-foreground mt-1" />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">

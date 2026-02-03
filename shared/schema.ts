@@ -844,10 +844,10 @@ export type PricingRules = z.infer<typeof pricingRulesSchema>;
 
 // ==================== MESSAGING SYSTEM ====================
 
-// Message threads - a conversation room (can be tied to a deal or general)
+// Message threads - a conversation room tied to a specific deal
 export const messageThreads = pgTable("message_threads", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   subject: varchar("subject", { length: 255 }),

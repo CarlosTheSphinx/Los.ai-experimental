@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,12 @@ import { Label } from "@/components/ui/label";
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const urlDealId = searchParams.get('dealId');
+  const openNew = searchParams.get('new') === 'true';
+  
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [isNewThreadDialogOpen, setIsNewThreadDialogOpen] = useState(false);
@@ -68,8 +75,19 @@ export default function MessagesPage() {
   });
 
   const { data: quotesData } = useQuery<{ quotes: any[] }>({
-    queryKey: ["/api/saved-quotes"],
+    queryKey: ["/api/quotes"],
   });
+  
+  // Handle URL params for opening new thread with pre-selected deal
+  // Wait for quotes data to be loaded before opening dialog
+  useEffect(() => {
+    if (urlDealId && openNew && quotesData?.quotes) {
+      setSelectedDealId(urlDealId);
+      setIsNewThreadDialogOpen(true);
+      // Clear URL params after handling
+      setLocation('/messages', { replace: true });
+    }
+  }, [urlDealId, openNew, setLocation, quotesData]);
 
   const threads = threadsData?.threads || [];
   const activeThread = activeThreadData?.thread;
@@ -106,8 +124,8 @@ export default function MessagesPage() {
   const createThreadMutation = useMutation({
     mutationFn: async () => {
       const targetUserId = isAdmin ? parseInt(selectedUserId) : user!.id;
-      if (!targetUserId) return;
-      const dealId = selectedDealId ? parseInt(selectedDealId) : undefined;
+      if (!targetUserId || !selectedDealId) return;
+      const dealId = parseInt(selectedDealId);
       const result = await createThread(targetUserId, dealId, newThreadSubject || undefined);
       
       if (result?.thread && initialMessage.trim()) {
@@ -191,24 +209,27 @@ export default function MessagesPage() {
                 </div>
               )}
               
-              {quotesData?.quotes && quotesData.quotes.length > 0 && (
-                <div className="grid gap-2">
-                  <Label htmlFor="deal">Related Deal (optional)</Label>
-                  <Select value={selectedDealId} onValueChange={setSelectedDealId}>
-                    <SelectTrigger data-testid="select-deal">
-                      <SelectValue placeholder="Select a deal..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">No specific deal</SelectItem>
-                      {quotesData.quotes.map((q) => (
-                        <SelectItem key={q.id} value={q.id.toString()}>
-                          {q.borrowerName || q.propertyAddress || `Quote #${q.id}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="grid gap-2">
+                <Label htmlFor="deal">Related Deal <span className="text-destructive">*</span></Label>
+                <Select value={selectedDealId} onValueChange={setSelectedDealId}>
+                  <SelectTrigger data-testid="select-deal">
+                    <SelectValue placeholder="Select a deal..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quotesData?.quotes?.map((q) => (
+                      <SelectItem key={q.id} value={q.id.toString()}>
+                        {q.borrowerName || q.propertyAddress || `Quote #${q.id}`}
+                      </SelectItem>
+                    ))}
+                    {(!quotesData?.quotes || quotesData.quotes.length === 0) && (
+                      <div className="p-2 text-sm text-muted-foreground">No deals available</div>
+                    )}
+                  </SelectContent>
+                </Select>
+                {!selectedDealId && (
+                  <p className="text-xs text-muted-foreground">All conversations must be linked to a deal</p>
+                )}
+              </div>
               
               <div className="grid gap-2">
                 <Label htmlFor="subject">Subject</Label>
@@ -236,7 +257,7 @@ export default function MessagesPage() {
             <DialogFooter>
               <Button
                 onClick={() => createThreadMutation.mutate()}
-                disabled={(isAdmin && !selectedUserId) || !initialMessage.trim() || createThreadMutation.isPending}
+                disabled={(isAdmin && !selectedUserId) || !selectedDealId || !initialMessage.trim() || createThreadMutation.isPending}
                 data-testid="button-create-thread"
               >
                 Send Message
