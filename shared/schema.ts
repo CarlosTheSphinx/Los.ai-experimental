@@ -600,6 +600,23 @@ export type InsertAdminTask = z.infer<typeof insertAdminTaskSchema>;
 export type AdminActivity = typeof adminActivity.$inferSelect;
 export type InsertAdminActivity = z.infer<typeof insertAdminActivitySchema>;
 
+// Deal Stages - configurable deal workflow stages
+export const dealStages = pgTable("deal_stages", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 50 }).unique().notNull(), // e.g., "new", "initial-review"
+  label: varchar("label", { length: 100 }).notNull(), // e.g., "New", "Initial Review"
+  color: varchar("color", { length: 50 }).notNull(), // e.g., "gray", "yellow", "green"
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDealStageSchema = createInsertSchema(dealStages).omit({ id: true, createdAt: true, updatedAt: true });
+export type DealStage = typeof dealStages.$inferSelect;
+export type InsertDealStage = z.infer<typeof insertDealStageSchema>;
+
 // Loan Programs - configurable loan program settings
 export const loanPrograms = pgTable("loan_programs", {
   id: serial("id").primaryKey(),
