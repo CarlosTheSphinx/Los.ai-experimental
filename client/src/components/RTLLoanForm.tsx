@@ -30,7 +30,7 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
   const form = useForm<RTLPricingFormData>({
     resolver: zodResolver(rtlPricingFormSchema),
     defaultValues: {
-      loanType: "bridge_no_rehab",
+      loanType: "light_rehab",
       purpose: "purchase",
       propertyUnits: 1,
       asIsValue: 0,
@@ -143,6 +143,7 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            <SelectItem value="light_rehab">Rehab</SelectItem>
                             <SelectItem value="bridge_no_rehab">Bridge (No Rehab)</SelectItem>
                             <SelectItem value="guc">Ground Up Construction (GUC)</SelectItem>
                           </SelectContent>
