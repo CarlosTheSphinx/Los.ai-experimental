@@ -28,6 +28,7 @@ import AdminDealDetail from "@/pages/admin/deal-detail";
 import AdminPartners from "@/pages/admin/partners";
 import AdminPrograms from "@/pages/admin/programs";
 import AdminOnboarding from "@/pages/admin/onboarding";
+import AdminDigests from "@/pages/admin/digests";
 import MessagesPage from "@/pages/messages";
 import OnboardingPage from "@/pages/onboarding";
 import ResourcesPage from "@/pages/resources";
@@ -125,6 +126,7 @@ function MainRoutes() {
         <Route path="/admin/projects/:id" component={() => <AdminProtectedRoute component={AdminProjectDetail} />} />
         <Route path="/admin/settings" component={() => <AdminProtectedRoute component={AdminSettings} />} />
         <Route path="/admin/onboarding" component={() => <AdminProtectedRoute component={AdminOnboarding} />} />
+        <Route path="/admin/digests" component={() => <AdminProtectedRoute component={AdminDigests} />} />
         
         <Route component={NotFound} />
       </Switch>

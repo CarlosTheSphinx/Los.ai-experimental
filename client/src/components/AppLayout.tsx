@@ -13,6 +13,7 @@ import {
   Handshake,
   MessageSquare,
   BookOpen,
+  CalendarDays,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -59,6 +60,7 @@ const adminNavItems = [
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/programs", label: "Programs", icon: Settings2 },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen },
+  { href: "/admin/digests", label: "Digests", icon: CalendarDays },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/projects", label: "All Projects", icon: FolderKanban },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },

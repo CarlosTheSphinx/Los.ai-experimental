@@ -6,7 +6,8 @@ import { db } from "./db";
 import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
-import { eq, desc, inArray, and, gt, sql, isNull } from "drizzle-orm";
+import { eq, desc, inArray, and, gt, gte, lte, sql, isNull } from "drizzle-orm";
+import { format } from "date-fns";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
 import { z } from "zod";
@@ -5849,6 +5850,134 @@ export async function registerRoutes(
   });
 
   // ==================== LOAN DIGEST NOTIFICATION ROUTES ====================
+
+  // Admin - Get scheduled digests for a specific date
+  app.get('/api/admin/digests/scheduled', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dateStr = req.query.date as string || format(new Date(), 'yyyy-MM-dd');
+      const targetDate = new Date(dateStr + 'T00:00:00');
+      
+      // Get all enabled digest configs with their projects and recipients
+      const configs = await db.select({
+        id: loanDigestConfigs.id,
+        projectId: loanDigestConfigs.projectId,
+        frequency: loanDigestConfigs.frequency,
+        customDays: loanDigestConfigs.customDays,
+        timeOfDay: loanDigestConfigs.timeOfDay,
+        timezone: loanDigestConfigs.timezone,
+        includeDocumentsNeeded: loanDigestConfigs.includeDocumentsNeeded,
+        includeNotes: loanDigestConfigs.includeNotes,
+        includeMessages: loanDigestConfigs.includeMessages,
+        includeGeneralUpdates: loanDigestConfigs.includeGeneralUpdates,
+        isEnabled: loanDigestConfigs.isEnabled,
+        projectName: projects.projectName,
+        borrowerName: savedQuotes.customerFirstName,
+      })
+        .from(loanDigestConfigs)
+        .innerJoin(projects, eq(loanDigestConfigs.projectId, projects.id))
+        .leftJoin(savedQuotes, eq(projects.quoteId, savedQuotes.id))
+        .where(eq(loanDigestConfigs.isEnabled, true));
+      
+      // For each config, get recipients and sent history for the target date
+      const digestsWithDetails = await Promise.all(configs.map(async (config) => {
+        // Get recipients
+        const recipients = await db.select({
+          id: loanDigestRecipients.id,
+          userId: loanDigestRecipients.userId,
+          recipientName: loanDigestRecipients.recipientName,
+          recipientEmail: loanDigestRecipients.recipientEmail,
+          recipientPhone: loanDigestRecipients.recipientPhone,
+          deliveryMethod: loanDigestRecipients.deliveryMethod,
+          isActive: loanDigestRecipients.isActive,
+        })
+          .from(loanDigestRecipients)
+          .where(and(
+            eq(loanDigestRecipients.configId, config.id),
+            eq(loanDigestRecipients.isActive, true)
+          ));
+        
+        // Get user names for linked recipients
+        const recipientsWithNames = await Promise.all(recipients.map(async (r) => {
+          let name = r.recipientName;
+          if (r.userId && !name) {
+            const user = await db.select({ fullName: users.fullName })
+              .from(users)
+              .where(eq(users.id, r.userId))
+              .limit(1);
+            name = user[0]?.fullName || null;
+          }
+          return {
+            id: r.id,
+            name,
+            email: r.recipientEmail,
+            phone: r.recipientPhone,
+            deliveryMethod: r.deliveryMethod,
+          };
+        }));
+        
+        // Get sent digests for this date
+        const startOfTargetDay = new Date(targetDate);
+        startOfTargetDay.setHours(0, 0, 0, 0);
+        const endOfTargetDay = new Date(targetDate);
+        endOfTargetDay.setHours(23, 59, 59, 999);
+        
+        const sentDigests = await db.select({
+          id: digestHistory.id,
+          recipientAddress: digestHistory.recipientAddress,
+          deliveryMethod: digestHistory.deliveryMethod,
+          status: digestHistory.status,
+          documentsCount: digestHistory.documentsCount,
+          updatesCount: digestHistory.updatesCount,
+          sentAt: digestHistory.sentAt,
+          errorMessage: digestHistory.errorMessage,
+        })
+          .from(digestHistory)
+          .where(and(
+            eq(digestHistory.configId, config.id),
+            gte(digestHistory.sentAt, startOfTargetDay),
+            lte(digestHistory.sentAt, endOfTargetDay)
+          ))
+          .orderBy(desc(digestHistory.sentAt));
+        
+        return {
+          configId: config.id,
+          projectId: config.projectId,
+          projectName: config.projectName || `Project #${config.projectId}`,
+          borrowerName: config.borrowerName,
+          frequency: config.frequency,
+          timeOfDay: config.timeOfDay,
+          timezone: config.timezone,
+          recipientCount: recipientsWithNames.length,
+          recipients: recipientsWithNames,
+          contentSettings: {
+            includeDocumentsNeeded: config.includeDocumentsNeeded,
+            includeNotes: config.includeNotes,
+            includeMessages: config.includeMessages,
+            includeGeneralUpdates: config.includeGeneralUpdates,
+          },
+          sentDigests: sentDigests.map(s => ({
+            ...s,
+            sentAt: s.sentAt?.toISOString() || new Date().toISOString(),
+          })),
+        };
+      }));
+      
+      // Filter to only show digests scheduled for this day based on frequency
+      // For now, show all enabled digests - frequency filtering would require tracking state
+      const filteredDigests = digestsWithDetails.filter(d => d.recipientCount > 0);
+      
+      // Sort by time of day
+      filteredDigests.sort((a, b) => a.timeOfDay.localeCompare(b.timeOfDay));
+      
+      res.json({
+        date: dateStr,
+        digests: filteredDigests,
+      });
+    } catch (error) {
+      console.error('Error fetching scheduled digests:', error);
+      res.status(500).json({ error: 'Failed to fetch scheduled digests' });
+    }
+  });
 
   // Cron endpoint - runs digest job (should be called by external scheduler)
   app.post('/api/cron/digests', async (req: Request, res: Response) => {
