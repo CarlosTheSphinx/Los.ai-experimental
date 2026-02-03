@@ -92,15 +92,20 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
 
   return (
     <Card className="w-full bg-white/90 backdrop-blur-sm shadow-xl border-slate-200/60 overflow-hidden">
-      <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-6">
+      <CardHeader className="bg-blue-50/50 border-b border-blue-100 pb-6">
         <div className="flex items-center gap-3 mb-1">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Calculator className="h-6 w-6 text-primary" />
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Calculator className="h-6 w-6 text-blue-600" />
           </div>
-          <CardTitle className="text-2xl font-bold text-slate-800">Loan Parameters</CardTitle>
+          <div>
+            <CardTitle className="text-2xl font-bold text-slate-800">DSCR Loan Parameters</CardTitle>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mt-1">
+              Debt Service Coverage Ratio
+            </span>
+          </div>
         </div>
-        <CardDescription className="text-base text-slate-500">
-          Enter the loan details below to receive a real-time interest rate quote.
+        <CardDescription className="text-base text-slate-500 mt-2">
+          Enter the DSCR loan details below to receive a real-time interest rate quote.
         </CardDescription>
       </CardHeader>
 

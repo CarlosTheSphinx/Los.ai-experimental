@@ -64,6 +64,9 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   
+  // Loan product type selector
+  const [loanProductType, setLoanProductType] = useState<"dscr" | "rtl">("dscr");
+  
   // Instant pricing mode state
   const [showInstantPricing, setShowInstantPricing] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
@@ -174,6 +177,41 @@ export default function Home() {
       </header>
 
       <div className="p-6">
+        {/* Loan Product Type Selector */}
+        <Card className="mb-6">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">Loan Product Type</CardTitle>
+            <CardDescription>Select the type of loan you want to price</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select
+              value={loanProductType}
+              onValueChange={(v: "dscr" | "rtl") => {
+                setLoanProductType(v);
+                setResult(null);
+              }}
+            >
+              <SelectTrigger className="w-full md:w-80" data-testid="select-loan-product-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dscr">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">DSCR</Badge>
+                    <span>DSCR Loan (Debt Service Coverage Ratio)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="rtl">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700">RTL</Badge>
+                    <span>Fix and Flip / RTL (Residential Transitional Loan)</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
         {/* Instant Pricing Panel */}
         {showInstantPricing && (
           <motion.div
@@ -434,11 +472,42 @@ export default function Home() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
-              <LoanForm 
-                onSubmit={handleSubmit} 
-                isLoading={isPending} 
-                defaultData={lastFormData}
-              />
+              {loanProductType === "dscr" ? (
+                <LoanForm 
+                  onSubmit={handleSubmit} 
+                  isLoading={isPending} 
+                  defaultData={lastFormData}
+                />
+              ) : (
+                <Card className="w-full bg-white/90 backdrop-blur-sm shadow-xl border-slate-200/60 overflow-hidden">
+                  <CardHeader className="bg-orange-50/50 border-b border-orange-100 pb-6">
+                    <div className="flex items-center gap-3 mb-1">
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <Calculator className="h-6 w-6 text-orange-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl font-bold text-slate-800">Fix and Flip / RTL Parameters</CardTitle>
+                        <Badge variant="secondary" className="mt-1 bg-orange-100 text-orange-700">Residential Transitional Loan</Badge>
+                      </div>
+                    </div>
+                    <CardDescription className="text-base text-slate-500 mt-2">
+                      Enter the loan details for your Fix and Flip or RTL pricing quote.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-8 px-6 pb-8">
+                    <div className="text-center py-12">
+                      <div className="p-4 bg-orange-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                        <Calculator className="h-10 w-10 text-orange-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-700 mb-2">RTL Pricing Coming Soon</h3>
+                      <p className="text-slate-500 max-w-md mx-auto">
+                        The Fix and Flip / RTL loan pricing form is being configured. 
+                        Please check back soon or contact support for manual pricing.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </motion.div>
           ) : (
             <motion.div

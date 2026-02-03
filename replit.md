@@ -24,7 +24,9 @@ The application is built with a modern web stack, utilizing React 18 with TypeSc
 - **Build Tool**: Vite
 
 The frontend features a left sidebar navigation leading to key sections:
-- **New Quote**: Loan pricing form with real-time LTV/DSCR calculations.
+- **New Quote**: Loan pricing form with loan product type selector supporting two loan types:
+  - **DSCR (Debt Service Coverage Ratio)**: Includes gross monthly rent, annual taxes/insurance, calculated DSCR ratio, LTV calculations.
+  - **Fix and Flip / RTL (Residential Transitional Loan)**: Pricing details pending configuration.
 - **Saved Quotes**: Management of saved pricing quotes with document status.
 - **Agreements**: Comprehensive agreement management including filtering, search, and detailed views with PDF viewer, field overlays, signers panel, and document timeline.
 - **Projects**: Loan closing progress management with project cards, task checklists, activity timelines, document management, and borrower portal link sharing.
