@@ -79,18 +79,17 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
   // Determine if this is a rehab loan (has rehab budget > 0)
   const isRehabLoan = (rehabBudget || 0) > 0 && loanType !== "guc";
 
-  // Auto-set loan type based on rehab budget
+  // Auto-set loan type based on rehab budget (only when both values are entered)
   useEffect(() => {
-    if (loanType === "guc") return; // Don't override GUC
+    if (loanType === "guc" || loanType === "bridge_no_rehab") return; // Don't override GUC or Bridge
     
+    // Only auto-switch between light/heavy rehab when values are present
     if (asIsValue > 0 && rehabBudget > 0) {
       const rehabPercent = rehabBudget / asIsValue * 100;
       const newType = rehabPercent >= 50 ? "heavy_rehab" : "light_rehab";
-      if (loanType !== newType && loanType !== "guc") {
+      if (loanType !== newType) {
         form.setValue("loanType", newType);
       }
-    } else if (rehabBudget === 0 && loanType !== "bridge_no_rehab" && loanType !== "guc") {
-      form.setValue("loanType", "bridge_no_rehab");
     }
   }, [asIsValue, rehabBudget, loanType, form]);
 
