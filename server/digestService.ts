@@ -12,6 +12,7 @@ import {
   projectDocuments,
   projectTasks,
   dealDocuments,
+  savedQuotes,
   users,
   type LoanDigestConfig,
   type LoanDigestRecipient,
@@ -148,6 +149,44 @@ export async function getOutstandingDocuments(projectId: number): Promise<Outsta
       status: 'missing',
       dueDate: null,
       notes: null,
+    });
+  });
+
+  return outstandingDocs;
+}
+
+// Get outstanding documents for a deal directly (without needing a linked project)
+export async function getOutstandingDocumentsForDeal(dealId: number): Promise<OutstandingDocument[]> {
+  const outstandingDocs: OutstandingDocument[] = [];
+  
+  // Get outstanding documents from dealDocuments
+  const dealDocs = await db
+    .select({
+      id: dealDocuments.id,
+      name: dealDocuments.documentName,
+      category: dealDocuments.documentCategory,
+      status: dealDocuments.status,
+      notes: dealDocuments.reviewNotes,
+      isRequired: dealDocuments.isRequired,
+    })
+    .from(dealDocuments)
+    .where(and(
+      eq(dealDocuments.dealId, dealId),
+      or(
+        eq(dealDocuments.status, 'pending'),
+        eq(dealDocuments.status, 'uploaded'),
+        eq(dealDocuments.status, 'rejected')
+      )
+    ));
+  
+  dealDocs.forEach(doc => {
+    outstandingDocs.push({
+      id: doc.id,
+      name: doc.name,
+      category: doc.category,
+      status: doc.status,
+      dueDate: null,
+      notes: doc.notes,
     });
   });
 
@@ -514,8 +553,8 @@ export async function runDigestJob(): Promise<{ processed: number; errors: strin
   console.log(`Running digest job at ${now.toISOString()}`);
 
   try {
-    // Get all enabled configs with their projects
-    const configs = await db
+    // PART 1: Process project-based configs
+    const projectConfigs = await db
       .select({
         config: loanDigestConfigs,
         project: projects,
@@ -527,7 +566,7 @@ export async function runDigestJob(): Promise<{ processed: number; errors: strin
         eq(projects.status, 'active')
       ));
 
-    for (const { config, project } of configs) {
+    for (const { config, project } of projectConfigs) {
       // Get recipients for this config
       const recipients = await db
         .select()
@@ -562,6 +601,63 @@ export async function runDigestJob(): Promise<{ processed: number; errors: strin
         }
       }
     }
+
+    // PART 2: Process deal-based configs (configs with dealId but no projectId)
+    const dealConfigs = await db
+      .select({
+        config: loanDigestConfigs,
+        deal: savedQuotes,
+      })
+      .from(loanDigestConfigs)
+      .innerJoin(savedQuotes, eq(loanDigestConfigs.dealId, savedQuotes.id))
+      .where(and(
+        eq(loanDigestConfigs.isEnabled, true),
+        isNull(loanDigestConfigs.projectId)
+      ));
+
+    for (const { config, deal } of dealConfigs) {
+      // Get recipients for this config
+      const recipients = await db
+        .select()
+        .from(loanDigestRecipients)
+        .where(and(
+          eq(loanDigestRecipients.configId, config.id),
+          eq(loanDigestRecipients.isActive, true)
+        ));
+
+      for (const recipient of recipients) {
+        try {
+          // Check if digest is due
+          const state = await db
+            .select()
+            .from(digestState)
+            .where(and(
+              eq(digestState.configId, config.id),
+              eq(digestState.recipientId, recipient.id)
+            ));
+
+          const shouldSend = !state[0] || new Date(state[0].nextDigestDueAt) <= now;
+
+          if (shouldSend) {
+            // Create pseudo-project for template compatibility
+            const pseudoProject = {
+              id: deal.id,
+              projectName: `${deal.customerFirstName} ${deal.customerLastName} - ${deal.propertyAddress}`.substring(0, 100),
+              borrowerName: `${deal.customerFirstName} ${deal.customerLastName}`,
+              borrowerEmail: deal.customerEmail,
+              propertyAddress: deal.propertyAddress,
+              status: deal.stage || 'new',
+            } as any;
+
+            await processDigestForDeal(config, recipient, deal, pseudoProject);
+            processed++;
+          }
+        } catch (error: any) {
+          console.error(`Error processing deal digest for recipient ${recipient.id}:`, error);
+          errors.push(`Recipient ${recipient.id}: ${error.message}`);
+        }
+      }
+    }
   } catch (error: any) {
     console.error('Error running digest job:', error);
     errors.push(error.message);
@@ -574,16 +670,13 @@ export async function runDigestJob(): Promise<{ processed: number; errors: strin
 // Send an immediate test digest
 export async function sendTestDigest(configId: number, recipientId: number): Promise<{ success: boolean; error?: string }> {
   try {
-    const configResult = await db
-      .select({
-        config: loanDigestConfigs,
-        project: projects,
-      })
+    // First get the config
+    const [config] = await db
+      .select()
       .from(loanDigestConfigs)
-      .innerJoin(projects, eq(loanDigestConfigs.projectId, projects.id))
       .where(eq(loanDigestConfigs.id, configId));
 
-    if (!configResult[0]) {
+    if (!config) {
       return { success: false, error: 'Config not found' };
     }
 
@@ -596,9 +689,143 @@ export async function sendTestDigest(configId: number, recipientId: number): Pro
       return { success: false, error: 'Recipient not found' };
     }
 
-    await processDigest(configResult[0].config, recipient[0], configResult[0].project);
-    return { success: true };
+    // Handle deal-based configs (no linked project)
+    if (config.dealId && !config.projectId) {
+      // Get deal info
+      const [deal] = await db
+        .select()
+        .from(savedQuotes)
+        .where(eq(savedQuotes.id, config.dealId));
+      
+      if (!deal) {
+        return { success: false, error: 'Deal not found' };
+      }
+      
+      // Create a pseudo-project object for the digest template
+      const pseudoProject = {
+        id: deal.id,
+        projectName: `${deal.customerFirstName} ${deal.customerLastName} - ${deal.propertyAddress}`.substring(0, 100),
+        borrowerName: `${deal.customerFirstName} ${deal.customerLastName}`,
+        borrowerEmail: deal.customerEmail,
+        propertyAddress: deal.propertyAddress,
+        status: deal.stage || 'new',
+      } as any;
+      
+      await processDigestForDeal(config, recipient[0], deal, pseudoProject);
+      return { success: true };
+    }
+    
+    // Handle project-based configs (original behavior)
+    if (config.projectId) {
+      const [project] = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, config.projectId));
+      
+      if (!project) {
+        return { success: false, error: 'Project not found' };
+      }
+      
+      await processDigest(config, recipient[0], project);
+      return { success: true };
+    }
+
+    return { success: false, error: 'Config has no associated deal or project' };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+// Process digest specifically for a deal (without linked project)
+async function processDigestForDeal(
+  config: LoanDigestConfig,
+  recipient: LoanDigestRecipient,
+  deal: any,
+  pseudoProject: any
+): Promise<void> {
+  // Get outstanding documents for the deal
+  const outstandingDocs = await getOutstandingDocumentsForDeal(deal.id);
+  
+  // Build the digest content (no recent updates since there's no project)
+  const content: DigestContent = {
+    project: pseudoProject,
+    outstandingDocs,
+    recentUpdates: [],
+    hasContent: outstandingDocs.length > 0 || config.includeGeneralUpdates,
+  };
+  
+  // Get recipient contact info
+  let email = recipient.recipientEmail;
+  let phone = recipient.recipientPhone;
+  
+  if (recipient.userId) {
+    const [user] = await db.select().from(users).where(eq(users.id, recipient.userId));
+    if (user) {
+      email = email || user.email;
+      phone = phone || user.phone;
+    }
+  }
+  
+  const results: Array<{ method: string; success: boolean; address: string; error?: string }> = [];
+  
+  // Send the digest via email
+  if ((recipient.deliveryMethod === 'email' || recipient.deliveryMethod === 'both') && email) {
+    const result = await sendEmailDigest(recipient, content, email);
+    results.push({ method: 'email', success: result.success, address: email, error: result.error });
+  }
+  
+  // Send the digest via SMS
+  if ((recipient.deliveryMethod === 'sms' || recipient.deliveryMethod === 'both') && phone) {
+    const result = await sendSmsDigest(recipient, content, phone);
+    results.push({ method: 'sms', success: result.success, address: phone, error: result.error });
+  }
+  
+  // Log history for each delivery (using dealId instead of projectId)
+  for (const result of results) {
+    await db.insert(digestHistory).values({
+      configId: config.id,
+      recipientId: recipient.id,
+      projectId: null, // No project for deal-based digest
+      deliveryMethod: result.method,
+      recipientAddress: result.address,
+      documentsCount: outstandingDocs.length,
+      updatesCount: 0,
+      status: result.success ? 'sent' : 'failed',
+      errorMessage: result.error,
+    });
+  }
+
+  // Update digest state for scheduling
+  const now = new Date();
+  const nextDueAt = calculateNextDueDate(
+    config.frequency,
+    config.customDays,
+    now,
+    config.timeOfDay
+  );
+
+  const existingState = await db
+    .select()
+    .from(digestState)
+    .where(and(
+      eq(digestState.configId, config.id),
+      eq(digestState.recipientId, recipient.id)
+    ));
+
+  if (existingState[0]) {
+    await db
+      .update(digestState)
+      .set({
+        lastDigestSentAt: now,
+        nextDigestDueAt: nextDueAt,
+      })
+      .where(eq(digestState.id, existingState[0].id));
+  } else {
+    await db.insert(digestState).values({
+      configId: config.id,
+      recipientId: recipient.id,
+      lastDigestSentAt: now,
+      nextDigestDueAt: nextDueAt,
+    });
   }
 }

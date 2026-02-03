@@ -30,7 +30,8 @@ import {
 
 interface DigestConfig {
   id: number;
-  projectId: number;
+  projectId: number | null;
+  dealId: number | null;
   frequency: string;
   customDays: number | null;
   timeOfDay: string;
@@ -72,7 +73,7 @@ interface DigestHistory {
 }
 
 interface DigestConfigPanelProps {
-  projectId: number;
+  dealId: number;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -95,7 +96,7 @@ const TIMEZONE_OPTIONS = [
   { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
 ];
 
-export function DigestConfigPanel({ projectId }: DigestConfigPanelProps) {
+export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
@@ -108,35 +109,35 @@ export function DigestConfigPanel({ projectId }: DigestConfigPanelProps) {
     deliveryMethod: 'email',
   });
 
-  // Fetch digest config
+  // Fetch digest config for this deal
   const { data: digestData, isLoading } = useQuery<{ config: DigestConfig | null; recipients: DigestRecipient[] }>({
-    queryKey: ['/api/projects', projectId, 'digest'],
+    queryKey: ['/api/admin/deals', dealId, 'digest'],
   });
 
-  // Fetch potential recipients
+  // Fetch potential recipients for this deal
   const { data: potentialRecipientsData } = useQuery<{ recipients: PotentialRecipient[] }>({
-    queryKey: ['/api/projects', projectId, 'potential-recipients'],
+    queryKey: ['/api/admin/deals', dealId, 'potential-recipients'],
   });
 
-  // Fetch digest history
+  // Fetch digest history for this deal
   const { data: historyData } = useQuery<{ history: DigestHistory[] }>({
-    queryKey: ['/api/projects', projectId, 'digest/history'],
+    queryKey: ['/api/admin/deals', dealId, 'digest/history'],
     enabled: showHistory,
   });
 
   // Fetch outstanding docs for preview
   const { data: outstandingDocsData } = useQuery<{ documents: Array<{ id: number; name: string; status: string }> }>({
-    queryKey: ['/api/projects', projectId, 'outstanding-docs'],
+    queryKey: ['/api/admin/deals', dealId, 'outstanding-docs'],
   });
 
   // Save config mutation
   const saveConfigMutation = useMutation({
     mutationFn: async (data: Partial<DigestConfig>) => {
-      const response = await apiRequest('POST', `/api/projects/${projectId}/digest`, data);
+      const response = await apiRequest('POST', `/api/admin/deals/${dealId}/digest`, data);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'digest'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'digest'] });
       toast({ title: 'Digest settings saved' });
     },
     onError: (error: Error) => {
@@ -147,11 +148,11 @@ export function DigestConfigPanel({ projectId }: DigestConfigPanelProps) {
   // Add recipient mutation
   const addRecipientMutation = useMutation({
     mutationFn: async (data: typeof newRecipient) => {
-      const response = await apiRequest('POST', `/api/projects/${projectId}/digest/recipients`, data);
+      const response = await apiRequest('POST', `/api/admin/deals/${dealId}/digest/recipients`, data);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'digest'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'digest'] });
       setShowAddRecipient(false);
       setNewRecipient({ userId: null, recipientName: '', recipientEmail: '', recipientPhone: '', deliveryMethod: 'email' });
       toast({ title: 'Recipient added' });
@@ -168,7 +169,7 @@ export function DigestConfigPanel({ projectId }: DigestConfigPanelProps) {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'digest'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'digest'] });
       toast({ title: 'Recipient removed' });
     },
     onError: (error: Error) => {
@@ -179,7 +180,7 @@ export function DigestConfigPanel({ projectId }: DigestConfigPanelProps) {
   // Send test digest mutation
   const sendTestMutation = useMutation({
     mutationFn: async (recipientId: number) => {
-      const response = await apiRequest('POST', `/api/projects/${projectId}/digest/test`, { recipientId });
+      const response = await apiRequest('POST', `/api/admin/deals/${dealId}/digest/test`, { recipientId });
       return response.json();
     },
     onSuccess: () => {

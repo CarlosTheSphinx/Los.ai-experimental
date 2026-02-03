@@ -1170,23 +1170,9 @@ export default function AdminDealDetail() {
         </TabsContent>
 
         <TabsContent value="digests" className="mt-6" data-testid="tabcontent-digests">
-          {linkedProjectData?.project ? (
-            <div data-testid="digest-config-container">
-              <DigestConfigPanel projectId={linkedProjectData.project.id} />
-            </div>
-          ) : (
-            <Card data-testid="card-no-project">
-              <CardContent className="pt-6">
-                <div className="text-center py-8 text-muted-foreground" data-testid="digests-empty-state">
-                  <CalendarDays className="h-12 w-12 mx-auto mb-4 opacity-50" data-testid="icon-digests-empty" />
-                  <p className="text-lg font-medium mb-2" data-testid="text-no-project-title">No Project Linked</p>
-                  <p className="text-sm" data-testid="text-no-project-description">
-                    Digest notifications will be available once this deal is converted to a project.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <div data-testid="digest-config-container">
+            <DigestConfigPanel dealId={deal.id} />
+          </div>
         </TabsContent>
       </Tabs>
 

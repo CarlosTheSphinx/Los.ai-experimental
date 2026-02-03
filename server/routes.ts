@@ -6688,5 +6688,302 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== DEAL-BASED DIGEST ENDPOINTS ====================
+  // These work with deals (savedQuotes) directly, without requiring a linked project
+  
+  // Get digest config for a deal
+  app.get('/api/admin/deals/:dealId/digest', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+      
+      if (!config[0]) {
+        return res.json({ config: null, recipients: [] });
+      }
+      
+      const recipients = await db
+        .select()
+        .from(loanDigestRecipients)
+        .where(eq(loanDigestRecipients.configId, config[0].id));
+      
+      res.json({ config: config[0], recipients });
+    } catch (error: any) {
+      console.error('Get deal digest config error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create or update digest config for a deal
+  app.post('/api/admin/deals/:dealId/digest', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { 
+        frequency, 
+        customDays, 
+        timeOfDay, 
+        timezone,
+        includeDocumentsNeeded,
+        includeNotes,
+        includeMessages,
+        includeGeneralUpdates,
+        isEnabled 
+      } = req.body;
+      
+      // Check if config exists for this deal
+      const existing = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+      
+      let configId: number;
+      
+      if (existing[0]) {
+        // Update existing
+        await db
+          .update(loanDigestConfigs)
+          .set({
+            frequency: frequency || existing[0].frequency,
+            customDays: customDays !== undefined ? customDays : existing[0].customDays,
+            timeOfDay: timeOfDay || existing[0].timeOfDay,
+            timezone: timezone || existing[0].timezone,
+            includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : existing[0].includeDocumentsNeeded,
+            includeNotes: includeNotes !== undefined ? includeNotes : existing[0].includeNotes,
+            includeMessages: includeMessages !== undefined ? includeMessages : existing[0].includeMessages,
+            includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : existing[0].includeGeneralUpdates,
+            isEnabled: isEnabled !== undefined ? isEnabled : existing[0].isEnabled,
+            updatedAt: new Date(),
+          })
+          .where(eq(loanDigestConfigs.id, existing[0].id));
+        
+        configId = existing[0].id;
+      } else {
+        // Create new for this deal
+        const result = await db
+          .insert(loanDigestConfigs)
+          .values({
+            dealId,
+            frequency: frequency || 'daily',
+            customDays,
+            timeOfDay: timeOfDay || '09:00',
+            timezone: timezone || 'America/New_York',
+            includeDocumentsNeeded: includeDocumentsNeeded !== undefined ? includeDocumentsNeeded : true,
+            includeNotes: includeNotes !== undefined ? includeNotes : false,
+            includeMessages: includeMessages !== undefined ? includeMessages : false,
+            includeGeneralUpdates: includeGeneralUpdates !== undefined ? includeGeneralUpdates : true,
+            isEnabled: isEnabled !== undefined ? isEnabled : true,
+            createdBy: req.user?.id,
+          })
+          .returning({ id: loanDigestConfigs.id });
+        
+        configId = result[0].id;
+      }
+      
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.id, configId));
+      
+      res.json({ config: config[0] });
+    } catch (error: any) {
+      console.error('Save deal digest config error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add a recipient to deal digest config
+  app.post('/api/admin/deals/:dealId/digest/recipients', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { userId, recipientName, recipientEmail, recipientPhone, deliveryMethod } = req.body;
+      
+      // Get config for this deal
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+      
+      if (!config[0]) {
+        return res.status(400).json({ error: 'Digest config not found. Create config first.' });
+      }
+      
+      // Validate delivery method vs contact info
+      if ((deliveryMethod === 'email' || deliveryMethod === 'both') && !recipientEmail && !userId) {
+        return res.status(400).json({ error: 'Email is required for email delivery' });
+      }
+      if ((deliveryMethod === 'sms' || deliveryMethod === 'both') && !recipientPhone && !userId) {
+        return res.status(400).json({ error: 'Phone number is required for SMS delivery' });
+      }
+      
+      const result = await db
+        .insert(loanDigestRecipients)
+        .values({
+          configId: config[0].id,
+          userId: userId || null,
+          recipientName: recipientName || null,
+          recipientEmail: recipientEmail || null,
+          recipientPhone: recipientPhone || null,
+          deliveryMethod: deliveryMethod || 'email',
+          isActive: true,
+        })
+        .returning();
+      
+      res.json({ recipient: result[0] });
+    } catch (error: any) {
+      console.error('Add deal digest recipient error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Send a test digest for a deal
+  app.post('/api/admin/deals/:dealId/digest/test', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { recipientId } = req.body;
+      
+      // Get config for this deal
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+      
+      if (!config[0]) {
+        return res.status(400).json({ error: 'Digest config not found' });
+      }
+      
+      const result = await sendTestDigest(config[0].id, recipientId);
+      
+      if (result.success) {
+        res.json({ success: true, message: 'Test digest sent successfully' });
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error: any) {
+      console.error('Send deal test digest error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get digest history for a deal
+  app.get('/api/admin/deals/:dealId/digest/history', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      // Get the config first to find the configId
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+      
+      if (!config[0]) {
+        return res.json({ history: [] });
+      }
+      
+      const history = await db
+        .select()
+        .from(digestHistory)
+        .where(eq(digestHistory.configId, config[0].id))
+        .orderBy(desc(digestHistory.sentAt))
+        .limit(50);
+      
+      res.json({ history });
+    } catch (error: any) {
+      console.error('Get deal digest history error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get potential recipients for a deal (borrower and partner)
+  app.get('/api/admin/deals/:dealId/potential-recipients', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      // Get deal to find associated users
+      const deal = await db
+        .select()
+        .from(savedQuotes)
+        .where(eq(savedQuotes.id, dealId));
+      
+      if (!deal[0]) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+      
+      const potentialRecipients = [];
+      
+      // Deal owner (partner/broker)
+      if (deal[0].userId) {
+        const owner = await db.select().from(users).where(eq(users.id, deal[0].userId));
+        if (owner[0]) {
+          potentialRecipients.push({
+            userId: owner[0].id,
+            name: owner[0].fullName || owner[0].email,
+            email: owner[0].email,
+            phone: owner[0].phone,
+            role: 'Partner',
+          });
+        }
+      }
+      
+      // Look for borrower by email
+      if (deal[0].customerEmail) {
+        const borrower = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, deal[0].customerEmail));
+        
+        if (borrower[0]) {
+          potentialRecipients.push({
+            userId: borrower[0].id,
+            name: borrower[0].fullName || borrower[0].email,
+            email: borrower[0].email,
+            phone: borrower[0].phone,
+            role: 'Borrower',
+          });
+        } else {
+          // Borrower not in system, add as manual entry option
+          potentialRecipients.push({
+            userId: null,
+            name: `${deal[0].customerFirstName} ${deal[0].customerLastName}`.trim() || 'Borrower',
+            email: deal[0].customerEmail,
+            phone: deal[0].customerPhone,
+            role: 'Borrower (Not Registered)',
+          });
+        }
+      }
+      
+      res.json({ recipients: potentialRecipients });
+    } catch (error: any) {
+      console.error('Get deal potential recipients error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get outstanding documents for a deal (for digest preview)
+  app.get('/api/admin/deals/:dealId/outstanding-docs', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      // Get documents that are pending or rejected
+      const docs = await db
+        .select()
+        .from(dealDocuments)
+        .where(
+          and(
+            eq(dealDocuments.dealId, dealId),
+            inArray(dealDocuments.status, ['pending', 'rejected', 'uploaded'])
+          )
+        )
+        .orderBy(dealDocuments.sortOrder);
+      
+      res.json({ documents: docs });
+    } catch (error: any) {
+      console.error('Get deal outstanding docs error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return httpServer;
 }

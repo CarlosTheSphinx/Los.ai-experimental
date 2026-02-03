@@ -966,10 +966,11 @@ export type DeliveryMethod = z.infer<typeof deliveryMethodEnum>;
 export const digestContentTypeEnum = z.enum(["documents_needed", "notes", "messages", "general_updates"]);
 export type DigestContentType = z.infer<typeof digestContentTypeEnum>;
 
-// Loan digest configuration - per-project digest settings
+// Loan digest configuration - per-project/deal digest settings
 export const loanDigestConfigs = pgTable("loan_digest_configs", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }),
   
   // WHEN - frequency and timing
   frequency: varchar("frequency", { length: 50 }).default("daily").notNull(), // daily, every_3_days, weekly, custom
