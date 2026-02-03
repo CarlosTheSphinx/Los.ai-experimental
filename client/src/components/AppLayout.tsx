@@ -62,7 +62,6 @@ const adminNavItems = [
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays },
   { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/projects", label: "All Projects", icon: FolderKanban },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];

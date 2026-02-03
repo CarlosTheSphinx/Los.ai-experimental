@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, gte, lte, sql, isNull } from "drizzle-orm";
@@ -3629,31 +3629,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put('/api/admin/deal-stages/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { label, color, description, isActive } = req.body;
-
-      const stage = await storage.updateDealStage(id, { label, color, description, isActive });
-      
-      if (!stage) {
-        return res.status(404).json({ error: 'Stage not found' });
-      }
-
-      await storage.createAdminActivity({
-        userId: req.user!.id,
-        actionType: 'stage_updated',
-        actionDescription: `Updated deal stage: ${stage.label}`,
-        metadata: { stageId: id }
-      });
-
-      res.json({ stage });
-    } catch (error) {
-      console.error('Admin update deal stage error:', error);
-      res.status(500).json({ error: 'Failed to update deal stage' });
-    }
-  });
-
+  // IMPORTANT: Reorder route must come BEFORE :id route to avoid "reorder" being parsed as an id
   app.put('/api/admin/deal-stages/reorder', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { stageOrders } = req.body;
@@ -3676,6 +3652,31 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin reorder deal stages error:', error);
       res.status(500).json({ error: 'Failed to reorder deal stages' });
+    }
+  });
+
+  app.put('/api/admin/deal-stages/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { label, color, description, isActive } = req.body;
+
+      const stage = await storage.updateDealStage(id, { label, color, description, isActive });
+      
+      if (!stage) {
+        return res.status(404).json({ error: 'Stage not found' });
+      }
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'stage_updated',
+        actionDescription: `Updated deal stage: ${stage.label}`,
+        metadata: { stageId: id }
+      });
+
+      res.json({ stage });
+    } catch (error) {
+      console.error('Admin update deal stage error:', error);
+      res.status(500).json({ error: 'Failed to update deal stage' });
     }
   });
 
