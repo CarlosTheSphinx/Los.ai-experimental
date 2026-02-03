@@ -106,7 +106,7 @@ export default function RegisterPage() {
                             data-testid="radio-broker"
                           >
                             <Briefcase className="mb-3 h-6 w-6" />
-                            <span className="font-semibold">Broker</span>
+                            <span className="font-semibold">Partner</span>
                             <span className="text-xs text-muted-foreground text-center mt-1">
                               I refer loans to Sphinx Capital
                             </span>
