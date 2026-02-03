@@ -841,3 +841,49 @@ export type LeverageCap = z.infer<typeof leverageCapSchema>;
 export type Overlay = z.infer<typeof overlaySchema>;
 export type EligibilityRule = z.infer<typeof eligibilityRuleSchema>;
 export type PricingRules = z.infer<typeof pricingRulesSchema>;
+
+// ==================== MESSAGING SYSTEM ====================
+
+// Message threads - a conversation room (can be tied to a deal or general)
+export const messageThreads = pgTable("message_threads", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  subject: varchar("subject", { length: 255 }),
+  isClosed: boolean("is_closed").default(false).notNull(),
+  lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMessageThreadSchema = createInsertSchema(messageThreads).omit({ id: true, createdAt: true, lastMessageAt: true });
+export type MessageThread = typeof messageThreads.$inferSelect;
+export type InsertMessageThread = z.infer<typeof insertMessageThreadSchema>;
+
+// Messages - individual messages within a thread
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id").references(() => messageThreads.id, { onDelete: 'cascade' }).notNull(),
+  senderId: integer("sender_id").references(() => users.id, { onDelete: 'set null' }),
+  senderRole: varchar("sender_role", { length: 20 }).notNull(), // 'admin', 'user', 'system'
+  type: varchar("type", { length: 20 }).notNull(), // 'message', 'notification'
+  body: text("body").notNull(),
+  meta: jsonb("meta"), // Additional data like deal stage changes
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+// Message read receipts - tracks when users last read a thread
+export const messageReads = pgTable("message_reads", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id").references(() => messageThreads.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  lastReadAt: timestamp("last_read_at").defaultNow().notNull(),
+});
+
+export const insertMessageReadSchema = createInsertSchema(messageReads).omit({ id: true });
+export type MessageRead = typeof messageReads.$inferSelect;
+export type InsertMessageRead = z.infer<typeof insertMessageReadSchema>;
