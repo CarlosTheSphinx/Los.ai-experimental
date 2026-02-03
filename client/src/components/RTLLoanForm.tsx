@@ -15,14 +15,6 @@ interface RTLLoanFormProps {
   isLoading: boolean;
 }
 
-const US_STATES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
-];
-
 export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
   const form = useForm<RTLPricingFormData>({
     resolver: zodResolver(rtlPricingFormSchema),
@@ -34,8 +26,9 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
       arv: 0,
       rehabBudget: 0,
       propertyType: "sfr_1_4",
-      state: "",
+      propertyAddress: "",
       isMidstream: false,
+      borrowingEntityType: "llc",
       experienceTier: "experienced",
       completedProjects: 0,
       fico: 720,
@@ -425,30 +418,27 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-slate-700">State</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-11 bg-slate-50 border-slate-200" data-testid="select-state">
-                              <SelectValue placeholder="Select state" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {US_STATES.map(state => (
-                              <SelectItem key={state} value={state}>{state}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <FormField
+                  control={form.control}
+                  name="propertyAddress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-slate-700">Property Address</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                          placeholder="Enter full property address"
+                          data-testid="input-property-address"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
                     name="asIsValue"

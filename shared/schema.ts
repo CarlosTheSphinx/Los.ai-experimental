@@ -135,10 +135,10 @@ export const rtlPricingFormSchema = z.object({
   loanAmount: z.coerce.number().optional(),
   propertyUnits: z.coerce.number().min(1, "Property units is required"),
   propertyType: rtlPropertyTypeEnum,
-  state: z.string().length(2, "State must be 2-letter code"),
+  propertyAddress: z.string().min(5, "Property address is required"),
   asIsValue: z.coerce.number().min(1, "As-Is Value is required"),
-  arv: z.coerce.number().min(0).optional(),
-  rehabBudget: z.coerce.number().min(0).default(0),
+  arv: z.coerce.number().min(1, "ARV is required"),
+  rehabBudget: z.coerce.number().min(0, "Rehab budget is required"),
   isMidstream: z.boolean().default(false),
 
   // Borrower basics (required)
@@ -181,7 +181,7 @@ export const rtlPricingFormSchema = z.object({
   monthsSinceShortSaleOrDIL: z.coerce.number().nullable().optional(),
 
   // Entity rules
-  borrowingEntityType: rtlEntityTypeEnum.optional(),
+  borrowingEntityType: rtlEntityTypeEnum,
   isForeignNational: z.boolean().default(false),
 });
 

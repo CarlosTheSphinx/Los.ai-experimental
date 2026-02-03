@@ -321,7 +321,11 @@ function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; ma
   }
 
   // Florida bridge no rehab: -5% across leverage
-  if (input.state === "FL" && input.loanType === "bridge_no_rehab") {
+  const isFloridaProperty = input.propertyAddress && 
+    (input.propertyAddress.toUpperCase().includes(" FL ") || 
+     input.propertyAddress.toUpperCase().includes(", FL") ||
+     input.propertyAddress.toUpperCase().includes("FLORIDA"));
+  if (isFloridaProperty && input.loanType === "bridge_no_rehab") {
     ltc -= 5;
     ltaiv -= 5;
     ltarv -= 5;
