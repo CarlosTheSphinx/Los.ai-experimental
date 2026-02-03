@@ -4186,13 +4186,13 @@ export async function registerRoutes(
       }
       
       // Send notification to deal owner
-      const deal = await db.select({ userId: savedQuotes.userId, borrowerName: savedQuotes.borrowerName })
+      const deal = await db.select({ userId: savedQuotes.userId })
         .from(savedQuotes).where(eq(savedQuotes.id, dealId)).limit(1);
       if (deal[0]?.userId) {
         await postDealNotification(
           deal[0].userId, 
           dealId, 
-          `📄 Document uploaded: ${updated.name || fileName || 'New document'}`
+          `📄 Document uploaded: ${updated.documentName || fileName || 'New document'}`
         );
       }
       
