@@ -52,6 +52,7 @@ const adminNavItems = [
   { href: "/admin/programs", label: "Programs", icon: Settings2 },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/projects", label: "All Projects", icon: FolderKanban },
+  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -142,7 +143,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                               data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                             >
                               <Icon className="h-5 w-5" />
-                              <span>{item.label}</span>
+                              <span className="flex items-center gap-1">
+                                {item.label}
+                                {'showBadge' in item && item.showBadge && <InboxBadge />}
+                              </span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
