@@ -12,12 +12,17 @@ export const users = pgTable("users", {
   companyName: varchar("company_name", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   role: varchar("role", { length: 50 }).default("user").notNull(), // user, admin, staff, super_admin
+  userType: varchar("user_type", { length: 50 }).default("broker").notNull(), // broker, borrower
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
   emailVerified: boolean("email_verified").default(false),
   isActive: boolean("is_active").default(true),
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
+  // Onboarding tracking fields
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  partnershipAgreementSignedAt: timestamp("partnership_agreement_signed_at"),
+  trainingCompletedAt: timestamp("training_completed_at"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ 
@@ -887,3 +892,43 @@ export const messageReads = pgTable("message_reads", {
 export const insertMessageReadSchema = createInsertSchema(messageReads).omit({ id: true });
 export type MessageRead = typeof messageReads.$inferSelect;
 export type InsertMessageRead = z.infer<typeof insertMessageReadSchema>;
+
+// ==================== ONBOARDING SYSTEM ====================
+
+// Onboarding documents - admin-uploadable partnership agreements and training materials
+export const onboardingDocuments = pgTable("onboarding_documents", {
+  id: serial("id").primaryKey(),
+  type: varchar("type", { length: 50 }).notNull(), // 'partnership_agreement', 'training_doc', 'training_video', 'training_link'
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  fileUrl: text("file_url"), // For uploaded PDFs, videos
+  externalUrl: text("external_url"), // For external links
+  thumbnailUrl: text("thumbnail_url"), // Optional thumbnail for videos
+  sortOrder: integer("sort_order").default(0).notNull(),
+  isRequired: boolean("is_required").default(true).notNull(), // Must complete for onboarding
+  isActive: boolean("is_active").default(true).notNull(),
+  targetUserType: varchar("target_user_type", { length: 50 }).default("broker").notNull(), // 'broker', 'borrower', 'all'
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertOnboardingDocumentSchema = createInsertSchema(onboardingDocuments).omit({ id: true, createdAt: true, updatedAt: true });
+export type OnboardingDocument = typeof onboardingDocuments.$inferSelect;
+export type InsertOnboardingDocument = z.infer<typeof insertOnboardingDocumentSchema>;
+
+// User onboarding progress - tracks which documents each user has viewed/signed
+export const userOnboardingProgress = pgTable("user_onboarding_progress", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  documentId: integer("document_id").references(() => onboardingDocuments.id, { onDelete: 'cascade' }).notNull(),
+  status: varchar("status", { length: 50 }).notNull(), // 'viewed', 'completed', 'signed', 'skipped'
+  signatureData: text("signature_data"), // For signed documents (base64 or URL)
+  signedAt: timestamp("signed_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUserOnboardingProgressSchema = createInsertSchema(userOnboardingProgress).omit({ id: true, createdAt: true });
+export type UserOnboardingProgress = typeof userOnboardingProgress.$inferSelect;
+export type InsertUserOnboardingProgress = z.infer<typeof insertUserOnboardingProgressSchema>;

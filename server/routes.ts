@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, sql, isNull } from "drizzle-orm";
@@ -136,7 +136,7 @@ export async function registerRoutes(
   // Register
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     try {
-      const { email, password, fullName, firstName, lastName, companyName, phone } = req.body;
+      const { email, password, fullName, firstName, lastName, companyName, phone, userType } = req.body;
       
       // Support both fullName and firstName/lastName
       const resolvedFullName = fullName || (firstName && lastName ? `${firstName} ${lastName}` : null);
@@ -149,12 +149,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
       
+      // Validate userType - default to broker if not provided
+      const validUserType = userType === 'broker' || userType === 'borrower' ? userType : 'broker';
+      
       const existingUser = await storage.getUserByEmail(email.toLowerCase());
       if (existingUser) {
         return res.status(409).json({ error: 'Email already registered' });
       }
       
       const passwordHash = await hashPassword(password);
+      
+      // Borrowers don't need onboarding, brokers do
+      const onboardingCompleted = validUserType === 'borrower';
       
       const user = await storage.createUser({
         email: email.toLowerCase(),
@@ -165,7 +171,9 @@ export async function registerRoutes(
         emailVerified: false,
         isActive: true,
         passwordResetToken: null,
-        passwordResetExpires: null
+        passwordResetExpires: null,
+        userType: validUserType,
+        onboardingCompleted
       });
       
       const token = generateToken(user.id, user.email);
@@ -184,7 +192,9 @@ export async function registerRoutes(
           firstName: respFirstName,
           lastName: respLastName,
           fullName: user.fullName,
-          companyName: user.companyName
+          companyName: user.companyName,
+          userType: user.userType,
+          onboardingCompleted: user.onboardingCompleted
         },
         token
       });
@@ -277,6 +287,8 @@ export async function registerRoutes(
           companyName: user.companyName,
           phone: user.phone,
           role: user.role,
+          userType: user.userType,
+          onboardingCompleted: user.onboardingCompleted,
           createdAt: user.createdAt
         }
       });
@@ -302,6 +314,45 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin auth error:', error);
       res.status(500).json({ error: 'Authorization failed' });
+    }
+  };
+
+  // Onboarding enforcement middleware - blocks brokers who haven't completed onboarding
+  // Admins and borrowers are exempt
+  const requireOnboarding = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      
+      const user = await storage.getUserById(req.user.id);
+      if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+      }
+      
+      // Admins are exempt from onboarding requirement
+      if (['admin', 'staff', 'super_admin'].includes(user.role)) {
+        return next();
+      }
+      
+      // Borrowers don't need onboarding (they have onboardingCompleted=true by default)
+      if (user.userType === 'borrower') {
+        return next();
+      }
+      
+      // Brokers must complete onboarding
+      if (user.userType === 'broker' && !user.onboardingCompleted) {
+        return res.status(403).json({ 
+          error: 'Onboarding required',
+          code: 'ONBOARDING_REQUIRED',
+          message: 'Please complete your onboarding before accessing this feature'
+        });
+      }
+      
+      next();
+    } catch (error) {
+      console.error('Onboarding check error:', error);
+      res.status(500).json({ error: 'Authorization check failed' });
     }
   };
 
@@ -2282,7 +2333,7 @@ export async function registerRoutes(
   // ==================== PROJECTS ROUTES ====================
 
   // Get all projects
-  app.get('/api/projects', authenticateUser, async (req: AuthRequest, res) => {
+  app.get('/api/projects', authenticateUser, requireOnboarding, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
       const { status, archived } = req.query;
@@ -2313,7 +2364,7 @@ export async function registerRoutes(
   });
 
   // Create new project manually
-  app.post('/api/projects', authenticateUser, async (req: AuthRequest, res) => {
+  app.post('/api/projects', authenticateUser, requireOnboarding, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
       const {
@@ -4957,7 +5008,7 @@ export async function registerRoutes(
   // ==================== PRICING QUOTE ROUTES ====================
   
   // Calculate price using active ruleset
-  app.post('/api/pricing/calculate', authenticateUser, async (req: AuthRequest, res: Response) => {
+  app.post('/api/pricing/calculate', authenticateUser, requireOnboarding, async (req: AuthRequest, res: Response) => {
     try {
       const { programId, inputs } = req.body;
       
@@ -5004,7 +5055,7 @@ export async function registerRoutes(
   });
   
   // Calculate RTL pricing (Fix and Flip / Ground Up Construction)
-  app.post('/api/pricing/rtl', authenticateUser, async (req: AuthRequest, res: Response) => {
+  app.post('/api/pricing/rtl', authenticateUser, requireOnboarding, async (req: AuthRequest, res: Response) => {
     try {
       const { calculateRTLPricing } = await import('./pricing/rtl-engine');
       const { rtlPricingFormSchema } = await import('@shared/schema');
@@ -5317,6 +5368,309 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Deploy proposal error:', error);
       res.status(500).json({ error: 'Failed to deploy proposal' });
+    }
+  });
+
+  // ==================== ONBOARDING SYSTEM ====================
+
+  // Get user's onboarding status and documents
+  app.get('/api/onboarding/status', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Get all onboarding documents for this user type
+      const documents = await db.select()
+        .from(onboardingDocuments)
+        .where(and(
+          eq(onboardingDocuments.isActive, true),
+          sql`(${onboardingDocuments.targetUserType} = ${user.userType} OR ${onboardingDocuments.targetUserType} = 'all')`
+        ))
+        .orderBy(onboardingDocuments.sortOrder);
+      
+      // Get user's progress
+      const progress = await db.select()
+        .from(userOnboardingProgress)
+        .where(eq(userOnboardingProgress.userId, userId));
+      
+      const progressMap = new Map(progress.map(p => [p.documentId, p]));
+      
+      // Combine documents with progress
+      const documentsWithProgress = documents.map(doc => ({
+        ...doc,
+        progress: progressMap.get(doc.id) || null
+      }));
+      
+      // Check if partnership agreement is signed (for brokers)
+      const partnershipAgreement = documents.find(d => d.type === 'partnership_agreement');
+      const agreementSigned = partnershipAgreement 
+        ? progressMap.get(partnershipAgreement.id)?.status === 'signed'
+        : true;
+      
+      // Check if required training is completed
+      const requiredTraining = documents.filter(d => d.type !== 'partnership_agreement' && d.isRequired);
+      const trainingCompleted = requiredTraining.every(doc => {
+        const prog = progressMap.get(doc.id);
+        return prog && (prog.status === 'completed' || prog.status === 'viewed');
+      });
+      
+      res.json({
+        user: {
+          id: user.id,
+          userType: user.userType,
+          onboardingCompleted: user.onboardingCompleted,
+          partnershipAgreementSignedAt: user.partnershipAgreementSignedAt,
+          trainingCompletedAt: user.trainingCompletedAt
+        },
+        documents: documentsWithProgress,
+        agreementSigned,
+        trainingCompleted,
+        canProceed: user.userType === 'borrower' || (agreementSigned && trainingCompleted)
+      });
+    } catch (error) {
+      console.error('Get onboarding status error:', error);
+      res.status(500).json({ error: 'Failed to get onboarding status' });
+    }
+  });
+
+  // Update progress on a document
+  app.post('/api/onboarding/progress', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { documentId, status, signatureData } = req.body;
+      
+      if (!documentId || !status) {
+        return res.status(400).json({ error: 'documentId and status are required' });
+      }
+      
+      // Check if progress exists
+      const existingProgress = await db.select()
+        .from(userOnboardingProgress)
+        .where(and(
+          eq(userOnboardingProgress.userId, userId),
+          eq(userOnboardingProgress.documentId, documentId)
+        ))
+        .limit(1);
+      
+      const now = new Date();
+      let progress;
+      
+      if (existingProgress.length > 0) {
+        // Update existing progress
+        [progress] = await db.update(userOnboardingProgress)
+          .set({
+            status,
+            signatureData: signatureData || existingProgress[0].signatureData,
+            signedAt: status === 'signed' ? now : existingProgress[0].signedAt,
+            completedAt: (status === 'completed' || status === 'signed') ? now : existingProgress[0].completedAt
+          })
+          .where(eq(userOnboardingProgress.id, existingProgress[0].id))
+          .returning();
+      } else {
+        // Create new progress
+        [progress] = await db.insert(userOnboardingProgress)
+          .values({
+            userId,
+            documentId,
+            status,
+            signatureData,
+            signedAt: status === 'signed' ? now : null,
+            completedAt: (status === 'completed' || status === 'signed') ? now : null
+          })
+          .returning();
+      }
+      
+      // If this is a partnership agreement signature, update user record
+      const document = await db.select()
+        .from(onboardingDocuments)
+        .where(eq(onboardingDocuments.id, documentId))
+        .limit(1);
+      
+      if (document[0]?.type === 'partnership_agreement' && status === 'signed') {
+        await db.update(users)
+          .set({ partnershipAgreementSignedAt: now })
+          .where(eq(users.id, userId));
+      }
+      
+      res.json({ success: true, progress });
+    } catch (error) {
+      console.error('Update onboarding progress error:', error);
+      res.status(500).json({ error: 'Failed to update progress' });
+    }
+  });
+
+  // Complete onboarding
+  app.post('/api/onboarding/complete', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Verify all required steps are completed
+      const documents = await db.select()
+        .from(onboardingDocuments)
+        .where(and(
+          eq(onboardingDocuments.isActive, true),
+          eq(onboardingDocuments.isRequired, true),
+          sql`(${onboardingDocuments.targetUserType} = ${user.userType} OR ${onboardingDocuments.targetUserType} = 'all')`
+        ));
+      
+      const progress = await db.select()
+        .from(userOnboardingProgress)
+        .where(eq(userOnboardingProgress.userId, userId));
+      
+      const progressMap = new Map(progress.map(p => [p.documentId, p]));
+      
+      // Check if partnership agreement is signed (if required)
+      const partnershipAgreement = documents.find(d => d.type === 'partnership_agreement');
+      if (partnershipAgreement) {
+        const agreementProgress = progressMap.get(partnershipAgreement.id);
+        if (!agreementProgress || agreementProgress.status !== 'signed') {
+          return res.status(400).json({ error: 'Partnership agreement must be signed first' });
+        }
+      }
+      
+      // Mark onboarding as complete
+      const now = new Date();
+      await db.update(users)
+        .set({
+          onboardingCompleted: true,
+          trainingCompletedAt: now
+        })
+        .where(eq(users.id, userId));
+      
+      res.json({ success: true, message: 'Onboarding completed successfully' });
+    } catch (error) {
+      console.error('Complete onboarding error:', error);
+      res.status(500).json({ error: 'Failed to complete onboarding' });
+    }
+  });
+
+  // ==================== ADMIN ONBOARDING MANAGEMENT ====================
+
+  // Get all onboarding documents (admin)
+  app.get('/api/admin/onboarding/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const documents = await db.select()
+        .from(onboardingDocuments)
+        .orderBy(onboardingDocuments.sortOrder);
+      
+      res.json({ documents });
+    } catch (error) {
+      console.error('Get onboarding documents error:', error);
+      res.status(500).json({ error: 'Failed to get documents' });
+    }
+  });
+
+  // Create onboarding document (admin)
+  app.post('/api/admin/onboarding/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { type, title, description, fileUrl, externalUrl, thumbnailUrl, sortOrder, isRequired, isActive, targetUserType } = req.body;
+      
+      if (!type || !title) {
+        return res.status(400).json({ error: 'type and title are required' });
+      }
+      
+      const [document] = await db.insert(onboardingDocuments)
+        .values({
+          type,
+          title,
+          description,
+          fileUrl,
+          externalUrl,
+          thumbnailUrl,
+          sortOrder: sortOrder || 0,
+          isRequired: isRequired !== false,
+          isActive: isActive !== false,
+          targetUserType: targetUserType || 'broker',
+          createdBy: req.user!.id
+        })
+        .returning();
+      
+      res.status(201).json({ document });
+    } catch (error) {
+      console.error('Create onboarding document error:', error);
+      res.status(500).json({ error: 'Failed to create document' });
+    }
+  });
+
+  // Update onboarding document (admin)
+  app.patch('/api/admin/onboarding/documents/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const { type, title, description, fileUrl, externalUrl, thumbnailUrl, sortOrder, isRequired, isActive, targetUserType } = req.body;
+      
+      const [document] = await db.update(onboardingDocuments)
+        .set({
+          type,
+          title,
+          description,
+          fileUrl,
+          externalUrl,
+          thumbnailUrl,
+          sortOrder,
+          isRequired,
+          isActive,
+          targetUserType,
+          updatedAt: new Date()
+        })
+        .where(eq(onboardingDocuments.id, documentId))
+        .returning();
+      
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      res.json({ document });
+    } catch (error) {
+      console.error('Update onboarding document error:', error);
+      res.status(500).json({ error: 'Failed to update document' });
+    }
+  });
+
+  // Delete onboarding document (admin)
+  app.delete('/api/admin/onboarding/documents/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      
+      await db.delete(onboardingDocuments)
+        .where(eq(onboardingDocuments.id, documentId));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete onboarding document error:', error);
+      res.status(500).json({ error: 'Failed to delete document' });
+    }
+  });
+
+  // Get all users with their onboarding status (admin)
+  app.get('/api/admin/onboarding/users', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const allUsers = await db.select({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        userType: users.userType,
+        onboardingCompleted: users.onboardingCompleted,
+        partnershipAgreementSignedAt: users.partnershipAgreementSignedAt,
+        trainingCompletedAt: users.trainingCompletedAt,
+        createdAt: users.createdAt
+      })
+        .from(users)
+        .where(sql`${users.role} = 'user'`)
+        .orderBy(desc(users.createdAt));
+      
+      res.json({ users: allUsers });
+    } catch (error) {
+      console.error('Get onboarding users error:', error);
+      res.status(500).json({ error: 'Failed to get users' });
     }
   });
 

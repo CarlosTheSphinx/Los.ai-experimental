@@ -27,12 +27,15 @@ import AdminDeals from "@/pages/admin/deals";
 import AdminDealDetail from "@/pages/admin/deal-detail";
 import AdminPartners from "@/pages/admin/partners";
 import AdminPrograms from "@/pages/admin/programs";
+import AdminOnboarding from "@/pages/admin/onboarding";
 import MessagesPage from "@/pages/messages";
+import OnboardingPage from "@/pages/onboarding";
+import ResourcesPage from "@/pages/resources";
 import { AppLayout } from "@/components/AppLayout";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading } = useAuth();
+function ProtectedRoute({ component: Component, skipOnboardingCheck = false }: { component: React.ComponentType; skipOnboardingCheck?: boolean }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -44,6 +47,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
+  }
+
+  // Check if broker needs to complete onboarding (skip for admins)
+  const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+  if (!skipOnboardingCheck && !isAdmin && user?.userType === 'broker' && user?.onboardingCompleted === false) {
+    return <Redirect to="/onboarding" />;
   }
 
   return <Component />;
@@ -102,6 +111,7 @@ function MainRoutes() {
         <Route path="/projects/new" component={() => <ProtectedRoute component={NewProject} />} />
         <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectDetail} />} />
         <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
+        <Route path="/resources" component={() => <ProtectedRoute component={ResourcesPage} />} />
         
         {/* Admin Routes */}
         <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
@@ -114,6 +124,7 @@ function MainRoutes() {
         <Route path="/admin/projects" component={() => <AdminProtectedRoute component={AdminProjects} />} />
         <Route path="/admin/projects/:id" component={() => <AdminProtectedRoute component={AdminProjectDetail} />} />
         <Route path="/admin/settings" component={() => <AdminProtectedRoute component={AdminSettings} />} />
+        <Route path="/admin/onboarding" component={() => <AdminProtectedRoute component={AdminOnboarding} />} />
         
         <Route component={NotFound} />
       </Switch>
@@ -128,6 +139,7 @@ function AppContent() {
   const [isRegisterPage] = useRoute("/register");
   const [isForgotPasswordPage] = useRoute("/forgot-password");
   const [isResetPasswordPage] = useRoute("/reset-password/:token");
+  const [isOnboardingPage] = useRoute("/onboarding");
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage;
 
@@ -154,6 +166,14 @@ function AppContent() {
         <Route path="/register" component={() => <AuthRoute component={RegisterPage} />} />
         <Route path="/forgot-password" component={() => <AuthRoute component={ForgotPasswordPage} />} />
         <Route path="/reset-password/:token" component={() => <AuthRoute component={ResetPasswordPage} />} />
+      </Switch>
+    );
+  }
+
+  if (isOnboardingPage) {
+    return (
+      <Switch>
+        <Route path="/onboarding" component={() => <ProtectedRoute component={OnboardingPage} skipOnboardingCheck />} />
       </Switch>
     );
   }

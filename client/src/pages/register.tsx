@@ -8,10 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Briefcase, Home } from 'lucide-react';
 
 const registerSchema = z.object({
+  userType: z.enum(['broker', 'borrower'], { required_error: 'Please select your account type' }),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Please enter a valid email address'),
@@ -33,6 +36,7 @@ export default function RegisterPage() {
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
+      userType: undefined,
       firstName: '',
       lastName: '',
       email: '',
@@ -49,8 +53,14 @@ export default function RegisterPage() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        userType: data.userType,
       });
-      setLocation('/');
+      // Redirect based on user type - brokers go to onboarding, borrowers go straight to dashboard
+      if (data.userType === 'broker') {
+        setLocation('/onboarding');
+      } else {
+        setLocation('/');
+      }
     } catch (error: any) {
       toast({
         title: 'Registration failed',
@@ -72,6 +82,60 @@ export default function RegisterPage() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="userType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>I am a...</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        className="grid grid-cols-2 gap-4"
+                      >
+                        <div>
+                          <RadioGroupItem
+                            value="broker"
+                            id="broker"
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor="broker"
+                            className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover-elevate peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                            data-testid="radio-broker"
+                          >
+                            <Briefcase className="mb-3 h-6 w-6" />
+                            <span className="font-semibold">Broker</span>
+                            <span className="text-xs text-muted-foreground text-center mt-1">
+                              I refer loans to Sphinx Capital
+                            </span>
+                          </Label>
+                        </div>
+                        <div>
+                          <RadioGroupItem
+                            value="borrower"
+                            id="borrower"
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor="borrower"
+                            className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover-elevate peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                            data-testid="radio-borrower"
+                          >
+                            <Home className="mb-3 h-6 w-6" />
+                            <span className="font-semibold">Borrower</span>
+                            <span className="text-xs text-muted-foreground text-center mt-1">
+                              I have a loan with Sphinx Capital
+                            </span>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}

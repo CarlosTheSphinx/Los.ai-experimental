@@ -12,6 +12,7 @@ import {
   Shield,
   Handshake,
   MessageSquare,
+  BookOpen,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -37,12 +38,19 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const navItems = [
+const brokerNavItems = [
   { href: "/", label: "New Quote", icon: Calculator },
   { href: "/quotes", label: "Saved Quotes", icon: FileText },
   { href: "/agreements", label: "Agreements", icon: ClipboardList },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
+  { href: "/resources", label: "Resources", icon: BookOpen },
+];
+
+const borrowerNavItems = [
+  { href: "/", label: "My Loans", icon: FolderKanban },
+  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
+  { href: "/resources", label: "Resources", icon: BookOpen },
 ];
 
 const adminNavItems = [
@@ -50,6 +58,7 @@ const adminNavItems = [
   { href: "/admin/deals", label: "Deals", icon: FileText },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/programs", label: "Programs", icon: Settings2 },
+  { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/projects", label: "All Projects", icon: FolderKanban },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
@@ -61,6 +70,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { user, logout } = useAuth();
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+  const isBorrower = user?.userType === 'borrower';
+  
+  // Select navigation items based on user type
+  const navItems = isBorrower ? borrowerNavItems : brokerNavItems;
 
   const handleLogout = async () => {
     await logout();

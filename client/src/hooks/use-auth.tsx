@@ -8,6 +8,8 @@ interface User {
   firstName: string;
   lastName: string;
   role?: string;
+  userType?: 'broker' | 'borrower';
+  onboardingCompleted?: boolean;
 }
 
 interface AuthContextType {
@@ -24,6 +26,7 @@ interface RegisterData {
   password: string;
   firstName: string;
   lastName: string;
+  userType: 'broker' | 'borrower';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

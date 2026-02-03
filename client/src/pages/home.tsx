@@ -4,6 +4,7 @@ import { LoanForm } from "@/components/LoanForm";
 import { PricingResult } from "@/components/PricingResult";
 import { RTLLoanForm } from "@/components/RTLLoanForm";
 import { RTLPricingResult } from "@/components/RTLPricingResult";
+import { BorrowerDashboard } from "@/components/BorrowerDashboard";
 import { usePricing } from "@/hooks/use-pricing";
 import { type LoanPricingFormData, type PricingResponse, type RTLPricingFormData, type RTLPricingResponse } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Calculator, Zap, CheckCircle2, XCircle, Loader2, Sparkles, RotateCcw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ProgramWithPricing {
   id: number;
@@ -61,10 +63,16 @@ const progressSteps = [
 
 export default function Home() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [result, setResult] = useState<PricingResponse | null>(null);
   const [lastFormData, setLastFormData] = useState<LoanPricingFormData | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  
+  // If user is a borrower, show the borrower dashboard instead
+  if (user?.userType === 'borrower') {
+    return <BorrowerDashboard />;
+  }
   
   // Loan product type selector
   const [loanProductType, setLoanProductType] = useState<"dscr" | "rtl">("dscr");
