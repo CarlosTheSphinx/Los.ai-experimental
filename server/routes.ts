@@ -88,6 +88,49 @@ export async function registerRoutes(
 
   // ==================== AUTH ROUTES (PUBLIC) ====================
   
+  // One-time admin setup endpoint for production
+  app.post('/api/setup-admins', async (req: Request, res: Response) => {
+    try {
+      const secretKey = req.body.secret;
+      if (secretKey !== 'sphinx-admin-setup-2026') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      
+      const passwordHash = '$2b$10$rrnPzuttDnKhnHD8LNnvjO7.xtiA.AmauqsYLzlSp9PudapVXWore';
+      
+      // Update or create lance@sphinxcap.com
+      const lance = await storage.getUserByEmail('lance@sphinxcap.com');
+      if (lance) {
+        await db.update(users).set({ role: 'admin', passwordHash }).where(eq(users.email, 'lance@sphinxcap.com'));
+      } else {
+        await db.insert(users).values({
+          email: 'lance@sphinxcap.com',
+          passwordHash,
+          fullName: 'Lance',
+          role: 'admin'
+        });
+      }
+      
+      // Update or create carlos@sphinxcap.com
+      const carlos = await storage.getUserByEmail('carlos@sphinxcap.com');
+      if (carlos) {
+        await db.update(users).set({ role: 'admin', passwordHash }).where(eq(users.email, 'carlos@sphinxcap.com'));
+      } else {
+        await db.insert(users).values({
+          email: 'carlos@sphinxcap.com',
+          passwordHash,
+          fullName: 'Carlos',
+          role: 'admin'
+        });
+      }
+      
+      res.json({ success: true, message: 'Admin accounts created/updated' });
+    } catch (error) {
+      console.error('Admin setup error:', error);
+      res.status(500).json({ error: 'Failed to setup admin accounts' });
+    }
+  });
+
   // Register
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     try {
