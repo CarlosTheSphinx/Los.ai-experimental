@@ -55,6 +55,28 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
   const purpose = form.watch("purpose");
   const asIsValue = form.watch("asIsValue");
   const rehabBudget = form.watch("rehabBudget");
+  const completedProjects = form.watch("completedProjects");
+
+  // Auto-calculate experience level based on completed projects
+  const calculatedExperienceLevel = (() => {
+    const projects = completedProjects || 0;
+    if (projects >= 10) return { tier: "institutional", label: "Institutional", color: "text-purple-600" };
+    if (projects >= 3) return { tier: "experienced", label: "Experienced", color: "text-blue-600" };
+    return { tier: "no_experience", label: "No Experience", color: "text-orange-600" };
+  })();
+
+  // Auto-set experience tier based on completed projects
+  useEffect(() => {
+    const projects = completedProjects || 0;
+    let newTier: "no_experience" | "experienced" | "institutional";
+    if (projects >= 10) newTier = "institutional";
+    else if (projects >= 3) newTier = "experienced";
+    else newTier = "no_experience";
+    
+    if (form.getValues("experienceTier") !== newTier) {
+      form.setValue("experienceTier", newTier);
+    }
+  }, [completedProjects, form]);
 
   // Auto-calculate loan type for rehab loans based on 50% rule
   const calculatedRehabType = (() => {
@@ -299,33 +321,10 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
-                    name="experienceTier"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-slate-700">Experience Level</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-11 bg-slate-50 border-slate-200" data-testid="select-experience">
-                              <SelectValue placeholder="Select experience" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="no_experience">No Experience</SelectItem>
-                            <SelectItem value="experienced">Experienced</SelectItem>
-                            <SelectItem value="institutional">Institutional</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
                     name="completedProjects"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-slate-700">Completed Projects</FormLabel>
+                        <FormLabel className="text-slate-700">Completed Projects (In last three years)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -339,6 +338,18 @@ export function RTLLoanForm({ onSubmit, isLoading }: RTLLoanFormProps) {
                       </FormItem>
                     )}
                   />
+
+                  <div className="flex items-end">
+                    <div className="w-full p-3 bg-slate-100 rounded-lg border border-slate-200">
+                      <p className="text-sm text-slate-500 mb-1">Experience Level</p>
+                      <p className={`text-lg font-semibold ${calculatedExperienceLevel.color}`} data-testid="text-experience-level">
+                        {calculatedExperienceLevel.label}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {completedProjects >= 10 ? "10+ projects" : completedProjects >= 3 ? "3-9 projects" : "0-2 projects"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
