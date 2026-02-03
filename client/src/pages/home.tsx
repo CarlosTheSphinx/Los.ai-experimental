@@ -86,10 +86,12 @@ export default function Home() {
   
   // RTL pricing state
   const [rtlResult, setRtlResult] = useState<RTLPricingResponse | null>(null);
+  const [rtlFormData, setRtlFormData] = useState<RTLPricingFormData | null>(null);
   
   // RTL pricing mutation
   const rtlPricingMutation = useMutation({
     mutationFn: async (data: RTLPricingFormData) => {
+      setRtlFormData(data);
       const res = await apiRequest("POST", "/api/pricing/rtl", data);
       return res.json();
     },
@@ -497,6 +499,7 @@ export default function Home() {
               ) : rtlResult ? (
                 <RTLPricingResult 
                   result={rtlResult} 
+                  formData={rtlFormData}
                   onReset={handleReset}
                 />
               ) : (
