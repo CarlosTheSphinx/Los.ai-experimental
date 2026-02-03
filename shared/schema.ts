@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   partnershipAgreementSignedAt: timestamp("partnership_agreement_signed_at"),
   trainingCompletedAt: timestamp("training_completed_at"),
+  // Test data identification
+  isTestUser: boolean("is_test_user").default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ 
