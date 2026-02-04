@@ -84,21 +84,24 @@ export function calculateRTLPricing(input: RTLPricingFormData): RTLPricingRespon
 }
 
 function runDisqualifiers(input: RTLPricingFormData, disqualifiers: Disqualifier[]): void {
-  const loanAmount = input.loanAmount ?? 0;
+  const loanAmount = input.loanAmount;
   
-  // DQ-LOAN-001: Below minimum loan amount
-  if (loanAmount < 125000) {
-    disqualifiers.push({ id: "DQ-LOAN-001", message: "Minimum loan amount is $125,000." });
-  }
+  // Only check loan amount limits if a specific loan amount is provided
+  if (loanAmount && loanAmount > 0) {
+    // DQ-LOAN-001: Below minimum loan amount
+    if (loanAmount < 125000) {
+      disqualifiers.push({ id: "DQ-LOAN-001", message: "Minimum loan amount is $125,000." });
+    }
 
-  // DQ-LOAN-002: Below minimum loan amount for GUC
-  if (input.loanType === "guc" && loanAmount < 150000) {
-    disqualifiers.push({ id: "DQ-LOAN-002", message: "Minimum loan amount for GUC is $150,000." });
-  }
+    // DQ-LOAN-002: Below minimum loan amount for GUC
+    if (input.loanType === "guc" && loanAmount < 150000) {
+      disqualifiers.push({ id: "DQ-LOAN-002", message: "Minimum loan amount for GUC is $150,000." });
+    }
 
-  // DQ-LOAN-003: Exceeds maximum loan amount
-  if (loanAmount > 5000000) {
-    disqualifiers.push({ id: "DQ-LOAN-003", message: "Maximum loan amount is $5,000,000." });
+    // DQ-LOAN-003: Exceeds maximum loan amount
+    if (loanAmount > 5000000) {
+      disqualifiers.push({ id: "DQ-LOAN-003", message: "Maximum loan amount is $5,000,000." });
+    }
   }
 
   // DQ-CREDIT-001: FICO below minimum
@@ -346,15 +349,6 @@ function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; ma
     ltc = Math.min(ltc, 80);
     if (prevLtc > 80) {
       reductions.push({ reason: "GUC development cap", ltcDelta: 80 - prevLtc, ltaivDelta: 0, ltarvDelta: 0 });
-    }
-  }
-
-  // No experience + 0 completed projects: cap LTC at 30% of budget/AIV
-  if (input.experienceTier === "no_experience" && input.completedProjects === 0) {
-    const prevLtc = ltc;
-    ltc = Math.min(ltc, 30);
-    if (prevLtc > 30) {
-      reductions.push({ reason: "0 experience cap", ltcDelta: 30 - prevLtc, ltaivDelta: 0, ltarvDelta: 0 });
     }
   }
 
