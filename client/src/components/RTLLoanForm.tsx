@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { rtlPricingFormSchema, type RTLPricingFormData } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput, NumberInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -454,16 +455,13 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       <FormItem>
                         <FormLabel className="text-slate-700">As-Is Value ($)</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                            <Input
-                              type="number"
-                              className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                              placeholder="Enter as-is value"
-                              data-testid="input-as-is-value"
-                              {...field}
-                            />
-                          </div>
+                          <CurrencyInput
+                            className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                            placeholder="Enter as-is value"
+                            data-testid="input-as-is-value"
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -479,16 +477,13 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       <FormItem>
                         <FormLabel className="text-slate-700">ARV - After Repair Value ($)</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                            <Input
-                              type="number"
-                              className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                              placeholder="Enter after repair value"
-                              data-testid="input-arv"
-                              {...field}
-                            />
-                          </div>
+                          <CurrencyInput
+                            className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                            placeholder="Enter after repair value"
+                            data-testid="input-arv"
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -502,16 +497,13 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       <FormItem>
                         <FormLabel className="text-slate-700">Rehab Budget ($)</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                            <Input
-                              type="number"
-                              className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                              placeholder="Enter rehab budget (0 for no rehab)"
-                              data-testid="input-rehab-budget"
-                              {...field}
-                            />
-                          </div>
+                          <CurrencyInput
+                            className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                            placeholder="Enter rehab budget (0 for no rehab)"
+                            data-testid="input-rehab-budget"
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

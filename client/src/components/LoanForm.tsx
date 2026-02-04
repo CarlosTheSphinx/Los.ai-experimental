@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loanPricingFormSchema, type LoanPricingFormData } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -129,10 +130,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     <FormItem>
                       <FormLabel className="text-slate-700">Loan Amount ($)</FormLabel>
                       <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                          <Input type="number" className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter amount" {...field} />
-                        </div>
+                        <CurrencyInput 
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" 
+                          placeholder="Enter amount" 
+                          value={field.value}
+                          onChange={field.onChange}
+                          data-testid="input-loan-amount"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -146,10 +150,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     <FormItem>
                       <FormLabel className="text-slate-700">Property Value ($)</FormLabel>
                       <FormControl>
-                        <div className="relative">
-                          <Building className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                          <Input type="number" className="pl-9 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter value" {...field} />
-                        </div>
+                        <CurrencyInput 
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" 
+                          placeholder="Enter value" 
+                          value={field.value}
+                          onChange={field.onChange}
+                          data-testid="input-property-value"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -207,7 +214,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     <FormItem>
                       <FormLabel className="text-slate-700">Gross Monthly Rent ($)</FormLabel>
                       <FormControl>
-                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter rent" {...field} />
+                        <CurrencyInput 
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" 
+                          placeholder="Enter rent" 
+                          value={field.value}
+                          onChange={field.onChange}
+                          data-testid="input-gross-monthly-rent"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -221,7 +234,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     <FormItem>
                       <FormLabel className="text-slate-700">Annual Taxes ($)</FormLabel>
                       <FormControl>
-                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter taxes" {...field} />
+                        <CurrencyInput 
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" 
+                          placeholder="Enter taxes" 
+                          value={field.value}
+                          onChange={field.onChange}
+                          data-testid="input-annual-taxes"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -235,7 +254,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     <FormItem>
                       <FormLabel className="text-slate-700">Annual Insurance ($)</FormLabel>
                       <FormControl>
-                        <Input type="number" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" placeholder="Enter insurance" {...field} />
+                        <CurrencyInput 
+                          className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all" 
+                          placeholder="Enter insurance" 
+                          value={field.value}
+                          onChange={field.onChange}
+                          data-testid="input-annual-insurance"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
