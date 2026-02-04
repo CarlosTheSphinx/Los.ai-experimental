@@ -83,7 +83,13 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
   
   // Max loan based on each metric
   const maxLoanByLTC = (totalCost * maxLTC) / 100;
-  const maxLoanByLTAIV = (asIsValue * maxLTAIV) / 100;
+  // LTAIV formula: (((budget + as-is value) * LTC) - budget) / As is value
+  // This gives max loan = calculated LTAIV * asIsValue, capped by maxLTAIV
+  const calculatedLTAIV = asIsValue > 0 
+    ? ((((rehabBudget + asIsValue) * (maxLTC / 100)) - rehabBudget) / asIsValue) * 100
+    : 0;
+  const effectiveLTAIV = Math.min(calculatedLTAIV, maxLTAIV);
+  const maxLoanByLTAIV = (asIsValue * effectiveLTAIV) / 100;
   const maxLoanByLTARV = (arv * maxLTARV) / 100;
   
   // The actual max loan is the minimum of all three constraints
@@ -235,7 +241,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
                 <div className="text-lg font-bold text-purple-800" data-testid="text-max-loan-ltaiv">
                   ${maxLoanByLTAIV.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
-                <span className="text-xs text-purple-500">{maxLTAIV}% of ${asIsValue.toLocaleString()}</span>
+                <span className="text-xs text-purple-500">{effectiveLTAIV.toFixed(1)}% of ${asIsValue.toLocaleString()}</span>
               </div>
               <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100 text-center">
                 <span className="text-xs text-indigo-600 font-medium">Max by LTARV</span>
