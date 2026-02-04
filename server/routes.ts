@@ -6581,6 +6581,7 @@ export async function registerRoutes(
         return {
           configId: config.id,
           projectId: config.projectId,
+          dealId: config.dealId,
           projectName: config.projectName || (config.borrowerName ? `${config.borrowerName} - ${config.propertyAddress?.split(',')[0] || 'Deal'}` : `Deal #${config.dealId || config.projectId}`),
           borrowerName: config.borrowerName,
           propertyAddress: config.propertyAddress,
@@ -6654,10 +6655,19 @@ export async function registerRoutes(
   // Create a new digest template
   app.post('/api/admin/digest-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { name, description, emailSubject, emailBody, smsBody, isDefault } = req.body;
+      const schema = z.object({
+        name: z.string().min(1, "Name is required").max(100),
+        description: z.string().max(255).optional().nullable(),
+        emailSubject: z.string().min(1, "Email subject is required").max(255),
+        emailBody: z.string().min(1, "Email body is required"),
+        smsBody: z.string().optional().nullable(),
+        isDefault: z.boolean().optional(),
+      });
+      
+      const validated = schema.parse(req.body);
       
       // If setting as default, unset other defaults
-      if (isDefault) {
+      if (validated.isDefault) {
         await db.update(digestTemplates)
           .set({ isDefault: false })
           .where(eq(digestTemplates.isDefault, true));
@@ -6665,12 +6675,12 @@ export async function registerRoutes(
       
       const result = await db.insert(digestTemplates)
         .values({
-          name,
-          description,
-          emailSubject,
-          emailBody,
-          smsBody,
-          isDefault: isDefault || false,
+          name: validated.name,
+          description: validated.description,
+          emailSubject: validated.emailSubject,
+          emailBody: validated.emailBody,
+          smsBody: validated.smsBody,
+          isDefault: validated.isDefault || false,
           createdBy: req.user?.id,
         })
         .returning();
@@ -6678,6 +6688,9 @@ export async function registerRoutes(
       res.json({ template: result[0] });
     } catch (error: any) {
       console.error('Create digest template error:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -6686,10 +6699,23 @@ export async function registerRoutes(
   app.put('/api/admin/digest-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const templateId = parseInt(req.params.id);
-      const { name, description, emailSubject, emailBody, smsBody, isDefault } = req.body;
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: 'Invalid template ID' });
+      }
+      
+      const schema = z.object({
+        name: z.string().min(1, "Name is required").max(100),
+        description: z.string().max(255).optional().nullable(),
+        emailSubject: z.string().min(1, "Email subject is required").max(255),
+        emailBody: z.string().min(1, "Email body is required"),
+        smsBody: z.string().optional().nullable(),
+        isDefault: z.boolean().optional(),
+      });
+      
+      const validated = schema.parse(req.body);
       
       // If setting as default, unset other defaults
-      if (isDefault) {
+      if (validated.isDefault) {
         await db.update(digestTemplates)
           .set({ isDefault: false })
           .where(eq(digestTemplates.isDefault, true));
@@ -6697,12 +6723,12 @@ export async function registerRoutes(
       
       const result = await db.update(digestTemplates)
         .set({
-          name,
-          description,
-          emailSubject,
-          emailBody,
-          smsBody,
-          isDefault: isDefault || false,
+          name: validated.name,
+          description: validated.description,
+          emailSubject: validated.emailSubject,
+          emailBody: validated.emailBody,
+          smsBody: validated.smsBody,
+          isDefault: validated.isDefault || false,
           updatedAt: new Date(),
         })
         .where(eq(digestTemplates.id, templateId))
@@ -6715,6 +6741,9 @@ export async function registerRoutes(
       res.json({ template: result[0] });
     } catch (error: any) {
       console.error('Update digest template error:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -6723,6 +6752,34 @@ export async function registerRoutes(
   app.delete('/api/admin/digest-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const templateId = parseInt(req.params.id);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: 'Invalid template ID' });
+      }
+      
+      // Check if template exists
+      const [existing] = await db.select()
+        .from(digestTemplates)
+        .where(eq(digestTemplates.id, templateId))
+        .limit(1);
+      
+      if (!existing) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      // Don't allow deleting the only default template
+      if (existing.isDefault) {
+        const otherTemplates = await db.select()
+          .from(digestTemplates)
+          .where(sql`${digestTemplates.id} != ${templateId}`)
+          .limit(1);
+        
+        if (otherTemplates.length > 0) {
+          // Set another template as default
+          await db.update(digestTemplates)
+            .set({ isDefault: true })
+            .where(eq(digestTemplates.id, otherTemplates[0].id));
+        }
+      }
       
       await db.delete(digestTemplates).where(eq(digestTemplates.id, templateId));
       
@@ -6736,7 +6793,17 @@ export async function registerRoutes(
   // Preview a template with populated merge tags
   app.post('/api/admin/digest-templates/preview', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { emailSubject, emailBody, smsBody, configId, projectId, dealId } = req.body;
+      const schema = z.object({
+        emailSubject: z.string().optional().nullable(),
+        emailBody: z.string().optional().nullable(),
+        smsBody: z.string().optional().nullable(),
+        configId: z.number().optional().nullable(),
+        projectId: z.number().optional().nullable(),
+        dealId: z.number().optional().nullable(),
+      });
+      
+      const validated = schema.parse(req.body);
+      const { emailSubject, emailBody, smsBody, configId, projectId, dealId } = validated;
       
       // Get real data for preview
       let recipientName = 'John Smith';

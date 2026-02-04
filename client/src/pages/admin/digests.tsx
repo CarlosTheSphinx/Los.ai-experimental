@@ -59,7 +59,8 @@ interface Draft {
 
 interface ScheduledDigest {
   configId: number;
-  projectId: number;
+  projectId: number | null;
+  dealId: number | null;
   projectName: string;
   borrowerName: string | null;
   propertyAddress: string | null;
@@ -286,6 +287,7 @@ export default function AdminDigests() {
           emailBody: editForm.emailBody,
           smsBody: editForm.smsBody,
           projectId: editingDigest.projectId,
+          dealId: editingDigest.dealId,
           configId: editingDigest.configId,
         }),
       });
