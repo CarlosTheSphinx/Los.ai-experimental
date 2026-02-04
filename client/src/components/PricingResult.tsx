@@ -22,6 +22,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
+  const [customerCompanyName, setCustomerCompanyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
   const [pointsCharged, setPointsCharged] = useState(1); // Minimum 1 point
 
@@ -42,6 +43,7 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
       return apiRequest('POST', '/api/quotes', {
           customerFirstName,
           customerLastName,
+          customerCompanyName,
           propertyAddress,
           loanData: formData,
           interestRate: formattedRate,
@@ -193,6 +195,17 @@ export function PricingResult({ result, formData, onReset }: PricingResultProps)
                     data-testid="input-last-name"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company Name</Label>
+                <Input
+                  id="companyName"
+                  value={customerCompanyName}
+                  onChange={(e) => setCustomerCompanyName(e.target.value)}
+                  placeholder="ABC Investments LLC"
+                  data-testid="input-company-name"
+                />
               </div>
 
               <div className="space-y-2">

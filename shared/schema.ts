@@ -70,6 +70,7 @@ export const savedQuotes = pgTable("saved_quotes", {
   partnerName: varchar("partner_name", { length: 255 }), // For manually typed partner names
   customerFirstName: text("customer_first_name").notNull(),
   customerLastName: text("customer_last_name").notNull(),
+  customerCompanyName: text("customer_company_name"),
   customerEmail: text("customer_email"),
   customerPhone: text("customer_phone"),
   propertyAddress: text("property_address").notNull(),

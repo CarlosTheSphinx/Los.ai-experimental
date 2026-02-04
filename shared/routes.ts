@@ -5,6 +5,7 @@ import { loanPricingFormSchema, pricingResponseSchema, insertSavedQuoteSchema } 
 export const savedQuoteInputSchema = z.object({
   customerFirstName: z.string().min(1, "First name is required"),
   customerLastName: z.string().min(1, "Last name is required"),
+  customerCompanyName: z.string().optional(),
   propertyAddress: z.string().min(1, "Property address is required"),
   loanData: z.record(z.any()),
   interestRate: z.string(),

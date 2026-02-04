@@ -35,6 +35,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
       return apiRequest('POST', '/api/quotes', {
         customerFirstName,
         customerLastName,
+        customerCompanyName,
         propertyAddress: formData?.propertyAddress || "",
         loanData: formData,
         interestRate: formattedRate,
