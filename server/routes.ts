@@ -6,7 +6,7 @@ import { db } from "./db";
 import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
-import { eq, desc, inArray, and, gt, gte, lte, sql, isNull } from "drizzle-orm";
+import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
 import { format } from "date-fns";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
