@@ -6586,6 +6586,7 @@ export async function registerRoutes(
           borrowerName: config.borrowerName,
           propertyAddress: config.propertyAddress,
           frequency: config.frequency,
+          customDays: config.customDays,
           timeOfDay: config.timeOfDay,
           timezone: config.timezone,
           recipientCount: recipientsWithNames.length,
@@ -7020,12 +7021,13 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Update a draft
+  // Admin - Update a draft and optionally its config
   app.put('/api/admin/digests/drafts/:draftId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const draftId = parseInt(req.params.draftId);
-      const { emailSubject, emailBody, smsBody } = req.body;
+      const { emailSubject, emailBody, smsBody, frequency, customDays, timeOfDay, configId } = req.body;
       
+      // Update the draft content
       const [updated] = await db.update(scheduledDigestDrafts)
         .set({
           emailSubject,
@@ -7038,6 +7040,18 @@ export async function registerRoutes(
       
       if (!updated) {
         return res.status(404).json({ error: 'Draft not found' });
+      }
+      
+      // If config settings provided, update the config as well
+      if (configId && (frequency || timeOfDay)) {
+        const configUpdate: any = { updatedAt: new Date() };
+        if (frequency) configUpdate.frequency = frequency;
+        if (frequency === 'custom' && customDays) configUpdate.customDays = customDays;
+        if (timeOfDay) configUpdate.timeOfDay = timeOfDay;
+        
+        await db.update(loanDigestConfigs)
+          .set(configUpdate)
+          .where(eq(loanDigestConfigs.id, configId));
       }
       
       res.json({ success: true, draft: updated });

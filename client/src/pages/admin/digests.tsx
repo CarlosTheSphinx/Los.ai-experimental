@@ -65,6 +65,7 @@ interface ScheduledDigest {
   borrowerName: string | null;
   propertyAddress: string | null;
   frequency: string;
+  customDays: number | null;
   timeOfDay: string;
   timezone: string;
   recipientCount: number;
@@ -128,6 +129,9 @@ export default function AdminDigests() {
     emailSubject: "",
     emailBody: "",
     smsBody: "",
+    frequency: "daily",
+    customDays: 2,
+    timeOfDay: "09:00",
   });
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -283,9 +287,16 @@ export default function AdminDigests() {
     // Use the draft content if it exists, otherwise use the default template
     const defaultTemplate = templates.find(t => t.isDefault);
     
+    const baseForm = {
+      frequency: digest.frequency || "daily",
+      customDays: digest.customDays || 2,
+      timeOfDay: digest.timeOfDay || "09:00",
+    };
+    
     if (digest.draft?.emailSubject || digest.draft?.emailBody) {
       // Use existing draft content
       setEditForm({
+        ...baseForm,
         emailSubject: digest.draft.emailSubject || "",
         emailBody: digest.draft.emailBody || "",
         smsBody: digest.draft.smsBody || "",
@@ -293,6 +304,7 @@ export default function AdminDigests() {
     } else if (defaultTemplate) {
       // Use default template
       setEditForm({
+        ...baseForm,
         emailSubject: defaultTemplate.emailSubject,
         emailBody: defaultTemplate.emailBody,
         smsBody: defaultTemplate.smsBody || "",
@@ -300,6 +312,7 @@ export default function AdminDigests() {
     } else {
       // Fallback to config defaults
       setEditForm({
+        ...baseForm,
         emailSubject: digest.defaultContent.emailSubject || "",
         emailBody: digest.defaultContent.emailBody || "",
         smsBody: digest.defaultContent.smsBody || "",
@@ -357,7 +370,10 @@ export default function AdminDigests() {
     if (editingDigest?.draft) {
       updateDraftMutation.mutate({
         draftId: editingDigest.draft.id,
-        data: editForm,
+        data: {
+          ...editForm,
+          configId: editingDigest.configId,
+        },
       });
     }
   };
@@ -640,6 +656,71 @@ export default function AdminDigests() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-4">
+              <h4 className="font-medium text-sm">Schedule Settings</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select 
+                    value={editForm.frequency} 
+                    onValueChange={(value) => setEditForm({ ...editForm, frequency: value })}
+                  >
+                    <SelectTrigger data-testid="select-frequency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="every_2_days">Every 2 Days</SelectItem>
+                      <SelectItem value="every_3_days">Every 3 Days</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {editForm.frequency === 'custom' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="customDays">Every X Days</Label>
+                    <Input
+                      id="customDays"
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={editForm.customDays}
+                      onChange={(e) => setEditForm({ ...editForm, customDays: parseInt(e.target.value) || 2 })}
+                      data-testid="input-custom-days"
+                    />
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="timeOfDay">Time of Day</Label>
+                  <Select 
+                    value={editForm.timeOfDay} 
+                    onValueChange={(value) => setEditForm({ ...editForm, timeOfDay: value })}
+                  >
+                    <SelectTrigger data-testid="select-time">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="07:00">7:00 AM</SelectItem>
+                      <SelectItem value="08:00">8:00 AM</SelectItem>
+                      <SelectItem value="09:00">9:00 AM</SelectItem>
+                      <SelectItem value="10:00">10:00 AM</SelectItem>
+                      <SelectItem value="11:00">11:00 AM</SelectItem>
+                      <SelectItem value="12:00">12:00 PM</SelectItem>
+                      <SelectItem value="13:00">1:00 PM</SelectItem>
+                      <SelectItem value="14:00">2:00 PM</SelectItem>
+                      <SelectItem value="15:00">3:00 PM</SelectItem>
+                      <SelectItem value="16:00">4:00 PM</SelectItem>
+                      <SelectItem value="17:00">5:00 PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center gap-3">
               <Label className="shrink-0">Apply Template:</Label>
               <Select onValueChange={applyTemplate}>
