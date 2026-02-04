@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -8141,6 +8141,498 @@ export async function registerRoutes(
       res.json({ documents: docs });
     } catch (error: any) {
       console.error('Get deal outstanding docs error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== DOCUMENT TEMPLATES API ====================
+  
+  // Admin guard helper
+  const requireAdminRole = (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user || !['admin', 'staff', 'super_admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  };
+
+  // Get all document templates
+  app.get('/api/admin/document-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templates = await db
+        .select()
+        .from(documentTemplates)
+        .orderBy(desc(documentTemplates.createdAt));
+      
+      res.json({ templates });
+    } catch (error: any) {
+      console.error('Get document templates error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get single document template with fields
+  app.get('/api/admin/document-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      
+      const template = await db
+        .select()
+        .from(documentTemplates)
+        .where(eq(documentTemplates.id, templateId))
+        .limit(1);
+      
+      if (template.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      const fields = await db
+        .select()
+        .from(templateFields)
+        .where(eq(templateFields.templateId, templateId))
+        .orderBy(templateFields.tabOrder);
+      
+      res.json({ template: template[0], fields });
+    } catch (error: any) {
+      console.error('Get document template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get available field binding keys
+  app.get('/api/admin/document-templates/field-bindings', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      res.json({ bindingKeys: fieldBindingKeys });
+    } catch (error: any) {
+      console.error('Get field bindings error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create document template
+  app.post('/api/admin/document-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, description, pdfUrl, pdfFileName, pageDimensions, pageCount, category, loanType } = req.body;
+      
+      if (!name || !pdfUrl || !pdfFileName) {
+        return res.status(400).json({ error: 'Name, PDF URL, and filename are required' });
+      }
+      
+      const template = await db
+        .insert(documentTemplates)
+        .values({
+          name,
+          description,
+          pdfUrl,
+          pdfFileName,
+          pageDimensions: pageDimensions || [],
+          pageCount: pageCount || 1,
+          category,
+          loanType,
+          createdBy: req.user!.id,
+        })
+        .returning();
+      
+      res.status(201).json({ template: template[0] });
+    } catch (error: any) {
+      console.error('Create document template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update document template
+  app.patch('/api/admin/document-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const { name, description, category, loanType, isActive, pageDimensions, pageCount } = req.body;
+      
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (category !== undefined) updates.category = category;
+      if (loanType !== undefined) updates.loanType = loanType;
+      if (isActive !== undefined) updates.isActive = isActive;
+      if (pageDimensions !== undefined) updates.pageDimensions = pageDimensions;
+      if (pageCount !== undefined) updates.pageCount = pageCount;
+      
+      const template = await db
+        .update(documentTemplates)
+        .set(updates)
+        .where(eq(documentTemplates.id, templateId))
+        .returning();
+      
+      if (template.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      res.json({ template: template[0] });
+    } catch (error: any) {
+      console.error('Update document template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete document template
+  app.delete('/api/admin/document-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      
+      await db
+        .delete(documentTemplates)
+        .where(eq(documentTemplates.id, templateId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete document template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== TEMPLATE FIELDS API ====================
+
+  // Add field to template
+  app.post('/api/admin/document-templates/:id/fields', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const { 
+        fieldName, fieldKey, fieldType, pageNumber, 
+        x, y, width, height, 
+        fontSize, fontColor, textAlign, 
+        signerRole, isRequired, defaultValue, tabOrder 
+      } = req.body;
+      
+      if (!fieldName || !fieldKey || !fieldType || pageNumber === undefined || 
+          x === undefined || y === undefined || width === undefined || height === undefined) {
+        return res.status(400).json({ 
+          error: 'Field name, key, type, page number, and position (x, y, width, height) are required' 
+        });
+      }
+      
+      const field = await db
+        .insert(templateFields)
+        .values({
+          templateId,
+          fieldName,
+          fieldKey,
+          fieldType,
+          pageNumber,
+          x,
+          y,
+          width,
+          height,
+          fontSize: fontSize || 12,
+          fontColor: fontColor || '#000000',
+          textAlign: textAlign || 'left',
+          signerRole,
+          isRequired: isRequired || false,
+          defaultValue,
+          tabOrder: tabOrder || 0,
+        })
+        .returning();
+      
+      res.status(201).json({ field: field[0] });
+    } catch (error: any) {
+      console.error('Add template field error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update field
+  app.patch('/api/admin/document-templates/:templateId/fields/:fieldId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const fieldId = parseInt(req.params.fieldId);
+      const { 
+        fieldName, fieldKey, fieldType, pageNumber, 
+        x, y, width, height, 
+        fontSize, fontColor, textAlign, 
+        signerRole, isRequired, defaultValue, tabOrder 
+      } = req.body;
+      
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (fieldName !== undefined) updates.fieldName = fieldName;
+      if (fieldKey !== undefined) updates.fieldKey = fieldKey;
+      if (fieldType !== undefined) updates.fieldType = fieldType;
+      if (pageNumber !== undefined) updates.pageNumber = pageNumber;
+      if (x !== undefined) updates.x = x;
+      if (y !== undefined) updates.y = y;
+      if (width !== undefined) updates.width = width;
+      if (height !== undefined) updates.height = height;
+      if (fontSize !== undefined) updates.fontSize = fontSize;
+      if (fontColor !== undefined) updates.fontColor = fontColor;
+      if (textAlign !== undefined) updates.textAlign = textAlign;
+      if (signerRole !== undefined) updates.signerRole = signerRole;
+      if (isRequired !== undefined) updates.isRequired = isRequired;
+      if (defaultValue !== undefined) updates.defaultValue = defaultValue;
+      if (tabOrder !== undefined) updates.tabOrder = tabOrder;
+      
+      const field = await db
+        .update(templateFields)
+        .set(updates)
+        .where(eq(templateFields.id, fieldId))
+        .returning();
+      
+      if (field.length === 0) {
+        return res.status(404).json({ error: 'Field not found' });
+      }
+      
+      res.json({ field: field[0] });
+    } catch (error: any) {
+      console.error('Update template field error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete field
+  app.delete('/api/admin/document-templates/:templateId/fields/:fieldId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const fieldId = parseInt(req.params.fieldId);
+      
+      await db
+        .delete(templateFields)
+        .where(eq(templateFields.id, fieldId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete template field error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk update fields (for saving all field positions at once)
+  app.put('/api/admin/document-templates/:id/fields', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const { fields } = req.body;
+      
+      if (!Array.isArray(fields)) {
+        return res.status(400).json({ error: 'Fields array is required' });
+      }
+      
+      // Delete existing fields
+      await db
+        .delete(templateFields)
+        .where(eq(templateFields.templateId, templateId));
+      
+      // Insert new fields
+      if (fields.length > 0) {
+        const fieldsToInsert = fields.map((f: any, index: number) => ({
+          templateId,
+          fieldName: f.fieldName,
+          fieldKey: f.fieldKey,
+          fieldType: f.fieldType,
+          pageNumber: f.pageNumber,
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+          fontSize: f.fontSize || 12,
+          fontColor: f.fontColor || '#000000',
+          textAlign: f.textAlign || 'left',
+          signerRole: f.signerRole,
+          isRequired: f.isRequired || false,
+          defaultValue: f.defaultValue,
+          tabOrder: f.tabOrder ?? index,
+        }));
+        
+        await db
+          .insert(templateFields)
+          .values(fieldsToInsert);
+      }
+      
+      // Fetch and return updated fields
+      const updatedFields = await db
+        .select()
+        .from(templateFields)
+        .where(eq(templateFields.templateId, templateId))
+        .orderBy(templateFields.tabOrder);
+      
+      res.json({ fields: updatedFields });
+    } catch (error: any) {
+      console.error('Bulk update template fields error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== PDF GENERATION ====================
+
+  // Generate PDF with prefilled fields
+  app.post('/api/admin/document-templates/:id/generate', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const { data, quoteId } = req.body; // data is a key-value map for field binding
+      
+      // Get template
+      const template = await db
+        .select()
+        .from(documentTemplates)
+        .where(eq(documentTemplates.id, templateId))
+        .limit(1);
+      
+      if (template.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      // Get fields
+      const fields = await db
+        .select()
+        .from(templateFields)
+        .where(eq(templateFields.templateId, templateId));
+      
+      // Download the PDF from object storage
+      const pdfUrl = template[0].pdfUrl;
+      const pdfResponse = await fetch(pdfUrl);
+      if (!pdfResponse.ok) {
+        throw new Error('Failed to fetch template PDF');
+      }
+      const pdfBytes = await pdfResponse.arrayBuffer();
+      
+      // Load the PDF
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const pages = pdfDoc.getPages();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      // Helper to get nested value from data object
+      const getValue = (key: string, data: Record<string, any>): string => {
+        const parts = key.split('.');
+        let value: any = data;
+        for (const part of parts) {
+          if (value && typeof value === 'object' && part in value) {
+            value = value[part];
+          } else {
+            return '';
+          }
+        }
+        return value?.toString() || '';
+      };
+      
+      // Fill in fields
+      for (const field of fields) {
+        // Skip signature fields - those are handled separately
+        if (field.fieldType === 'signature') continue;
+        
+        const page = pages[field.pageNumber - 1];
+        if (!page) continue;
+        
+        const value = getValue(field.fieldKey, data || {}) || field.defaultValue || '';
+        
+        if (field.fieldType === 'checkbox') {
+          // Draw a checkbox
+          if (value === 'true' || value === '1' || value === 'yes') {
+            page.drawText('✓', {
+              x: field.x,
+              y: field.y,
+              size: field.fontSize || 12,
+              font,
+              color: rgb(0, 0, 0),
+            });
+          }
+        } else if (field.fieldType === 'date') {
+          // Format date if it's a valid date string
+          let displayValue = value;
+          try {
+            if (value) {
+              const date = new Date(value);
+              displayValue = format(date, 'MM/dd/yyyy');
+            }
+          } catch (e) {
+            displayValue = value;
+          }
+          page.drawText(displayValue, {
+            x: field.x,
+            y: field.y,
+            size: field.fontSize || 12,
+            font,
+            color: rgb(0, 0, 0),
+          });
+        } else {
+          // Text or number field
+          page.drawText(value, {
+            x: field.x,
+            y: field.y,
+            size: field.fontSize || 12,
+            font,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+      
+      // Save the modified PDF
+      const modifiedPdfBytes = await pdfDoc.save();
+      
+      // Upload to object storage
+      const fileName = `generated_${template[0].pdfFileName.replace('.pdf', '')}_${Date.now()}.pdf`;
+      const uploadResult = await objectStorageService.uploadFile(
+        Buffer.from(modifiedPdfBytes),
+        fileName,
+        'application/pdf',
+        false // private
+      );
+      
+      res.json({ 
+        success: true, 
+        pdfUrl: uploadResult.url,
+        fileName 
+      });
+    } catch (error: any) {
+      console.error('Generate PDF error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get active templates for users (non-admin route)
+  app.get('/api/document-templates', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { loanType, category } = req.query;
+      
+      let query = db
+        .select()
+        .from(documentTemplates)
+        .where(eq(documentTemplates.isActive, true));
+      
+      const templates = await query.orderBy(documentTemplates.name);
+      
+      // Filter in memory if needed
+      let filtered = templates;
+      if (loanType) {
+        filtered = filtered.filter(t => !t.loanType || t.loanType === loanType);
+      }
+      if (category) {
+        filtered = filtered.filter(t => !t.category || t.category === category);
+      }
+      
+      res.json({ templates: filtered });
+    } catch (error: any) {
+      console.error('Get templates error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get template with fields for document generation
+  app.get('/api/document-templates/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      
+      const template = await db
+        .select()
+        .from(documentTemplates)
+        .where(and(
+          eq(documentTemplates.id, templateId),
+          eq(documentTemplates.isActive, true)
+        ))
+        .limit(1);
+      
+      if (template.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      const fields = await db
+        .select()
+        .from(templateFields)
+        .where(eq(templateFields.templateId, templateId))
+        .orderBy(templateFields.tabOrder);
+      
+      res.json({ template: template[0], fields });
+    } catch (error: any) {
+      console.error('Get template error:', error);
       res.status(500).json({ error: error.message });
     }
   });
