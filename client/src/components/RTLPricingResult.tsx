@@ -26,6 +26,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
+  const [customerCompanyName, setCustomerCompanyName] = useState("");
   
   const saveQuoteMutation = useMutation({
     mutationFn: async () => {
@@ -438,6 +439,17 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
                   data-testid="input-rtl-last-name"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rtlCompanyName">Company Name</Label>
+              <Input
+                id="rtlCompanyName"
+                value={customerCompanyName}
+                onChange={(e) => setCustomerCompanyName(e.target.value)}
+                placeholder="ABC Investments LLC"
+                data-testid="input-rtl-company-name"
+              />
             </div>
 
             <div className="space-y-2">
