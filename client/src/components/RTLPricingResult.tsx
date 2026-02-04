@@ -310,6 +310,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
                   data-testid="slider-additional-points"
                 />
                 <div className="flex justify-between text-xs text-slate-500 mt-2">
+                  <span>+0</span>
                   <span>+1</span>
                   <span>+2</span>
                   <span>+3</span>
