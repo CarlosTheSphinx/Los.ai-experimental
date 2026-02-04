@@ -27,7 +27,8 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarProvider,
-  SidebarTrigger
+  SidebarTrigger,
+  useSidebar
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,9 +67,10 @@ const adminNavItems = [
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppLayout({ children }: AppLayoutProps) {
+function AppLayoutContent({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { setOpenMobile, isMobile } = useSidebar();
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
   const isBorrower = user?.userType === 'borrower';
@@ -80,31 +82,70 @@ export function AppLayout({ children }: AppLayoutProps) {
     await logout();
   };
 
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3.5rem",
+  const handleNavClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
   };
 
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-        <Sidebar collapsible="icon">
-          <SidebarHeader className="p-4 border-b border-sidebar-border">
-            <div className="flex items-center gap-2">
-              <img 
-                src={sphinxLogo} 
-                alt="Sphinx Capital" 
-                className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
-              />
-            </div>
-          </SidebarHeader>
-          <SidebarContent>
+    <div className="flex h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+      <Sidebar collapsible="icon">
+        <SidebarHeader className="p-4 border-b border-sidebar-border">
+          <div className="flex items-center gap-2">
+            <img 
+              src={sphinxLogo} 
+              alt="Sphinx Capital" 
+              className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
+            />
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navItems.map((item) => {
+                  const isActive = location === item.href || 
+                    (item.href !== "/" && location.startsWith(item.href) && !location.startsWith("/admin"));
+                  const Icon = item.icon;
+                  
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton 
+                        asChild 
+                        isActive={isActive}
+                        tooltip={item.label}
+                      >
+                        <Link 
+                          href={item.href}
+                          data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                          onClick={handleNavClick}
+                        >
+                          <Icon className="h-5 w-5" />
+                          <span className="flex items-center gap-1">
+                            {item.label}
+                            {'showBadge' in item && item.showBadge && <InboxBadge />}
+                          </span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          
+          {isAdmin && (
             <SidebarGroup>
+              <SidebarGroupLabel className="flex items-center gap-2">
+                <Shield className="h-3 w-3" />
+                Admin
+              </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {navItems.map((item) => {
+                  {adminNavItems.map((item) => {
                     const isActive = location === item.href || 
-                      (item.href !== "/" && location.startsWith(item.href) && !location.startsWith("/admin"));
+                      (item.href !== "/admin" && location.startsWith(item.href));
                     const Icon = item.icon;
                     
                     return (
@@ -116,7 +157,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                         >
                           <Link 
                             href={item.href}
-                            data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            onClick={handleNavClick}
                           >
                             <Icon className="h-5 w-5" />
                             <span className="flex items-center gap-1">
@@ -131,87 +173,61 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-            
-            {isAdmin && (
-              <SidebarGroup>
-                <SidebarGroupLabel className="flex items-center gap-2">
-                  <Shield className="h-3 w-3" />
-                  Admin
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {adminNavItems.map((item) => {
-                      const isActive = location === item.href || 
-                        (item.href !== "/admin" && location.startsWith(item.href));
-                      const Icon = item.icon;
-                      
-                      return (
-                        <SidebarMenuItem key={item.href}>
-                          <SidebarMenuButton 
-                            asChild 
-                            isActive={isActive}
-                            tooltip={item.label}
-                          >
-                            <Link 
-                              href={item.href}
-                              data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                            >
-                              <Icon className="h-5 w-5" />
-                              <span className="flex items-center gap-1">
-                                {item.label}
-                                {'showBadge' in item && item.showBadge && <InboxBadge />}
-                              </span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
-          </SidebarContent>
-          <SidebarFooter className="border-t border-sidebar-border p-2">
-            <div className="flex flex-col gap-2">
-              {user && (
-                <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
-                  <div className="text-sm text-muted-foreground truncate">
-                    {user.firstName} {user.lastName}
-                  </div>
-                  {isAdmin && (
-                    <Badge variant="secondary" className="mt-1 text-xs">
-                      <Shield className="h-3 w-3 mr-1" />
-                      {user.role?.replace('_', ' ')}
-                    </Badge>
-                  )}
+          )}
+        </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border p-2">
+          <div className="flex flex-col gap-2">
+            {user && (
+              <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
+                <div className="text-sm text-muted-foreground truncate">
+                  {user.firstName} {user.lastName}
                 </div>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="w-full justify-start gap-2"
-                data-testid="button-logout"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="group-data-[collapsible=icon]:hidden">Sign Out</span>
-              </Button>
-            </div>
-          </SidebarFooter>
-        </Sidebar>
+                {isAdmin && (
+                  <Badge variant="secondary" className="mt-1 text-xs">
+                    <Shield className="h-3 w-3 mr-1" />
+                    {user.role?.replace('_', ' ')}
+                  </Badge>
+                )}
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="w-full justify-start gap-2"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="group-data-[collapsible=icon]:hidden">Sign Out</span>
+            </Button>
+          </div>
+        </SidebarFooter>
+      </Sidebar>
 
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          <header className="flex items-center gap-2 p-2 md:p-3 border-b border-slate-200 bg-white/80 backdrop-blur-md shrink-0">
-            <SidebarTrigger data-testid="button-toggle-sidebar" className="shrink-0" />
-            <span className="text-sm font-medium text-slate-600 truncate md:hidden">
-              {user?.firstName ? `Hi, ${user.firstName}` : 'Sphinx Capital'}
-            </span>
-          </header>
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <header className="flex items-center gap-2 p-2 md:p-3 border-b border-slate-200 bg-white/80 backdrop-blur-md shrink-0">
+          <SidebarTrigger data-testid="button-toggle-sidebar" className="shrink-0" />
+          <span className="text-sm font-medium text-slate-600 truncate md:hidden">
+            {user?.firstName ? `Hi, ${user.firstName}` : 'Sphinx Capital'}
+          </span>
+        </header>
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
       </div>
+    </div>
+  );
+}
+
+export function AppLayout({ children }: AppLayoutProps) {
+  const style = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3.5rem",
+  };
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <AppLayoutContent>{children}</AppLayoutContent>
     </SidebarProvider>
   );
 }
