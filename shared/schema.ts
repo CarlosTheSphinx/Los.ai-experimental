@@ -203,7 +203,7 @@ export const rtlPricingResponseSchema = z.object({
   caps: z.object({
     maxLTC: z.number().optional(),
     maxLTAIV: z.number().optional(),
-    maxLTARV: z.number().optional(),
+    maxLTARV: z.number().nullable().optional(),
   }).optional(),
   appliedAdjusters: z.array(z.object({
     id: z.string(),

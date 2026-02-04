@@ -84,18 +84,20 @@ export function calculateRTLPricing(input: RTLPricingFormData): RTLPricingRespon
 }
 
 function runDisqualifiers(input: RTLPricingFormData, disqualifiers: Disqualifier[]): void {
+  const loanAmount = input.loanAmount ?? 0;
+  
   // DQ-LOAN-001: Below minimum loan amount
-  if (input.loanAmount < 125000) {
+  if (loanAmount < 125000) {
     disqualifiers.push({ id: "DQ-LOAN-001", message: "Minimum loan amount is $125,000." });
   }
 
   // DQ-LOAN-002: Below minimum loan amount for GUC
-  if (input.loanType === "guc" && input.loanAmount < 150000) {
+  if (input.loanType === "guc" && loanAmount < 150000) {
     disqualifiers.push({ id: "DQ-LOAN-002", message: "Minimum loan amount for GUC is $150,000." });
   }
 
   // DQ-LOAN-003: Exceeds maximum loan amount
-  if (input.loanAmount > 5000000) {
+  if (loanAmount > 5000000) {
     disqualifiers.push({ id: "DQ-LOAN-003", message: "Maximum loan amount is $5,000,000." });
   }
 
@@ -256,32 +258,38 @@ interface LeverageReduction {
   ltarvDelta: number;
 }
 
-function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; maxLTAIV?: number; maxLTARV?: number; reductions?: LeverageReduction[] } {
+function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; maxLTAIV?: number; maxLTARV?: number | null; reductions?: LeverageReduction[] } {
   const reductions: LeverageReduction[] = [];
   
+  const isPurchase = input.purpose === "purchase";
+  
   // Base caps by experience tier and loan type
-  const baseCaps: Record<string, Record<string, { ltc: number; ltaiv: number; ltarv: number }>> = {
+  // Values from leverage caps matrix - null means N/A (not applicable)
+  // For Institutional Light Rehab: Purchase gets 95/90, Refi gets 90/85
+  const baseCaps: Record<string, Record<string, { ltc: number; ltaiv: number; ltarv: number | null }>> = {
     institutional: {
-      light_rehab: { ltc: 90, ltaiv: 90, ltarv: 75 },
+      light_rehab: isPurchase 
+        ? { ltc: 95, ltaiv: 90, ltarv: 75 }  // Purchase: 95/90/75
+        : { ltc: 90, ltaiv: 85, ltarv: 75 }, // Refi: 90/85/75
       heavy_rehab: { ltc: 85, ltaiv: 85, ltarv: 75 },
-      bridge_no_rehab: { ltc: 80, ltaiv: 80, ltarv: 75 },
-      guc: { ltc: 85, ltaiv: 85, ltarv: 75 },
+      bridge_no_rehab: { ltc: 80, ltaiv: 85, ltarv: null }, // Bridge: LTARV N/A
+      guc: { ltc: 85, ltaiv: 85, ltarv: null }, // GUC Institutional: LTARV N/A
     },
     experienced: {
-      light_rehab: { ltc: 85, ltaiv: 85, ltarv: 75 },
-      heavy_rehab: { ltc: 80, ltaiv: 80, ltarv: 70 },
-      bridge_no_rehab: { ltc: 75, ltaiv: 75, ltarv: 70 },
-      guc: { ltc: 80, ltaiv: 80, ltarv: 70 },
+      light_rehab: { ltc: 85, ltaiv: 85, ltarv: 70 },
+      heavy_rehab: { ltc: 85, ltaiv: 85, ltarv: 70 },
+      bridge_no_rehab: { ltc: 75, ltaiv: 75, ltarv: null }, // Bridge: LTARV N/A
+      guc: { ltc: 85, ltaiv: 85, ltarv: null }, // GUC: LTARV N/A
     },
     no_experience: {
-      light_rehab: { ltc: 80, ltaiv: 80, ltarv: 65 },
-      heavy_rehab: { ltc: 75, ltaiv: 75, ltarv: 65 },
-      bridge_no_rehab: { ltc: 70, ltaiv: 70, ltarv: 65 },
-      guc: { ltc: 70, ltaiv: 70, ltarv: 60 },
+      light_rehab: { ltc: 80, ltaiv: 75, ltarv: null }, // No experience: LTARV N/A
+      heavy_rehab: { ltc: 0, ltaiv: 0, ltarv: null }, // Disqualified - handled elsewhere
+      bridge_no_rehab: { ltc: 70, ltaiv: 70, ltarv: null }, // Bridge: LTARV N/A
+      guc: { ltc: 0, ltaiv: 0, ltarv: null }, // Disqualified - handled elsewhere
     },
   };
 
-  const tierCaps = baseCaps[input.experienceTier]?.[input.loanType] || { ltc: 70, ltaiv: 70, ltarv: 65 };
+  const tierCaps = baseCaps[input.experienceTier]?.[input.loanType] || { ltc: 70, ltaiv: 70, ltarv: null };
   let { ltc, ltaiv, ltarv } = tierCaps;
 
   // Apply leverage overlays/reductions
@@ -290,23 +298,23 @@ function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; ma
   if (input.fico < 680) {
     ltc -= 10;
     ltaiv -= 10;
-    ltarv -= 10;
-    reductions.push({ reason: "FICO < 680", ltcDelta: -10, ltaivDelta: -10, ltarvDelta: -10 });
+    if (ltarv !== null) ltarv -= 10;
+    reductions.push({ reason: "FICO < 680", ltcDelta: -10, ltaivDelta: -10, ltarvDelta: ltarv !== null ? -10 : 0 });
   }
 
   // Declining market: -10% LTC and LTARV
   if (input.isDecliningMarket) {
     ltc -= 10;
-    ltarv -= 10;
-    reductions.push({ reason: "Declining market", ltcDelta: -10, ltaivDelta: 0, ltarvDelta: -10 });
+    if (ltarv !== null) ltarv -= 10;
+    reductions.push({ reason: "Declining market", ltcDelta: -10, ltaivDelta: 0, ltarvDelta: ltarv !== null ? -10 : 0 });
   }
 
   // Listed 120+ days: -5% leverage reduction + requires 3rd party valuation
   if (input.isListedLast12Months && input.daysOnMarket && input.daysOnMarket >= 120) {
     ltc -= 5;
     ltaiv -= 5;
-    ltarv -= 5;
-    reductions.push({ reason: "Listed 120+ days", ltcDelta: -5, ltaivDelta: -5, ltarvDelta: -5 });
+    if (ltarv !== null) ltarv -= 5;
+    reductions.push({ reason: "Listed 120+ days", ltcDelta: -5, ltaivDelta: -5, ltarvDelta: ltarv !== null ? -5 : 0 });
   }
 
   // >4 units: cap LTAIV/LTC at 80%
@@ -328,8 +336,8 @@ function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; ma
   if (isFloridaProperty && input.loanType === "bridge_no_rehab") {
     ltc -= 5;
     ltaiv -= 5;
-    ltarv -= 5;
-    reductions.push({ reason: "FL bridge no rehab", ltcDelta: -5, ltaivDelta: -5, ltarvDelta: -5 });
+    if (ltarv !== null) ltarv -= 5;
+    reductions.push({ reason: "FL bridge no rehab", ltcDelta: -5, ltaivDelta: -5, ltarvDelta: ltarv !== null ? -5 : 0 });
   }
 
   // GUC development project (10+ units): additional restrictions already in disqualifiers
@@ -353,7 +361,9 @@ function calculateLeverageCaps(input: RTLPricingFormData): { maxLTC?: number; ma
   // Clamp to sane bounds
   ltc = Math.max(0, Math.min(95, ltc));
   ltaiv = Math.max(0, Math.min(95, ltaiv));
-  ltarv = Math.max(0, Math.min(95, ltarv));
+  if (ltarv !== null) {
+    ltarv = Math.max(0, Math.min(95, ltarv));
+  }
 
   return {
     maxLTC: ltc,

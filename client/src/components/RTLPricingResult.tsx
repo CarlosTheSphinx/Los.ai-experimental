@@ -79,7 +79,8 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
   
   const maxLTC = result.caps?.maxLTC || 0;
   const maxLTAIV = result.caps?.maxLTAIV || 0;
-  const maxLTARV = result.caps?.maxLTARV || 0;
+  const maxLTARV = result.caps?.maxLTARV; // Can be null, number, or undefined
+  const isLTARVApplicable = maxLTARV !== null && maxLTARV !== undefined;
   
   // Max loan based on each metric
   const maxLoanByLTC = (totalCost * maxLTC) / 100;
@@ -90,10 +91,12 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
     : 0;
   const effectiveLTAIV = Math.min(calculatedLTAIV, maxLTAIV);
   const maxLoanByLTAIV = (asIsValue * effectiveLTAIV) / 100;
-  const maxLoanByLTARV = (arv * maxLTARV) / 100;
+  const maxLoanByLTARV = isLTARVApplicable ? (arv * maxLTARV) / 100 : Infinity;
   
-  // The actual max loan is the minimum of all three constraints
-  const maxLoanAmount = Math.min(maxLoanByLTC, maxLoanByLTAIV, maxLoanByLTARV);
+  // The actual max loan is the minimum of applicable constraints
+  const maxLoanAmount = isLTARVApplicable 
+    ? Math.min(maxLoanByLTC, maxLoanByLTAIV, maxLoanByLTARV)
+    : Math.min(maxLoanByLTC, maxLoanByLTAIV);
   
   // Commission is the additional points amount on max loan
   const additionalPointsAmount = (maxLoanAmount * additionalPoints) / 100;
@@ -215,7 +218,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
               <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100 text-center">
                 <span className="text-xs text-indigo-600 font-medium">Max LTARV</span>
                 <div className="text-xl font-bold text-indigo-800" data-testid="text-max-ltarv">
-                  {result.caps.maxLTARV}%
+                  {isLTARVApplicable ? `${result.caps.maxLTARV}%` : "N/A"}
                 </div>
               </div>
             </div>
@@ -246,9 +249,13 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
               <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100 text-center">
                 <span className="text-xs text-indigo-600 font-medium">Max by LTARV</span>
                 <div className="text-lg font-bold text-indigo-800" data-testid="text-max-loan-ltarv">
-                  ${maxLoanByLTARV.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {isLTARVApplicable 
+                    ? `$${maxLoanByLTARV.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    : "N/A"}
                 </div>
-                <span className="text-xs text-indigo-500">{maxLTARV}% of ${arv.toLocaleString()}</span>
+                <span className="text-xs text-indigo-500">
+                  {isLTARVApplicable ? `${maxLTARV}% of $${arv.toLocaleString()}` : "Not applicable for this loan type"}
+                </span>
               </div>
             </div>
             <div className="p-4 bg-green-50 rounded-lg border border-green-200 text-center">
