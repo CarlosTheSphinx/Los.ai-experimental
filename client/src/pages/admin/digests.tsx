@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   CalendarDays, 
   Mail, 
@@ -26,7 +28,9 @@ import {
   Check,
   X,
   Sparkles,
-  Ban
+  Ban,
+  Eye,
+  Copy
 } from "lucide-react";
 import { format, addDays, subDays } from "date-fns";
 import {
@@ -99,6 +103,22 @@ interface DigestsResponse {
   digests: ScheduledDigest[];
 }
 
+interface DigestTemplate {
+  id: number;
+  name: string;
+  description: string | null;
+  emailSubject: string;
+  emailBody: string;
+  smsBody: string | null;
+  isDefault: boolean;
+}
+
+interface PreviewData {
+  emailSubject: string;
+  emailBody: string;
+  smsBody: string;
+}
+
 export default function AdminDigests() {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -108,8 +128,15 @@ export default function AdminDigests() {
     emailBody: "",
     smsBody: "",
   });
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
+
+  const { data: templatesData } = useQuery<{ templates: DigestTemplate[] }>({
+    queryKey: ["/api/admin/digest-templates"],
+  });
+  const templates = templatesData?.templates || [];
 
   const { data, isLoading, refetch } = useQuery<DigestsResponse>({
     queryKey: ["/api/admin/digests/scheduled", dateStr],
@@ -229,6 +256,51 @@ export default function AdminDigests() {
       emailBody: digest.draft?.emailBody || digest.defaultContent.emailBody || "",
       smsBody: digest.draft?.smsBody || digest.defaultContent.smsBody || "",
     });
+    setPreviewData(null);
+  };
+
+  const applyTemplate = (templateId: string) => {
+    if (templateId === "none") return;
+    const template = templates.find(t => t.id === parseInt(templateId));
+    if (template) {
+      setEditForm({
+        emailSubject: template.emailSubject,
+        emailBody: template.emailBody,
+        smsBody: template.smsBody || "",
+      });
+      toast({ title: "Template Applied", description: `Using "${template.name}" template` });
+    }
+  };
+
+  const loadPreview = async () => {
+    if (!editingDigest) return;
+    
+    setIsLoadingPreview(true);
+    try {
+      const response = await fetch('/api/admin/digest-templates/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          emailSubject: editForm.emailSubject,
+          emailBody: editForm.emailBody,
+          smsBody: editForm.smsBody,
+          projectId: editingDigest.projectId,
+          configId: editingDigest.configId,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPreviewData(data.preview);
+      } else {
+        toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+    } finally {
+      setIsLoadingPreview(false);
+    }
   };
 
   const handleSaveEdit = () => {
@@ -521,7 +593,7 @@ export default function AdminDigests() {
       </div>
 
       <Dialog open={!!editingDigest} onOpenChange={() => setEditingDigest(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Digest Draft</DialogTitle>
             <DialogDescription>
@@ -530,43 +602,140 @@ export default function AdminDigests() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="emailSubject">Email Subject</Label>
-              <Input
-                id="emailSubject"
-                value={editForm.emailSubject}
-                onChange={(e) => setEditForm({ ...editForm, emailSubject: e.target.value })}
-                placeholder="Enter email subject..."
-                data-testid="input-draft-email-subject"
-              />
+            <div className="flex items-center gap-3">
+              <Label className="shrink-0">Apply Template:</Label>
+              <Select onValueChange={applyTemplate}>
+                <SelectTrigger className="w-[250px]" data-testid="select-template">
+                  <SelectValue placeholder="Choose a template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">-- Select Template --</SelectItem>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id.toString()}>
+                      {template.name} {template.isDefault && "(Default)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="emailBody">Email Body</Label>
-              <Textarea
-                id="emailBody"
-                value={editForm.emailBody}
-                onChange={(e) => setEditForm({ ...editForm, emailBody: e.target.value })}
-                placeholder="Enter email body..."
-                rows={10}
-                data-testid="input-draft-email-body"
-              />
-              <p className="text-xs text-muted-foreground">
-                Available placeholders: {"{{recipientName}}"}, {"{{documentsCount}}"}, {"{{propertyAddress}}"}
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="smsBody">SMS Message</Label>
-              <Textarea
-                id="smsBody"
-                value={editForm.smsBody}
-                onChange={(e) => setEditForm({ ...editForm, smsBody: e.target.value })}
-                placeholder="Enter SMS message..."
-                rows={3}
-                data-testid="input-draft-sms-body"
-              />
-            </div>
+
+            <Tabs defaultValue="edit" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="edit" data-testid="tab-edit">
+                  <Edit3 className="h-4 w-4 mr-2" />
+                  Edit
+                </TabsTrigger>
+                <TabsTrigger value="preview" onClick={loadPreview} data-testid="tab-preview">
+                  <Eye className="h-4 w-4 mr-2" />
+                  Preview
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="edit" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="emailSubject">Email Subject</Label>
+                  <Input
+                    id="emailSubject"
+                    value={editForm.emailSubject}
+                    onChange={(e) => setEditForm({ ...editForm, emailSubject: e.target.value })}
+                    placeholder="Enter email subject..."
+                    data-testid="input-draft-email-subject"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="emailBody">Email Body</Label>
+                  <Textarea
+                    id="emailBody"
+                    value={editForm.emailBody}
+                    onChange={(e) => setEditForm({ ...editForm, emailBody: e.target.value })}
+                    placeholder="Enter email body..."
+                    rows={10}
+                    data-testid="input-draft-email-body"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Merge tags: {"{{recipientName}}"}, {"{{propertyAddress}}"}, {"{{documentsSection}}"}, {"{{updatesSection}}"}, {"{{documentsCount}}"}, {"{{portalLink}}"}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="smsBody">SMS Message</Label>
+                  <Textarea
+                    id="smsBody"
+                    value={editForm.smsBody}
+                    onChange={(e) => setEditForm({ ...editForm, smsBody: e.target.value })}
+                    placeholder="Enter SMS message..."
+                    rows={3}
+                    data-testid="input-draft-sms-body"
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="preview" className="mt-4">
+                {isLoadingPreview ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-48 w-full" />
+                    <Skeleton className="h-20 w-full" />
+                  </div>
+                ) : previewData ? (
+                  <div className="space-y-4">
+                    <div className="border rounded-lg p-4 bg-background">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-muted-foreground">Email Subject</Label>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => navigator.clipboard.writeText(previewData.emailSubject)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <p className="font-medium">{previewData.emailSubject}</p>
+                    </div>
+                    
+                    <div className="border rounded-lg p-4 bg-background">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-muted-foreground">Email Body</Label>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => navigator.clipboard.writeText(previewData.emailBody)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <pre className="whitespace-pre-wrap text-sm font-sans">{previewData.emailBody}</pre>
+                    </div>
+                    
+                    {previewData.smsBody && (
+                      <div className="border rounded-lg p-4 bg-background">
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-muted-foreground">SMS Message</Label>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => navigator.clipboard.writeText(previewData.smsBody)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <p className="text-sm">{previewData.smsBody}</p>
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-muted-foreground text-center">
+                      Preview uses real data from this project/deal to populate merge tags
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Eye className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Click the Preview tab to see your message with real data</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
 
             {editingDigest && (
               <div className="border rounded-lg p-3 bg-muted/50">
