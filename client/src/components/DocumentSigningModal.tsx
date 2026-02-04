@@ -382,6 +382,8 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
   const [uploadMode, setUploadMode] = useState<"template" | "manual">("template");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [templateFieldsLoaded, setTemplateFieldsLoaded] = useState(false);
+  const [templateDimensions, setTemplateDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [rawTemplateFields, setRawTemplateFields] = useState<FieldData[] | null>(null);
   
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -405,6 +407,29 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     const viewport = page.getViewport({ scale: 1.0 });
     setPdfDimensions({ width: viewport.width, height: viewport.height });
   };
+
+  // Rescale template fields when PDF dimensions are known
+  useEffect(() => {
+    if (!rawTemplateFields || !templateDimensions) return;
+    
+    // Only rescale if PDF dimensions have been updated from defaults
+    const scaleX = pdfDimensions.width / templateDimensions.width;
+    const scaleY = pdfDimensions.height / templateDimensions.height;
+    
+    // Apply scaling to all fields
+    const scaledFields = rawTemplateFields.map(field => ({
+      ...field,
+      x: field.x * scaleX,
+      y: field.y * scaleY,
+      width: field.width * scaleX,
+      height: field.height * scaleY,
+    }));
+    
+    setFields(scaledFields);
+    // Clear raw fields after scaling to prevent re-scaling
+    setRawTemplateFields(null);
+    setTemplateDimensions(null);
+  }, [pdfDimensions, rawTemplateFields, templateDimensions]);
 
   const createDocumentMutation = useMutation({
     mutationFn: async (data: { name: string; fileName: string; fileData: string; pageCount: number }) => {
@@ -498,19 +523,33 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
         setSigners(createdSigners);
         
         if (data.fields && data.fields.length > 0) {
+          // Get template's original PDF dimensions for coordinate scaling
+          const templateDims = Array.isArray(data.template.pageDimensions) && data.template.pageDimensions[0]
+            ? data.template.pageDimensions[0]
+            : { width: 612, height: 792 }; // Standard letter size as fallback
+          
           const templateFields: FieldData[] = data.fields.map((tf, index) => {
             const signerIndex = tf.signerRole === 'borrower' ? 0 : (tf.signerRole === 'lender' ? 1 : 0);
             const signer = createdSigners[signerIndex] || createdSigners[0];
+            
+            // Use current quote data for prepopulated fields, fall back to template default
+            const isPrepopulated = ALL_PREPOPULATED_FIELD_TYPES.some(f => f.type === tf.fieldType);
+            const currentQuoteValue = isPrepopulated ? getFieldValue(tf.fieldType, quote) : '';
+            
+            // Calculate scale ratios to handle different PDF render sizes
+            // Use template dimensions as stored, current PDF dimensions default to 612x792
+            const scaleX = pdfDimensions.width / (templateDims.width || 612);
+            const scaleY = pdfDimensions.height / (templateDims.height || 792);
             
             return {
               fieldType: tf.fieldType,
               signerId: signer?.id || 0,
               pageNumber: tf.pageNumber,
-              x: tf.x,
-              y: tf.y,
-              width: tf.width,
-              height: tf.height,
-              value: tf.defaultValue || '',
+              x: tf.x * scaleX,
+              y: tf.y * scaleY,
+              width: tf.width * scaleX,
+              height: tf.height * scaleY,
+              value: currentQuoteValue || tf.defaultValue || '',
             };
           });
           setFields(templateFields);
@@ -654,7 +693,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
         pdfUrl: uploadData.url,
         pdfFileName: fileName || "template.pdf",
         pageCount: pageCount,
-        pageDimensions: [],
+        pageDimensions: [{ width: pdfDimensions.width, height: pdfDimensions.height }],
       });
       
       const templateData = await templateRes.json();
