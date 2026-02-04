@@ -679,7 +679,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
       }));
       
       if (templateFields.length > 0) {
-        await apiRequest("POST", `/api/admin/document-templates/${templateData.template.id}/fields`, {
+        await apiRequest("PUT", `/api/admin/document-templates/${templateData.template.id}/fields`, {
           fields: templateFields,
         });
       }
