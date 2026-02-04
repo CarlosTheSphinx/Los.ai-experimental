@@ -1249,3 +1249,142 @@ export const insertInboundSmsMessageSchema = createInsertSchema(inboundSmsMessag
 });
 export type InboundSmsMessage = typeof inboundSmsMessages.$inferSelect;
 export type InsertInboundSmsMessage = z.infer<typeof insertInboundSmsMessageSchema>;
+
+// ==================== DOCUMENT TEMPLATES ====================
+
+// Field types for PDF templates
+export const templateFieldTypeEnum = z.enum(["text", "number", "date", "checkbox", "signature"]);
+export type TemplateFieldType = z.infer<typeof templateFieldTypeEnum>;
+
+// Document templates - stores PDF templates with field positions
+export const documentTemplates = pgTable("document_templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  
+  // PDF storage (URL in object storage)
+  pdfUrl: text("pdf_url").notNull(),
+  pdfFileName: varchar("pdf_filename", { length: 255 }).notNull(),
+  
+  // PDF dimensions per page (JSON: [{page: 1, width: 612, height: 792}, ...])
+  pageDimensions: jsonb("page_dimensions").default('[]'),
+  pageCount: integer("page_count").default(1).notNull(),
+  
+  // Template categorization
+  category: varchar("category", { length: 100 }), // e.g., "agreement", "disclosure", "contract"
+  loanType: varchar("loan_type", { length: 50 }), // optional: ties to specific loan type
+  
+  // Status
+  isActive: boolean("is_active").default(true).notNull(),
+  
+  // Audit
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDocumentTemplateSchema = createInsertSchema(documentTemplates).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type DocumentTemplate = typeof documentTemplates.$inferSelect;
+export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
+
+// Template fields - stores field positions and data bindings for each template
+export const templateFields = pgTable("template_fields", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").references(() => documentTemplates.id, { onDelete: 'cascade' }).notNull(),
+  
+  // Field identification
+  fieldName: varchar("field_name", { length: 100 }).notNull(), // Display name in UI
+  fieldKey: varchar("field_key", { length: 100 }).notNull(), // Data binding key (e.g., "borrower.name", "loan.amount")
+  fieldType: varchar("field_type", { length: 50 }).notNull(), // text, number, date, checkbox, signature
+  
+  // Position on PDF (in PDF points, origin is bottom-left)
+  pageNumber: integer("page_number").notNull(),
+  x: real("x").notNull(), // X position in PDF points
+  y: real("y").notNull(), // Y position in PDF points
+  width: real("width").notNull(), // Width in PDF points
+  height: real("height").notNull(), // Height in PDF points
+  
+  // Display options
+  fontSize: integer("font_size").default(12),
+  fontColor: varchar("font_color", { length: 20 }).default("#000000"),
+  textAlign: varchar("text_align", { length: 20 }).default("left"), // left, center, right
+  
+  // For signature fields - which signer
+  signerRole: varchar("signer_role", { length: 50 }), // e.g., "borrower", "co-borrower", "guarantor"
+  
+  // Validation
+  isRequired: boolean("is_required").default(false).notNull(),
+  defaultValue: text("default_value"),
+  
+  // Order for tab navigation
+  tabOrder: integer("tab_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTemplateFieldSchema = createInsertSchema(templateFields).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type TemplateField = typeof templateFields.$inferSelect;
+export type InsertTemplateField = z.infer<typeof insertTemplateFieldSchema>;
+
+// Field data binding options - commonly used keys for autocomplete
+export const fieldBindingKeys = [
+  // Borrower info
+  "borrower.firstName",
+  "borrower.lastName", 
+  "borrower.fullName",
+  "borrower.email",
+  "borrower.phone",
+  "borrower.address",
+  "borrower.ssn",
+  "borrower.dob",
+  "borrower.signature",
+  
+  // Co-borrower info
+  "coBorrower.firstName",
+  "coBorrower.lastName",
+  "coBorrower.fullName",
+  "coBorrower.email",
+  "coBorrower.phone",
+  "coBorrower.signature",
+  
+  // Property info
+  "property.address",
+  "property.city",
+  "property.state",
+  "property.zip",
+  "property.type",
+  "property.asIsValue",
+  "property.arv",
+  
+  // Loan info
+  "loan.amount",
+  "loan.interestRate",
+  "loan.term",
+  "loan.type",
+  "loan.purpose",
+  "loan.closingDate",
+  "loan.monthlyPayment",
+  "loan.points",
+  "loan.totalClosingCosts",
+  
+  // Company info
+  "company.name",
+  "company.address",
+  "company.phone",
+  "company.email",
+  
+  // Date fields
+  "today.date",
+  "today.dateFormatted",
+] as const;
+
+export type FieldBindingKey = typeof fieldBindingKeys[number];
