@@ -14,6 +14,7 @@ import {
   MessageSquare,
   BookOpen,
   CalendarDays,
+  FileStack,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -60,6 +61,7 @@ const adminNavItems = [
   { href: "/admin/deals", label: "Deals", icon: FileText },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/programs", label: "Programs", icon: Settings2 },
+  { href: "/admin/document-templates", label: "Doc Templates", icon: FileStack },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays },
   { href: "/admin/users", label: "Users", icon: Users },

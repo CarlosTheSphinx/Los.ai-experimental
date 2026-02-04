@@ -29,6 +29,8 @@ import AdminPartners from "@/pages/admin/partners";
 import AdminPrograms from "@/pages/admin/programs";
 import AdminOnboarding from "@/pages/admin/onboarding";
 import AdminDigests from "@/pages/admin/digests";
+import AdminDocumentTemplates from "@/pages/admin/document-templates";
+import AdminTemplateEditor from "@/pages/admin/template-editor";
 import MessagesPage from "@/pages/messages";
 import OnboardingPage from "@/pages/onboarding";
 import ResourcesPage from "@/pages/resources";
@@ -121,6 +123,8 @@ function MainRoutes() {
         <Route path="/admin/settings" component={() => <AdminProtectedRoute component={AdminSettings} />} />
         <Route path="/admin/onboarding" component={() => <AdminProtectedRoute component={AdminOnboarding} />} />
         <Route path="/admin/digests" component={() => <AdminProtectedRoute component={AdminDigests} />} />
+        <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
+        <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
         
         <Route component={NotFound} />
       </Switch>
