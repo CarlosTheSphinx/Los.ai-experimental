@@ -369,13 +369,13 @@ export function RTLPricingResult({ result, formData, onReset, onEdit }: RTLPrici
               <div className="flex justify-between items-center py-2 border-b border-slate-100">
                 <span className="text-slate-600">Total Points ({totalPoints.toFixed(2)}%)</span>
                 <span className="text-lg font-semibold text-slate-700" data-testid="text-total-points-dollars">
-                  ${((maxLoanByLTAIV * totalPoints) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  ${((maxLoanByLTC * totalPoints) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
               </div>
               <div className="flex justify-between items-center py-3 bg-primary/5 rounded-lg px-3 -mx-3">
                 <span className="text-slate-700 font-semibold">Estimated Total Cash to Close</span>
                 <span className="text-2xl font-bold text-primary" data-testid="text-cash-to-close">
-                  ${(Math.max(0, asIsValue - maxLoanByLTAIV) + ((maxLoanByLTAIV * totalPoints) / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  ${(Math.max(0, asIsValue - maxLoanByLTAIV) + ((maxLoanByLTC * totalPoints) / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
               </div>
             </div>
