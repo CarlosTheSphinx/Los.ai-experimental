@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -6632,6 +6632,207 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching scheduled digests:', error);
       res.status(500).json({ error: 'Failed to fetch scheduled digests' });
+    }
+  });
+
+  // ==================== DIGEST TEMPLATES ====================
+
+  // Get all digest templates
+  app.get('/api/admin/digest-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templates = await db.select()
+        .from(digestTemplates)
+        .orderBy(desc(digestTemplates.isDefault), desc(digestTemplates.createdAt));
+      
+      res.json({ templates });
+    } catch (error: any) {
+      console.error('Get digest templates error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a new digest template
+  app.post('/api/admin/digest-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, description, emailSubject, emailBody, smsBody, isDefault } = req.body;
+      
+      // If setting as default, unset other defaults
+      if (isDefault) {
+        await db.update(digestTemplates)
+          .set({ isDefault: false })
+          .where(eq(digestTemplates.isDefault, true));
+      }
+      
+      const result = await db.insert(digestTemplates)
+        .values({
+          name,
+          description,
+          emailSubject,
+          emailBody,
+          smsBody,
+          isDefault: isDefault || false,
+          createdBy: req.user?.id,
+        })
+        .returning();
+      
+      res.json({ template: result[0] });
+    } catch (error: any) {
+      console.error('Create digest template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update a digest template
+  app.put('/api/admin/digest-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const { name, description, emailSubject, emailBody, smsBody, isDefault } = req.body;
+      
+      // If setting as default, unset other defaults
+      if (isDefault) {
+        await db.update(digestTemplates)
+          .set({ isDefault: false })
+          .where(eq(digestTemplates.isDefault, true));
+      }
+      
+      const result = await db.update(digestTemplates)
+        .set({
+          name,
+          description,
+          emailSubject,
+          emailBody,
+          smsBody,
+          isDefault: isDefault || false,
+          updatedAt: new Date(),
+        })
+        .where(eq(digestTemplates.id, templateId))
+        .returning();
+      
+      if (!result[0]) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      
+      res.json({ template: result[0] });
+    } catch (error: any) {
+      console.error('Update digest template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a digest template
+  app.delete('/api/admin/digest-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      
+      await db.delete(digestTemplates).where(eq(digestTemplates.id, templateId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete digest template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Preview a template with populated merge tags
+  app.post('/api/admin/digest-templates/preview', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { emailSubject, emailBody, smsBody, configId, projectId, dealId } = req.body;
+      
+      // Get real data for preview
+      let recipientName = 'John Smith';
+      let propertyAddress = '123 Main Street, City, ST 12345';
+      let documentsSection = '';
+      let updatesSection = '';
+      let documentsCount = 0;
+      let portalLink = process.env.BASE_URL || 'https://app.sphinxcap.com';
+      
+      // Try to get real data from project or deal
+      if (projectId) {
+        const [project] = await db.select()
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        
+        if (project) {
+          portalLink = `${process.env.BASE_URL || 'https://app.sphinxcap.com'}/portal/${project.borrowerToken}`;
+          
+          // Get quote for property info
+          if (project.quoteId) {
+            const [quote] = await db.select()
+              .from(savedQuotes)
+              .where(eq(savedQuotes.id, project.quoteId))
+              .limit(1);
+            
+            if (quote) {
+              recipientName = `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim() || recipientName;
+              propertyAddress = quote.propertyAddress || propertyAddress;
+            }
+          }
+          
+          // Get outstanding documents
+          const docs = await getOutstandingDocuments(projectId);
+          documentsCount = docs.length;
+          if (docs.length > 0) {
+            documentsSection = `Documents Needed (${docs.length}):\n` + 
+              docs.slice(0, 5).map((d: any) => `• ${d.name || d.documentName}`).join('\n') +
+              (docs.length > 5 ? `\n• ...and ${docs.length - 5} more` : '');
+          } else {
+            documentsSection = 'All documents received - thank you!';
+          }
+          
+          // Get recent updates
+          const updates = await getRecentUpdates(projectId);
+          if (updates.length > 0) {
+            updatesSection = 'Recent Updates:\n' + 
+              updates.slice(0, 3).map((u: any) => `• ${u.description}`).join('\n');
+          } else {
+            updatesSection = 'No recent updates.';
+          }
+        }
+      } else if (dealId) {
+        const [quote] = await db.select()
+          .from(savedQuotes)
+          .where(eq(savedQuotes.id, dealId))
+          .limit(1);
+        
+        if (quote) {
+          recipientName = `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim() || recipientName;
+          propertyAddress = quote.propertyAddress || propertyAddress;
+        }
+        
+        documentsSection = 'Documents Needed:\n• Proof of Income\n• Bank Statements\n• Property Insurance';
+        documentsCount = 3;
+        updatesSection = 'Your loan application is being processed.';
+      }
+      
+      // Replace merge tags
+      const replaceTags = (text: string | null) => {
+        if (!text) return '';
+        return text
+          .replace(/\{\{recipientName\}\}/g, recipientName)
+          .replace(/\{\{propertyAddress\}\}/g, propertyAddress)
+          .replace(/\{\{documentsSection\}\}/g, documentsSection)
+          .replace(/\{\{updatesSection\}\}/g, updatesSection)
+          .replace(/\{\{documentsCount\}\}/g, String(documentsCount))
+          .replace(/\{\{portalLink\}\}/g, portalLink);
+      };
+      
+      res.json({
+        preview: {
+          emailSubject: replaceTags(emailSubject),
+          emailBody: replaceTags(emailBody),
+          smsBody: replaceTags(smsBody),
+        },
+        data: {
+          recipientName,
+          propertyAddress,
+          documentsCount,
+          portalLink,
+        }
+      });
+    } catch (error: any) {
+      console.error('Preview template error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

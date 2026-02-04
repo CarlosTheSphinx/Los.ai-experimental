@@ -1095,6 +1095,36 @@ export const insertDigestStateSchema = createInsertSchema(digestState).omit({ id
 export type DigestState = typeof digestState.$inferSelect;
 export type InsertDigestState = z.infer<typeof insertDigestStateSchema>;
 
+// Digest message templates - reusable templates with merge tags
+export const digestTemplates = pgTable("digest_templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: varchar("description", { length: 255 }),
+  
+  // Template content with merge tags
+  emailSubject: varchar("email_subject", { length: 255 }).notNull(),
+  emailBody: text("email_body").notNull(),
+  smsBody: text("sms_body"),
+  
+  // Template type: default, custom
+  templateType: varchar("template_type", { length: 50 }).default("custom").notNull(),
+  
+  // Is this the default template?
+  isDefault: boolean("is_default").default(false).notNull(),
+  
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDigestTemplateSchema = createInsertSchema(digestTemplates).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type DigestTemplate = typeof digestTemplates.$inferSelect;
+export type InsertDigestTemplate = z.infer<typeof insertDigestTemplateSchema>;
+
 // Scheduled digest drafts - pre-generated digests that need approval before sending
 export const scheduledDigestDrafts = pgTable("scheduled_digest_drafts", {
   id: serial("id").primaryKey(),
