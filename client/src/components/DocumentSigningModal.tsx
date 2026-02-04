@@ -60,21 +60,62 @@ const SIGNATURE_FIELD_TYPES = [
   { type: "date", label: "Date", width: 120, height: 30 }
 ];
 
-const PREPOPULATED_FIELD_TYPES = [
-  { type: "loanAmount", label: "Loan Amount", width: 120, height: 25 },
-  { type: "interestRate", label: "Interest Rate", width: 80, height: 25 },
-  { type: "propertyType", label: "Property Type", width: 120, height: 25 },
-  { type: "loanPurpose", label: "Loan Purpose", width: 120, height: 25 },
+// Common fields for all loan types
+const COMMON_FIELD_TYPES = [
   { type: "fullName", label: "Full Name", width: 180, height: 25 },
   { type: "firstName", label: "First Name", width: 120, height: 25 },
-  { type: "propertyValue", label: "Property Value", width: 120, height: 25 },
+  { type: "fullAddress", label: "Full Address", width: 250, height: 25 },
+  { type: "interestRate", label: "Interest Rate", width: 80, height: 25 },
+  { type: "originationFee", label: "Origination Fee", width: 120, height: 25 },
+  { type: "propertyType", label: "Property Type", width: 120, height: 25 },
   { type: "fico", label: "FICO", width: 60, height: 25 },
+];
+
+// DSCR-specific fields
+const DSCR_FIELD_TYPES = [
+  { type: "loanAmount", label: "Loan Amount", width: 120, height: 25 },
+  { type: "propertyValue", label: "Property Value", width: 120, height: 25 },
   { type: "ltv", label: "LTV", width: 80, height: 25 },
+  { type: "loanPurpose", label: "Loan Purpose", width: 120, height: 25 },
   { type: "prepaymentPenalty", label: "Prepay Penalty", width: 100, height: 25 },
   { type: "estimatedDscr", label: "Est. DSCR", width: 80, height: 25 },
-  { type: "fullAddress", label: "Full Address", width: 250, height: 25 },
-  { type: "originationFee", label: "Origination Fee", width: 120, height: 25 }
+  { type: "grossMonthlyRent", label: "Gross Monthly Rent", width: 120, height: 25 },
+  { type: "annualTaxes", label: "Annual Taxes", width: 100, height: 25 },
+  { type: "annualInsurance", label: "Annual Insurance", width: 100, height: 25 },
 ];
+
+// RTL (Fix and Flip) specific fields
+const RTL_FIELD_TYPES = [
+  { type: "loanAmount", label: "Loan Amount", width: 120, height: 25 },
+  { type: "rtlLoanType", label: "Loan Type", width: 120, height: 25 },
+  { type: "purpose", label: "Purpose", width: 100, height: 25 },
+  { type: "asIsValue", label: "As-Is Value", width: 120, height: 25 },
+  { type: "arv", label: "After Repair Value", width: 130, height: 25 },
+  { type: "rehabBudget", label: "Rehab Budget", width: 120, height: 25 },
+  { type: "totalCost", label: "Total Cost", width: 120, height: 25 },
+  { type: "ltc", label: "LTC", width: 60, height: 25 },
+  { type: "ltarv", label: "LTARV", width: 70, height: 25 },
+  { type: "ltaiv", label: "LTAIV", width: 70, height: 25 },
+  { type: "experienceTier", label: "Experience Tier", width: 120, height: 25 },
+  { type: "completedProjects", label: "Completed Projects", width: 120, height: 25 },
+  { type: "cashOutAmount", label: "Cash-Out Amount", width: 120, height: 25 },
+];
+
+// All prepopulated field types (for checking if a field type is prepopulated)
+const ALL_PREPOPULATED_FIELD_TYPES = [...COMMON_FIELD_TYPES, ...DSCR_FIELD_TYPES, ...RTL_FIELD_TYPES];
+
+// Helper to check if quote is RTL
+function isRTLQuote(loanData: Record<string, unknown>): boolean {
+  return !!(loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined);
+}
+
+// Get prepopulated field types based on loan type
+function getPrepopulatedFieldTypes(loanData: Record<string, unknown>) {
+  if (isRTLQuote(loanData)) {
+    return [...COMMON_FIELD_TYPES, ...RTL_FIELD_TYPES];
+  }
+  return [...COMMON_FIELD_TYPES, ...DSCR_FIELD_TYPES];
+}
 
 function getFieldValue(type: string, quote: SavedQuote): string {
   const loanData = quote.loanData as Record<string, unknown> || {};
@@ -90,23 +131,48 @@ function getFieldValue(type: string, quote: SavedQuote): string {
     if (val === null || val === undefined || val === '') return '';
     const num = typeof val === 'string' ? parseFloat(val) : val;
     if (isNaN(num)) return '';
-    return `${num.toFixed(3)}%`;
+    return `${num.toFixed(2)}%`;
   };
 
+  // Common fields
   switch (type) {
-    case 'loanAmount': return formatCurrency(loanData.loanAmount as number);
-    case 'interestRate': return formatPercent(quote.interestRate);
-    case 'propertyType': return String(loanData.propertyType || '');
-    case 'loanPurpose': return String(loanData.loanPurpose || '');
     case 'fullName': return `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim();
     case 'firstName': return quote.customerFirstName || '';
+    case 'fullAddress': return quote.propertyAddress || '';
+    case 'interestRate': return formatPercent(quote.interestRate);
+    case 'originationFee': return formatCurrency(quote.pointsAmount);
+    case 'propertyType': return String(loanData.propertyType || '');
+    case 'fico': return String(loanData.ficoScore || loanData.fico || '');
+    
+    // DSCR-specific fields
+    case 'loanAmount': return formatCurrency(loanData.loanAmount as number);
     case 'propertyValue': return formatCurrency(loanData.propertyValue as number);
-    case 'fico': return String(loanData.ficoScore || '');
     case 'ltv': return loanData.ltv ? `${loanData.ltv}%` : '';
+    case 'loanPurpose': return String(loanData.loanPurpose || '');
     case 'prepaymentPenalty': return String(loanData.prepaymentPenalty || '');
     case 'estimatedDscr': return String(loanData.calculatedDscr || loanData.dscr || '');
-    case 'fullAddress': return quote.propertyAddress || '';
-    case 'originationFee': return formatCurrency(quote.pointsAmount);
+    case 'grossMonthlyRent': return formatCurrency(loanData.grossMonthlyRent as number);
+    case 'annualTaxes': return formatCurrency(loanData.annualTaxes as number);
+    case 'annualInsurance': return formatCurrency(loanData.annualInsurance as number);
+    
+    // RTL-specific fields
+    case 'rtlLoanType': return String(loanData.loanType || '');
+    case 'purpose': return String(loanData.purpose || '');
+    case 'asIsValue': return formatCurrency(loanData.asIsValue as number);
+    case 'arv': return formatCurrency(loanData.arv as number);
+    case 'rehabBudget': return formatCurrency(loanData.rehabBudget as number);
+    case 'totalCost': {
+      const asIs = (loanData.asIsValue as number) || 0;
+      const rehab = (loanData.rehabBudget as number) || 0;
+      return formatCurrency(asIs + rehab);
+    }
+    case 'ltc': return loanData.ltc ? `${loanData.ltc}%` : '';
+    case 'ltarv': return loanData.ltarv ? `${loanData.ltarv}%` : '';
+    case 'ltaiv': return loanData.ltaiv ? `${loanData.ltaiv}%` : '';
+    case 'experienceTier': return String(loanData.experienceTier || '');
+    case 'completedProjects': return String(loanData.completedProjects || '');
+    case 'cashOutAmount': return formatCurrency(loanData.cashOutAmount as number);
+    
     default: return '';
   }
 }
@@ -143,8 +209,8 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
   const dragStartRef = useRef({ x: 0, y: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
-  const isPrepopulated = PREPOPULATED_FIELD_TYPES.some(f => f.type === field.fieldType);
-  const fieldLabel = [...SIGNATURE_FIELD_TYPES, ...PREPOPULATED_FIELD_TYPES].find(f => f.type === field.fieldType)?.label || field.fieldType;
+  const isPrepopulated = ALL_PREPOPULATED_FIELD_TYPES.some(f => f.type === field.fieldType);
+  const fieldLabel = [...SIGNATURE_FIELD_TYPES, ...ALL_PREPOPULATED_FIELD_TYPES].find(f => f.type === field.fieldType)?.label || field.fieldType;
 
   useEffect(() => {
     setPosition({ x: field.x, y: field.y });
@@ -663,11 +729,13 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     const x = (e.clientX - rect.left) / pdfScale;
     const y = (e.clientY - rect.top) / pdfScale;
     
-    const allFieldTypes = [...SIGNATURE_FIELD_TYPES, ...PREPOPULATED_FIELD_TYPES];
+    const loanData = quote.loanData as Record<string, unknown> || {};
+    const prepopulatedFields = getPrepopulatedFieldTypes(loanData);
+    const allFieldTypes = [...SIGNATURE_FIELD_TYPES, ...prepopulatedFields];
     const fieldConfig = allFieldTypes.find(f => f.type === selectedFieldType);
     if (!fieldConfig) return;
     
-    const isPrepopulated = PREPOPULATED_FIELD_TYPES.some(f => f.type === selectedFieldType);
+    const isPrepopulated = prepopulatedFields.some(f => f.type === selectedFieldType);
     const value = isPrepopulated ? getFieldValue(selectedFieldType, quote) : undefined;
     
     const clampedX = Math.max(0, Math.min(x, pdfDimensions.width - fieldConfig.width));
@@ -972,9 +1040,11 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                 </div>
                 
                 <div>
-                  <Label className="text-sm font-medium">Data Fields</Label>
+                  <Label className="text-sm font-medium">
+                    Data Fields {isRTLQuote(quote.loanData as Record<string, unknown> || {}) ? '(RTL)' : '(DSCR)'}
+                  </Label>
                   <div className="grid grid-cols-1 gap-1 mt-2 max-h-[200px] overflow-auto">
-                    {PREPOPULATED_FIELD_TYPES.map(ft => {
+                    {getPrepopulatedFieldTypes(quote.loanData as Record<string, unknown> || {}).map(ft => {
                       const value = getFieldValue(ft.type, quote);
                       return (
                         <Button
