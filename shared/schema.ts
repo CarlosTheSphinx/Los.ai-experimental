@@ -12,7 +12,8 @@ export const users = pgTable("users", {
   companyName: varchar("company_name", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   title: varchar("title", { length: 255 }),
-  role: varchar("role", { length: 50 }).default("user").notNull(), // user, admin, staff, super_admin
+  role: varchar("role", { length: 50 }).default("user").notNull(), // user, processor, staff, admin, super_admin
+  roles: text("roles").array(),
   userType: varchar("user_type", { length: 50 }).default("broker").notNull(), // broker, borrower
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
@@ -1524,6 +1525,27 @@ export type TeamPermission = typeof teamPermissions.$inferSelect;
 export type InsertTeamPermission = z.infer<typeof insertTeamPermissionSchema>;
 
 // All available permission keys for the team permission system
+export const TEAM_ROLES = ["processor", "staff", "admin", "super_admin"] as const;
+export type TeamRole = typeof TEAM_ROLES[number];
+
+export const ROLE_HIERARCHY: Record<string, number> = {
+  user: 0,
+  processor: 1,
+  staff: 2,
+  admin: 3,
+  super_admin: 4,
+};
+
+export function getPrimaryRole(roles: string[]): string {
+  let highest = "user";
+  for (const r of roles) {
+    if ((ROLE_HIERARCHY[r] ?? 0) > (ROLE_HIERARCHY[highest] ?? 0)) {
+      highest = r;
+    }
+  }
+  return highest;
+}
+
 export const PERMISSION_KEYS = [
   "quotes.view",
   "quotes.create",

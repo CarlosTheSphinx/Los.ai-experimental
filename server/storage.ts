@@ -693,7 +693,21 @@ export class DatabaseStorage implements IStorage {
 
   async initializeDefaultPermissions(): Promise<void> {
     const existing = await db.select().from(teamPermissions).limit(1);
-    if (existing.length > 0) return;
+    if (existing.length > 0) {
+      const processorExists = await db.select().from(teamPermissions)
+        .where(eq(teamPermissions.role, "processor")).limit(1);
+      if (processorExists.length === 0) {
+        const processorDefaults = PERMISSION_KEYS.map(key => ({
+          role: "processor",
+          permissionKey: key,
+          enabled: key.endsWith(".view") || key === "quotes.create",
+        }));
+        for (const perm of processorDefaults) {
+          await db.insert(teamPermissions).values(perm);
+        }
+      }
+      return;
+    }
 
     const adminDefaults = PERMISSION_KEYS.map(key => ({
       role: "admin",
@@ -707,7 +721,13 @@ export class DatabaseStorage implements IStorage {
       enabled: key.endsWith(".view") || key === "messages.send" || key === "quotes.create",
     }));
 
-    for (const perm of [...adminDefaults, ...staffDefaults]) {
+    const processorDefaults = PERMISSION_KEYS.map(key => ({
+      role: "processor",
+      permissionKey: key,
+      enabled: key.endsWith(".view") || key === "quotes.create",
+    }));
+
+    for (const perm of [...adminDefaults, ...staffDefaults, ...processorDefaults]) {
       await db.insert(teamPermissions).values(perm);
     }
   }
@@ -720,6 +740,20 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(teamPermissions.role, role), eq(teamPermissions.permissionKey, permissionKey)));
     
     return perm?.enabled ?? false;
+  }
+
+  async hasPermissionMultiRole(roles: string[], permissionKey: string): Promise<boolean> {
+    if (roles.includes("super_admin")) return true;
+    
+    const teamRoles = roles.filter(r => r !== "user" && r !== "super_admin");
+    if (teamRoles.length === 0) return false;
+
+    for (const role of teamRoles) {
+      const [perm] = await db.select().from(teamPermissions)
+        .where(and(eq(teamPermissions.role, role), eq(teamPermissions.permissionKey, permissionKey)));
+      if (perm?.enabled) return true;
+    }
+    return false;
   }
 }
 

@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Search, MoreHorizontal, UserCog, Shield, User as UserIcon, Plus, Users, Briefcase, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -25,6 +25,7 @@ interface AdminUser {
   phone: string | null;
   title: string | null;
   role: string;
+  roles: string[];
   userType: string;
   createdAt: string;
   lastLoginAt: string | null;
@@ -34,6 +35,7 @@ interface AdminUser {
 
 const roleColors: Record<string, string> = {
   user: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  processor: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
   staff: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
   admin: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   super_admin: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
@@ -41,9 +43,24 @@ const roleColors: Record<string, string> = {
 
 const roleIcons: Record<string, typeof UserIcon> = {
   user: UserIcon,
+  processor: UserCog,
   staff: UserCog,
   admin: Shield,
   super_admin: Shield,
+};
+
+const roleLabels: Record<string, string> = {
+  processor: "Processor",
+  staff: "Staff",
+  admin: "Admin",
+  super_admin: "Super Admin",
+};
+
+const roleDescriptions: Record<string, string> = {
+  processor: "Loan processing tasks based on configured permissions",
+  staff: "Limited access based on configured permissions",
+  admin: "Full access to most features, configurable permissions",
+  super_admin: "Full unrestricted access to all features",
 };
 
 function UsersTab() {
@@ -328,7 +345,7 @@ function TeamTab() {
     fullName: "",
     phone: "",
     title: "",
-    role: "staff",
+    roles: ["staff"] as string[],
   });
   const { toast } = useToast();
 
@@ -346,7 +363,7 @@ function TeamTab() {
     onSuccess: () => {
       refetch();
       setIsAddDialogOpen(false);
-      setNewMember({ email: "", password: "", fullName: "", phone: "", title: "", role: "staff" });
+      setNewMember({ email: "", password: "", fullName: "", phone: "", title: "", roles: ["staff"] });
       toast({ title: "Team member added successfully" });
     },
     onError: (error: any) => {
@@ -378,7 +395,12 @@ function TeamTab() {
   };
 
   const allUsers = data?.users || [];
-  const teamMembers = allUsers.filter(u => ["staff", "admin", "super_admin"].includes(u.role));
+  const teamRoleSet = new Set(["processor", "staff", "admin", "super_admin"]);
+  const teamMembers = allUsers.filter(u => {
+    if (teamRoleSet.has(u.role)) return true;
+    if (u.roles?.some(r => teamRoleSet.has(r))) return true;
+    return false;
+  });
 
   const filteredMembers = teamMembers.filter(u => {
     if (search) {
@@ -397,24 +419,43 @@ function TeamTab() {
       toast({ title: "Full name is required for team members", variant: "destructive" });
       return;
     }
+    if (newMember.roles.length === 0) {
+      toast({ title: "At least one role is required", variant: "destructive" });
+      return;
+    }
     createMemberMutation.mutate(newMember);
   };
 
   const handleEditMember = () => {
     if (!editingMember) return;
+    const editRoles = editingMember.roles?.length ? editingMember.roles : [editingMember.role];
+    if (editRoles.length === 0) {
+      toast({ title: "At least one role is required", variant: "destructive" });
+      return;
+    }
     updateMemberMutation.mutate({
       id: editingMember.id,
       updates: {
         fullName: editingMember.fullName,
         phone: editingMember.phone,
         title: editingMember.title,
-        role: editingMember.role,
+        roles: editRoles,
       }
     });
   };
 
+  const toggleRole = (roles: string[], role: string): string[] => {
+    if (roles.includes(role)) {
+      return roles.filter(r => r !== role);
+    }
+    return [...roles, role];
+  };
+
   const openEditDialog = (member: AdminUser) => {
-    setEditingMember({ ...member });
+    setEditingMember({
+      ...member,
+      roles: member.roles?.length ? member.roles : [member.role],
+    });
     setIsEditDialogOpen(true);
   };
 
@@ -490,22 +531,28 @@ function TeamTab() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="team-role">Role *</Label>
-                <Select value={newMember.role} onValueChange={(value) => setNewMember({ ...newMember, role: value })}>
-                  <SelectTrigger data-testid="select-team-role">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {newMember.role === "staff" && "Limited access based on configured permissions"}
-                  {newMember.role === "admin" && "Full access to most features, configurable permissions"}
-                  {newMember.role === "super_admin" && "Full unrestricted access to all features"}
+                <Label>Roles *</Label>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Select one or more roles. Permissions are cumulative across all assigned roles.
                 </p>
+                <div className="space-y-2" data-testid="checkboxes-team-roles">
+                  {(["processor", "staff", "admin", "super_admin"] as const).map((r) => (
+                    <div key={r} className="flex items-start gap-3 p-2 border rounded-md">
+                      <Checkbox
+                        id={`new-role-${r}`}
+                        checked={newMember.roles.includes(r)}
+                        onCheckedChange={() => setNewMember({ ...newMember, roles: toggleRole(newMember.roles, r) })}
+                        data-testid={`checkbox-new-role-${r}`}
+                      />
+                      <div className="grid gap-0.5 leading-none">
+                        <label htmlFor={`new-role-${r}`} className="text-sm font-medium cursor-pointer">
+                          {roleLabels[r]}
+                        </label>
+                        <p className="text-xs text-muted-foreground">{roleDescriptions[r]}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -569,7 +616,7 @@ function TeamTab() {
                 </TableHeader>
                 <TableBody>
                   {filteredMembers.map((member) => {
-                    const RoleIcon = roleIcons[member.role] || UserIcon;
+                    const memberRoles = member.roles?.length ? member.roles : [member.role];
                     return (
                       <TableRow key={member.id} data-testid={`row-team-${member.id}`}>
                         <TableCell>
@@ -582,10 +629,17 @@ function TeamTab() {
                           <span className="text-sm text-muted-foreground">{member.title || "-"}</span>
                         </TableCell>
                         <TableCell>
-                          <Badge className={roleColors[member.role] || ""}>
-                            <RoleIcon className="h-3 w-3 mr-1" />
-                            {member.role === "super_admin" ? "Super Admin" : member.role.charAt(0).toUpperCase() + member.role.slice(1)}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1">
+                            {memberRoles.map((r) => {
+                              const RoleIcon = roleIcons[r] || UserIcon;
+                              return (
+                                <Badge key={r} className={roleColors[r] || ""} data-testid={`badge-role-${member.id}-${r}`}>
+                                  <RoleIcon className="h-3 w-3 mr-1" />
+                                  {roleLabels[r] || r}
+                                </Badge>
+                              );
+                            })}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm">{member.phone || "-"}</span>
@@ -611,16 +665,6 @@ function TeamTab() {
                               <DropdownMenuItem onClick={() => openEditDialog(member)} data-testid={`button-edit-member-${member.id}`}>
                                 <Pencil className="h-4 w-4 mr-2" />
                                 Edit Details
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => updateMemberMutation.mutate({ id: member.id, updates: { role: "staff" } })}>
-                                Set as Staff
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateMemberMutation.mutate({ id: member.id, updates: { role: "admin" } })}>
-                                Set as Admin
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateMemberMutation.mutate({ id: member.id, updates: { role: "super_admin" } })}>
-                                Set as Super Admin
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -679,17 +723,29 @@ function TeamTab() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit-role">Role</Label>
-                <Select value={editingMember.role} onValueChange={(value) => setEditingMember({ ...editingMember, role: value })}>
-                  <SelectTrigger data-testid="select-edit-role">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Roles</Label>
+                <div className="space-y-2" data-testid="checkboxes-edit-roles">
+                  {(["processor", "staff", "admin", "super_admin"] as const).map((r) => (
+                    <div key={r} className="flex items-start gap-3 p-2 border rounded-md">
+                      <Checkbox
+                        id={`edit-role-${r}`}
+                        checked={(editingMember.roles || [editingMember.role]).includes(r)}
+                        onCheckedChange={() => {
+                          const currentRoles = editingMember.roles?.length ? editingMember.roles : [editingMember.role];
+                          const newRoles = toggleRole(currentRoles, r);
+                          setEditingMember({ ...editingMember, roles: newRoles });
+                        }}
+                        data-testid={`checkbox-edit-role-${r}`}
+                      />
+                      <div className="grid gap-0.5 leading-none">
+                        <label htmlFor={`edit-role-${r}`} className="text-sm font-medium cursor-pointer">
+                          {roleLabels[r]}
+                        </label>
+                        <p className="text-xs text-muted-foreground">{roleDescriptions[r]}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

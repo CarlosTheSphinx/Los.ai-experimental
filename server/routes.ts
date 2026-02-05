@@ -316,7 +316,7 @@ export async function registerRoutes(
       }
       
       const user = await storage.getUserById(req.user.id);
-      if (!user || !['admin', 'staff', 'super_admin'].includes(user.role)) {
+      if (!user || !['admin', 'staff', 'super_admin', 'processor'].includes(user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
       
@@ -357,15 +357,18 @@ export async function registerRoutes(
           return res.status(404).json({ error: 'User not found' });
         }
 
-        if (user.role === 'super_admin') {
+        const userRoles = user.roles?.length ? user.roles : [user.role];
+
+        if (userRoles.includes('super_admin')) {
           return next();
         }
 
-        if (!['admin', 'staff'].includes(user.role)) {
+        const hasTeamRole = userRoles.some(r => ['admin', 'staff', 'processor'].includes(r));
+        if (!hasTeamRole) {
           return res.status(403).json({ error: 'Admin access required' });
         }
 
-        const allowed = await storage.hasPermission(user.role, permissionKey);
+        const allowed = await storage.hasPermissionMultiRole(userRoles, permissionKey);
         if (!allowed) {
           return res.status(403).json({ error: `Permission denied: ${permissionKey}` });
         }
@@ -391,8 +394,8 @@ export async function registerRoutes(
         return res.status(401).json({ error: 'User not found' });
       }
       
-      // Admins are exempt from onboarding requirement
-      if (['admin', 'staff', 'super_admin'].includes(user.role)) {
+      // Team members are exempt from onboarding requirement
+      if (['admin', 'staff', 'super_admin', 'processor'].includes(user.role)) {
         return next();
       }
       
@@ -3305,6 +3308,7 @@ export async function registerRoutes(
         phone: u.phone,
         title: u.title,
         role: u.role,
+        roles: u.roles || [u.role],
         userType: u.userType,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt,
@@ -3322,7 +3326,7 @@ export async function registerRoutes(
   // Admin - Create user manually
   app.post('/api/admin/users', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { email, password, fullName, companyName, phone, role, title, userType } = req.body;
+      const { email, password, fullName, companyName, phone, role, roles, title, userType } = req.body;
       
       if (!email || !password) {
         return res.status(400).json({ error: 'Email and password are required' });
@@ -3335,6 +3339,10 @@ export async function registerRoutes(
       
       const bcrypt = await import('bcrypt');
       const passwordHash = await bcrypt.hash(password, 10);
+
+      const { getPrimaryRole } = await import('@shared/schema');
+      const userRoles: string[] = roles?.length ? roles : (role ? [role] : ['user']);
+      const primaryRole = getPrimaryRole(userRoles);
       
       const newUser = await storage.createUser({
         email,
@@ -3343,7 +3351,8 @@ export async function registerRoutes(
         companyName: companyName || null,
         phone: phone || null,
         title: title || null,
-        role: role || 'user',
+        role: primaryRole,
+        roles: userRoles,
         userType: userType || 'broker',
         isActive: true,
         emailVerified: true,
@@ -3352,7 +3361,7 @@ export async function registerRoutes(
       await storage.createAdminActivity({
         userId: req.user!.id,
         actionType: 'user_created',
-        actionDescription: `Created new user: ${email} with role ${role || 'user'}`,
+        actionDescription: `Created new user: ${email} with roles ${userRoles.join(', ')}`,
       });
       
       res.json({ 
@@ -3363,6 +3372,7 @@ export async function registerRoutes(
           companyName: newUser.companyName,
           phone: newUser.phone,
           role: newUser.role,
+          roles: newUser.roles,
           createdAt: newUser.createdAt,
           isActive: newUser.isActive,
           emailVerified: newUser.emailVerified,
@@ -3378,11 +3388,17 @@ export async function registerRoutes(
   app.patch('/api/admin/users/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
-      const { role, isActive, title, fullName, phone, companyName } = req.body;
+      const { role, roles: rolesInput, isActive, title, fullName, phone, companyName } = req.body;
       
-      const updates: { role?: string; isActive?: boolean; title?: string | null; fullName?: string | null; phone?: string | null; companyName?: string | null } = {};
-      if (role !== undefined && ['user', 'admin', 'staff', 'super_admin'].includes(role)) {
+      const { getPrimaryRole } = await import('@shared/schema');
+      const updates: Record<string, any> = {};
+      
+      if (rolesInput !== undefined && Array.isArray(rolesInput)) {
+        updates.roles = rolesInput;
+        updates.role = getPrimaryRole(rolesInput);
+      } else if (role !== undefined && ['user', 'admin', 'staff', 'super_admin', 'processor'].includes(role)) {
         updates.role = role;
+        updates.roles = [role];
       }
       if (isActive !== undefined) {
         updates.isActive = isActive;
@@ -3406,7 +3422,6 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'User not found' });
       }
       
-      // Log admin activity
       await storage.createAdminActivity({
         userId: req.user!.id,
         actionType: 'user_updated',
@@ -3420,6 +3435,7 @@ export async function registerRoutes(
           email: updated.email,
           fullName: updated.fullName,
           role: updated.role,
+          roles: updated.roles,
           isActive: updated.isActive
         }
       });
@@ -3448,26 +3464,35 @@ export async function registerRoutes(
       const user = await storage.getUserById(req.user.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      if (user.role === 'super_admin') {
+      const userRoles = user.roles?.length ? user.roles : [user.role];
+
+      if (userRoles.includes('super_admin')) {
         const { PERMISSION_KEYS } = await import('@shared/schema');
         const allPerms: Record<string, boolean> = {};
         for (const key of PERMISSION_KEYS) {
           allPerms[key] = true;
         }
-        return res.json({ permissions: allPerms, role: user.role });
+        return res.json({ permissions: allPerms, role: user.role, roles: userRoles });
       }
 
-      if (user.role === 'user') {
-        return res.json({ permissions: {}, role: user.role });
+      if (user.role === 'user' && userRoles.length <= 1) {
+        return res.json({ permissions: {}, role: user.role, roles: userRoles });
       }
 
       await storage.initializeDefaultPermissions();
-      const perms = await storage.getPermissionsByRole(user.role);
       const permMap: Record<string, boolean> = {};
-      for (const p of perms) {
-        permMap[p.permissionKey] = p.enabled;
+      const teamRoles = userRoles.filter(r => r !== 'user');
+      for (const role of teamRoles) {
+        const perms = await storage.getPermissionsByRole(role);
+        for (const p of perms) {
+          if (p.enabled) {
+            permMap[p.permissionKey] = true;
+          } else if (!(p.permissionKey in permMap)) {
+            permMap[p.permissionKey] = false;
+          }
+        }
       }
-      res.json({ permissions: permMap, role: user.role });
+      res.json({ permissions: permMap, role: user.role, roles: userRoles });
     } catch (error) {
       console.error('Get my permissions error:', error);
       res.status(500).json({ error: 'Failed to load permissions' });

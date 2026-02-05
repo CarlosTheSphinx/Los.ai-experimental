@@ -83,7 +83,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const { setOpenMobile, isMobile } = useSidebar();
   const { hasPermission, isSuperAdmin } = usePermissions();
   
-  const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+  const isAdmin = user?.role && ['admin', 'staff', 'super_admin', 'processor'].includes(user.role);
   const isBorrower = user?.userType === 'borrower';
   
   const navItems = isBorrower ? borrowerNavItems : brokerNavItems;
