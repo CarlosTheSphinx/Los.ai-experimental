@@ -39,6 +39,10 @@ function getApiKey(): string {
   if (!apiKey) {
     throw new Error("PANDADOC_API_KEY environment variable is not set");
   }
+  // Handle both formats: raw key or "API-Key {key}"
+  if (apiKey.startsWith("API-Key ")) {
+    return apiKey.replace("API-Key ", "");
+  }
   return apiKey;
 }
 
