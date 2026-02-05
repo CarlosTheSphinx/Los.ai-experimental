@@ -458,7 +458,7 @@ export default function AdminDeals() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Deals Dashboard</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Pipeline</h1>
           <p className="text-muted-foreground">Overview of all deals submitted by users</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
