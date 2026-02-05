@@ -748,7 +748,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
         name: templateName,
         description: templateDescription || null,
         category: templateCategory || null,
-        loanType: quote.loanType || null,
+        loanType: (quote.loanData as any)?.loanType || (quote.loanData as any)?.selectedLoanType || null,
         pdfUrl: uploadData.url,
         pdfFileName: fileName || "template.pdf",
         pageCount: pageCount,
@@ -1207,7 +1207,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                               <h4 className="font-medium mb-2">Quote Data to be Populated:</h4>
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <div><span className="text-muted-foreground">Borrower:</span> {quote.customerFirstName} {quote.customerLastName}</div>
-                                <div><span className="text-muted-foreground">Loan Amount:</span> ${quote.loanAmount?.toLocaleString()}</div>
+                                <div><span className="text-muted-foreground">Loan Amount:</span> ${((quote.loanData as any)?.loanAmount || 0).toLocaleString()}</div>
                                 <div><span className="text-muted-foreground">Interest Rate:</span> {quote.interestRate}%</div>
                                 <div><span className="text-muted-foreground">Property:</span> {quote.propertyAddress}</div>
                               </div>
