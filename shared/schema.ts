@@ -652,6 +652,7 @@ export type InsertLoanProgram = z.infer<typeof insertLoanProgramSchema>;
 export const programDocumentTemplates = pgTable("program_document_templates", {
   id: serial("id").primaryKey(),
   programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  stepId: integer("step_id"),
   
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentCategory: varchar("document_category", { length: 100 }).notNull(), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
@@ -671,10 +672,13 @@ export type InsertProgramDocumentTemplate = z.infer<typeof insertProgramDocument
 export const programTaskTemplates = pgTable("program_task_templates", {
   id: serial("id").primaryKey(),
   programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  stepId: integer("step_id"),
   
   taskName: varchar("task_name", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
   taskCategory: varchar("task_category", { length: 100 }), // application_review, credit_check, appraisal, title_search, underwriting, closing
+  
+  assignToRole: varchar("assign_to_role", { length: 50 }).default("admin"), // user, admin, processor
   
   priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
   sortOrder: integer("sort_order").default(0),
@@ -685,6 +689,53 @@ export const programTaskTemplates = pgTable("program_task_templates", {
 export const insertProgramTaskTemplateSchema = createInsertSchema(programTaskTemplates).omit({ id: true, createdAt: true });
 export type ProgramTaskTemplate = typeof programTaskTemplates.$inferSelect;
 export type InsertProgramTaskTemplate = z.infer<typeof insertProgramTaskTemplateSchema>;
+
+// Workflow Step Definitions - master list of reusable step types
+export const workflowStepDefinitions = pgTable("workflow_step_definitions", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  key: varchar("key", { length: 100 }).unique().notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 50 }).default("#6366f1"),
+  icon: varchar("icon", { length: 50 }),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWorkflowStepDefinitionSchema = createInsertSchema(workflowStepDefinitions).omit({ id: true, createdAt: true });
+export type WorkflowStepDefinition = typeof workflowStepDefinitions.$inferSelect;
+export type InsertWorkflowStepDefinition = z.infer<typeof insertWorkflowStepDefinitionSchema>;
+
+// Program Workflow Steps - links step definitions to specific programs with ordering
+export const programWorkflowSteps = pgTable("program_workflow_steps", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  stepDefinitionId: integer("step_definition_id").references(() => workflowStepDefinitions.id, { onDelete: 'cascade' }).notNull(),
+  stepOrder: integer("step_order").notNull(),
+  isRequired: boolean("is_required").default(true),
+  estimatedDays: integer("estimated_days"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProgramWorkflowStepSchema = createInsertSchema(programWorkflowSteps).omit({ id: true, createdAt: true });
+export type ProgramWorkflowStep = typeof programWorkflowSteps.$inferSelect;
+export type InsertProgramWorkflowStep = z.infer<typeof insertProgramWorkflowStepSchema>;
+
+// Deal Processors - assigns processors to deals/projects
+export const dealProcessors = pgTable("deal_processors", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  role: varchar("role", { length: 100 }).default("processor"),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  assignedBy: integer("assigned_by").references(() => users.id, { onDelete: 'set null' }),
+});
+
+export const insertDealProcessorSchema = createInsertSchema(dealProcessors).omit({ id: true, assignedAt: true });
+export type DealProcessor = typeof dealProcessors.$inferSelect;
+export type InsertDealProcessor = z.infer<typeof insertDealProcessorSchema>;
 
 // Pricing Rulesets - versioned pricing rules per loan program
 export const pricingRulesets = pgTable("pricing_rulesets", {

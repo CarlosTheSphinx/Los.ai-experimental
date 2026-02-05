@@ -30,6 +30,7 @@ import {
   Building,
   Building2,
   User,
+  Users,
   Calendar,
   CalendarDays,
   FileText,
@@ -56,6 +57,8 @@ import {
   ExternalLink,
   Activity,
   MapPin,
+  Trash2,
+  UserPlus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -394,6 +397,8 @@ export default function AdminDealDetail() {
 
   // Deal ID is now the project ID directly (deals are projects)
   const linkedProjectId = dealId ? parseInt(dealId) : null;
+  const [showAddProcessor, setShowAddProcessor] = useState(false);
+  const [selectedProcessorId, setSelectedProcessorId] = useState<string>("");
 
   const { data: projectDetailData, isLoading: projectLoading } = useQuery<ProjectDetailResponse>({
     queryKey: ['/api/admin/projects', linkedProjectId],
@@ -402,6 +407,43 @@ export default function AdminDealDetail() {
 
   const { data: stagesData } = useQuery<{ stages: DealStage[] }>({
     queryKey: ['/api/admin/deal-stages'],
+  });
+
+  const { data: dealProcessorsData } = useQuery<any[]>({
+    queryKey: ['/api/admin/projects', linkedProjectId, 'processors'],
+    enabled: !!linkedProjectId,
+  });
+
+  const { data: availableProcessors } = useQuery<any[]>({
+    queryKey: ['/api/admin/processors'],
+  });
+
+  const addProcessorMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      return apiRequest("POST", `/api/admin/projects/${linkedProjectId}/processors`, { userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId, 'processors'] });
+      setShowAddProcessor(false);
+      setSelectedProcessorId("");
+      toast({ title: "Processor added to deal" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add processor", variant: "destructive" });
+    },
+  });
+
+  const removeProcessorMutation = useMutation({
+    mutationFn: async (processorId: number) => {
+      return apiRequest("DELETE", `/api/admin/projects/${linkedProjectId}/processors/${processorId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId, 'processors'] });
+      toast({ title: "Processor removed from deal" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove processor", variant: "destructive" });
+    },
   });
   
   const stages = stagesData?.stages || [];
@@ -918,6 +960,105 @@ export default function AdminDealDetail() {
           </div>
         </Card>
       )}
+
+      {/* Team / Processors Section */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Team
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddProcessor(true)}
+              data-testid="button-add-processor"
+              className="gap-1"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Processor
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {dealProcessorsData && dealProcessorsData.length > 0 ? (
+            <div className="space-y-2">
+              {dealProcessorsData.map((proc: any) => (
+                <div key={proc.id} className="flex items-center justify-between p-2 rounded-md border" data-testid={`processor-${proc.id}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">{proc.user?.fullName || 'Unknown'}</div>
+                      <div className="text-xs text-muted-foreground">{proc.user?.email}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{proc.role}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive"
+                      onClick={() => removeProcessorMutation.mutate(proc.id)}
+                      data-testid={`button-remove-processor-${proc.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No processors assigned to this deal yet.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Processor Dialog */}
+      <Dialog open={showAddProcessor} onOpenChange={setShowAddProcessor}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Processor</DialogTitle>
+            <DialogDescription>
+              Assign a team member as a processor on this deal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Select Team Member</Label>
+              <Select value={selectedProcessorId} onValueChange={setSelectedProcessorId}>
+                <SelectTrigger data-testid="select-processor">
+                  <SelectValue placeholder="Choose a team member..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(availableProcessors || [])
+                    .filter((p: any) => !dealProcessorsData?.some((dp: any) => dp.userId === p.id))
+                    .map((p: any) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.fullName || p.email} ({p.role})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddProcessor(false)}>Cancel</Button>
+            <Button
+              onClick={() => selectedProcessorId && addProcessorMutation.mutate(parseInt(selectedProcessorId))}
+              disabled={!selectedProcessorId || addProcessorMutation.isPending}
+              data-testid="button-confirm-add-processor"
+            >
+              {addProcessorMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Add Processor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Tabs matching Loans page: Tasks, Activity, Documents, Digests */}
       <Tabs defaultValue="tasks" className="space-y-4" data-testid="tabs-deal-detail">

@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -5191,8 +5191,30 @@ export async function registerRoutes(
       const tasks = await db.select().from(programTaskTemplates)
         .where(eq(programTaskTemplates.programId, program.id))
         .orderBy(programTaskTemplates.sortOrder);
+
+      const workflowSteps = await db.select({
+        id: programWorkflowSteps.id,
+        programId: programWorkflowSteps.programId,
+        stepDefinitionId: programWorkflowSteps.stepDefinitionId,
+        stepOrder: programWorkflowSteps.stepOrder,
+        isRequired: programWorkflowSteps.isRequired,
+        estimatedDays: programWorkflowSteps.estimatedDays,
+        createdAt: programWorkflowSteps.createdAt,
+        definition: {
+          id: workflowStepDefinitions.id,
+          name: workflowStepDefinitions.name,
+          key: workflowStepDefinitions.key,
+          description: workflowStepDefinitions.description,
+          color: workflowStepDefinitions.color,
+          icon: workflowStepDefinitions.icon,
+        }
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+        .where(eq(programWorkflowSteps.programId, program.id))
+        .orderBy(programWorkflowSteps.stepOrder);
       
-      res.json({ program, documents, tasks });
+      res.json({ program, documents, tasks, workflowSteps });
     } catch (error) {
       console.error('Get program error:', error);
       res.status(500).json({ error: 'Failed to load program' });
@@ -5359,7 +5381,7 @@ export async function registerRoutes(
   app.post('/api/admin/programs/:programId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
-      const { documentName, documentCategory, documentDescription, isRequired, sortOrder } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
       
       if (!documentName || !documentCategory) {
         return res.status(400).json({ error: 'Document name and category are required' });
@@ -5372,6 +5394,7 @@ export async function registerRoutes(
         documentDescription,
         isRequired: isRequired !== false,
         sortOrder: sortOrder || 0,
+        stepId: stepId || null,
       }).returning();
       
       res.json({ document: doc });
@@ -5385,7 +5408,7 @@ export async function registerRoutes(
   app.put('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { docId } = req.params;
-      const { documentName, documentCategory, documentDescription, isRequired, sortOrder } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
       
       const updateData: any = {};
       if (documentName !== undefined) updateData.documentName = documentName;
@@ -5393,6 +5416,7 @@ export async function registerRoutes(
       if (documentDescription !== undefined) updateData.documentDescription = documentDescription;
       if (isRequired !== undefined) updateData.isRequired = isRequired;
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+      if (stepId !== undefined) updateData.stepId = stepId;
       
       const [doc] = await db.update(programDocumentTemplates)
         .set(updateData)
@@ -5426,7 +5450,7 @@ export async function registerRoutes(
   app.post('/api/admin/programs/:programId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
-      const { taskName, taskDescription, taskCategory, priority, sortOrder } = req.body;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole } = req.body;
       
       if (!taskName) {
         return res.status(400).json({ error: 'Task name is required' });
@@ -5439,6 +5463,8 @@ export async function registerRoutes(
         taskCategory,
         priority: priority || 'medium',
         sortOrder: sortOrder || 0,
+        stepId: stepId || null,
+        assignToRole: assignToRole || 'admin',
       }).returning();
       
       res.json({ task });
@@ -5452,7 +5478,7 @@ export async function registerRoutes(
   app.put('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { taskId } = req.params;
-      const { taskName, taskDescription, taskCategory, priority, sortOrder } = req.body;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole } = req.body;
       
       const updateData: any = {};
       if (taskName !== undefined) updateData.taskName = taskName;
@@ -5460,6 +5486,8 @@ export async function registerRoutes(
       if (taskCategory !== undefined) updateData.taskCategory = taskCategory;
       if (priority !== undefined) updateData.priority = priority;
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+      if (stepId !== undefined) updateData.stepId = stepId;
+      if (assignToRole !== undefined) updateData.assignToRole = assignToRole;
       
       const [task] = await db.update(programTaskTemplates)
         .set(updateData)
@@ -5484,6 +5512,315 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete program task error:', error);
       res.status(500).json({ error: 'Failed to delete task template' });
+    }
+  });
+
+  // ==================== WORKFLOW STEP DEFINITIONS ROUTES ====================
+
+  // Get all workflow step definitions
+  app.get('/api/admin/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const steps = await db.select().from(workflowStepDefinitions)
+        .where(eq(workflowStepDefinitions.isActive, true))
+        .orderBy(workflowStepDefinitions.sortOrder);
+      res.json(steps);
+    } catch (error) {
+      console.error('Get workflow steps error:', error);
+      res.status(500).json({ error: 'Failed to load workflow steps' });
+    }
+  });
+
+  // Create workflow step definition
+  app.post('/api/admin/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, description, color, icon } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: 'Step name is required' });
+      }
+      const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const existing = await db.select().from(workflowStepDefinitions).where(eq(workflowStepDefinitions.key, key));
+      if (existing.length > 0) {
+        return res.status(400).json({ error: 'A step with this name already exists' });
+      }
+      const maxOrder = await db.select({ max: sql<number>`COALESCE(MAX(sort_order), 0)` }).from(workflowStepDefinitions);
+      const [step] = await db.insert(workflowStepDefinitions).values({
+        name,
+        key,
+        description: description || null,
+        color: color || '#6366f1',
+        icon: icon || null,
+        isDefault: false,
+        isActive: true,
+        sortOrder: (maxOrder[0]?.max || 0) + 1,
+      }).returning();
+      res.json({ step });
+    } catch (error) {
+      console.error('Create workflow step error:', error);
+      res.status(500).json({ error: 'Failed to create workflow step' });
+    }
+  });
+
+  // Update workflow step definition
+  app.put('/api/admin/workflow-steps/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, description, color, icon } = req.body;
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (color !== undefined) updateData.color = color;
+      if (icon !== undefined) updateData.icon = icon;
+      const [step] = await db.update(workflowStepDefinitions)
+        .set(updateData)
+        .where(eq(workflowStepDefinitions.id, parseInt(id)))
+        .returning();
+      res.json({ step });
+    } catch (error) {
+      console.error('Update workflow step error:', error);
+      res.status(500).json({ error: 'Failed to update workflow step' });
+    }
+  });
+
+  // Delete (soft) workflow step definition
+  app.delete('/api/admin/workflow-steps/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      await db.update(workflowStepDefinitions)
+        .set({ isActive: false })
+        .where(eq(workflowStepDefinitions.id, parseInt(id)));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete workflow step error:', error);
+      res.status(500).json({ error: 'Failed to delete workflow step' });
+    }
+  });
+
+  // ==================== PROGRAM WORKFLOW STEPS ROUTES ====================
+
+  // Get workflow steps for a program
+  app.get('/api/admin/programs/:programId/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const steps = await db.select({
+        id: programWorkflowSteps.id,
+        programId: programWorkflowSteps.programId,
+        stepDefinitionId: programWorkflowSteps.stepDefinitionId,
+        stepOrder: programWorkflowSteps.stepOrder,
+        isRequired: programWorkflowSteps.isRequired,
+        estimatedDays: programWorkflowSteps.estimatedDays,
+        createdAt: programWorkflowSteps.createdAt,
+        definition: {
+          id: workflowStepDefinitions.id,
+          name: workflowStepDefinitions.name,
+          key: workflowStepDefinitions.key,
+          description: workflowStepDefinitions.description,
+          color: workflowStepDefinitions.color,
+          icon: workflowStepDefinitions.icon,
+        }
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+        .where(eq(programWorkflowSteps.programId, parseInt(programId)))
+        .orderBy(programWorkflowSteps.stepOrder);
+      res.json(steps);
+    } catch (error) {
+      console.error('Get program workflow steps error:', error);
+      res.status(500).json({ error: 'Failed to load workflow steps' });
+    }
+  });
+
+  // Save/replace all workflow steps for a program (batch operation)
+  app.put('/api/admin/programs/:programId/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const { steps } = req.body;
+      if (!Array.isArray(steps)) {
+        return res.status(400).json({ error: 'Steps must be an array' });
+      }
+      await db.transaction(async (tx) => {
+        await tx.delete(programWorkflowSteps).where(eq(programWorkflowSteps.programId, parseInt(programId)));
+        if (steps.length > 0) {
+          const entries = steps.map((step: any, index: number) => ({
+            programId: parseInt(programId),
+            stepDefinitionId: step.stepDefinitionId,
+            stepOrder: index + 1,
+            isRequired: step.isRequired !== false,
+            estimatedDays: step.estimatedDays || null,
+          }));
+          await tx.insert(programWorkflowSteps).values(entries);
+        }
+      });
+      const updated = await db.select({
+        id: programWorkflowSteps.id,
+        programId: programWorkflowSteps.programId,
+        stepDefinitionId: programWorkflowSteps.stepDefinitionId,
+        stepOrder: programWorkflowSteps.stepOrder,
+        isRequired: programWorkflowSteps.isRequired,
+        estimatedDays: programWorkflowSteps.estimatedDays,
+        createdAt: programWorkflowSteps.createdAt,
+        definition: {
+          id: workflowStepDefinitions.id,
+          name: workflowStepDefinitions.name,
+          key: workflowStepDefinitions.key,
+          description: workflowStepDefinitions.description,
+          color: workflowStepDefinitions.color,
+          icon: workflowStepDefinitions.icon,
+        }
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+        .where(eq(programWorkflowSteps.programId, parseInt(programId)))
+        .orderBy(programWorkflowSteps.stepOrder);
+      res.json(updated);
+    } catch (error) {
+      console.error('Save program workflow steps error:', error);
+      res.status(500).json({ error: 'Failed to save workflow steps' });
+    }
+  });
+
+  // Batch update document step assignments
+  app.put('/api/admin/programs/:programId/documents/batch-step', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { assignments } = req.body;
+      if (!Array.isArray(assignments)) {
+        return res.status(400).json({ error: 'Assignments must be an array' });
+      }
+      await db.transaction(async (tx) => {
+        for (const assignment of assignments) {
+          await tx.update(programDocumentTemplates)
+            .set({ stepId: assignment.stepId })
+            .where(eq(programDocumentTemplates.id, assignment.documentId));
+        }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Batch update document steps error:', error);
+      res.status(500).json({ error: 'Failed to update document assignments' });
+    }
+  });
+
+  // Batch update task step assignments
+  app.put('/api/admin/programs/:programId/tasks/batch-step', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { assignments } = req.body;
+      if (!Array.isArray(assignments)) {
+        return res.status(400).json({ error: 'Assignments must be an array' });
+      }
+      await db.transaction(async (tx) => {
+        for (const assignment of assignments) {
+          const updateData: any = { stepId: assignment.stepId };
+          if (assignment.assignToRole !== undefined) updateData.assignToRole = assignment.assignToRole;
+          await tx.update(programTaskTemplates)
+            .set(updateData)
+            .where(eq(programTaskTemplates.id, assignment.taskId));
+        }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Batch update task steps error:', error);
+      res.status(500).json({ error: 'Failed to update task assignments' });
+    }
+  });
+
+  // ==================== DEAL PROCESSORS ROUTES ====================
+
+  // Get processors for a project/deal
+  app.get('/api/admin/projects/:projectId/processors', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const processors = await db.select({
+        id: dealProcessors.id,
+        projectId: dealProcessors.projectId,
+        userId: dealProcessors.userId,
+        role: dealProcessors.role,
+        assignedAt: dealProcessors.assignedAt,
+        assignedBy: dealProcessors.assignedBy,
+        user: {
+          id: users.id,
+          fullName: users.fullName,
+          email: users.email,
+          phone: users.phone,
+        }
+      })
+        .from(dealProcessors)
+        .innerJoin(users, eq(dealProcessors.userId, users.id))
+        .where(eq(dealProcessors.projectId, parseInt(projectId)));
+      res.json(processors);
+    } catch (error) {
+      console.error('Get deal processors error:', error);
+      res.status(500).json({ error: 'Failed to load processors' });
+    }
+  });
+
+  // Add processor to a project/deal
+  app.post('/api/admin/projects/:projectId/processors', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+      const existing = await db.select().from(dealProcessors).where(
+        and(
+          eq(dealProcessors.projectId, parseInt(projectId)),
+          eq(dealProcessors.userId, parseInt(userId))
+        )
+      );
+      if (existing.length > 0) {
+        return res.status(400).json({ error: 'This user is already assigned as a processor' });
+      }
+      const [processor] = await db.insert(dealProcessors).values({
+        projectId: parseInt(projectId),
+        userId: parseInt(userId),
+        role: 'processor',
+        assignedBy: req.user?.id || null,
+      }).returning();
+      res.json({ processor });
+    } catch (error) {
+      console.error('Add deal processor error:', error);
+      res.status(500).json({ error: 'Failed to add processor' });
+    }
+  });
+
+  // Remove processor from a project/deal
+  app.delete('/api/admin/projects/:projectId/processors/:processorId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { processorId } = req.params;
+      await db.delete(dealProcessors).where(eq(dealProcessors.id, parseInt(processorId)));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Remove deal processor error:', error);
+      res.status(500).json({ error: 'Failed to remove processor' });
+    }
+  });
+
+  // Get all users with processor role for selection
+  app.get('/api/admin/processors', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const processorUsers = await db.select({
+        id: users.id,
+        fullName: users.fullName,
+        email: users.email,
+        phone: users.phone,
+        role: users.role,
+        userType: users.userType,
+      })
+        .from(users)
+        .where(
+          and(
+            eq(users.isActive, true),
+            or(
+              eq(users.userType, 'processor'),
+              eq(users.role, 'staff'),
+              eq(users.role, 'admin'),
+              eq(users.role, 'super_admin')
+            )
+          )
+        );
+      res.json(processorUsers);
+    } catch (error) {
+      console.error('Get processors error:', error);
+      res.status(500).json({ error: 'Failed to load processors' });
     }
   });
 

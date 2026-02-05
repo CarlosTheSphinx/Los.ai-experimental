@@ -38,10 +38,12 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Workflow,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import ProgramWorkflowEditor from "@/components/ProgramWorkflowEditor";
 
 interface LoanProgram {
   id: number;
@@ -148,6 +150,7 @@ export default function AdminPrograms() {
   const [showEditProgram, setShowEditProgram] = useState(false);
   const [showAddDocument, setShowAddDocument] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [workflowEditorProgram, setWorkflowEditorProgram] = useState<LoanProgram | null>(null);
 
   // Inline document/task templates for program creation
   interface InlineDocument {
@@ -952,6 +955,16 @@ export default function AdminPrograms() {
                           )}
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setWorkflowEditorProgram(program)}
+                          data-testid={`button-configure-workflow-${program.id}`}
+                          className="gap-1"
+                        >
+                          <Workflow className="h-4 w-4" />
+                          Configure Workflow
+                        </Button>
                         <Switch
                           checked={program.isActive}
                           onCheckedChange={() => toggleProgram.mutate(program.id)}
@@ -968,7 +981,7 @@ export default function AdminPrograms() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-destructive hover:text-destructive"
+                          className="text-destructive"
                           onClick={() => {
                             if (
                               confirm(
@@ -1459,6 +1472,17 @@ export default function AdminPrograms() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {workflowEditorProgram && (
+        <ProgramWorkflowEditor
+          programId={workflowEditorProgram.id}
+          programName={workflowEditorProgram.name}
+          open={!!workflowEditorProgram}
+          onOpenChange={(open) => {
+            if (!open) setWorkflowEditorProgram(null);
+          }}
+        />
+      )}
     </div>
   );
 }
