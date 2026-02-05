@@ -1,0 +1,117 @@
+Cool. Here’s the **single, copy/paste Replit prompt** to integrate **PandaDoc** into your **Express + React** app in a clean, production-ish way (templates + tokens + optional embedded signing + webhooks + signed PDF download).
+
+Copy everything below into Replit AI:
+
+```text
+Integrate PandaDoc e-sign into this existing Express + React app as an optional signing method for quotes/templates (like DocuSign).
+
+GOALS
+- From our app, an admin can select a PandaDoc template, map quote values into tokens, create a PandaDoc document, send it for signature (email or embedded), track status, and download/store the completed signed PDF.
+- Do NOT expose PandaDoc API key to the frontend.
+- Use Replit Secrets for credentials.
+
+BACKEND (Express) — REQUIRED
+1) Add env vars (Replit Secrets):
+- PANDADOC_API_KEY
+- PANDADOC_WEBHOOK_SECRET (for webhook verification if we use it)
+- PUBLIC_APP_URL (base URL for return links, e.g. https://<yourapp>.replit.app)
+
+2) Create service module:
+- server/esign/pandadoc.ts
+Implement:
+- createDocumentFromTemplate({ templateId, name, tokens, recipients })
+  -> calls PandaDoc “create document from template”
+- sendDocument({ documentId, subject, message })
+  -> calls PandaDoc send endpoint (email signing)
+- createEmbeddedSession({ documentId, recipientEmail, returnUrl })
+  -> if PandaDoc supports embedded signing session, return session URL
+- getDocumentStatus(documentId)
+- downloadSignedPdf(documentId) -> returns PDF bytes or download link
+
+3) Field/token mapping:
+- server/esign/field-mapping.ts
+Implement:
+- mapQuoteToPandaTokens(quote) -> returns tokens object like:
+  {
+    borrower_name: "Carlos Velez",
+    property_address: "...",
+    loan_amount: "400,000",
+    interest_rate: "6.59%",
+    origination_fee: "$8,000",
+    ltv: "75.01% - 80%",
+    fico: "780+",
+    etc...
+  }
+Also support optional template-specific token mappings by templateId.
+
+4) New API routes:
+- POST /api/esign/pandadoc/documents/create
+  Body: { quoteId, pandadocTemplateId, recipients:[{name,email,role}], sendMethod:"email"|"embedded" }
+  Steps:
+   a) Load quote by quoteId
+   b) tokens = mapQuoteToPandaTokens(quote)
+   c) Create PandaDoc document from template using tokens + recipients
+   d) Persist record in DB (see Persistence section)
+   e) If sendMethod=email -> call sendDocument and return { documentId, status }
+      If sendMethod=embedded -> createEmbeddedSession and return { documentId, signingUrl }
+
+- GET /api/esign/pandadoc/documents/:documentId/status
+  Returns: { status, lastChangedAt, completedAt?, signedPdfUrl? }
+
+- GET /api/esign/pandadoc/documents/:documentId/download
+  Downloads the signed PDF (only if completed). Store in object storage if available, otherwise stream.
+
+- POST /api/esign/pandadoc/webhook
+  Verify webhook signature using PANDADOC_WEBHOOK_SECRET (if verification available; if not, still log events but require a shared secret query param).
+  On events (document.viewed, document.completed, document.declined):
+   - Upsert status in DB
+   - On completed: download PDF and store URL/metadata.
+
+5) Persistence (DB)
+Create tables/models:
+- esign_envelopes
+  { id, vendor:"pandadoc", quoteId, templateId, documentId, status, signingUrl, signedPdfUrl, createdAt, updatedAt }
+- esign_events
+  { id, vendor:"pandadoc", documentId, eventType, payloadJson, createdAt }
+
+6) Security
+- Only admin/super-admin can create/send PandaDoc docs.
+- Validate recipient emails.
+- Add server-side input validation with zod (or existing validation approach).
+
+FRONTEND (React) — REQUIRED
+1) In “Send Quote for Signature” flow add:
+- Signing Method toggle: [In-App] [PandaDoc]
+- When PandaDoc selected:
+  - Select PandaDoc Template (dropdown or input)
+  - Recipients (name/email/role)
+  - Send method: Email or Embedded
+  - Button: “Create & Send PandaDoc”
+
+2) On submit:
+- Call POST /api/esign/pandadoc/documents/create
+- If embedded signingUrl returned, open in a new tab or modal iframe (if allowed)
+- If email send, show confirmation and status
+
+3) Add “Envelope/Document Status” UI:
+- Show status timeline
+- Poll /status endpoint every 5–10s until completed (or use webhooks)
+- If completed, show “Download Signed PDF” button (calls /download)
+
+DELIVERABLES
+- Implement backend service, routes, DB models/migrations
+- Implement frontend UI for PandaDoc send + status + download
+- Add README section: how to set secrets, how to create PandaDoc template tokens, and how to configure webhooks
+
+IMPORTANT NOTES
+- Use PandaDoc template tokens ({{token_name}}) for text values.
+- For signature/date fields, rely on PandaDoc template roles and fields; we only fill text tokens from quote data.
+- Keep the integration modular: server/esign/pandadoc.ts should be the only place touching PandaDoc API directly.
+```
+
+### Two quick setup tips so this works smoothly
+
+* In PandaDoc, build your template with tokens like `{{loan_amount}}`, `{{interest_rate}}`, `{{borrower_name}}`, etc.
+* For signature blocks, set roles like **Borrower**, **Originator**, etc. PandaDoc will handle placement.
+
+If you want, tell me whether you prefer **email-only** (simpler, more reliable) or **embedded signing inside your app** (more seamless) and I’ll adjust the prompt to remove anything you don’t need so Replit doesn’t build extra stuff.
