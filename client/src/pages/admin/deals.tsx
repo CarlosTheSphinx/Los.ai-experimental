@@ -52,6 +52,8 @@ import {
   Circle,
   CheckCircle2,
   Clock,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -360,6 +362,7 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
 
 export default function AdminDeals() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { toast } = useToast();
   
@@ -705,15 +708,37 @@ export default function AdminDeals() {
             <h2 className="text-xl font-bold">All Deals</h2>
             <p className="text-muted-foreground text-sm">Quotes submitted by all users</p>
           </div>
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by customer, address, or user..."
-              className="pl-10"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              data-testid="input-search-deals"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by customer, address, or user..."
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                data-testid="input-search-deals"
+              />
+            </div>
+            <div className="flex items-center border rounded-md">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("rounded-r-none", viewMode === "grid" && "bg-muted")}
+                onClick={() => setViewMode("grid")}
+                data-testid="btn-view-grid"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("rounded-l-none", viewMode === "list" && "bg-muted")}
+                onClick={() => setViewMode("list")}
+                data-testid="btn-view-list"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -733,7 +758,7 @@ export default function AdminDeals() {
               </p>
             </CardContent>
           </Card>
-        ) : (
+        ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {deals.map((deal) => (
               <DealExpandedCard 
@@ -746,6 +771,70 @@ export default function AdminDeals() {
               />
             ))}
           </div>
+        ) : (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Borrower</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Loan Type</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Progress</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deals.map((deal) => (
+                  <TableRow 
+                    key={deal.id} 
+                    className="cursor-pointer hover-elevate"
+                    data-testid={`row-deal-${deal.id}`}
+                  >
+                    <TableCell>
+                      <Link href={`/admin/deals/${deal.id}`}>
+                        <span className="font-mono text-sm text-primary hover:underline" data-testid={`link-deal-row-${deal.id}`}>
+                          {deal.projectNumber || `#${deal.id}`}
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span>{deal.customerFirstName} {deal.customerLastName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 max-w-[200px]">
+                        <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="truncate text-sm">{deal.propertyAddress}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {getLoanTypeLabel(deal.loanData?.loanType)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {deal.loanData?.loanAmount ? formatCurrency(deal.loanData.loanAmount) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn("text-xs", getStageColor(deal.stage))}>
+                        {getStageLabel(deal.stage)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 min-w-[100px]">
+                        <Progress value={deal.progressPercentage || 0} className="h-2 flex-1" />
+                        <span className="text-xs text-muted-foreground w-8">{deal.progressPercentage || 0}%</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
         )}
       </div>
     </div>
