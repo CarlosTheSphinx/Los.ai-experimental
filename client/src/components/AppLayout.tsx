@@ -57,7 +57,7 @@ const borrowerNavItems = [
 
 const adminNavItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/deals", label: "Deals", icon: FileText },
+  { href: "/admin/deals", label: "Pipeline", icon: FileText },
   { href: "/admin/partners", label: "Partners", icon: Handshake },
   { href: "/admin/programs", label: "Programs", icon: Settings2 },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen },
