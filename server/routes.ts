@@ -7146,6 +7146,56 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Bulk approve drafts
+  app.post('/api/admin/digests/drafts/bulk-approve', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { draftIds } = req.body;
+      
+      if (!Array.isArray(draftIds) || draftIds.length === 0) {
+        return res.status(400).json({ error: 'draftIds must be a non-empty array' });
+      }
+      
+      const updated = await db.update(scheduledDigestDrafts)
+        .set({
+          status: 'approved',
+          approvedBy: req.user!.id,
+          approvedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(inArray(scheduledDigestDrafts.id, draftIds))
+        .returning();
+      
+      res.json({ success: true, count: updated.length, drafts: updated });
+    } catch (error) {
+      console.error('Error bulk approving drafts:', error);
+      res.status(500).json({ error: 'Failed to bulk approve drafts' });
+    }
+  });
+
+  // Admin - Bulk skip drafts
+  app.post('/api/admin/digests/drafts/bulk-skip', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { draftIds } = req.body;
+      
+      if (!Array.isArray(draftIds) || draftIds.length === 0) {
+        return res.status(400).json({ error: 'draftIds must be a non-empty array' });
+      }
+      
+      const updated = await db.update(scheduledDigestDrafts)
+        .set({
+          status: 'skipped',
+          updatedAt: new Date(),
+        })
+        .where(inArray(scheduledDigestDrafts.id, draftIds))
+        .returning();
+      
+      res.json({ success: true, count: updated.length, drafts: updated });
+    } catch (error) {
+      console.error('Error bulk skipping drafts:', error);
+      res.status(500).json({ error: 'Failed to bulk skip drafts' });
+    }
+  });
+
   // Admin - Send an approved draft now
   app.post('/api/admin/digests/drafts/:draftId/send', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

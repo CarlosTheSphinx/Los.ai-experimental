@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -138,6 +139,7 @@ export default function AdminDigests() {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<number>>(new Set());
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -246,6 +248,34 @@ export default function AdminDigests() {
     },
   });
 
+  const bulkApproveMutation = useMutation({
+    mutationFn: async (draftIds: number[]) => {
+      return apiRequest('POST', '/api/admin/digests/drafts/bulk-approve', { draftIds });
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Drafts Approved", description: `${data.count} draft(s) approved` });
+      setSelectedDraftIds(new Set());
+      refetch();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to approve drafts", variant: "destructive" });
+    },
+  });
+
+  const bulkSkipMutation = useMutation({
+    mutationFn: async (draftIds: number[]) => {
+      return apiRequest('POST', '/api/admin/digests/drafts/bulk-skip', { draftIds });
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Drafts Skipped", description: `${data.count} draft(s) skipped` });
+      setSelectedDraftIds(new Set());
+      refetch();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to skip drafts", variant: "destructive" });
+    },
+  });
+
   const digests = data?.digests || [];
 
   const stats = useMemo(() => {
@@ -264,16 +294,44 @@ export default function AdminDigests() {
     const newDate = subDays(selectedDate, 1);
     setSelectedDate(newDate);
     setDisplayMonth(newDate);
+    setSelectedDraftIds(new Set());
   };
   const goToNextDay = () => {
     const newDate = addDays(selectedDate, 1);
     setSelectedDate(newDate);
     setDisplayMonth(newDate);
+    setSelectedDraftIds(new Set());
   };
   const goToToday = () => {
     const today = new Date();
     setSelectedDate(today);
     setDisplayMonth(today);
+    setSelectedDraftIds(new Set());
+  };
+
+  // Get all draft digests that can be approved (status === 'draft')
+  const approvableDrafts = useMemo(() => {
+    return digests.filter(d => d.draft && d.draft.status === 'draft').map(d => d.draft!.id);
+  }, [digests]);
+
+  const toggleDraftSelection = (draftId: number) => {
+    setSelectedDraftIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(draftId)) {
+        newSet.delete(draftId);
+      } else {
+        newSet.add(draftId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllDrafts = () => {
+    setSelectedDraftIds(new Set(approvableDrafts));
+  };
+
+  const clearSelection = () => {
+    setSelectedDraftIds(new Set());
   };
 
   const openEditDialog = (digest: ScheduledDigest) => {
@@ -445,7 +503,7 @@ export default function AdminDigests() {
               <Calendar
                 mode="single"
                 selected={selectedDate}
-                onSelect={(date) => date && setSelectedDate(date)}
+                onSelect={(date) => { if (date) { setSelectedDate(date); setSelectedDraftIds(new Set()); } }}
                 month={displayMonth}
                 onMonthChange={setDisplayMonth}
                 className="rounded-md border"
@@ -514,6 +572,65 @@ export default function AdminDigests() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Bulk action bar */}
+            {approvableDrafts.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-muted/50 rounded-lg border" data-testid="bulk-action-bar">
+                <div className="flex items-center gap-2 mr-4">
+                  <Checkbox
+                    id="select-all"
+                    checked={selectedDraftIds.size === approvableDrafts.length && approvableDrafts.length > 0}
+                    onCheckedChange={(checked) => checked ? selectAllDrafts() : clearSelection()}
+                    data-testid="checkbox-select-all"
+                  />
+                  <label htmlFor="select-all" className="text-sm cursor-pointer">
+                    {selectedDraftIds.size > 0 
+                      ? `${selectedDraftIds.size} selected` 
+                      : `Select all (${approvableDrafts.length})`}
+                  </label>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => bulkApproveMutation.mutate(approvableDrafts)}
+                  disabled={bulkApproveMutation.isPending || approvableDrafts.length === 0}
+                  data-testid="button-approve-all"
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  Approve All
+                </Button>
+                {selectedDraftIds.size > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => bulkApproveMutation.mutate(Array.from(selectedDraftIds))}
+                      disabled={bulkApproveMutation.isPending}
+                      data-testid="button-approve-selected"
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Approve Selected
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => bulkSkipMutation.mutate(Array.from(selectedDraftIds))}
+                      disabled={bulkSkipMutation.isPending}
+                      data-testid="button-skip-selected"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Skip Selected
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearSelection}
+                      data-testid="button-clear-selection"
+                    >
+                      Clear
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
             {isLoading ? (
               <div className="space-y-4">
                 {[1, 2, 3].map((i) => (
@@ -536,6 +653,15 @@ export default function AdminDigests() {
                       data-testid={`digest-card-${digest.configId}`}
                     >
                       <div className="flex items-start justify-between gap-2 md:gap-4">
+                        {/* Checkbox for selecting draft digests */}
+                        {digest.draft && digest.draft.status === 'draft' && (
+                          <Checkbox
+                            checked={selectedDraftIds.has(digest.draft.id)}
+                            onCheckedChange={() => toggleDraftSelection(digest.draft!.id)}
+                            className="mt-1 shrink-0"
+                            data-testid={`checkbox-draft-${digest.configId}`}
+                          />
+                        )}
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-sm md:text-base truncate">{digest.projectName}</h3>
                           {digest.borrowerName && (
