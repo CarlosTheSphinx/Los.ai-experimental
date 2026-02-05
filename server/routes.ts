@@ -31,7 +31,7 @@ import {
   getOutstandingDocuments, 
   getRecentUpdates 
 } from './digestService';
-import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts } from '@shared/schema';
+import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents } from '@shared/schema';
 import { sendPartnerBroadcast, handleIncomingSms, getInboundMessages, markMessageRead, getBroadcastHistory } from './broadcastService';
 import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
 
@@ -8635,6 +8635,326 @@ export async function registerRoutes(
       res.json({ template: template[0], fields });
     } catch (error: any) {
       console.error('Get template error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================
+  // PandaDoc E-Sign Integration Routes
+  // ============================================
+
+  // Create and optionally send a PandaDoc document from a quote
+  app.post('/api/esign/pandadoc/documents/create', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { quoteId, pandadocTemplateId, recipients, sendMethod, subject, message } = req.body;
+      
+      if (!quoteId || !pandadocTemplateId || !recipients?.length) {
+        return res.status(400).json({ error: 'quoteId, pandadocTemplateId, and recipients are required' });
+      }
+      
+      // Load quote
+      const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, quoteId));
+      if (!quote) {
+        return res.status(404).json({ error: 'Quote not found' });
+      }
+      
+      // Import PandaDoc service and field mapping
+      const pandadoc = await import('./esign/pandadoc');
+      const { mapQuoteToPandaTokens } = await import('./esign/field-mapping');
+      
+      // Map quote data to PandaDoc tokens
+      const tokens = mapQuoteToPandaTokens(quote);
+      
+      // Format recipients for PandaDoc API
+      const pandaRecipients = recipients.map((r: any) => ({
+        email: r.email,
+        first_name: r.firstName || r.name?.split(' ')[0] || '',
+        last_name: r.lastName || r.name?.split(' ').slice(1).join(' ') || '',
+        role: r.role || 'signer',
+      }));
+      
+      // Create document from template
+      const docName = `${quote.quoteName || 'Loan Agreement'} - ${quote.customerFullName || quote.customerFirstName || 'Customer'}`;
+      const pandaDoc = await pandadoc.createDocumentFromTemplate({
+        templateId: pandadocTemplateId,
+        name: docName,
+        recipients: pandaRecipients,
+        tokens,
+        metadata: { quoteId: quoteId.toString() },
+      });
+      
+      // Save envelope to database
+      const [envelope] = await db.insert(esignEnvelopes).values({
+        vendor: 'pandadoc',
+        quoteId,
+        externalDocumentId: pandaDoc.id,
+        externalTemplateId: pandadocTemplateId,
+        documentName: docName,
+        status: pandaDoc.status,
+        recipients: JSON.stringify(recipients.map((r: any) => ({
+          ...r,
+          status: 'pending',
+        }))),
+        sendMethod: sendMethod || 'email',
+        createdBy: req.user!.id,
+      }).returning();
+      
+      // Log event
+      await db.insert(esignEvents).values({
+        vendor: 'pandadoc',
+        envelopeId: envelope.id,
+        externalDocumentId: pandaDoc.id,
+        eventType: 'document.created',
+        eventData: JSON.stringify({ pandaDoc }),
+      });
+      
+      let signingUrl: string | null = null;
+      
+      // Send document based on method
+      if (sendMethod === 'embedded') {
+        // Wait for document to be ready, then create embedded session
+        // PandaDoc requires document to be in 'document.draft' status
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+          const session = await pandadoc.createEmbeddedSession(
+            pandaDoc.id,
+            recipients[0].email
+          );
+          signingUrl = `https://app.pandadoc.com/s/${session.id}`;
+          
+          await db.update(esignEnvelopes)
+            .set({ signingUrl, status: 'sent', sentAt: new Date() })
+            .where(eq(esignEnvelopes.id, envelope.id));
+        } catch (sessionError: any) {
+          console.error('Failed to create embedded session, falling back to email:', sessionError);
+          // Fall back to email send
+          await pandadoc.sendDocument(pandaDoc.id, { subject, message });
+          await db.update(esignEnvelopes)
+            .set({ status: 'sent', sentAt: new Date() })
+            .where(eq(esignEnvelopes.id, envelope.id));
+        }
+      } else {
+        // Send via email
+        await pandadoc.sendDocument(pandaDoc.id, { subject, message });
+        await db.update(esignEnvelopes)
+          .set({ status: 'sent', sentAt: new Date() })
+          .where(eq(esignEnvelopes.id, envelope.id));
+      }
+      
+      // Log send event
+      await db.insert(esignEvents).values({
+        vendor: 'pandadoc',
+        envelopeId: envelope.id,
+        externalDocumentId: pandaDoc.id,
+        eventType: 'document.sent',
+        eventData: JSON.stringify({ sendMethod, signingUrl }),
+      });
+      
+      res.json({
+        success: true,
+        envelope: {
+          id: envelope.id,
+          externalDocumentId: pandaDoc.id,
+          status: 'sent',
+          signingUrl,
+        },
+      });
+    } catch (error: any) {
+      console.error('PandaDoc create document error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get PandaDoc document status
+  app.get('/api/esign/pandadoc/documents/:documentId/status', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { documentId } = req.params;
+      
+      // First check our database
+      const [envelope] = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.externalDocumentId, documentId));
+      
+      if (!envelope) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      // Fetch latest status from PandaDoc
+      const pandadoc = await import('./esign/pandadoc');
+      const pandaStatus = await pandadoc.getDocumentStatus(documentId);
+      
+      // Update our database with new status
+      const newStatus = pandadoc.mapStatusToPandaDoc(pandaStatus.status);
+      
+      const updates: any = { status: newStatus, updatedAt: new Date() };
+      if (newStatus === 'completed' && !envelope.completedAt) {
+        updates.completedAt = new Date();
+      }
+      if (newStatus === 'viewed' && !envelope.viewedAt) {
+        updates.viewedAt = new Date();
+      }
+      
+      await db.update(esignEnvelopes)
+        .set(updates)
+        .where(eq(esignEnvelopes.id, envelope.id));
+      
+      res.json({
+        id: envelope.id,
+        externalDocumentId: documentId,
+        status: newStatus,
+        viewedAt: envelope.viewedAt,
+        completedAt: envelope.completedAt,
+        signedPdfUrl: envelope.signedPdfUrl,
+        recipients: envelope.recipients,
+      });
+    } catch (error: any) {
+      console.error('PandaDoc get status error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Download signed PDF
+  app.get('/api/esign/pandadoc/documents/:documentId/download', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { documentId } = req.params;
+      
+      // Verify document exists in our system
+      const [envelope] = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.externalDocumentId, documentId));
+      
+      if (!envelope) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      // Download from PandaDoc
+      const pandadoc = await import('./esign/pandadoc');
+      const pdfBuffer = await pandadoc.downloadSignedPdf(documentId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${envelope.documentName}.pdf"`);
+      res.send(Buffer.from(pdfBuffer));
+    } catch (error: any) {
+      console.error('PandaDoc download error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List PandaDoc templates
+  app.get('/api/esign/pandadoc/templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const pandadoc = await import('./esign/pandadoc');
+      const templates = await pandadoc.listTemplates();
+      res.json({ templates });
+    } catch (error: any) {
+      console.error('PandaDoc list templates error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get envelopes for a quote
+  app.get('/api/esign/envelopes/quote/:quoteId', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const quoteId = parseInt(req.params.quoteId);
+      
+      const envelopes = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.quoteId, quoteId))
+        .orderBy(esignEnvelopes.createdAt);
+      
+      res.json({ envelopes });
+    } catch (error: any) {
+      console.error('Get envelopes error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get envelope by ID
+  app.get('/api/esign/envelopes/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const envelopeId = parseInt(req.params.id);
+      
+      const [envelope] = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.id, envelopeId));
+      
+      if (!envelope) {
+        return res.status(404).json({ error: 'Envelope not found' });
+      }
+      
+      const events = await db.select().from(esignEvents)
+        .where(eq(esignEvents.envelopeId, envelopeId))
+        .orderBy(esignEvents.createdAt);
+      
+      res.json({ envelope, events });
+    } catch (error: any) {
+      console.error('Get envelope error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PandaDoc webhook endpoint
+  app.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
+    try {
+      const payload = JSON.stringify(req.body);
+      const signature = req.headers['x-pandadoc-signature'] as string;
+      
+      // Verify webhook signature if secret is configured
+      const pandadoc = await import('./esign/pandadoc');
+      const isValid = await pandadoc.verifyWebhookSignature(payload, signature || '');
+      
+      if (!isValid) {
+        console.warn('Invalid PandaDoc webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+      
+      const { event, data } = req.body;
+      const documentId = data?.id;
+      
+      if (!documentId) {
+        return res.status(400).json({ error: 'Missing document ID' });
+      }
+      
+      // Find envelope
+      const [envelope] = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.externalDocumentId, documentId));
+      
+      if (envelope) {
+        // Log event
+        await db.insert(esignEvents).values({
+          vendor: 'pandadoc',
+          envelopeId: envelope.id,
+          externalDocumentId: documentId,
+          eventType: event,
+          eventData: JSON.stringify(req.body),
+        });
+        
+        // Update envelope status
+        const newStatus = pandadoc.mapStatusToPandaDoc(event);
+        const updates: any = { status: newStatus, updatedAt: new Date() };
+        
+        if (event === 'document.completed') {
+          updates.completedAt = new Date();
+          
+          // Download and store signed PDF (optionally)
+          try {
+            const pdfBuffer = await pandadoc.downloadSignedPdf(documentId);
+            // Store in object storage if available, or just note completion
+            console.log(`Downloaded signed PDF for document ${documentId}, size: ${pdfBuffer.byteLength} bytes`);
+          } catch (downloadError) {
+            console.error('Failed to download signed PDF:', downloadError);
+          }
+        }
+        
+        if (event === 'document.viewed') {
+          updates.viewedAt = new Date();
+        }
+        
+        await db.update(esignEnvelopes)
+          .set(updates)
+          .where(eq(esignEnvelopes.id, envelope.id));
+      }
+      
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error('PandaDoc webhook error:', error);
       res.status(500).json({ error: error.message });
     }
   });

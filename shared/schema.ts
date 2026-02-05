@@ -1278,6 +1278,9 @@ export const documentTemplates = pgTable("document_templates", {
   // Status
   isActive: boolean("is_active").default(true).notNull(),
   
+  // Optional: Link to external e-sign provider template
+  pandadocTemplateId: varchar("pandadoc_template_id", { length: 255 }), // PandaDoc template UUID for direct sending
+  
   // Audit
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1335,6 +1338,67 @@ export const insertTemplateFieldSchema = createInsertSchema(templateFields).omit
 });
 export type TemplateField = typeof templateFields.$inferSelect;
 export type InsertTemplateField = z.infer<typeof insertTemplateFieldSchema>;
+
+// E-Sign Envelopes - tracks documents sent via external e-sign providers (PandaDoc, DocuSign, etc.)
+export const esignEnvelopes = pgTable("esign_envelopes", {
+  id: serial("id").primaryKey(),
+  vendor: varchar("vendor", { length: 50 }).notNull(), // "pandadoc", "docusign", etc.
+  quoteId: integer("quote_id").references(() => savedQuotes.id, { onDelete: 'set null' }),
+  templateId: integer("template_id").references(() => documentTemplates.id, { onDelete: 'set null' }),
+  
+  // External document reference
+  externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
+  externalTemplateId: varchar("external_template_id", { length: 255 }), // PandaDoc template ID used
+  
+  // Document details
+  documentName: varchar("document_name", { length: 255 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull().default('draft'), // draft, sent, viewed, completed, declined, voided
+  
+  // Signing URLs
+  signingUrl: text("signing_url"), // For embedded signing
+  signedPdfUrl: text("signed_pdf_url"), // URL to download signed PDF
+  
+  // Recipients (stored as JSON array)
+  recipients: jsonb("recipients").default('[]'), // [{name, email, role, status, signedAt}]
+  
+  // Metadata
+  sendMethod: varchar("send_method", { length: 20 }).default('email'), // email, embedded
+  sentAt: timestamp("sent_at"),
+  viewedAt: timestamp("viewed_at"),
+  completedAt: timestamp("completed_at"),
+  
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertEsignEnvelopeSchema = createInsertSchema(esignEnvelopes).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type EsignEnvelope = typeof esignEnvelopes.$inferSelect;
+export type InsertEsignEnvelope = z.infer<typeof insertEsignEnvelopeSchema>;
+
+// E-Sign Events - webhook events and status changes for tracking
+export const esignEvents = pgTable("esign_events", {
+  id: serial("id").primaryKey(),
+  vendor: varchar("vendor", { length: 50 }).notNull(),
+  envelopeId: integer("envelope_id").references(() => esignEnvelopes.id, { onDelete: 'cascade' }),
+  externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
+  
+  eventType: varchar("event_type", { length: 100 }).notNull(), // document.created, document.sent, document.viewed, document.completed, etc.
+  eventData: jsonb("event_data").default('{}'), // Full webhook payload
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEsignEventSchema = createInsertSchema(esignEvents).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type EsignEvent = typeof esignEvents.$inferSelect;
+export type InsertEsignEvent = z.infer<typeof insertEsignEventSchema>;
 
 // Field data binding options - commonly used keys for autocomplete
 export const fieldBindingKeys = [

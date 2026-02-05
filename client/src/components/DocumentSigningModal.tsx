@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles } from "lucide-react";
+import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedQuote } from "@shared/schema";
@@ -379,7 +379,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
   const [pdfScale, setPdfScale] = useState(1.0);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 612, height: 792 });
   
-  const [uploadMode, setUploadMode] = useState<"template" | "manual">("template");
+  const [uploadMode, setUploadMode] = useState<"template" | "manual" | "pandadoc">("template");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [templateFieldsLoaded, setTemplateFieldsLoaded] = useState(false);
   const [templateDimensions, setTemplateDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -391,12 +391,71 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
   const [templateCategory, setTemplateCategory] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   
+  // PandaDoc state
+  const [pandadocTemplateId, setPandadocTemplateId] = useState<string>("");
+  const [pandadocRecipients, setPandadocRecipients] = useState<Array<{ name: string; email: string; role: string }>>([
+    { name: `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim(), email: quote.customerEmail || '', role: 'signer' }
+  ]);
+  const [pandadocSendMethod, setPandadocSendMethod] = useState<"email" | "embedded">("email");
+  const [pandadocSending, setPandadocSending] = useState(false);
+  const [pandadocResult, setPandadocResult] = useState<{ success: boolean; signingUrl?: string; envelopeId?: number } | null>(null);
+  
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { data: templatesData, isLoading: templatesLoading, isError: templatesError } = useQuery<{ templates: DocumentTemplate[] }>({
     queryKey: ["/api/document-templates"],
     enabled: open,
+  });
+
+  // Query for PandaDoc templates
+  const { data: pandadocTemplatesData, isLoading: pandadocTemplatesLoading } = useQuery<{ templates: Array<{ id: string; name: string }> }>({
+    queryKey: ["/api/esign/pandadoc/templates"],
+    enabled: open && uploadMode === "pandadoc",
+  });
+
+  // PandaDoc send mutation
+  const sendPandadocMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/esign/pandadoc/documents/create', {
+        quoteId: quote.id,
+        pandadocTemplateId,
+        recipients: pandadocRecipients.map(r => ({
+          name: r.name,
+          firstName: r.name.split(' ')[0],
+          lastName: r.name.split(' ').slice(1).join(' '),
+          email: r.email,
+          role: r.role,
+        })),
+        sendMethod: pandadocSendMethod,
+        subject: `Document for Signature: ${quote.quoteName || 'Loan Agreement'}`,
+        message: `Please review and sign the attached document for your loan application.`,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        setPandadocResult({
+          success: true,
+          signingUrl: data.envelope?.signingUrl,
+          envelopeId: data.envelope?.id,
+        });
+        toast({ 
+          title: "Document Sent!", 
+          description: pandadocSendMethod === 'email' 
+            ? "The document has been sent for signature via email." 
+            : "Opening signing session..." 
+        });
+        if (data.envelope?.signingUrl) {
+          window.open(data.envelope.signingUrl, '_blank');
+        }
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to send document", variant: "destructive" });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to send PandaDoc document", variant: "destructive" });
+    },
   });
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -878,6 +937,15 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                       <Upload className="w-4 h-4" />
                       Upload PDF
                     </Button>
+                    <Button
+                      variant={uploadMode === "pandadoc" ? "default" : "outline"}
+                      onClick={() => setUploadMode("pandadoc")}
+                      className="flex items-center gap-2"
+                      data-testid="button-use-pandadoc"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      PandaDoc
+                    </Button>
                   </div>
 
                   {uploadMode === "template" && (
@@ -993,6 +1061,176 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                           >
                             {createDocumentMutation.isPending ? "Uploading..." : "Continue"}
                             <ChevronRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {uploadMode === "pandadoc" && (
+                    <div className="space-y-6">
+                      <div className="text-center mb-4">
+                        <ExternalLink className="w-10 h-10 mx-auto text-purple-500 mb-2" />
+                        <h3 className="text-lg font-semibold">Send via PandaDoc</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Use your PandaDoc templates with automatic token population from quote data
+                        </p>
+                      </div>
+
+                      {pandadocResult?.success ? (
+                        <div className="text-center space-y-4 py-8">
+                          <div className="w-16 h-16 rounded-full bg-green-100 mx-auto flex items-center justify-center">
+                            <Check className="w-8 h-8 text-green-600" />
+                          </div>
+                          <h3 className="text-lg font-semibold text-green-600">Document Sent Successfully!</h3>
+                          <p className="text-muted-foreground">
+                            {pandadocSendMethod === 'email' 
+                              ? 'The recipient will receive an email with the signing link.' 
+                              : 'A signing session has been created.'}
+                          </p>
+                          {pandadocResult.signingUrl && (
+                            <Button 
+                              variant="outline" 
+                              onClick={() => window.open(pandadocResult.signingUrl, '_blank')}
+                              data-testid="button-open-signing-url"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              Open Signing Link
+                            </Button>
+                          )}
+                          <Button onClick={onClose} data-testid="button-close-success">Close</Button>
+                        </div>
+                      ) : (
+                        <div className="max-w-lg mx-auto space-y-6">
+                          <div className="space-y-2">
+                            <Label>PandaDoc Template ID</Label>
+                            <Input
+                              placeholder="Enter PandaDoc template UUID"
+                              value={pandadocTemplateId}
+                              onChange={(e) => setPandadocTemplateId(e.target.value)}
+                              data-testid="input-pandadoc-template"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Find this in PandaDoc under Templates → Template Settings → Template ID
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Send Method</Label>
+                            <div className="flex gap-4">
+                              <Button
+                                type="button"
+                                variant={pandadocSendMethod === "email" ? "default" : "outline"}
+                                onClick={() => setPandadocSendMethod("email")}
+                                className="flex-1"
+                                data-testid="button-send-email"
+                              >
+                                <Mail className="w-4 h-4 mr-2" />
+                                Email
+                              </Button>
+                              <Button
+                                type="button"
+                                variant={pandadocSendMethod === "embedded" ? "default" : "outline"}
+                                onClick={() => setPandadocSendMethod("embedded")}
+                                className="flex-1"
+                                data-testid="button-send-embedded"
+                              >
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Embedded
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <Label>Recipients</Label>
+                            {pandadocRecipients.map((recipient, idx) => (
+                              <div key={idx} className="flex gap-2 items-center">
+                                <Input
+                                  placeholder="Name"
+                                  value={recipient.name}
+                                  onChange={(e) => {
+                                    const updated = [...pandadocRecipients];
+                                    updated[idx].name = e.target.value;
+                                    setPandadocRecipients(updated);
+                                  }}
+                                  className="flex-1"
+                                  data-testid={`input-recipient-name-${idx}`}
+                                />
+                                <Input
+                                  placeholder="Email"
+                                  type="email"
+                                  value={recipient.email}
+                                  onChange={(e) => {
+                                    const updated = [...pandadocRecipients];
+                                    updated[idx].email = e.target.value;
+                                    setPandadocRecipients(updated);
+                                  }}
+                                  className="flex-1"
+                                  data-testid={`input-recipient-email-${idx}`}
+                                />
+                                <Input
+                                  placeholder="Role"
+                                  value={recipient.role}
+                                  onChange={(e) => {
+                                    const updated = [...pandadocRecipients];
+                                    updated[idx].role = e.target.value;
+                                    setPandadocRecipients(updated);
+                                  }}
+                                  className="w-24"
+                                  data-testid={`input-recipient-role-${idx}`}
+                                />
+                                {pandadocRecipients.length > 1 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setPandadocRecipients(prev => prev.filter((_, i) => i !== idx))}
+                                    data-testid={`button-remove-recipient-${idx}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPandadocRecipients(prev => [...prev, { name: '', email: '', role: 'signer' }])}
+                              data-testid="button-add-recipient"
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add Recipient
+                            </Button>
+                          </div>
+
+                          <div className="border-t pt-4">
+                            <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                              <h4 className="font-medium mb-2">Quote Data to be Populated:</h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div><span className="text-muted-foreground">Borrower:</span> {quote.customerFirstName} {quote.customerLastName}</div>
+                                <div><span className="text-muted-foreground">Loan Amount:</span> ${quote.loanAmount?.toLocaleString()}</div>
+                                <div><span className="text-muted-foreground">Interest Rate:</span> {quote.interestRate}%</div>
+                                <div><span className="text-muted-foreground">Property:</span> {quote.propertyAddress}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Button
+                            onClick={() => sendPandadocMutation.mutate()}
+                            disabled={!pandadocTemplateId || pandadocRecipients.some(r => !r.email) || sendPandadocMutation.isPending}
+                            className="w-full"
+                            data-testid="button-send-pandadoc"
+                          >
+                            {sendPandadocMutation.isPending ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Sending via PandaDoc...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4 mr-2" />
+                                Create & Send Document
+                              </>
+                            )}
                           </Button>
                         </div>
                       )}

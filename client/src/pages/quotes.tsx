@@ -148,6 +148,79 @@ function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
   );
 }
 
+interface EsignEnvelope {
+  id: number;
+  vendor: string;
+  status: string;
+  documentName: string;
+  sentAt: string | null;
+  completedAt: string | null;
+  signedPdfUrl: string | null;
+  externalDocumentId: string;
+}
+
+function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
+  const { data, isLoading } = useQuery<{ envelopes: EsignEnvelope[] }>({
+    queryKey: ['/api/esign/envelopes/quote', quoteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/esign/envelopes/quote/${quoteId}`);
+      return res.json();
+    }
+  });
+
+  if (isLoading || !data?.envelopes?.length) {
+    return null;
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'sent':
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1" />Sent</Badge>;
+      case 'viewed':
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><FileText className="w-3 h-3 mr-1" />Viewed</Badge>;
+      case 'completed':
+        return <Badge className="bg-green-100 text-green-700 border-green-200"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+      case 'declined':
+        return <Badge variant="destructive">Declined</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      {data.envelopes.map(envelope => (
+        <div key={envelope.id} className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge variant="outline" className="text-purple-600 border-purple-300">PandaDoc</Badge>
+              {getStatusBadge(envelope.status)}
+              <span className="text-sm text-slate-600">{envelope.documentName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {envelope.sentAt && (
+                <span className="text-xs text-muted-foreground">
+                  Sent: {new Date(envelope.sentAt).toLocaleDateString()}
+                </span>
+              )}
+              {envelope.status === 'completed' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/api/esign/pandadoc/documents/${envelope.externalDocumentId}/download`, '_blank')}
+                  data-testid={`button-download-${envelope.id}`}
+                >
+                  Download PDF
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Quotes() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -386,6 +459,7 @@ export default function Quotes() {
                     </div>
 
                     <QuoteDocumentStatus quoteId={quote.id} />
+                    <QuoteEsignStatus quoteId={quote.id} />
 
                     <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
                       <div className="flex gap-2">

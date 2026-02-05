@@ -135,3 +135,51 @@ Key tables include `users`, `pricing_requests`, `saved_quotes`, `documents`, `si
 - `EXTERNAL_LOS_WEBHOOK_URL`: Webhook URL for integration with an external Loan Origination System.
 - `WEBHOOK_URLS`: JSON array of additional webhook endpoints.
 - `BASE_URL`: Base URL for generating borrower portal links.
+
+**PandaDoc Integration (Optional E-Sign):**
+- `PANDADOC_API_KEY`: API key for PandaDoc integration (format: `API-Key xxxxx`)
+- `PANDADOC_WEBHOOK_SECRET`: Secret for verifying webhook signatures (optional)
+
+## PandaDoc Integration
+
+The application supports PandaDoc as an alternative e-signing method alongside the built-in document signing workflow.
+
+**How to Set Up PandaDoc:**
+1. Create a PandaDoc account at https://pandadoc.com
+2. Go to Settings → Integrations → API → Create API Key
+3. Add the API key to your Replit Secrets as `PANDADOC_API_KEY`
+
+**Creating PandaDoc Templates:**
+1. In PandaDoc, create a new template
+2. Add text tokens using the format `{{token_name}}` for fields that will be auto-populated
+3. Common token names that map from quote data:
+   - `{{borrower_name}}` - Full borrower name
+   - `{{borrower_email}}` - Borrower email
+   - `{{loan_amount}}` - Formatted loan amount (e.g., $400,000)
+   - `{{interest_rate}}` - Interest rate percentage
+   - `{{property_address}}` - Property address
+   - `{{property_type}}` - Property type
+   - `{{as_is_value}}` - As-is value (RTL loans)
+   - `{{arv}}` - After repair value (RTL loans)
+   - `{{ltv}}` - Loan-to-value ratio
+   - `{{fico}}` - FICO score
+   - `{{today_date}}` - Current date
+4. Add signature fields and assign them to roles (e.g., "signer", "borrower")
+5. Note the Template ID from Settings → Template Settings
+
+**Using PandaDoc in the App:**
+1. Go to Saved Quotes and click "Create Agreement"
+2. Select the "PandaDoc" tab
+3. Enter your PandaDoc Template ID
+4. Configure recipients (name, email, role)
+5. Choose send method (Email or Embedded)
+6. Click "Create & Send Document"
+
+**Webhooks (Optional):**
+Configure PandaDoc webhooks to receive real-time status updates:
+- Webhook URL: `https://your-app-url.replit.app/api/webhooks/pandadoc`
+- Add `PANDADOC_WEBHOOK_SECRET` for signature verification
+
+**Database Tables:**
+- `esign_envelopes`: Tracks documents sent via PandaDoc (status, recipients, signed PDF URLs)
+- `esign_events`: Logs webhook events and status changes
