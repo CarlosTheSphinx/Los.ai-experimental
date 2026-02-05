@@ -88,31 +88,40 @@ interface Partner {
 
 interface Deal {
   id: number;
+  projectId?: number;
+  projectNumber?: string;
   userId: number;
-  partnerId: number | null;
-  partnerName: string | null;
+  partnerId?: number | null;
+  partnerName?: string | null;
   customerFirstName: string;
   customerLastName: string;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
   propertyAddress: string;
   loanData: {
     loanAmount: number;
-    propertyValue: number;
+    propertyValue?: number;
     ltv?: string;
     loanType: string;
-    loanPurpose: string;
+    loanPurpose?: string;
     propertyType: string;
+    loanTerm?: string;
   };
   interestRate: string;
-  pointsCharged: number;
-  pointsAmount: number;
-  tpoPremiumAmount: number;
-  totalRevenue: number;
-  commission: number;
+  pointsCharged?: number;
+  pointsAmount?: number;
+  tpoPremiumAmount?: number;
+  totalRevenue?: number;
+  commission?: number;
   stage: string;
+  currentStage?: string;
+  progressPercentage?: number;
   createdAt: string;
+  targetCloseDate?: string;
   userName: string | null;
   userEmail: string | null;
   partner?: Partner | null;
+  quoteId?: number | null;
 }
 
 interface StageInfo {
@@ -217,6 +226,10 @@ function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
 
 function getStageColor(stage: string): string {
   const colors: Record<string, string> = {
+    "active": "bg-green-100 text-green-800",
+    "on_hold": "bg-yellow-100 text-yellow-800",
+    "cancelled": "bg-red-100 text-red-800",
+    "completed": "bg-blue-100 text-blue-800",
     "initial-review": "bg-yellow-100 text-yellow-800",
     "term-sheet": "bg-blue-100 text-blue-800",
     "onboarding": "bg-purple-100 text-purple-800",
@@ -230,6 +243,10 @@ function getStageColor(stage: string): string {
 
 function getStageLabel(stage: string): string {
   const labels: Record<string, string> = {
+    "active": "Active",
+    "on_hold": "On Hold",
+    "cancelled": "Cancelled",
+    "completed": "Completed",
     "initial-review": "Initial Review",
     "term-sheet": "Term Sheet",
     "onboarding": "Onboarding",
@@ -312,6 +329,9 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-3 mb-2">
+              {deal.projectNumber && (
+                <span className="text-xs text-muted-foreground font-mono">{deal.projectNumber}</span>
+              )}
               <Link href={`/admin/deals/${deal.id}`}>
                 <h3 className="text-lg font-semibold hover:underline cursor-pointer" data-testid={`link-deal-${deal.id}`}>
                   {deal.customerFirstName} {deal.customerLastName}
@@ -334,11 +354,11 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
               <div className="flex-1 max-w-md">
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-muted-foreground">Loan Progress</span>
-                  <span className="font-medium">{completedStages}/{totalStages} stages</span>
+                  <span className="font-medium">{deal.progressPercentage || 0}%</span>
                 </div>
-                <Progress value={progress} className="h-2" />
+                <Progress value={deal.progressPercentage || 0} className="h-2" />
               </div>
-              <span className="text-sm font-medium text-primary">{progress}%</span>
+              <span className="text-sm font-medium text-primary">{deal.progressPercentage || 0}%</span>
             </div>
           </div>
           

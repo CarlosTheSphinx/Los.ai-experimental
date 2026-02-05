@@ -392,12 +392,8 @@ export default function AdminDealDetail() {
     queryKey: ['/api/admin/team-members'],
   });
 
-  const { data: linkedProjectData } = useQuery<{ project: { id: number; projectName: string; status: string } | null }>({
-    queryKey: [`/api/admin/deals/${dealId}/project`],
-    enabled: !!dealId,
-  });
-
-  const linkedProjectId = linkedProjectData?.project?.id;
+  // Deal ID is now the project ID directly (deals are projects)
+  const linkedProjectId = dealId ? parseInt(dealId) : null;
 
   const { data: projectDetailData, isLoading: projectLoading } = useQuery<ProjectDetailResponse>({
     queryKey: ['/api/admin/projects', linkedProjectId],
@@ -959,14 +955,14 @@ export default function AdminDealDetail() {
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {stage.tasks.filter(t => t.status === 'completed').length}/{stage.tasks.length} complete
+                      {(stage.tasks || []).filter(t => t.status === 'completed').length}/{(stage.tasks || []).length} complete
                     </div>
                   </div>
                 </CardHeader>
-                {stage.tasks.length > 0 && (
+                {(stage.tasks || []).length > 0 && (
                   <CardContent>
                     <div className="space-y-2">
-                      {stage.tasks.map((task) => (
+                      {(stage.tasks || []).map((task) => (
                         <div 
                           key={task.id} 
                           className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"

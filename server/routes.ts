@@ -3398,14 +3398,14 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       
       // Get project without user filter (admin can see all)
-      const project = await storage.getProjectById(projectId);
+      const project = await storage.getProjectByIdInternal(projectId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
       
       const stages = await storage.getStagesByProjectId(projectId);
       const tasks = await storage.getTasksByProjectId(projectId);
-      const activity = await storage.getProjectActivity({ projectId });
+      const activity = await storage.getActivityByProjectId(projectId);
       const adminTasks = await storage.getAdminTasksByProjectId(projectId);
       const adminActivityList = await storage.getAdminActivityByProjectId(projectId);
       
@@ -3860,118 +3860,115 @@ export async function registerRoutes(
     try {
       const { search, status } = req.query;
       
-      // Get all quotes across all users
-      const allQuotes = await db.select({
-        id: savedQuotes.id,
-        userId: savedQuotes.userId,
-        partnerId: savedQuotes.partnerId,
-        partnerName: savedQuotes.partnerName,
-        customerFirstName: savedQuotes.customerFirstName,
-        customerLastName: savedQuotes.customerLastName,
-        propertyAddress: savedQuotes.propertyAddress,
-        loanData: savedQuotes.loanData,
-        interestRate: savedQuotes.interestRate,
-        pointsCharged: savedQuotes.pointsCharged,
-        pointsAmount: savedQuotes.pointsAmount,
-        tpoPremiumAmount: savedQuotes.tpoPremiumAmount,
-        totalRevenue: savedQuotes.totalRevenue,
-        commission: savedQuotes.commission,
-        stage: savedQuotes.stage,
-        createdAt: savedQuotes.createdAt,
+      // Get all projects (loans) across all users
+      const allProjects = await db.select({
+        id: projects.id,
+        userId: projects.userId,
+        projectNumber: projects.projectNumber,
+        projectName: projects.projectName,
+        borrowerName: projects.borrowerName,
+        borrowerEmail: projects.borrowerEmail,
+        borrowerPhone: projects.borrowerPhone,
+        propertyAddress: projects.propertyAddress,
+        propertyType: projects.propertyType,
+        loanAmount: projects.loanAmount,
+        interestRate: projects.interestRate,
+        loanTermMonths: projects.loanTermMonths,
+        loanType: projects.loanType,
+        status: projects.status,
+        currentStage: projects.currentStage,
+        progressPercentage: projects.progressPercentage,
+        createdAt: projects.createdAt,
+        targetCloseDate: projects.targetCloseDate,
+        quoteId: projects.quoteId,
         userName: users.fullName,
         userEmail: users.email,
-        partnerData: partners,
       })
-        .from(savedQuotes)
-        .leftJoin(users, eq(savedQuotes.userId, users.id))
-        .leftJoin(partners, eq(savedQuotes.partnerId, partners.id))
-        .orderBy(desc(savedQuotes.createdAt));
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .where(eq(projects.isArchived, false))
+        .orderBy(desc(projects.createdAt));
       
-      // Map partner data to deals
-      const quotesWithPartners = allQuotes.map(q => ({
-        ...q,
-        partner: q.partnerData ? {
-          id: q.partnerData.id,
-          name: q.partnerData.name,
-          companyName: q.partnerData.companyName,
-        } : null,
-        partnerData: undefined,
-      }));
+      // Transform projects to deal format for frontend compatibility
+      const deals = allProjects.map(p => {
+        const nameParts = (p.borrowerName || '').split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
+        return {
+          id: p.id,
+          projectId: p.id,
+          projectNumber: p.projectNumber,
+          userId: p.userId,
+          customerFirstName: firstName,
+          customerLastName: lastName,
+          customerEmail: p.borrowerEmail,
+          customerPhone: p.borrowerPhone,
+          propertyAddress: p.propertyAddress,
+          loanData: {
+            loanAmount: p.loanAmount || 0,
+            propertyValue: 0,
+            loanType: p.loanType || 'unknown',
+            propertyType: p.propertyType || 'unknown',
+            loanTerm: p.loanTermMonths ? `${p.loanTermMonths} months` : '12 months',
+          },
+          interestRate: p.interestRate ? `${p.interestRate}%` : '—',
+          stage: p.status || 'active',
+          currentStage: p.currentStage,
+          progressPercentage: p.progressPercentage || 0,
+          createdAt: p.createdAt,
+          targetCloseDate: p.targetCloseDate,
+          userName: p.userName,
+          userEmail: p.userEmail,
+          quoteId: p.quoteId,
+        };
+      });
       
       // Filter by search term if provided
-      let filteredQuotes = quotesWithPartners;
+      let filteredDeals = deals;
       if (search) {
         const searchLower = (search as string).toLowerCase();
-        filteredQuotes = quotesWithPartners.filter(q => 
-          q.customerFirstName?.toLowerCase().includes(searchLower) ||
-          q.customerLastName?.toLowerCase().includes(searchLower) ||
-          q.propertyAddress?.toLowerCase().includes(searchLower) ||
-          q.userName?.toLowerCase().includes(searchLower) ||
-          q.partner?.name?.toLowerCase().includes(searchLower) ||
-          q.partnerName?.toLowerCase().includes(searchLower)
+        filteredDeals = deals.filter(d => 
+          d.customerFirstName?.toLowerCase().includes(searchLower) ||
+          d.customerLastName?.toLowerCase().includes(searchLower) ||
+          d.propertyAddress?.toLowerCase().includes(searchLower) ||
+          d.userName?.toLowerCase().includes(searchLower) ||
+          d.projectNumber?.toLowerCase().includes(searchLower)
         );
       }
       
+      // Filter by status if provided
+      if (status && status !== 'all') {
+        filteredDeals = filteredDeals.filter(d => d.stage === status);
+      }
+      
       // Calculate stats
-      const totalDeals = allQuotes.length;
-      const totalLoanAmount = allQuotes.reduce((sum, q) => {
-        const loanData = q.loanData as any;
-        return sum + (loanData?.loanAmount || 0);
-      }, 0);
-      const totalRevenue = allQuotes.reduce((sum, q) => sum + (q.totalRevenue || 0), 0);
-      // Total commission = Sphinx's revenue from each deal
-      // For DSCR: TPO premium (stored in tpoPremiumAmount) + base 1 point minimum
-      // For RTL: base 2 points minimum on loan amount
-      const totalCommission = allQuotes.reduce((sum, q) => {
-        const loanData = q.loanData as any;
-        // Use explicit loanProductType first, then check for RTL-specific fields
-        const loanProductType = loanData?.loanProductType;
-        const isRTL = loanProductType === 'rtl' || 
-          (loanProductType !== 'dscr' && (loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined));
-        
-        // Use loan amount for commission base (consistent for both product types)
-        const loanAmount = loanData?.loanAmount || 0;
-        
-        if (isRTL) {
-          // RTL: Sphinx gets base 2 points on loan amount
-          const sphinxBase = (loanAmount * 2) / 100;
-          return sum + sphinxBase;
-        } else {
-          // DSCR: Sphinx gets TPO premium (stored value) + base 1 point
-          // tpoPremiumAmount is the TPO premium (1% auto, stored separately)
-          const tpoPremium = q.tpoPremiumAmount || 0;
-          const basePoint = (loanAmount * 1) / 100; // 1 point minimum goes to Sphinx
-          return sum + tpoPremium + basePoint;
-        }
-      }, 0);
+      const totalDeals = allProjects.length;
+      const totalLoanAmount = allProjects.reduce((sum, p) => sum + (p.loanAmount || 0), 0);
       
       // Calculate pipeline by loan type
       const loanTypeStats: Record<string, { count: number; amount: number }> = {};
-      allQuotes.forEach(q => {
-        const loanData = q.loanData as any;
-        const loanType = loanData?.loanType || 'Unknown';
+      allProjects.forEach(p => {
+        const loanType = p.loanType || 'Unknown';
         if (!loanTypeStats[loanType]) {
           loanTypeStats[loanType] = { count: 0, amount: 0 };
         }
         loanTypeStats[loanType].count++;
-        loanTypeStats[loanType].amount += loanData?.loanAmount || 0;
+        loanTypeStats[loanType].amount += p.loanAmount || 0;
       });
       
-      // Calculate pipeline by stage
-      const stageOrder = ['initial-review', 'term-sheet', 'onboarding', 'processing', 'underwriting', 'closing', 'closed'];
-      const stageLabels: Record<string, string> = {
-        'initial-review': 'Initial Review',
-        'term-sheet': 'Term Sheet',
-        'onboarding': 'Onboarding',
-        'processing': 'Processing',
-        'underwriting': 'Underwriting',
-        'closing': 'Closing',
-        'closed': 'Closed'
+      // Calculate pipeline by status
+      const statusOrder = ['active', 'on_hold', 'cancelled', 'completed'];
+      const statusLabels: Record<string, string> = {
+        'active': 'Active',
+        'on_hold': 'On Hold',
+        'cancelled': 'Cancelled',
+        'completed': 'Completed'
       };
-      const stageStats = stageOrder.map(stage => ({
-        stage,
-        label: stageLabels[stage],
-        count: allQuotes.filter(q => q.stage === stage).length
+      const stageStats = statusOrder.map(status => ({
+        stage: status,
+        label: statusLabels[status] || status,
+        count: allProjects.filter(p => p.status === status).length
       }));
       
       // Calculate deals by month (last 6 months)
@@ -3982,28 +3979,25 @@ export async function registerRoutes(
         const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
         const monthName = monthDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
         
-        const monthDeals = allQuotes.filter(q => {
-          const created = new Date(q.createdAt!);
+        const monthDeals = allProjects.filter(p => {
+          const created = new Date(p.createdAt!);
           return created >= monthDate && created <= monthEnd;
         });
         
         monthlyStats.push({
           month: monthName,
           count: monthDeals.length,
-          amount: monthDeals.reduce((sum, q) => {
-            const loanData = q.loanData as any;
-            return sum + (loanData?.loanAmount || 0);
-          }, 0)
+          amount: monthDeals.reduce((sum, p) => sum + (p.loanAmount || 0), 0)
         });
       }
       
       res.json({
-        deals: filteredQuotes,
+        deals: filteredDeals,
         stats: {
           totalDeals,
           totalLoanAmount,
-          totalRevenue,
-          totalCommission,
+          totalRevenue: 0,
+          totalCommission: 0,
           loanTypeStats,
           stageStats,
           monthlyStats
@@ -4135,64 +4129,103 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Get single deal by ID
+  // Admin - Get single deal (project) by ID
   app.get('/api/admin/deals/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const dealId = parseInt(req.params.id);
+      const projectId = parseInt(req.params.id);
       
-      const [deal] = await db.select({
-        id: savedQuotes.id,
-        userId: savedQuotes.userId,
-        customerFirstName: savedQuotes.customerFirstName,
-        customerLastName: savedQuotes.customerLastName,
-        customerEmail: savedQuotes.customerEmail,
-        customerPhone: savedQuotes.customerPhone,
-        propertyAddress: savedQuotes.propertyAddress,
-        loanData: savedQuotes.loanData,
-        interestRate: savedQuotes.interestRate,
-        pointsCharged: savedQuotes.pointsCharged,
-        pointsAmount: savedQuotes.pointsAmount,
-        tpoPremiumAmount: savedQuotes.tpoPremiumAmount,
-        totalRevenue: savedQuotes.totalRevenue,
-        commission: savedQuotes.commission,
-        stage: savedQuotes.stage,
-        createdAt: savedQuotes.createdAt,
+      const [project] = await db.select({
+        id: projects.id,
+        userId: projects.userId,
+        projectNumber: projects.projectNumber,
+        projectName: projects.projectName,
+        borrowerName: projects.borrowerName,
+        borrowerEmail: projects.borrowerEmail,
+        borrowerPhone: projects.borrowerPhone,
+        propertyAddress: projects.propertyAddress,
+        propertyType: projects.propertyType,
+        loanAmount: projects.loanAmount,
+        interestRate: projects.interestRate,
+        loanTermMonths: projects.loanTermMonths,
+        loanType: projects.loanType,
+        status: projects.status,
+        currentStage: projects.currentStage,
+        progressPercentage: projects.progressPercentage,
+        createdAt: projects.createdAt,
+        targetCloseDate: projects.targetCloseDate,
+        quoteId: projects.quoteId,
+        borrowerPortalToken: projects.borrowerPortalToken,
         userName: users.fullName,
         userEmail: users.email,
       })
-        .from(savedQuotes)
-        .leftJoin(users, eq(savedQuotes.userId, users.id))
-        .where(eq(savedQuotes.id, dealId))
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .where(eq(projects.id, projectId))
         .limit(1);
       
-      if (!deal) {
+      if (!project) {
         return res.status(404).json({ error: 'Deal not found' });
       }
       
-      const documents = await db.select()
-        .from(dealDocuments)
-        .where(eq(dealDocuments.dealId, dealId))
-        .orderBy(dealDocuments.sortOrder);
+      // Transform project to deal format for frontend compatibility
+      const nameParts = (project.borrowerName || '').split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
       
-      res.json({ deal, documents });
+      const deal = {
+        id: project.id,
+        projectId: project.id,
+        projectNumber: project.projectNumber,
+        userId: project.userId,
+        customerFirstName: firstName,
+        customerLastName: lastName,
+        customerEmail: project.borrowerEmail,
+        customerPhone: project.borrowerPhone,
+        propertyAddress: project.propertyAddress,
+        loanData: {
+          loanAmount: project.loanAmount || 0,
+          propertyValue: 0,
+          loanType: project.loanType || 'unknown',
+          propertyType: project.propertyType || 'unknown',
+          loanTerm: project.loanTermMonths ? `${project.loanTermMonths} months` : '12 months',
+        },
+        interestRate: project.interestRate ? `${project.interestRate}%` : '—',
+        stage: project.status || 'active',
+        currentStage: project.currentStage,
+        progressPercentage: project.progressPercentage || 0,
+        createdAt: project.createdAt,
+        targetCloseDate: project.targetCloseDate,
+        userName: project.userName,
+        userEmail: project.userEmail,
+        quoteId: project.quoteId,
+        borrowerPortalToken: project.borrowerPortalToken,
+      };
+      
+      // Get project documents if any
+      const documents = await storage.getDocumentsByProjectId(projectId);
+      
+      res.json({ deal, documents, project });
     } catch (error) {
       console.error('Admin get deal error:', error);
       res.status(500).json({ error: 'Failed to load deal' });
     }
   });
 
-  // Admin - Get linked project for a deal
+  // Admin - Get project for a deal (deal ID is now project ID)
   app.get('/api/admin/deals/:dealId/project', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const dealId = parseInt(req.params.dealId);
+      const projectId = parseInt(req.params.dealId);
       
+      // Since deals now ARE projects, return the project directly
       const [project] = await db.select({
         id: projects.id,
         projectName: projects.projectName,
         status: projects.status,
+        progressPercentage: projects.progressPercentage,
+        currentStage: projects.currentStage,
       })
         .from(projects)
-        .where(eq(projects.quoteId, dealId))
+        .where(eq(projects.id, projectId))
         .limit(1);
       
       if (!project) {
@@ -4201,8 +4234,8 @@ export async function registerRoutes(
       
       res.json({ project });
     } catch (error) {
-      console.error('Admin get linked project error:', error);
-      res.status(500).json({ error: 'Failed to load linked project' });
+      console.error('Admin get project error:', error);
+      res.status(500).json({ error: 'Failed to load project' });
     }
   });
 
