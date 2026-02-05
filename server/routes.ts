@@ -5971,6 +5971,7 @@ export async function registerRoutes(
         email: users.email,
         phone: users.phone,
         role: users.role,
+        roles: users.roles,
         userType: users.userType,
       })
         .from(users)
@@ -5978,10 +5979,11 @@ export async function registerRoutes(
           and(
             eq(users.isActive, true),
             or(
-              eq(users.userType, 'processor'),
+              eq(users.role, 'processor'),
               eq(users.role, 'staff'),
               eq(users.role, 'admin'),
-              eq(users.role, 'super_admin')
+              eq(users.role, 'super_admin'),
+              sql`'processor' = ANY(COALESCE(${users.roles}, ARRAY[]::text[]))`
             )
           )
         );
