@@ -30,6 +30,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   FileText,
   DollarSign,
@@ -37,11 +40,45 @@ import {
   Wallet,
   Search,
   Plus,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  Building2,
+  CheckSquare,
+  Activity,
+  CalendarDays,
+  Circle,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { DigestConfigPanel } from "@/components/DigestConfigPanel";
+
+interface DealStage {
+  id: number;
+  stageName: string;
+  stageKey: string;
+  stageOrder: number;
+  stageDescription: string;
+  status: string;
+  tasks: DealTask[];
+}
+
+interface DealTask {
+  id: number;
+  taskTitle: string;
+  taskType: string;
+  priority: string;
+  status: string;
+  completedAt: string | null;
+  visibleToBorrower: boolean;
+  borrowerActionRequired: boolean;
+}
 
 interface Partner {
   id: number;
@@ -220,6 +257,298 @@ function getLoanTypeLabel(loanType: string): string {
     "rental": "Rental",
   };
   return labels[loanType?.toLowerCase()] || loanType || "N/A";
+}
+
+interface DealExpandedCardProps {
+  deal: Deal;
+  formatCurrency: (amount: number) => string;
+  getStageColor: (stage: string) => string;
+  getStageLabel: (stage: string) => string;
+  getLoanTypeLabel: (type: string) => string;
+}
+
+function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, getLoanTypeLabel }: DealExpandedCardProps) {
+  const [activeTab, setActiveTab] = useState<string>("stages");
+  const [isDigestOpen, setIsDigestOpen] = useState(false);
+
+  const { data: projectData } = useQuery<{ project: { id: number; projectName: string; status: string } | null }>({
+    queryKey: ['/api/admin/deals', deal.id, 'project'],
+  });
+
+  const projectId = projectData?.project?.id;
+
+  const { data: projectDetailData, isLoading: stagesLoading } = useQuery<{ 
+    project: any; 
+    stages: DealStage[]; 
+    tasks: DealTask[];
+    activity: any[];
+  }>({
+    queryKey: ['/api/admin/projects', projectId],
+    enabled: !!projectId && activeTab === "stages",
+  });
+
+  const { data: docsData, isLoading: docsLoading } = useQuery<{ documents: any[] }>({
+    queryKey: ['/api/admin/deals', deal.id, 'documents'],
+    enabled: activeTab === "documents",
+  });
+
+  const dealStages = projectDetailData?.stages || [];
+  const projectTasks = projectDetailData?.tasks || [];
+  const dealDocuments = docsData?.documents || [];
+
+  const stagesWithTasks = dealStages.map((stage: DealStage) => ({
+    ...stage,
+    tasks: projectTasks.filter((t: DealTask) => t.taskType === stage.stageKey || 
+      (stage.stageOrder === 1 && projectTasks.filter(pt => pt.status === 'pending').slice(0, 3).some(pt => pt.id === t.id)))
+  }));
+
+  const completedStages = dealStages.filter((s: DealStage) => s.status === 'completed').length;
+  const totalStages = dealStages.length || 9;
+  const progress = Math.round((completedStages / totalStages) * 100);
+
+  return (
+    <Card data-testid={`card-deal-${deal.id}`} className="overflow-hidden">
+      <div className="p-6">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <Link href={`/admin/deals/${deal.id}`}>
+                <h3 className="text-lg font-semibold hover:underline cursor-pointer" data-testid={`link-deal-${deal.id}`}>
+                  {deal.customerFirstName} {deal.customerLastName}
+                </h3>
+              </Link>
+              <Badge className={cn("text-xs", getStageColor(deal.stage))}>
+                {getStageLabel(deal.stage)}
+              </Badge>
+              <Badge variant="outline">
+                {getLoanTypeLabel(deal.loanData?.loanType)}
+              </Badge>
+            </div>
+            
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+              <MapPin className="h-4 w-4" />
+              <span>{deal.propertyAddress}</span>
+            </div>
+            
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 max-w-md">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">Loan Progress</span>
+                  <span className="font-medium">{completedStages}/{totalStages} stages</span>
+                </div>
+                <Progress value={progress} className="h-2" />
+              </div>
+              <span className="text-sm font-medium text-primary">{progress}%</span>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/admin/deals/${deal.id}?tab=stages`}>
+              <Button variant="outline" size="sm" data-testid={`btn-stages-${deal.id}`}>
+                <Activity className="h-4 w-4 mr-1" />
+                Stages
+              </Button>
+            </Link>
+            <Link href={`/admin/deals/${deal.id}?tab=documents`}>
+              <Button variant="outline" size="sm" data-testid={`btn-documents-${deal.id}`}>
+                <FileText className="h-4 w-4 mr-1" />
+                Documents
+              </Button>
+            </Link>
+            <Link href={`/admin/deals/${deal.id}?tab=tasks`}>
+              <Button variant="outline" size="sm" data-testid={`btn-tasks-${deal.id}`}>
+                <CheckSquare className="h-4 w-4 mr-1" />
+                Tasks
+              </Button>
+            </Link>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsDigestOpen(true)}
+              data-testid={`btn-digests-${deal.id}`}
+            >
+              <CalendarDays className="h-4 w-4 mr-1" />
+              Digests
+            </Button>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <DollarSign className="h-3 w-3" />
+              Loan Amount
+            </div>
+            <div className="text-lg font-semibold">{formatCurrency(deal.loanData?.loanAmount || 0)}</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              Interest Rate
+            </div>
+            <div className="text-lg font-semibold">{deal.interestRate || "N/A"}</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Building2 className="h-3 w-3" />
+              LTV
+            </div>
+            <div className="text-lg font-semibold">{deal.loanData?.ltv || "N/A"}</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <User className="h-3 w-3" />
+              Partner
+            </div>
+            <div className="text-lg font-semibold truncate">{deal.partner?.name || deal.partnerName || "—"}</div>
+          </div>
+        </div>
+        
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="stages" data-testid={`tab-stages-${deal.id}`}>Stages & Tasks</TabsTrigger>
+            <TabsTrigger value="documents" data-testid={`tab-documents-${deal.id}`}>Documents</TabsTrigger>
+            <TabsTrigger value="info" data-testid={`tab-info-${deal.id}`}>Borrower Info</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="stages" className="mt-0">
+            {!projectId ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No loan project linked to this deal yet</p>
+                <p className="text-xs mt-1">Create a loan from this deal to track stages and tasks</p>
+              </div>
+            ) : stagesLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-20" />
+                ))}
+              </div>
+            ) : stagesWithTasks && stagesWithTasks.length > 0 ? (
+              <div className="space-y-3">
+                {stagesWithTasks.map((stage) => (
+                  <div key={stage.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {stage.status === 'completed' ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        ) : stage.status === 'in_progress' ? (
+                          <Clock className="h-5 w-5 text-blue-500" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-muted-foreground" />
+                        )}
+                        <span className="font-medium">{stage.stageName}</span>
+                      </div>
+                      <Badge variant={stage.status === 'completed' ? 'default' : 'outline'} className="text-xs">
+                        {stage.status === 'completed' ? 'Completed' : stage.status === 'in_progress' ? 'In Progress' : 'Pending'}
+                      </Badge>
+                    </div>
+                    {stage.tasks && stage.tasks.length > 0 && (
+                      <div className="ml-7 space-y-1">
+                        {stage.tasks.map((task: DealTask) => (
+                          <div key={task.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox checked={task.status === 'completed'} disabled className="h-3 w-3" />
+                            <span className={task.status === 'completed' ? 'text-muted-foreground line-through' : ''}>
+                              {task.taskTitle}
+                            </span>
+                            {task.borrowerActionRequired && (
+                              <Badge variant="outline" className="text-xs">Borrower Action</Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No stages configured for this deal</p>
+              </div>
+            )}
+          </TabsContent>
+          
+          <TabsContent value="documents" className="mt-0">
+            {docsLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-12" />
+                ))}
+              </div>
+            ) : dealDocuments && dealDocuments.length > 0 ? (
+              <div className="space-y-2">
+                {dealDocuments.map((doc: any) => (
+                  <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium">{doc.documentName}</div>
+                        <div className="text-xs text-muted-foreground">{doc.documentType}</div>
+                      </div>
+                    </div>
+                    <Badge variant="outline">{doc.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No documents uploaded yet</p>
+              </div>
+            )}
+          </TabsContent>
+          
+          <TabsContent value="info" className="mt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <User className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Borrower Name</div>
+                  <div className="font-medium">{deal.customerFirstName} {deal.customerLastName}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <Mail className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Submitted By</div>
+                  <div className="font-medium">{deal.userName || deal.userEmail || "—"}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <Building2 className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Property Type</div>
+                  <div className="font-medium">{deal.loanData?.propertyType || "—"}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-xs text-muted-foreground">Created</div>
+                  <div className="font-medium">{new Date(deal.createdAt).toLocaleDateString()}</div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+      
+      {isDigestOpen && (
+        <Dialog open={isDigestOpen} onOpenChange={setIsDigestOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Digest Configuration - {deal.customerFirstName} {deal.customerLastName}</DialogTitle>
+              <DialogDescription>
+                Configure automated loan digest notifications for this deal.
+              </DialogDescription>
+            </DialogHeader>
+            <DigestConfigPanel dealId={deal.id} dealType="quote" />
+          </DialogContent>
+        </Dialog>
+      )}
+    </Card>
+  );
 }
 
 export default function AdminDeals() {
@@ -563,11 +892,11 @@ export default function AdminDeals() {
         <PipelineByStage stageStats={stats.stageStats} />
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
+      <div className="space-y-4">
+        <div className="flex flex-row flex-wrap items-center justify-between gap-4">
           <div>
-            <CardTitle>All Deals</CardTitle>
-            <CardDescription>Quotes submitted by all users</CardDescription>
+            <h2 className="text-xl font-bold">All Deals</h2>
+            <p className="text-muted-foreground text-sm">Quotes submitted by all users</p>
           </div>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -579,105 +908,39 @@ export default function AdminDeals() {
               data-testid="input-search-deals"
             />
           </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16" />
-              ))}
-            </div>
-          ) : deals.length === 0 ? (
-            <div className="text-center py-12">
+        </div>
+        
+        {isLoading ? (
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-64" />
+            ))}
+          </div>
+        ) : deals.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardContent>
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium">No deals found</h3>
               <p className="text-muted-foreground">
                 {searchTerm ? "Try adjusting your search" : "No quotes have been submitted yet"}
               </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Borrower</TableHead>
-                    <TableHead>Property</TableHead>
-                    <TableHead className="text-right">Loan Amount</TableHead>
-                    <TableHead className="text-right">Rate</TableHead>
-                    <TableHead className="text-right">LTV</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Partner</TableHead>
-                    <TableHead>Stage</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deals.map((deal) => (
-                    <TableRow 
-                      key={deal.id} 
-                      data-testid={`row-deal-${deal.id}`}
-                      className="cursor-pointer hover-elevate"
-                    >
-                      <TableCell>
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          <span className="font-medium">
-                            {deal.customerFirstName} {deal.customerLastName}
-                          </span>
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          <div className="flex flex-col">
-                            <span className="max-w-[180px] truncate">{deal.propertyAddress?.split(',')[0]}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {deal.propertyAddress?.split(',').slice(1).join(',').trim()}
-                            </span>
-                          </div>
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          {formatCurrency(deal.loanData?.loanAmount || 0)}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          {deal.interestRate}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          {deal.loanData?.ltv || "N/A"}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          <Badge variant="outline">
-                            {getLoanTypeLabel(deal.loanData?.loanType)}
-                          </Badge>
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          {deal.partner?.name || deal.partnerName || (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/admin/deals/${deal.id}`} className="block">
-                          <Badge className={cn("text-xs", getStageColor(deal.stage))}>
-                            {getStageLabel(deal.stage)}
-                          </Badge>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {deals.map((deal) => (
+              <DealExpandedCard 
+                key={deal.id} 
+                deal={deal} 
+                formatCurrency={formatCurrency}
+                getStageColor={getStageColor}
+                getStageLabel={getStageLabel}
+                getLoanTypeLabel={getLoanTypeLabel}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
