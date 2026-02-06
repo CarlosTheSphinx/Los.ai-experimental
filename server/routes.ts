@@ -10,6 +10,7 @@ import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-o
 import { format } from "date-fns";
 import { api } from "@shared/routes";
 import { ApifyClient } from 'apify-client';
+import { OAuth2Client } from 'google-auth-library';
 import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
@@ -233,6 +234,10 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Account has been deactivated' });
       }
       
+      if (!user.passwordHash) {
+        return res.status(401).json({ error: 'This account uses Google login. Please sign in with Google.' });
+      }
+
       const isValid = await comparePassword(password, user.passwordHash);
       
       if (!isValid) {
@@ -271,6 +276,97 @@ export async function registerRoutes(
   app.post('/api/auth/logout', (_req: Request, res: Response) => {
     clearAuthCookie(res);
     res.json({ success: true, message: 'Logged out successfully' });
+  });
+
+  // Google OAuth - initiate flow
+  app.get('/api/auth/google', (req: Request, res: Response) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.redirect('/login?error=google_not_configured');
+    }
+
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+    const googleOAuth = new OAuth2Client(clientId, process.env.GOOGLE_CLIENT_SECRET, redirectUri);
+
+    const authorizeUrl = googleOAuth.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['openid', 'email', 'profile'],
+      prompt: 'select_account',
+    });
+
+    res.redirect(authorizeUrl);
+  });
+
+  // Google OAuth - callback handler
+  app.get('/api/auth/google/callback', async (req: Request, res: Response) => {
+    try {
+      const { code } = req.query;
+      if (!code || typeof code !== 'string') {
+        return res.redirect('/login?error=google_auth_failed');
+      }
+
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        return res.redirect('/login?error=google_not_configured');
+      }
+
+      const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+      const googleOAuth = new OAuth2Client(clientId, clientSecret, redirectUri);
+
+      const { tokens } = await googleOAuth.getToken(code);
+      googleOAuth.setCredentials(tokens);
+
+      const ticket = await googleOAuth.verifyIdToken({
+        idToken: tokens.id_token!,
+        audience: clientId,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        return res.redirect('/login?error=google_auth_failed');
+      }
+
+      const googleId = payload.sub;
+      const email = payload.email.toLowerCase();
+      const fullName = payload.name || email.split('@')[0];
+      const avatarUrl = payload.picture || null;
+
+      let user = await storage.getUserByEmail(email);
+
+      if (user) {
+        if (!user.googleId) {
+          await storage.updateUser(user.id, { googleId, avatarUrl: avatarUrl || user.avatarUrl });
+        }
+        if (!user.isActive) {
+          return res.redirect('/login?error=account_deactivated');
+        }
+        await storage.updateUser(user.id, { lastLoginAt: new Date(), emailVerified: true });
+      } else {
+        user = await storage.createUser({
+          email,
+          passwordHash: null,
+          fullName,
+          googleId,
+          avatarUrl,
+          emailVerified: true,
+          isActive: true,
+          userType: 'broker',
+          onboardingCompleted: false,
+          companyName: null,
+          phone: null,
+          passwordResetToken: null,
+          passwordResetExpires: null,
+        });
+      }
+
+      const token = generateToken(user.id, user.email);
+      setAuthCookie(res, token);
+      res.redirect('/');
+    } catch (error) {
+      console.error('Google OAuth callback error:', error);
+      res.redirect('/login?error=google_auth_failed');
+    }
   });
 
   // Get current user

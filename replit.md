@@ -47,6 +47,15 @@ The frontend features a left sidebar navigation leading to key sections:
 **Authentication System:**
 The system employs a robust authentication system supporting multi-tenancy and data isolation. It uses bcrypt for password hashing and JWT tokens in httpOnly cookies for session management. Public routes exist for registration, login, logout, and password recovery, while most API endpoints are protected, requiring authentication. Token-based access is implemented for document signing and the borrower portal.
 
+**Google OAuth Login:**
+Users can create accounts or sign in via Google OAuth 2.0. The flow uses `google-auth-library`:
+- `GET /api/auth/google` — Redirects to Google consent screen
+- `GET /api/auth/google/callback` — Handles the callback, finds or creates the user, issues JWT cookie, redirects to `/`
+- Users table has `googleId` and `avatarUrl` columns; `passwordHash` is nullable for Google-only users
+- If a user with the same email already exists (registered via password), their Google account is linked automatically
+- Requires `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` environment secrets
+- Login and register pages show "Sign in/up with Google" buttons
+
 **User Types and Onboarding System:**
 The platform supports two user types with different experiences:
 - **Brokers**: Full platform access after completing onboarding (partnership agreement + training). Navigation includes: New Quote, Saved Quotes, Agreements, Projects, Messages, Resources.

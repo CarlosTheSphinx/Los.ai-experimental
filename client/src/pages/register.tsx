@@ -10,8 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Briefcase, Home } from 'lucide-react';
+import { SiGoogle } from 'react-icons/si';
 
 const registerSchema = z.object({
   userType: z.enum(['broker', 'borrower'], { required_error: 'Please select your account type' }),
@@ -237,6 +239,21 @@ export default function RegisterPage() {
               </Button>
             </form>
           </Form>
+          <div className="relative my-6">
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+              or
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => { window.location.href = '/api/auth/google'; }}
+            data-testid="button-google-register"
+          >
+            <SiGoogle className="mr-2 h-4 w-4" />
+            Sign up with Google
+          </Button>
           <div className="mt-4 text-center text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link href="/login" className="text-primary hover:underline">

@@ -7,7 +7,7 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).unique().notNull(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }),
   fullName: varchar("full_name", { length: 255 }),
   companyName: varchar("company_name", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
@@ -21,12 +21,12 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true),
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
-  // Onboarding tracking fields
   onboardingCompleted: boolean("onboarding_completed").default(false),
   partnershipAgreementSignedAt: timestamp("partnership_agreement_signed_at"),
   trainingCompletedAt: timestamp("training_completed_at"),
-  // Test data identification
   isTestUser: boolean("is_test_user").default(false),
+  googleId: varchar("google_id", { length: 255 }).unique(),
+  avatarUrl: varchar("avatar_url", { length: 500 }),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ 
