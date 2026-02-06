@@ -311,48 +311,25 @@ function TaskBoard() {
           </div>
         )}
 
-        {tasksLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="flex items-center gap-3">
-                <Skeleton className="h-5 w-5 rounded-full" />
-                <Skeleton className="h-4 flex-1" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {!showAllTasks && overdueTasks.length > 0 && (
-              <div className="space-y-2" data-testid="section-overdue">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Overdue
+        <div className="max-h-[220px] overflow-y-auto">
+          {tasksLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-5 rounded-full" />
+                  <Skeleton className="h-4 flex-1" />
                 </div>
-                {overdueTasks.map(task => (
-                  <TaskRow 
-                    key={task.id} 
-                    task={task}
-                    onComplete={() => completeMutation.mutate(task.id)}
-                    onEdit={() => openEditDialog(task)}
-                    priorityColor={priorityColor}
-                    isCompleting={completingIds.has(task.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {Object.keys(tasksByProject).length > 0 ? (
-              Object.values(tasksByProject).map(group => (
-                <div key={group.project.id} className="space-y-1.5" data-testid={`task-group-${group.project.id}`}>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono font-medium text-primary">{group.project.number}</span>
-                    <span className="truncate">{group.project.borrower}</span>
-                    <span className="hidden sm:inline truncate">
-                      <MapPin className="h-3 w-3 inline mr-0.5" />
-                      {group.project.address}
-                    </span>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {!showAllTasks && overdueTasks.length > 0 && (
+                <div className="space-y-2" data-testid="section-overdue">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    Overdue
                   </div>
-                  {group.tasks.map(task => (
+                  {overdueTasks.map(task => (
                     <TaskRow 
                       key={task.id} 
                       task={task}
@@ -363,28 +340,53 @@ function TaskBoard() {
                     />
                   ))}
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-6 text-muted-foreground" data-testid="text-no-tasks">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">
-                  {showAllTasks ? "No pending tasks" : "No tasks due on this date"}
-                </p>
-                <p className="text-xs mt-1">
-                  {!showAllTasks && "Try selecting a different date or viewing all tasks"}
-                </p>
-              </div>
-            )}
+              )}
 
-            {!showAllTasks && unscheduledCount > 0 && (
-              <div className="text-center pt-2 border-t">
-                <p className="text-xs text-muted-foreground">
-                  {unscheduledCount} unscheduled {unscheduledCount === 1 ? "task" : "tasks"} not shown
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+              {Object.keys(tasksByProject).length > 0 ? (
+                Object.values(tasksByProject).map(group => (
+                  <div key={group.project.id} className="space-y-1.5" data-testid={`task-group-${group.project.id}`}>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-mono font-medium text-primary">{group.project.number}</span>
+                      <span className="truncate">{group.project.borrower}</span>
+                      <span className="hidden sm:inline truncate">
+                        <MapPin className="h-3 w-3 inline mr-0.5" />
+                        {group.project.address}
+                      </span>
+                    </div>
+                    {group.tasks.map(task => (
+                      <TaskRow 
+                        key={task.id} 
+                        task={task}
+                        onComplete={() => completeMutation.mutate(task.id)}
+                        onEdit={() => openEditDialog(task)}
+                        priorityColor={priorityColor}
+                        isCompleting={completingIds.has(task.id)}
+                      />
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-muted-foreground" data-testid="text-no-tasks">
+                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">
+                    {showAllTasks ? "No pending tasks" : "No tasks due on this date"}
+                  </p>
+                  <p className="text-xs mt-1">
+                    {!showAllTasks && "Try selecting a different date or viewing all tasks"}
+                  </p>
+                </div>
+              )}
+
+              {!showAllTasks && unscheduledCount > 0 && (
+                <div className="text-center pt-2 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    {unscheduledCount} unscheduled {unscheduledCount === 1 ? "task" : "tasks"} not shown
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </CardContent>
 
       <Dialog open={!!editingTask} onOpenChange={(open) => { if (!open) setEditingTask(null); }}>
