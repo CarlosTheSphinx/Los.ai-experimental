@@ -278,15 +278,34 @@ export async function registerRoutes(
     res.json({ success: true, message: 'Logged out successfully' });
   });
 
+  // Helper to get the base URL for OAuth redirects
+  // Uses the host from the actual request for consistency between initiate and callback
+  function getOAuthBaseUrl(req: Request): string {
+    const host = req.headers['x-forwarded-host'] as string || req.get('host') || '';
+    if (host && !host.includes('localhost')) {
+      return `https://${host}`;
+    }
+    if (process.env.REPLIT_DEV_DOMAIN) {
+      return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    }
+    if (process.env.APP_URL) {
+      return process.env.APP_URL.replace(/\/$/, '');
+    }
+    return `${req.protocol}://${host}`;
+  }
+
   // Google OAuth - initiate flow
   app.get('/api/auth/google', (req: Request, res: Response) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
+      console.error('Google OAuth: GOOGLE_CLIENT_ID not configured');
       return res.redirect('/login?error=google_not_configured');
     }
 
-    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getOAuthBaseUrl(req);
     const redirectUri = `${baseUrl}/api/auth/google/callback`;
+    console.log('Google OAuth: Initiating flow with redirect URI:', redirectUri);
+    console.log('Google OAuth: Request host:', req.get('host'), 'x-forwarded-host:', req.headers['x-forwarded-host'], 'x-forwarded-proto:', req.headers['x-forwarded-proto']);
     const googleOAuth = new OAuth2Client(clientId, process.env.GOOGLE_CLIENT_SECRET, redirectUri);
 
     const authorizeUrl = googleOAuth.generateAuthUrl({
@@ -300,9 +319,11 @@ export async function registerRoutes(
 
   // Google OAuth - callback handler
   app.get('/api/auth/google/callback', async (req: Request, res: Response) => {
+    console.log('Google OAuth callback hit. Query params:', JSON.stringify(req.query));
     try {
       const { code } = req.query;
       if (!code || typeof code !== 'string') {
+        console.error('Google OAuth callback: No code provided. Query:', JSON.stringify(req.query));
         return res.redirect('/login?error=google_auth_failed');
       }
 
@@ -312,17 +333,21 @@ export async function registerRoutes(
         return res.redirect('/login?error=google_not_configured');
       }
 
-      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const baseUrl = getOAuthBaseUrl(req);
       const redirectUri = `${baseUrl}/api/auth/google/callback`;
+      console.log('Google OAuth callback: Using redirect URI for token exchange:', redirectUri);
       const googleOAuth = new OAuth2Client(clientId, clientSecret, redirectUri);
 
+      console.log('Google OAuth callback: Exchanging code for tokens...');
       const { tokens } = await googleOAuth.getToken(code);
+      console.log('Google OAuth callback: Token exchange successful, verifying id_token...');
       googleOAuth.setCredentials(tokens);
 
       const ticket = await googleOAuth.verifyIdToken({
         idToken: tokens.id_token!,
         audience: clientId,
       });
+      console.log('Google OAuth callback: id_token verified successfully');
 
       const payload = ticket.getPayload();
       if (!payload || !payload.email) {
