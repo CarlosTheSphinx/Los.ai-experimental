@@ -1,0 +1,297 @@
+REPLIT PROMPT: Multi-Tenant LOS Configuration System
+
+Context
+I am building a multi-tenant Loan Origination System (LOS) that will be sold to other lending companies. Each lending company (tenant) must be able to deploy the app out-of-the-box and configure it for their business without touching code.
+
+I need you to design and implement a Tenant Configuration Layer + Admin Console that makes the platform fully configurable per lender.
+
+🎯 Objective
+
+Convert the current single-tenant LOS into a multi-tenant, configurable SaaS platform where each lending company has isolated data, settings, permissions, branding, pricing logic, documents, and integrations.
+
+🧩 Requirements
+1. Multi-Tenant Architecture
+
+Introduce a tenant_id (or organization_id) on all core entities:
+
+Users
+
+Quotes
+
+Loans
+
+Borrowers
+
+Documents
+
+Programs
+
+Messages
+
+Enforce tenant isolation at the database and API layer.
+
+Ensure users can only access data belonging to their tenant.
+
+2. Tenant Configuration Schema
+
+Create a centralized TenantConfig object stored in the database (JSON or normalized tables) containing:
+
+Branding
+
+Company name
+
+Logo (light/dark)
+
+Brand colors
+
+Email sender name + support email
+
+Footer disclosures / licensing text
+
+Document header branding
+
+Authentication & Security
+
+Login methods enabled (password, magic link, Google, Microsoft)
+
+MFA required (yes/no)
+
+Session timeout
+
+Allowed email domains
+
+Password policy
+
+3. User Roles & Permissions
+
+Implement:
+
+Role-based access control (RBAC) configurable per tenant
+
+Default roles:
+
+Super Admin (tenant owner)
+
+Admin
+
+Manager
+
+Loan Officer / Originator
+
+Processor
+
+Underwriter
+
+Closer
+
+Broker / Partner
+
+Read-only
+
+Permissions must control:
+
+CRUD access to quotes, loans, borrowers, documents
+
+Pricing access and overrides
+
+Pipeline visibility
+
+Export/download rights
+
+Admin features
+
+Roles must be editable per tenant.
+
+4. Loan Products & Programs
+
+Allow tenant admins to configure:
+
+Product types (DSCR, Fix & Flip, Bridge, etc.)
+
+Eligibility rules
+
+Allowed property types
+
+Loan terms
+
+Min/max loan amounts
+
+Required intake fields
+
+Required documents per product
+
+Market/state restrictions
+
+5. Pricing Engine Configuration
+
+Abstract pricing logic into configurable rules:
+
+Base rate tables
+
+Adjusters (FICO, LTV, DSCR, property type, experience)
+
+Fee schedules (origination, underwriting, doc fees)
+
+Broker compensation rules
+
+Lock periods
+
+Override permissions and approval rules
+
+Rule versioning so old quotes are preserved
+
+Pricing formulas must be tenant-specific.
+
+6. Pipeline & Workflow Configuration
+
+Allow tenant admins to define:
+
+Custom pipeline stages
+
+Required fields per stage
+
+Task checklists
+
+Notifications per stage change
+
+Approval steps
+
+Denial / suspension reasons
+
+7. Document Templates & eSign
+
+Support per-tenant configuration for:
+
+LOI, Term Sheet, Disclosures, Credit Auth templates
+
+Template variable mapping (merge fields)
+
+E-signature provider configuration (DocuSign / PandaDoc / Adobe)
+
+Signing roles and order
+
+Email copy used for document sending
+
+Webhooks for signed/completed events
+
+8. Notifications & Messaging
+
+Configurable per tenant:
+
+Email templates
+
+SMS templates
+
+Sender email + phone number
+
+In-app notifications
+
+Notification rules by role and event
+
+9. Integrations
+
+Allow tenant-specific API keys and toggles for:
+
+CRM integrations
+
+Credit providers
+
+Property data
+
+Bank statement tools
+
+Webhooks
+
+Zapier / n8n / Make endpoints
+
+Each tenant must manage their own credentials.
+
+10. Custom Fields Engine
+
+Allow tenant admins to define:
+
+Custom fields per product
+
+Field types
+
+Validation rules
+
+Conditional logic
+
+Role-based visibility
+
+11. Admin Consoles
+Tenant Admin Console
+
+Manage users and roles
+
+Configure pricing rules
+
+Configure products and programs
+
+Upload templates
+
+Configure integrations
+
+View audit logs
+
+Platform Super Admin (Vendor)
+
+Create/suspend tenants
+
+View system health
+
+Impersonate tenant admins (support mode)
+
+Control feature flags
+
+Manage billing plans
+
+12. Billing & Plans (Optional but Structured)
+
+Prepare system for:
+
+Seat-based limits
+
+Usage tracking (quotes, documents, storage)
+
+Feature gating by plan
+
+Tenant provisioning workflow
+
+🛠️ Deliverables
+
+Database schema changes
+
+TenantConfig data model
+
+Middleware enforcing tenant isolation
+
+Admin UI screens (basic)
+
+API endpoints for managing tenant configuration
+
+Safe defaults for new tenants
+
+⚠️ Constraints
+
+Must be secure by default
+
+Must not require code changes to onboard a new lender
+
+Must support future enterprise single-tenant deployments
+
+✅ Final Instruction
+
+Implement this incrementally.
+Start by:
+
+Introducing tenant_id
+
+Creating TenantConfig
+
+Adding role-based permissions
+
+Refactoring pricing to be tenant-aware
+
+Document assumptions as comments in code.
