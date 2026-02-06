@@ -285,7 +285,8 @@ export async function registerRoutes(
       return res.redirect('/login?error=google_not_configured');
     }
 
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const redirectUri = `${baseUrl}/api/auth/google/callback`;
     const googleOAuth = new OAuth2Client(clientId, process.env.GOOGLE_CLIENT_SECRET, redirectUri);
 
     const authorizeUrl = googleOAuth.generateAuthUrl({
@@ -311,7 +312,8 @@ export async function registerRoutes(
         return res.redirect('/login?error=google_not_configured');
       }
 
-      const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/auth/google/callback`;
       const googleOAuth = new OAuth2Client(clientId, clientSecret, redirectUri);
 
       const { tokens } = await googleOAuth.getToken(code);

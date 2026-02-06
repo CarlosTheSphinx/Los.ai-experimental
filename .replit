@@ -40,3 +40,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["resend:1.0.0", "javascript_object_storage:2.0.0", "javascript_openai_ai_integrations:2.0.0", "twilio:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+APP_URL = "https://code-paste.replit.app"
