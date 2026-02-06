@@ -34,11 +34,12 @@ import AdminTemplateEditor from "@/pages/admin/template-editor";
 import MessagesPage from "@/pages/messages";
 import OnboardingPage from "@/pages/onboarding";
 import ResourcesPage from "@/pages/resources";
+import SelectRolePage from "@/pages/select-role";
 import { AppLayout } from "@/components/AppLayout";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -50,6 +51,10 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
+  }
+
+  if (!user?.userType) {
+    return <Redirect to="/select-role" />;
   }
 
   return <Component />;
@@ -68,6 +73,10 @@ function AdminProtectedRoute({ component: Component }: { component: React.Compon
 
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
+  }
+
+  if (!user?.userType) {
+    return <Redirect to="/select-role" />;
   }
 
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
@@ -140,6 +149,7 @@ function AppContent() {
   const [isForgotPasswordPage] = useRoute("/forgot-password");
   const [isResetPasswordPage] = useRoute("/reset-password/:token");
   const [isOnboardingPage] = useRoute("/onboarding");
+  const [isSelectRolePage] = useRoute("/select-role");
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage;
 
@@ -166,6 +176,14 @@ function AppContent() {
         <Route path="/register" component={() => <AuthRoute component={RegisterPage} />} />
         <Route path="/forgot-password" component={() => <AuthRoute component={ForgotPasswordPage} />} />
         <Route path="/reset-password/:token" component={() => <AuthRoute component={ResetPasswordPage} />} />
+      </Switch>
+    );
+  }
+
+  if (isSelectRolePage) {
+    return (
+      <Switch>
+        <Route path="/select-role" component={SelectRolePage} />
       </Switch>
     );
   }

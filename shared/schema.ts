@@ -14,7 +14,7 @@ export const users = pgTable("users", {
   title: varchar("title", { length: 255 }),
   role: varchar("role", { length: 50 }).default("user").notNull(), // user, processor, staff, admin, super_admin
   roles: text("roles").array(),
-  userType: varchar("user_type", { length: 50 }).default("broker").notNull(), // broker, borrower
+  userType: varchar("user_type", { length: 50 }).default("broker"), // broker, borrower, null for Google OAuth users pending selection
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
   emailVerified: boolean("email_verified").default(false),

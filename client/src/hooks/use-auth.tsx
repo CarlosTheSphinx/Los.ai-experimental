@@ -8,7 +8,7 @@ interface User {
   firstName: string;
   lastName: string;
   role?: string;
-  userType?: 'broker' | 'borrower';
+  userType?: 'broker' | 'borrower' | null;
   onboardingCompleted?: boolean;
 }
 

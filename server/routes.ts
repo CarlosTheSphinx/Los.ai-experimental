@@ -353,7 +353,7 @@ export async function registerRoutes(
           avatarUrl,
           emailVerified: true,
           isActive: true,
-          userType: 'broker',
+          userType: null,
           onboardingCompleted: false,
           companyName: null,
           phone: null,
@@ -403,6 +403,32 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Get user error:', error);
       res.status(500).json({ error: 'Failed to get user' });
+    }
+  });
+
+  // Select user type (for Google OAuth users who haven't chosen yet)
+  app.post('/api/auth/select-user-type', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { userType } = req.body;
+      if (userType !== 'broker' && userType !== 'borrower') {
+        return res.status(400).json({ error: 'Invalid user type. Must be broker or borrower.' });
+      }
+      const user = await storage.getUserById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (user.userType) {
+        return res.status(400).json({ error: 'User type already set' });
+      }
+      await storage.updateUser(user.id, { userType });
+      const updatedUser = await storage.getUserById(user.id);
+      res.json({ success: true, user: updatedUser });
+    } catch (error) {
+      console.error('Select user type error:', error);
+      res.status(500).json({ error: 'Failed to update user type' });
     }
   });
 
