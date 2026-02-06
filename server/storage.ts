@@ -370,6 +370,103 @@ export class DatabaseStorage implements IStorage {
     return { completed: Number(result[0]?.completed || 0), total: Number(result[0]?.total || 0) };
   }
 
+  async getTaskBoardTasks(filters: { date?: string; status?: string }): Promise<any[]> {
+    const conditions = [];
+    
+    if (filters.status === 'completed') {
+      conditions.push(eq(projectTasks.status, 'completed'));
+    } else {
+      conditions.push(
+        and(
+          sql`${projectTasks.status} != 'completed'`,
+          sql`${projectTasks.status} != 'not_applicable'`
+        )!
+      );
+    }
+
+    if (filters.date) {
+      const dateStart = new Date(filters.date);
+      dateStart.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(filters.date);
+      dateEnd.setHours(23, 59, 59, 999);
+      conditions.push(
+        and(
+          sql`${projectTasks.dueDate} >= ${dateStart}`,
+          sql`${projectTasks.dueDate} <= ${dateEnd}`
+        )!
+      );
+    }
+
+    const tasks = await db
+      .select({
+        id: projectTasks.id,
+        projectId: projectTasks.projectId,
+        stageId: projectTasks.stageId,
+        taskTitle: projectTasks.taskTitle,
+        taskDescription: projectTasks.taskDescription,
+        taskType: projectTasks.taskType,
+        status: projectTasks.status,
+        priority: projectTasks.priority,
+        assignedTo: projectTasks.assignedTo,
+        dueDate: projectTasks.dueDate,
+        completedAt: projectTasks.completedAt,
+        completedBy: projectTasks.completedBy,
+        requiresDocument: projectTasks.requiresDocument,
+        createdAt: projectTasks.createdAt,
+        projectName: projects.projectName,
+        borrowerName: projects.borrowerName,
+        propertyAddress: projects.propertyAddress,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projectTasks)
+      .innerJoin(projects, eq(projectTasks.projectId, projects.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(asc(projectTasks.dueDate), asc(projectTasks.priority));
+    
+    return tasks;
+  }
+
+  async getPendingProjectTasksCount(): Promise<number> {
+    const [result] = await db.select({
+      count: count()
+    }).from(projectTasks).where(
+      and(
+        sql`${projectTasks.status} != 'completed'`,
+        sql`${projectTasks.status} != 'not_applicable'`
+      )
+    );
+    return result?.count ?? 0;
+  }
+
+  async getTaskBoardDateCounts(startDate: string, endDate: string): Promise<Record<string, number>> {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    
+    const results = await db
+      .select({
+        date: sql<string>`DATE(${projectTasks.dueDate})`,
+        count: count(),
+      })
+      .from(projectTasks)
+      .where(
+        and(
+          sql`${projectTasks.dueDate} >= ${start}`,
+          sql`${projectTasks.dueDate} <= ${end}`,
+          sql`${projectTasks.status} != 'completed'`,
+          sql`${projectTasks.status} != 'not_applicable'`
+        )
+      )
+      .groupBy(sql`DATE(${projectTasks.dueDate})`);
+    
+    const dateCounts: Record<string, number> = {};
+    for (const r of results) {
+      if (r.date) dateCounts[r.date] = r.count;
+    }
+    return dateCounts;
+  }
+
   // Project activity methods
   async createProjectActivity(activity: InsertProjectActivity): Promise<ProjectActivity> {
     const [created] = await db.insert(projectActivity).values(activity).returning();
@@ -577,7 +674,12 @@ export class DatabaseStorage implements IStorage {
     
     const [pendingTaskStats] = await db.select({ 
       count: count() 
-    }).from(adminTasks).where(eq(adminTasks.status, 'pending'));
+    }).from(projectTasks).where(
+      and(
+        sql`${projectTasks.status} != 'completed'`,
+        sql`${projectTasks.status} != 'not_applicable'`
+      )
+    );
     
     const activePipelineResult = await db.select({ 
       total: sql<number>`COALESCE(SUM(${projects.loanAmount}), 0)` 

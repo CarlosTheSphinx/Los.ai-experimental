@@ -3291,6 +3291,60 @@ export async function registerRoutes(
     }
   });
 
+  // Admin Task Board - Get tasks with project context
+  app.get('/api/admin/task-board', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const date = req.query.date as string | undefined;
+      const status = req.query.status as string | undefined;
+      const tasks = await storage.getTaskBoardTasks({ date, status });
+      
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      let dateCounts: Record<string, number> = {};
+      if (startDate && endDate) {
+        dateCounts = await storage.getTaskBoardDateCounts(startDate, endDate);
+      }
+
+      const pendingCount = await storage.getPendingProjectTasksCount();
+      
+      res.json({ tasks, dateCounts, pendingCount });
+    } catch (error) {
+      console.error('Task board error:', error);
+      res.status(500).json({ error: 'Failed to load task board' });
+    }
+  });
+
+  // Admin Task Board - Update a project task (complete, edit, reschedule)
+  app.patch('/api/admin/task-board/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status, taskTitle, taskDescription, dueDate, priority, assignedTo } = req.body;
+      
+      const updates: any = {};
+      if (status !== undefined) updates.status = status;
+      if (taskTitle !== undefined) updates.taskTitle = taskTitle;
+      if (taskDescription !== undefined) updates.taskDescription = taskDescription;
+      if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
+      if (priority !== undefined) updates.priority = priority;
+      if (assignedTo !== undefined) updates.assignedTo = assignedTo;
+      
+      if (status === 'completed') {
+        updates.completedAt = new Date();
+        updates.completedBy = req.user?.fullName || req.user?.email || 'Admin';
+      }
+      
+      const updated = await storage.updateTask(id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error('Task board update error:', error);
+      res.status(500).json({ error: 'Failed to update task' });
+    }
+  });
+
   // Admin - List all users
   app.get('/api/admin/users', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
