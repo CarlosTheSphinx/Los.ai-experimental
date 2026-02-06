@@ -3292,20 +3292,26 @@ export async function registerRoutes(
   });
 
   // Admin Task Board - Get tasks with project context
+  // Admins and super_admins see all tasks; staff/processors only see tasks assigned to them
   app.get('/api/admin/task-board', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const date = req.query.date as string | undefined;
       const status = req.query.status as string | undefined;
-      const tasks = await storage.getTaskBoardTasks({ date, status });
+
+      const user = await storage.getUserById(req.user!.id);
+      const isFullAccess = user && ['admin', 'super_admin'].includes(user.role);
+      const filterUserId = isFullAccess ? undefined : req.user!.id;
+
+      const tasks = await storage.getTaskBoardTasks({ date, status, userId: filterUserId });
       
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
       let dateCounts: Record<string, number> = {};
       if (startDate && endDate) {
-        dateCounts = await storage.getTaskBoardDateCounts(startDate, endDate);
+        dateCounts = await storage.getTaskBoardDateCounts(startDate, endDate, filterUserId);
       }
 
-      const pendingCount = await storage.getPendingProjectTasksCount();
+      const pendingCount = await storage.getPendingProjectTasksCount(filterUserId);
       
       res.json({ tasks, dateCounts, pendingCount });
     } catch (error) {

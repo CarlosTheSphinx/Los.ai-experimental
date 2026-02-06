@@ -370,7 +370,7 @@ export class DatabaseStorage implements IStorage {
     return { completed: Number(result[0]?.completed || 0), total: Number(result[0]?.total || 0) };
   }
 
-  async getTaskBoardTasks(filters: { date?: string; status?: string }): Promise<any[]> {
+  async getTaskBoardTasks(filters: { date?: string; status?: string; userId?: number }): Promise<any[]> {
     const conditions = [];
     
     if (filters.status === 'completed') {
@@ -395,6 +395,10 @@ export class DatabaseStorage implements IStorage {
           sql`${projectTasks.dueDate} <= ${dateEnd}`
         )!
       );
+    }
+
+    if (filters.userId !== undefined) {
+      conditions.push(eq(projectTasks.assignedTo, String(filters.userId)));
     }
 
     const tasks = await db
@@ -426,38 +430,43 @@ export class DatabaseStorage implements IStorage {
     return tasks;
   }
 
-  async getPendingProjectTasksCount(): Promise<number> {
+  async getPendingProjectTasksCount(userId?: number): Promise<number> {
+    const conditions = [
+      sql`${projectTasks.status} != 'completed'`,
+      sql`${projectTasks.status} != 'not_applicable'`
+    ];
+    if (userId !== undefined) {
+      conditions.push(sql`${projectTasks.assignedTo} = ${String(userId)}`);
+    }
     const [result] = await db.select({
       count: count()
-    }).from(projectTasks).where(
-      and(
-        sql`${projectTasks.status} != 'completed'`,
-        sql`${projectTasks.status} != 'not_applicable'`
-      )
-    );
+    }).from(projectTasks).where(and(...conditions));
     return result?.count ?? 0;
   }
 
-  async getTaskBoardDateCounts(startDate: string, endDate: string): Promise<Record<string, number>> {
+  async getTaskBoardDateCounts(startDate: string, endDate: string, userId?: number): Promise<Record<string, number>> {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
     
+    const conditions = [
+      sql`${projectTasks.dueDate} >= ${start}`,
+      sql`${projectTasks.dueDate} <= ${end}`,
+      sql`${projectTasks.status} != 'completed'`,
+      sql`${projectTasks.status} != 'not_applicable'`
+    ];
+    if (userId !== undefined) {
+      conditions.push(sql`${projectTasks.assignedTo} = ${String(userId)}`);
+    }
+
     const results = await db
       .select({
         date: sql<string>`DATE(${projectTasks.dueDate})`,
         count: count(),
       })
       .from(projectTasks)
-      .where(
-        and(
-          sql`${projectTasks.dueDate} >= ${start}`,
-          sql`${projectTasks.dueDate} <= ${end}`,
-          sql`${projectTasks.status} != 'completed'`,
-          sql`${projectTasks.status} != 'not_applicable'`
-        )
-      )
+      .where(and(...conditions))
       .groupBy(sql`DATE(${projectTasks.dueDate})`);
     
     const dateCounts: Record<string, number> = {};
