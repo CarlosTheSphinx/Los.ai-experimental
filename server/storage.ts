@@ -4,6 +4,7 @@ import {
   pricingRequests, savedQuotes, documents, signers, documentFields, documentAuditLog, users,
   projects, projectStages, projectTasks, projectActivity, projectDocuments, projectWebhooks,
   systemSettings, adminTasks, adminActivity, dealStages, teamPermissions,
+  commercialSubmissions, commercialSubmissionDocuments,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -15,6 +16,8 @@ import {
   type AdminActivity, type InsertAdminActivity,
   type DealStage, type InsertDealStage,
   type TeamPermission, PERMISSION_KEYS,
+  type CommercialSubmission, type InsertCommercialSubmission,
+  type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
@@ -61,6 +64,17 @@ export interface IStorage {
   // Audit log methods
   createAuditLog(log: InsertDocumentAuditLog): Promise<DocumentAuditLog>;
   getAuditLogsByDocumentId(documentId: number): Promise<DocumentAuditLog[]>;
+
+  // Commercial submission methods
+  createCommercialSubmission(data: InsertCommercialSubmission): Promise<CommercialSubmission>;
+  getCommercialSubmissionById(id: number): Promise<CommercialSubmission | undefined>;
+  getCommercialSubmissionsByUser(userId: number): Promise<CommercialSubmission[]>;
+  getAllCommercialSubmissions(status?: string): Promise<CommercialSubmission[]>;
+  updateCommercialSubmissionStatus(id: number, status: string, adminNotes?: string): Promise<CommercialSubmission | undefined>;
+  addCommercialSubmissionDocument(doc: InsertCommercialSubmissionDocument): Promise<CommercialSubmissionDocument>;
+  getCommercialSubmissionDocuments(submissionId: number): Promise<CommercialSubmissionDocument[]>;
+  getCommercialSubmissionDocumentById(id: number): Promise<CommercialSubmissionDocument | undefined>;
+  deleteCommercialSubmissionDocument(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -865,6 +879,61 @@ export class DatabaseStorage implements IStorage {
       if (perm?.enabled) return true;
     }
     return false;
+  }
+
+  // Commercial submission methods
+  async createCommercialSubmission(data: InsertCommercialSubmission): Promise<CommercialSubmission> {
+    const [created] = await db.insert(commercialSubmissions).values(data).returning();
+    return created;
+  }
+
+  async getCommercialSubmissionById(id: number): Promise<CommercialSubmission | undefined> {
+    const [submission] = await db.select().from(commercialSubmissions).where(eq(commercialSubmissions.id, id));
+    return submission;
+  }
+
+  async getCommercialSubmissionsByUser(userId: number): Promise<CommercialSubmission[]> {
+    return db.select().from(commercialSubmissions)
+      .where(eq(commercialSubmissions.userId, userId))
+      .orderBy(desc(commercialSubmissions.createdAt));
+  }
+
+  async getAllCommercialSubmissions(status?: string): Promise<CommercialSubmission[]> {
+    if (status) {
+      return db.select().from(commercialSubmissions)
+        .where(eq(commercialSubmissions.status, status))
+        .orderBy(desc(commercialSubmissions.createdAt));
+    }
+    return db.select().from(commercialSubmissions)
+      .orderBy(desc(commercialSubmissions.createdAt));
+  }
+
+  async updateCommercialSubmissionStatus(id: number, status: string, adminNotes?: string): Promise<CommercialSubmission | undefined> {
+    const updates: any = { status, updatedAt: new Date() };
+    if (adminNotes !== undefined) updates.adminNotes = adminNotes;
+    const [updated] = await db.update(commercialSubmissions).set(updates)
+      .where(eq(commercialSubmissions.id, id)).returning();
+    return updated;
+  }
+
+  async addCommercialSubmissionDocument(doc: InsertCommercialSubmissionDocument): Promise<CommercialSubmissionDocument> {
+    const [created] = await db.insert(commercialSubmissionDocuments).values(doc).returning();
+    return created;
+  }
+
+  async getCommercialSubmissionDocuments(submissionId: number): Promise<CommercialSubmissionDocument[]> {
+    return db.select().from(commercialSubmissionDocuments)
+      .where(eq(commercialSubmissionDocuments.submissionId, submissionId));
+  }
+
+  async getCommercialSubmissionDocumentById(id: number): Promise<CommercialSubmissionDocument | undefined> {
+    const [doc] = await db.select().from(commercialSubmissionDocuments)
+      .where(eq(commercialSubmissionDocuments.id, id));
+    return doc;
+  }
+
+  async deleteCommercialSubmissionDocument(id: number): Promise<void> {
+    await db.delete(commercialSubmissionDocuments).where(eq(commercialSubmissionDocuments.id, id));
   }
 }
 

@@ -1572,6 +1572,8 @@ export const PERMISSION_KEYS = [
   "digests.manage",
   "onboarding.view",
   "onboarding.manage",
+  "commercial.view",
+  "commercial.manage",
 ] as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[number];
@@ -1658,4 +1660,77 @@ export const PERMISSION_CATEGORIES: Record<string, { label: string; permissions:
       { key: "onboarding.manage", label: "Manage onboarding" },
     ],
   },
+  commercial: {
+    label: "Commercial Submissions",
+    permissions: [
+      { key: "commercial.view", label: "View commercial submissions" },
+      { key: "commercial.manage", label: "Manage commercial submissions" },
+    ],
+  },
 };
+
+// ===================== Commercial Deal Submission =====================
+
+export const commercialSubmissions = pgTable("commercial_submissions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar("status", { length: 50 }).default("NEW").notNull(),
+  submitterType: varchar("submitter_type", { length: 50 }).notNull(),
+  brokerOrDeveloperName: varchar("broker_or_developer_name", { length: 255 }).notNull(),
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }).notNull(),
+  roleOnDeal: varchar("role_on_deal", { length: 100 }).notNull(),
+  loanType: varchar("loan_type", { length: 50 }).notNull(),
+  requestedLoanAmount: real("requested_loan_amount").notNull(),
+  requestedLTV: real("requested_ltv"),
+  requestedLTC: real("requested_ltc"),
+  interestOnly: boolean("interest_only").notNull(),
+  desiredCloseDate: timestamp("desired_close_date").notNull(),
+  exitStrategyType: varchar("exit_strategy_type", { length: 50 }),
+  exitStrategyDetails: text("exit_strategy_details"),
+  propertyName: varchar("property_name", { length: 255 }).notNull(),
+  propertyAddress: text("property_address").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 2 }).notNull(),
+  zip: varchar("zip", { length: 10 }).notNull(),
+  propertyType: varchar("property_type", { length: 50 }).notNull(),
+  occupancyType: varchar("occupancy_type", { length: 50 }).notNull(),
+  unitsOrSqft: real("units_or_sqft").notNull(),
+  yearBuilt: integer("year_built"),
+  purchasePrice: real("purchase_price"),
+  asIsValue: real("as_is_value").notNull(),
+  arvOrStabilizedValue: real("arv_or_stabilized_value"),
+  currentNOI: real("current_noi"),
+  inPlaceRent: real("in_place_rent"),
+  proFormaNOI: real("pro_forma_noi"),
+  capexBudgetTotal: real("capex_budget_total").notNull(),
+  businessPlanSummary: text("business_plan_summary").notNull(),
+  primarySponsorName: varchar("primary_sponsor_name", { length: 255 }).notNull(),
+  primarySponsorExperienceYears: integer("primary_sponsor_experience_years").notNull(),
+  numberOfSimilarProjects: integer("number_of_similar_projects").notNull(),
+  netWorth: real("net_worth").notNull(),
+  liquidity: real("liquidity").notNull(),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCommercialSubmissionSchema = createInsertSchema(commercialSubmissions).omit({ id: true, createdAt: true, updatedAt: true });
+export type CommercialSubmission = typeof commercialSubmissions.$inferSelect;
+export type InsertCommercialSubmission = z.infer<typeof insertCommercialSubmissionSchema>;
+
+export const commercialSubmissionDocuments = pgTable("commercial_submission_documents", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  docType: varchar("doc_type", { length: 50 }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  originalFileName: varchar("original_file_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  fileSize: integer("file_size").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const insertCommercialSubmissionDocumentSchema = createInsertSchema(commercialSubmissionDocuments).omit({ id: true, uploadedAt: true });
+export type CommercialSubmissionDocument = typeof commercialSubmissionDocuments.$inferSelect;
+export type InsertCommercialSubmissionDocument = z.infer<typeof insertCommercialSubmissionDocumentSchema>;

@@ -9898,5 +9898,396 @@ export async function registerRoutes(
     }
   });
 
+  // ===================== Commercial Deal Submission Routes =====================
+
+  const commercialSubmissionValidation = z.object({
+    submitterType: z.enum(["BROKER", "DEVELOPER"]),
+    brokerOrDeveloperName: z.string().min(1),
+    companyName: z.string().min(1),
+    email: z.string().email(),
+    phone: z.string().min(1),
+    roleOnDeal: z.string().min(1),
+    loanType: z.enum(["BRIDGE", "LONG_TERM"]),
+    requestedLoanAmount: z.number().positive(),
+    requestedLTV: z.number().min(0).max(100).nullable().optional(),
+    requestedLTC: z.number().min(0).max(100).nullable().optional(),
+    interestOnly: z.boolean(),
+    desiredCloseDate: z.string().min(1),
+    exitStrategyType: z.enum(["SALE", "REFINANCE", "CONSTRUCTION_TO_PERM", "OTHER"]).nullable().optional(),
+    exitStrategyDetails: z.string().nullable().optional(),
+    propertyName: z.string().min(1),
+    propertyAddress: z.string().min(1),
+    city: z.string().min(1),
+    state: z.string().length(2),
+    zip: z.string().min(1),
+    propertyType: z.enum(["MULTIFAMILY", "INDUSTRIAL", "RETAIL", "OFFICE", "MIXED_USE", "HOSPITALITY", "SELF_STORAGE", "LAND", "OTHER"]),
+    occupancyType: z.enum(["STABILIZED", "VALUE_ADD", "LEASE_UP", "GROUND_UP", "OTHER"]),
+    unitsOrSqft: z.number().positive(),
+    yearBuilt: z.number().nullable().optional(),
+    purchasePrice: z.number().nullable().optional(),
+    asIsValue: z.number().positive(),
+    arvOrStabilizedValue: z.number().nullable().optional(),
+    currentNOI: z.number().nullable().optional(),
+    inPlaceRent: z.number().nullable().optional(),
+    proFormaNOI: z.number().nullable().optional(),
+    capexBudgetTotal: z.number().min(0),
+    businessPlanSummary: z.string().min(50),
+    primarySponsorName: z.string().min(1),
+    primarySponsorExperienceYears: z.number().min(0),
+    numberOfSimilarProjects: z.number().min(0),
+    netWorth: z.number().positive(),
+    liquidity: z.number().positive(),
+  }).refine(data => data.requestedLTV || data.requestedLTC, {
+    message: "At least one of LTV or LTC is required",
+  }).refine(data => {
+    if (data.loanType === "BRIDGE") {
+      return !!data.exitStrategyType && !!data.exitStrategyDetails && data.exitStrategyDetails.length >= 20;
+    }
+    return true;
+  }, {
+    message: "Bridge loans require exit strategy type and details (min 20 characters)",
+  });
+
+  // Create a new commercial submission
+  app.post('/api/commercial-submissions', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const parsed = commercialSubmissionValidation.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, code: "VALIDATION_ERROR", errors: parsed.error.errors });
+      }
+
+      const data = parsed.data;
+
+      const submissionData: any = {
+        userId: req.userId,
+        status: "NEW",
+        submitterType: data.submitterType,
+        brokerOrDeveloperName: data.brokerOrDeveloperName,
+        companyName: data.companyName,
+        email: data.email,
+        phone: data.phone,
+        roleOnDeal: data.roleOnDeal,
+        loanType: data.loanType,
+        requestedLoanAmount: data.requestedLoanAmount,
+        requestedLTV: data.requestedLTV || null,
+        requestedLTC: data.requestedLTC || null,
+        interestOnly: data.interestOnly,
+        desiredCloseDate: new Date(data.desiredCloseDate),
+        exitStrategyType: data.exitStrategyType || null,
+        exitStrategyDetails: data.exitStrategyDetails || null,
+        propertyName: data.propertyName,
+        propertyAddress: data.propertyAddress,
+        city: data.city,
+        state: data.state,
+        zip: data.zip,
+        propertyType: data.propertyType,
+        occupancyType: data.occupancyType,
+        unitsOrSqft: data.unitsOrSqft,
+        yearBuilt: data.yearBuilt || null,
+        purchasePrice: data.purchasePrice || null,
+        asIsValue: data.asIsValue,
+        arvOrStabilizedValue: data.arvOrStabilizedValue || null,
+        currentNOI: data.currentNOI || null,
+        inPlaceRent: data.inPlaceRent || null,
+        proFormaNOI: data.proFormaNOI || null,
+        capexBudgetTotal: data.capexBudgetTotal,
+        businessPlanSummary: data.businessPlanSummary,
+        primarySponsorName: data.primarySponsorName,
+        primarySponsorExperienceYears: data.primarySponsorExperienceYears,
+        numberOfSimilarProjects: data.numberOfSimilarProjects,
+        netWorth: data.netWorth,
+        liquidity: data.liquidity,
+      };
+
+      // Check required documents are uploaded (passed as documentIds in body)
+      const documentIds: number[] = req.body.documentIds || [];
+      const requiredDocTypes = ["SREO", "PFS", "BUDGET"];
+      if (data.loanType === "BRIDGE") {
+        requiredDocTypes.push("TRACK_RECORD");
+      }
+
+      // Validate docs if documentIds provided
+      if (documentIds.length > 0) {
+        // Will be checked after creation against linked docs
+      }
+
+      const submission = await storage.createCommercialSubmission(submissionData);
+
+      // If documentIds provided, update them to link to this submission 
+      // (docs were uploaded to a draft/temp ID, now link them)
+
+      res.json({ success: true, submissionId: submission.id });
+    } catch (error: any) {
+      console.error("Error creating commercial submission:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Upload a document for a commercial submission
+  app.post('/api/commercial-submissions/:id/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const submissionId = parseInt(req.params.id);
+      const submission = await storage.getCommercialSubmissionById(submissionId);
+      
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+      if (submission.userId !== req.userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const { docType, storageKey, originalFileName, mimeType, fileSize } = req.body;
+
+      const validDocTypes = ["SREO", "PFS", "TRACK_RECORD", "BUDGET", "APPRAISAL"];
+      if (!validDocTypes.includes(docType)) {
+        return res.status(400).json({ error: "Invalid document type" });
+      }
+
+      const validMimeTypes = [
+        "application/pdf",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ];
+      if (!validMimeTypes.includes(mimeType)) {
+        return res.status(400).json({ error: "Only PDF, XLS, and XLSX files are allowed" });
+      }
+
+      if (fileSize > 25 * 1024 * 1024) {
+        return res.status(400).json({ error: "File size exceeds 25MB limit" });
+      }
+
+      const doc = await storage.addCommercialSubmissionDocument({
+        submissionId,
+        docType,
+        storageKey,
+        originalFileName,
+        mimeType,
+        fileSize,
+      });
+
+      res.json({ success: true, document: doc });
+    } catch (error: any) {
+      console.error("Error uploading commercial submission document:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a document from a commercial submission
+  app.delete('/api/commercial-submissions/:id/documents/:docId', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const submissionId = parseInt(req.params.id);
+      const docId = parseInt(req.params.docId);
+      const submission = await storage.getCommercialSubmissionById(submissionId);
+      
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+      if (submission.userId !== req.userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      await storage.deleteCommercialSubmissionDocument(docId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting commercial submission document:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get documents for a submission
+  app.get('/api/commercial-submissions/:id/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const submissionId = parseInt(req.params.id);
+      const submission = await storage.getCommercialSubmissionById(submissionId);
+      
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (submission.userId !== req.userId && !isAdmin) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const docs = await storage.getCommercialSubmissionDocuments(submissionId);
+      res.json(docs);
+    } catch (error: any) {
+      console.error("Error fetching commercial submission documents:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get user's own submissions
+  app.get('/api/commercial-submissions', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const submissions = await storage.getCommercialSubmissionsByUser(req.userId!);
+      res.json(submissions);
+    } catch (error: any) {
+      console.error("Error fetching commercial submissions:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get a specific submission (user)
+  app.get('/api/commercial-submissions/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const submission = await storage.getCommercialSubmissionById(id);
+      
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (submission.userId !== req.userId && !isAdmin) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const docs = await storage.getCommercialSubmissionDocuments(id);
+      res.json({ ...submission, documents: docs });
+    } catch (error: any) {
+      console.error("Error fetching commercial submission:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Finalize/submit a commercial submission (checks all required docs)
+  app.post('/api/commercial-submissions/:id/submit', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const submission = await storage.getCommercialSubmissionById(id);
+      
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+      if (submission.userId !== req.userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const docs = await storage.getCommercialSubmissionDocuments(id);
+      const uploadedTypes = docs.map(d => d.docType);
+
+      const requiredDocs = ["SREO", "PFS", "BUDGET"];
+      if (submission.loanType === "BRIDGE") {
+        requiredDocs.push("TRACK_RECORD");
+      }
+
+      const missingDocs = requiredDocs.filter(dt => !uploadedTypes.includes(dt));
+      if (missingDocs.length > 0) {
+        return res.status(400).json({
+          success: false,
+          code: "MISSING_REQUIRED_DOCS",
+          missingDocs,
+          message: `Missing required documents: ${missingDocs.join(", ")}`,
+        });
+      }
+
+      await storage.updateCommercialSubmissionStatus(id, "NEW");
+      res.json({ success: true, submissionId: id });
+    } catch (error: any) {
+      console.error("Error finalizing commercial submission:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: Get all commercial submissions
+  app.get('/api/admin/commercial-submissions', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const status = req.query.status as string | undefined;
+      const submissions = await storage.getAllCommercialSubmissions(status);
+      res.json(submissions);
+    } catch (error: any) {
+      console.error("Error fetching admin commercial submissions:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: Get a specific commercial submission
+  app.get('/api/admin/commercial-submissions/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const id = parseInt(req.params.id);
+      const submission = await storage.getCommercialSubmissionById(id);
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+
+      const docs = await storage.getCommercialSubmissionDocuments(id);
+      res.json({ ...submission, documents: docs });
+    } catch (error: any) {
+      console.error("Error fetching admin commercial submission:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: Update submission status
+  app.patch('/api/admin/commercial-submissions/:id/status', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const id = parseInt(req.params.id);
+      const { status, adminNotes } = req.body;
+
+      const validStatuses = ["NEW", "IN_REVIEW", "NEEDS_INFO", "DECLINED", "APPROVED"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const updated = await storage.updateCommercialSubmissionStatus(id, status, adminNotes);
+      if (!updated) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating commercial submission status:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin: Download a submission document
+  app.get('/api/admin/commercial-submissions/:id/documents/:docId/download', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const docId = parseInt(req.params.docId);
+      const doc = await storage.getCommercialSubmissionDocumentById(docId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(doc.storageKey);
+      
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.originalFileName}"`);
+      res.setHeader('Content-Type', doc.mimeType);
+      await objectStorageService.downloadObject(objectFile, res);
+    } catch (error: any) {
+      console.error("Error downloading commercial submission document:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return httpServer;
 }

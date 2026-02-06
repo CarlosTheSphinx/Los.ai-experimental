@@ -14,6 +14,7 @@ import {
   MessageSquare,
   BookOpen,
   CalendarDays,
+  Building2,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -55,6 +56,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/quotes", label: "Saved Quotes", icon: FileText },
   { href: "/agreements", label: "Term Sheets", icon: ClipboardList },
   { href: "/projects", label: "Loans", icon: FolderKanban },
+  { href: "/commercial-submission/new", label: "Commercial", icon: Building2 },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
   { href: "/resources", label: "Resources", icon: BookOpen },
 ];
@@ -68,6 +70,7 @@ const borrowerNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/deals", label: "Pipeline", icon: FileText, requiredPermission: "pipeline.view" },
+  { href: "/admin/commercial-submissions", label: "Commercial", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },

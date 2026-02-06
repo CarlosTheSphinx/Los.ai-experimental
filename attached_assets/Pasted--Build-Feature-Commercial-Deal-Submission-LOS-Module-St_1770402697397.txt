@@ -1,0 +1,229 @@
+# Build Feature: Commercial Deal Submission (LOS Module)
+## Stack
+- Backend: Node.js + Express + TypeScript
+- Frontend: React + TypeScript
+- Database: Postgres (preferred) using Prisma ORM (or existing DB layer if already present)
+- File storage: Use existing upload system if present; otherwise implement S3-compatible storage (or Replit filesystem for dev only)
+
+## Goal
+Add a new feature to the LOS that allows Brokers/Developers to submit Commercial Deals directly to us.
+They must fill in ALL required fields AND upload ALL required documents BEFORE the deal can be submitted for feedback.
+No partial submissions.
+
+This is a “commercial submission intake portal” accessible from the User side.
+
+---
+
+## User Stories
+1) As a broker/developer, I can open a Commercial Submission form, enter project details, upload required docs, and submit.
+2) The system rejects submission if any required field/doc is missing.
+3) After submission, I see a confirmation page + submission ID.
+4) Admin users can view all submitted commercial deals in a dashboard queue, open details, download docs, and mark status (New, In Review, Needs Info, Declined, Approved).
+5) If loan type is Bridge, the form requires Exit Strategy (dropdown + notes). If Long-Term, Exit Strategy is hidden and not required.
+
+---
+
+## Required Fields (must be validated server-side)
+### Submitter / Sponsor Info
+- submitterType (enum): "BROKER" | "DEVELOPER"
+- brokerOrDeveloperName (string, required)
+- companyName (string, required)
+- email (string, required, must be valid email)
+- phone (string, required)
+- roleOnDeal (string, required) e.g. "Broker", "Sponsor", "Co-Sponsor", "Developer"
+
+### Deal Type
+- loanType (enum): "BRIDGE" | "LONG_TERM"
+- requestedLoanAmount (number, required, > 0)
+- requestedLTV (number, required, 0-100) OR requestedLTC (number, required, 0-100) (allow both; require at least one)
+- interestOnly (boolean, required)
+- desiredCloseDate (date, required)
+
+### If loanType = BRIDGE (conditional required)
+- exitStrategyType (enum, required): "SALE" | "REFINANCE" | "CONSTRUCTION_TO_PERM" | "OTHER"
+- exitStrategyDetails (string, required, min length 20)
+
+### Property / Project Details
+- propertyName (string, required)
+- propertyAddress (string, required)
+- city (string, required)
+- state (string, required) (2-letter or dropdown)
+- zip (string, required)
+- propertyType (enum, required):
+  "MULTIFAMILY" | "INDUSTRIAL" | "RETAIL" | "OFFICE" | "MIXED_USE" | "HOSPITALITY" | "SELF_STORAGE" | "LAND" | "OTHER"
+- occupancyType (enum, required): "STABILIZED" | "VALUE_ADD" | "LEASE_UP" | "GROUND_UP" | "OTHER"
+- unitsOrSqft (number, required, > 0) (label changes based on propertyType: units for multifamily, sqft for others)
+- yearBuilt (number, optional)
+- purchasePrice (number, optional but recommended)
+- asIsValue (number, required)
+- arvOrStabilizedValue (number, optional)
+- currentNOI (number, optional)
+- inPlaceRent (number, optional)
+- proFormaNOI (number, optional)
+- capexBudgetTotal (number, required)
+- businessPlanSummary (string, required, min length 50)
+
+### Sponsor Experience
+- primarySponsorName (string, required)
+- primarySponsorExperienceYears (number, required, >= 0)
+- numberOfSimilarProjects (number, required, >= 0)
+- netWorth (number, required, > 0)
+- liquidity (number, required, > 0)
+
+---
+
+## Required Documents (must be uploaded before submission)
+All documents must be required EXCEPT Appraisal which is optional.
+
+- SREO (Primary Sponsor) REQUIRED
+- PFS (Primary Sponsor) REQUIRED
+- Budget (Line Item) REQUIRED
+- Track Record REQUIRED only if loanType = BRIDGE
+- Appraisal OPTIONAL
+
+### Upload constraints
+- Accept: PDF, XLS, XLSX only
+- Max file size: 25MB each
+- Store with metadata: tenantId (if multi-tenant), submissionId, docType, originalFileName, mimeType, fileSize, uploadedAt
+- Must support download from Admin UI
+
+---
+
+## Data Model
+Create a new table (or collection) for submissions.
+
+### commercial_submissions
+- id (uuid)
+- tenantId (uuid nullable if single tenant)
+- status (enum): NEW | IN_REVIEW | NEEDS_INFO | DECLINED | APPROVED
+- submitterType
+- brokerOrDeveloperName
+- companyName
+- email
+- phone
+- roleOnDeal
+- loanType
+- requestedLoanAmount
+- requestedLTV
+- requestedLTC
+- interestOnly
+- desiredCloseDate
+- exitStrategyType (nullable)
+- exitStrategyDetails (nullable)
+- propertyName
+- propertyAddress
+- city
+- state
+- zip
+- propertyType
+- occupancyType
+- unitsOrSqft
+- yearBuilt
+- purchasePrice
+- asIsValue
+- arvOrStabilizedValue
+- currentNOI
+- inPlaceRent
+- proFormaNOI
+- capexBudgetTotal
+- businessPlanSummary
+- primarySponsorName
+- primarySponsorExperienceYears
+- numberOfSimilarProjects
+- netWorth
+- liquidity
+- createdAt
+- updatedAt
+
+### commercial_submission_documents
+- id (uuid)
+- submissionId (uuid)
+- docType (enum): SREO | PFS | TRACK_RECORD | BUDGET | APPRAISAL
+- fileUrl or storageKey
+- originalFileName
+- mimeType
+- fileSize
+- uploadedAt
+
+---
+
+## Backend API Endpoints (Express)
+### Public/User endpoints
+- POST /api/commercial-submissions
+  - Validates all required fields
+  - Validates required documents exist (by checking uploaded docs linked to a draft submission OR accepts multipart submission in one request)
+  - Creates submission with status NEW
+  - Returns { success: true, submissionId }
+
+- POST /api/commercial-submissions/:id/upload
+  - Upload a single document for a draft submission
+  - body: multipart/form-data { file, docType }
+  - Must validate allowed docType and file type
+
+- GET /api/commercial-submissions/:id
+  - Returns details + docs for confirmation page (authenticated user)
+
+### Admin endpoints (protected by admin permissions)
+- GET /api/admin/commercial-submissions?status=NEW
+- GET /api/admin/commercial-submissions/:id
+- PATCH /api/admin/commercial-submissions/:id/status
+- GET /api/admin/commercial-submissions/:id/documents/:docId/download
+
+### Validation rules (server-side hard enforcement)
+- Reject submission if:
+  - Any required field missing
+  - loanType=BRIDGE and exitStrategy missing
+  - Any required doc missing
+  - Track Record missing when Bridge
+- Return structured error:
+  { success:false, code:"MISSING_REQUIRED_DOCS", missingDocs:["SREO","PFS"], message:"..." }
+
+---
+
+## Frontend (React) Pages/Components
+### User Side
+- Add menu item: "Commercial Submission"
+- Page: /commercial-submission/new
+  - Multi-step wizard:
+    1) Submitter Info
+    2) Deal Type + Exit Strategy (conditional)
+    3) Property + Project Details
+    4) Sponsor Experience
+    5) Document Uploads (shows required docs based on loanType)
+    6) Review & Submit
+  - Disable final submit until:
+    - all required fields valid
+    - all required docs uploaded
+
+- Confirmation page: /commercial-submission/:id/confirmation
+
+### Admin Side
+- Add Admin tab: “Commercial Submissions”
+- Queue list with filters by status and search by name/email/property
+- Detail view with:
+  - all fields
+  - document download buttons
+  - status dropdown + internal notes (optional)
+
+---
+
+## Security
+- Only authenticated users can submit (or allow unauthenticated but then email verification step; choose authenticated-only for now)
+- Admin endpoints require admin permissions
+- Validate tenant isolation if multi-tenant is already implemented
+
+---
+
+## Definition of Done
+- A broker can submit a commercial deal ONLY if every required field and required file is present.
+- Bridge requires Track Record + Exit Strategy.
+- Admins can view/download docs and update status.
+- All validations happen server-side, not just frontend.
+
+---
+
+## Implementation Notes
+- Use TypeScript types and shared validation (zod preferred) for request bodies.
+- Use multer (or existing upload middleware) for file uploads.
+- Keep docType strict enums to prevent mismatches.
+- Ensure the app returns clean JSON errors for frontend display.

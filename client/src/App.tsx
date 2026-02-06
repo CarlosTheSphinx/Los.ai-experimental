@@ -35,6 +35,10 @@ import MessagesPage from "@/pages/messages";
 import OnboardingPage from "@/pages/onboarding";
 import ResourcesPage from "@/pages/resources";
 import SelectRolePage from "@/pages/select-role";
+import CommercialSubmissionPage from "@/pages/commercial-submission";
+import CommercialSubmissionConfirmation from "@/pages/commercial-submission-confirmation";
+import AdminCommercialSubmissions from "@/pages/admin/commercial-submissions";
+import AdminCommercialSubmissionDetail from "@/pages/admin/commercial-submission-detail";
 import { AppLayout } from "@/components/AppLayout";
 import { Loader2 } from "lucide-react";
 
@@ -118,6 +122,8 @@ function MainRoutes() {
         <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectDetail} />} />
         <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
         <Route path="/resources" component={() => <ProtectedRoute component={ResourcesPage} />} />
+        <Route path="/commercial-submission/new" component={() => <ProtectedRoute component={CommercialSubmissionPage} />} />
+        <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
         
         {/* Admin Routes */}
         <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
@@ -134,6 +140,8 @@ function MainRoutes() {
         <Route path="/admin/digests" component={() => <AdminProtectedRoute component={AdminDigests} />} />
         <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
         <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
+        <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
+        <Route path="/admin/commercial-submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialSubmissionDetail} />} />
         
         <Route component={NotFound} />
       </Switch>
