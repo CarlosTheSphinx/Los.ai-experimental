@@ -228,7 +228,7 @@ export default function CommercialSubmissionPage() {
       phone: "",
       roleOnDeal: "",
       loanType: undefined,
-      requestedLoanAmount: undefined as unknown as number,
+      requestedLoanAmount: "" as unknown as number,
       requestedLTV: "",
       requestedLTC: "",
       interestOnly: false,
@@ -242,39 +242,41 @@ export default function CommercialSubmissionPage() {
       zip: "",
       propertyType: undefined,
       occupancyType: undefined,
-      unitsOrSqft: undefined as unknown as number,
+      unitsOrSqft: "" as unknown as number,
       yearBuilt: "",
       purchasePrice: "",
-      asIsValue: undefined as unknown as number,
+      asIsValue: "" as unknown as number,
       arvOrStabilizedValue: "",
       currentNOI: "",
       inPlaceRent: "",
       proFormaNOI: "",
-      capexBudgetTotal: undefined as unknown as number,
+      capexBudgetTotal: "" as unknown as number,
       businessPlanSummary: "",
       primarySponsorName: "",
-      primarySponsorExperienceYears: undefined as unknown as number,
-      numberOfSimilarProjects: undefined as unknown as number,
-      netWorth: undefined as unknown as number,
-      liquidity: undefined as unknown as number,
+      primarySponsorExperienceYears: "" as unknown as number,
+      numberOfSimilarProjects: "" as unknown as number,
+      netWorth: "" as unknown as number,
+      liquidity: "" as unknown as number,
     },
     mode: "onTouched",
   });
 
+  const prefillDone = useRef(false);
   useEffect(() => {
-    if (user) {
-      if (user.email && !form.getValues("email")) {
+    if (user && !prefillDone.current) {
+      prefillDone.current = true;
+      if (user.email) {
         form.setValue("email", user.email);
       }
       const userAny = user as unknown as Record<string, unknown>;
-      if (userAny.companyName && !form.getValues("companyName")) {
+      if (userAny.companyName) {
         form.setValue("companyName", userAny.companyName as string);
       }
-      if (userAny.fullName && !form.getValues("brokerOrDeveloperName")) {
+      if (userAny.fullName) {
         form.setValue("brokerOrDeveloperName", userAny.fullName as string);
       }
     }
-  }, [user, form]);
+  }, [user]);
 
   const watchedLoanType = form.watch("loanType");
   const watchedPropertyType = form.watch("propertyType");
@@ -655,10 +657,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Requested Loan Amount ($)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-requested-loan-amount"
                 />
               </FormControl>
@@ -674,10 +679,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Requested LTV (%)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="e.g. 75"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-requested-ltv"
                 />
               </FormControl>
@@ -693,10 +701,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Requested LTC (%)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="e.g. 80"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-requested-ltc"
                 />
               </FormControl>
@@ -735,7 +746,15 @@ export default function CommercialSubmissionPage() {
             <FormItem>
               <FormLabel>Desired Close Date</FormLabel>
               <FormControl>
-                <Input {...field} type="date" data-testid="input-desired-close-date" />
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  value={field.value || ""}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  data-testid="input-desired-close-date"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -932,10 +951,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>{unitsLabel}</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder={`Number of ${unitsLabel.toLowerCase()}`}
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-units-or-sqft"
                 />
               </FormControl>
@@ -951,10 +973,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Year Built (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="e.g. 1990"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-year-built"
                 />
               </FormControl>
@@ -970,10 +995,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Purchase Price (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-purchase-price"
                 />
               </FormControl>
@@ -989,10 +1017,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>As-Is Value ($)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-as-is-value"
                 />
               </FormControl>
@@ -1008,10 +1039,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>ARV / Stabilized Value (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-arv-stabilized-value"
                 />
               </FormControl>
@@ -1027,10 +1061,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Current NOI (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-current-noi"
                 />
               </FormControl>
@@ -1046,10 +1083,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>In-Place Rent (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-in-place-rent"
                 />
               </FormControl>
@@ -1065,10 +1105,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Pro Forma NOI (optional)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-pro-forma-noi"
                 />
               </FormControl>
@@ -1084,10 +1127,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>CapEx Budget Total ($)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-capex-budget-total"
                 />
               </FormControl>
@@ -1141,10 +1187,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Years of Experience</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-experience-years"
                 />
               </FormControl>
@@ -1160,10 +1209,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Number of Similar Projects</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-similar-projects"
                 />
               </FormControl>
@@ -1179,10 +1231,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Net Worth ($)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-net-worth"
                 />
               </FormControl>
@@ -1198,10 +1253,13 @@ export default function CommercialSubmissionPage() {
               <FormLabel>Liquidity ($)</FormLabel>
               <FormControl>
                 <Input
-                  {...field}
                   type="number"
                   placeholder="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
                   value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? "" : e.target.value)}
                   data-testid="input-liquidity"
                 />
               </FormControl>
