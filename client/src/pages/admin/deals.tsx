@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   Table,
   TableBody,
@@ -500,11 +501,11 @@ export default function AdminDeals() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="address">Property Address *</Label>
-                <Input
+                <AddressAutocomplete
                   id="address"
                   value={newDeal.propertyAddress}
-                  onChange={(e) => setNewDeal({ ...newDeal, propertyAddress: e.target.value })}
-                  placeholder="123 Main Street, Los Angeles, CA 90001"
+                  onChange={(address) => setNewDeal({ ...newDeal, propertyAddress: address })}
+                  placeholder="Start typing an address..."
                   data-testid="input-property-address"
                 />
               </div>
