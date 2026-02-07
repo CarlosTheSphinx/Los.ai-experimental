@@ -1,0 +1,221 @@
+Got it. Since **(1) settings include parentFolderId** and **(2) Google OAuth is connected and tokens are stored**, here are the explicit build steps starting at **Step 3**. You can paste this whole thing into Replit as your instruction set.
+
+---
+
+## STEP 3: Create a Google Drive folder when a Project is created
+
+### 3.1 Database changes
+
+Add these fields:
+
+**Projects table**
+
+* `googleDriveFolderId` (string, nullable)
+* `googleDriveFolderUrl` (string, nullable)
+* `driveSyncStatus` (enum/string: `NOT_ENABLED | PENDING | OK | ERROR`)
+* `driveSyncError` (text, nullable)
+
+(If you have multi-tenant later, add `tenantId` logic, but not required now.)
+
+---
+
+### 3.2 Add a Google Drive service helper
+
+Create: `server/services/googleDrive.ts`
+
+It must:
+
+* load the stored refresh token/access token (whatever you already saved in step 2)
+* create an authenticated Drive client using `googleapis`
+* create a folder under a parent folder
+
+**Function signatures to implement:**
+
+* `getDriveClient(): drive_v3.Drive`
+* `createProjectFolder({ parentFolderId, projectName, projectId }): Promise<{ folderId, webViewLink }>`
+* `ensureProjectFolder(projectId): Promise<Project>` (creates if missing)
+
+Folder name format:
+
+* `${projectName} - ${projectId}` (ensures uniqueness)
+
+Drive API calls:
+
+* `drive.files.create` with:
+
+  * `mimeType: "application/vnd.google-apps.folder"`
+  * `parents: [parentFolderId]`
+  * `fields: "id, webViewLink"`
+
+If your Drive call needs it, include:
+
+* `supportsAllDrives: true`
+* `includeItemsFromAllDrives: true`
+
+---
+
+### 3.3 Hook folder creation into Project creation
+
+Wherever you create a project (example: `POST /api/projects`):
+
+1. Create the project in DB first (so you have projectId)
+2. If Google Drive integration enabled and `parentFolderId` exists:
+
+   * set `driveSyncStatus = "PENDING"`
+   * call `createProjectFolder(...)`
+   * save `googleDriveFolderId`, `googleDriveFolderUrl`, set `driveSyncStatus = "OK"`
+3. If it fails:
+
+   * set `driveSyncStatus = "ERROR"`
+   * save `driveSyncError = error.message`
+   * DO NOT fail the entire project creation (don’t block the user)
+
+---
+
+### 3.4 Add a retry endpoint (important for reliability)
+
+Create:
+
+* `POST /api/projects/:id/drive/retry`
+
+Logic:
+
+* only admins can call
+* calls `ensureProjectFolder(projectId)`
+* returns updated project
+
+---
+
+## STEP 4: Upload all project documents into that Drive folder
+
+### 4.1 Database changes for Documents table
+
+Add fields:
+
+* `googleDriveFileId` (string, nullable)
+* `googleDriveFileUrl` (string, nullable)
+* `googleDriveMimeType` (string, nullable)
+* `driveUploadStatus` (`PENDING | OK | ERROR`)
+* `driveUploadError` (text, nullable)
+
+---
+
+### 4.2 Extend the Google Drive service: upload file into a folder
+
+Add in `googleDrive.ts`:
+
+`uploadFileToProjectFolder({ projectId, localFilePath, originalName, mimeType }): Promise<{ fileId, webViewLink }>`
+
+Steps:
+
+1. Load project from DB
+2. If `project.googleDriveFolderId` is missing:
+
+   * call `ensureProjectFolder(projectId)` first
+3. Upload:
+
+   * `drive.files.create({
+        requestBody: {
+          name: originalName,
+          parents: [folderId]
+        },
+        media: {
+          mimeType,
+          body: fs.createReadStream(localFilePath)
+        },
+        fields: "id, webViewLink"
+     })`
+
+Also include `supportsAllDrives: true` if needed.
+
+---
+
+### 4.3 Hook this into your existing document upload endpoint
+
+Wherever your current upload happens (example: `POST /api/projects/:id/documents`):
+
+After you save the document record in your DB:
+
+1. set `driveUploadStatus = "PENDING"`
+2. call `uploadFileToProjectFolder(...)`
+3. update doc record with:
+
+   * `googleDriveFileId`
+   * `googleDriveFileUrl`
+   * `driveUploadStatus = "OK"`
+4. On failure:
+
+   * `driveUploadStatus = "ERROR"`
+   * store `driveUploadError = error.message`
+   * do not fail the whole upload (still keep your local copy)
+
+---
+
+### 4.4 Add a retry endpoint for failed uploads
+
+Create:
+
+* `POST /api/documents/:id/drive/retry`
+
+Logic:
+
+* find document + its project
+* re-upload local file to Drive folder
+* update doc Drive fields
+
+---
+
+## STEP 5: UI changes (Admin + User)
+
+### 5.1 Show Drive folder link on Project view
+
+On the Project details screen:
+
+* if `googleDriveFolderUrl` exists: show “Open Drive Folder”
+* if status ERROR: show warning + “Retry Drive Folder Sync” button (calls retry endpoint)
+
+---
+
+### 5.2 Show Drive upload link on each Document row
+
+In project docs list:
+
+* show status badge: Pending/OK/Error
+* if OK: show “Open in Drive”
+* if Error: show “Retry upload”
+
+---
+
+## STEP 6: Hardening (so it doesn’t break later)
+
+### 6.1 Token refresh reliability
+
+In your Drive client builder:
+
+* always use refresh_token-based auth
+* auto-refresh access tokens
+* if refresh token missing, return clean error: `GOOGLE_DRIVE_NOT_CONNECTED`
+
+---
+
+### 6.2 Background jobs (optional but recommended)
+
+If you want it smoother:
+
+* don’t upload to Drive inline
+* push uploads into a queue
+* worker processes the upload
+  But for now: inline is fine.
+
+---
+
+# Paste-this prompt to Replit (do not edit)
+
+If you want a single prompt to paste that forces implementation:
+
+**PROMPT**
+“Implement Steps 3+ for Google Drive sync. When a project is created, create a Drive folder under parentFolderId and save folderId+url to the project. When any project document is uploaded, upload it to that folder and save Drive fileId+url to the document. Add drive sync status/error fields for project + docs. Add retry endpoints for folder sync and doc upload. Update UI to show Drive folder link, doc Drive link, and retry buttons. Do not block project creation or doc uploads if Drive fails—store error and allow retry. Use googleapis package and refresh token auth. Assume steps 1 and 2 are already done and tokens are stored.”
+
+---
+
+If you paste your current endpoints file names (like `server/routes/projects.ts` and `server/routes/documents.ts`) I can make this even more “surgical” with exact filenames + code blocks, but the steps above are the exact implementation plan Replit should follow.
