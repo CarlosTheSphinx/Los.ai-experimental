@@ -393,7 +393,19 @@ export async function syncDealDocumentToDrive(docId: number): Promise<void> {
 
     const mimeType = doc.mimeType || 'application/octet-stream';
 
-    const { googleDriveFolderId } = await ensureDealFolder(doc.dealId);
+    const [project] = await db.select()
+      .from(projects)
+      .where(eq(projects.id, doc.dealId))
+      .limit(1);
+
+    let googleDriveFolderId: string;
+    if (project) {
+      const result = await ensureProjectFolder(doc.dealId);
+      googleDriveFolderId = result.googleDriveFolderId;
+    } else {
+      const result = await ensureDealFolder(doc.dealId);
+      googleDriveFolderId = result.googleDriveFolderId;
+    }
 
     const admin = await getAdminWithDriveTokens();
     if (!admin) {
