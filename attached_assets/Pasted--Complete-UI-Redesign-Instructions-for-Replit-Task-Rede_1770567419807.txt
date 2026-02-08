@@ -1,0 +1,871 @@
+**Complete UI Redesign Instructions for Replit:**
+
+---
+
+## Task: Redesign Deal Pipeline UI for Intuitive Stage-Based Workflow
+
+### Current State (See Screenshot):
+- Progress bar shows stages but they're not labeled clearly
+- Stages are listed as cards below, but they're collapsed and show "0/0 complete"
+- No way to see what documents/tasks are needed at each stage
+- Unclear what needs to be done next
+
+### Desired State:
+**Visual hierarchy that shows:**
+1. **Top Progress Bar** - Clear stage names and current position
+2. **Stage Cards** - Expandable sections with documents and tasks organized inside
+3. **Smart Filtering** - Filter by tasks, activity, digests, documents - integrated naturally
+4. **Auto-Progress** - Visual feedback as items complete
+
+---
+
+## STEP 1: Enhanced Progress Bar (Top of Page)
+
+**Replace the current numbered circles with:**
+
+```html
+<div class="loan-progress-container">
+  <div class="progress-header">
+    <h3>Loan Progress</h3>
+    <span class="overall-progress">0% Complete</span>
+  </div>
+  
+  <div class="progress-bar-wrapper">
+    {deal.stages.map((stage, index) => (
+      <div class={`progress-stage ${getStageStatus(stage)}`}>
+        <!-- Stage indicator -->
+        <div class="stage-indicator">
+          {stage.status === 'completed' ? (
+            <svg class="checkmark">✓</svg>
+          ) : stage.status === 'in_progress' ? (
+            <div class="pulse-dot">{index + 1}</div>
+          ) : (
+            <span class="stage-number">{index + 1}</span>
+          )}
+        </div>
+        
+        <!-- Stage label -->
+        <div class="stage-label">
+          <div class="stage-name">{stage.stage_name}</div>
+          <div class="stage-progress">
+            {stage.completed_items}/{stage.total_items}
+          </div>
+        </div>
+        
+        <!-- Connector line (except last stage) -->
+        {index < deal.stages.length - 1 && (
+          <div class={`stage-connector ${stage.status === 'completed' ? 'completed' : ''}`}></div>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+```
+
+**Styling:**
+```css
+.loan-progress-container {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+  margin-top: 20px;
+}
+
+.progress-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex: 1;
+}
+
+.stage-indicator {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: 3px solid #e5e7eb;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.progress-stage.completed .stage-indicator {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.progress-stage.in_progress .stage-indicator {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+  animation: pulse 2s infinite;
+}
+
+.stage-label {
+  margin-top: 12px;
+  text-align: center;
+  max-width: 120px;
+}
+
+.stage-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  line-height: 1.3;
+}
+
+.stage-progress {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.stage-connector {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  width: 100%;
+  height: 3px;
+  background: #e5e7eb;
+  z-index: -1;
+}
+
+.stage-connector.completed {
+  background: #10b981;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+```
+
+---
+
+## STEP 2: Redesign Stage Cards with Nested Checklists
+
+**Replace the current collapsed cards with:**
+
+```html
+<div class="stages-workflow">
+  
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <div class="filter-buttons">
+      <button 
+        class={`filter-btn ${activeFilter === 'all' ? 'active' : ''}`}
+        onclick="setFilter('all')"
+      >
+        All Items
+      </button>
+      <button 
+        class={`filter-btn ${activeFilter === 'tasks' ? 'active' : ''}`}
+        onclick="setFilter('tasks')"
+      >
+        📋 Tasks Only
+      </button>
+      <button 
+        class={`filter-btn ${activeFilter === 'documents' ? 'active' : ''}`}
+        onclick="setFilter('documents')"
+      >
+        📄 Documents Only
+      </button>
+      <button 
+        class={`filter-btn ${activeFilter === 'activity' ? 'active' : ''}`}
+        onclick="setFilter('activity')"
+      >
+        🕐 Activity
+      </button>
+      <button 
+        class={`filter-btn ${activeFilter === 'digests' ? 'active' : ''}`}
+        onclick="setFilter('digests')"
+      >
+        📊 Digests
+      </button>
+    </div>
+    
+    <div class="quick-stats">
+      <span class="stat">
+        <strong>{totalCompleted}</strong> / {totalItems} completed
+      </span>
+    </div>
+  </div>
+
+  <!-- Stage Cards -->
+  {deal.stages.map((stage, stageIndex) => (
+    <div class={`stage-card ${stage.status} ${stage.isExpanded ? 'expanded' : ''}`}>
+      
+      <!-- Stage Header (Always Visible) -->
+      <div 
+        class="stage-header"
+        onclick="toggleStage({stage.id})"
+      >
+        <div class="stage-header-left">
+          <!-- Stage Status Icon -->
+          <div class="stage-status-icon">
+            {stage.status === 'completed' ? (
+              <svg class="icon-complete">✓</svg>
+            ) : stage.status === 'in_progress' ? (
+              <div class="spinner"></div>
+            ) : (
+              <div class="icon-pending">○</div>
+            )}
+          </div>
+          
+          <!-- Stage Info -->
+          <div class="stage-info">
+            <h3 class="stage-title">
+              {stageIndex + 1}. {stage.stage_name}
+            </h3>
+            <p class="stage-description">{stage.description}</p>
+          </div>
+        </div>
+        
+        <div class="stage-header-right">
+          <!-- Progress Ring -->
+          <div class="progress-ring">
+            <svg viewBox="0 0 36 36" class="circular-progress">
+              <path
+                class="circle-bg"
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path
+                class="circle"
+                stroke-dasharray="{stage.progress_percent}, 100"
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+            </svg>
+            <div class="progress-text">{stage.progress_percent}%</div>
+          </div>
+          
+          <!-- Expand/Collapse Icon -->
+          <svg class="expand-icon">
+            {stage.isExpanded ? '▼' : '▶'}
+          </svg>
+        </div>
+      </div>
+      
+      <!-- Stage Content (Expandable) -->
+      <div class="stage-content" style={stage.isExpanded ? 'display: block' : 'display: none'}>
+        
+        <!-- Documents Section -->
+        {stage.documents && stage.documents.length > 0 && (
+          <div class="checklist-section">
+            <h4 class="section-title">
+              📄 Required Documents ({stage.documents.filter(d => d.status === 'completed').length}/{stage.documents.length})
+            </h4>
+            <div class="checklist">
+              {stage.documents.map(doc => (
+                <div class={`checklist-item ${doc.status}`}>
+                  <input 
+                    type="checkbox"
+                    checked={doc.status === 'completed'}
+                    onchange="updateDocumentStatus({doc.id}, this.checked)"
+                    class="item-checkbox"
+                  />
+                  <div class="item-content">
+                    <div class="item-header">
+                      <span class="item-name">{doc.document_name}</span>
+                      {doc.is_required && (
+                        <span class="required-badge">Required</span>
+                      )}
+                    </div>
+                    {doc.uploaded_file && (
+                      <div class="item-meta">
+                        <span class="file-name">📎 {doc.uploaded_file}</span>
+                        <span class="uploaded-date">{formatDate(doc.uploaded_at)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div class="item-actions">
+                    {!doc.uploaded_file ? (
+                      <button class="btn-upload" onclick="uploadDocument({doc.id})">
+                        Upload
+                      </button>
+                    ) : (
+                      <button class="btn-view" onclick="viewDocument({doc.id})">
+                        View
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <!-- Tasks Section -->
+        {stage.tasks && stage.tasks.length > 0 && (
+          <div class="checklist-section">
+            <h4 class="section-title">
+              ✅ Tasks ({stage.tasks.filter(t => t.status === 'completed').length}/{stage.tasks.length})
+            </h4>
+            <div class="checklist">
+              {stage.tasks.map(task => (
+                <div class={`checklist-item ${task.status}`}>
+                  <input 
+                    type="checkbox"
+                    checked={task.status === 'completed'}
+                    onchange="updateTaskStatus({task.id}, this.checked)"
+                    class="item-checkbox"
+                  />
+                  <div class="item-content">
+                    <div class="item-header">
+                      <span class="item-name">{task.task_name}</span>
+                      {task.is_required && (
+                        <span class="required-badge">Required</span>
+                      )}
+                    </div>
+                    {task.assigned_to && (
+                      <div class="item-meta">
+                        <span class="assigned">Assigned to: {task.assigned_to}</span>
+                      </div>
+                    )}
+                  </div>
+                  {task.status === 'completed' && (
+                    <div class="completion-badge">
+                      ✓ {formatDate(task.completed_at)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <!-- Stage Notes (Optional) -->
+        <div class="stage-notes">
+          <textarea 
+            placeholder="Add notes for this stage..."
+            value={stage.notes}
+            onchange="updateStageNotes({stage.id}, this.value)"
+          ></textarea>
+        </div>
+        
+      </div>
+    </div>
+  ))}
+</div>
+```
+
+**Styling for Stage Cards:**
+```css
+.stages-workflow {
+  margin-top: 24px;
+}
+
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: #f9fafb;
+}
+
+.filter-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.stage-card {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.stage-card.in_progress {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.stage-card.completed {
+  border-color: #10b981;
+  opacity: 0.8;
+}
+
+.stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.stage-header:hover {
+  background: #f9fafb;
+}
+
+.stage-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stage-status-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.stage-card.completed .stage-status-icon {
+  background: #d1fae5;
+  color: #10b981;
+}
+
+.stage-card.in_progress .stage-status-icon {
+  background: #dbeafe;
+  color: #3b82f6;
+}
+
+.stage-card.pending .stage-status-icon {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.stage-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.stage-description {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+.stage-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.progress-ring {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+
+.circular-progress {
+  transform: rotate(-90deg);
+}
+
+.circle-bg {
+  fill: none;
+  stroke: #e5e7eb;
+  stroke-width: 3;
+}
+
+.circle {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+.stage-card.completed .circle {
+  stroke: #10b981;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.stage-content {
+  padding: 0 24px 24px 24px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.checklist-section {
+  margin-top: 20px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.checklist-item:hover {
+  background: #f3f4f6;
+}
+
+.checklist-item.completed {
+  opacity: 0.7;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.item-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.item-content {
+  flex: 1;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.required-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.item-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+  display: flex;
+  gap: 12px;
+}
+
+.item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-upload, .btn-view {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-upload {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.btn-upload:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-view:hover {
+  background: #f3f4f6;
+}
+
+.completion-badge {
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.stage-notes textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 16px;
+  resize: vertical;
+}
+```
+
+---
+
+## STEP 3: Backend Logic for Data Structure
+
+**When loading the deal page, fetch organized data:**
+
+```javascript
+async function loadDealPipeline(dealId) {
+  // Get deal with program
+  const deal = await db.query(`
+    SELECT d.*, lp.name as program_name
+    FROM deals d
+    JOIN loan_programs lp ON d.program_id = lp.id
+    WHERE d.id = ?
+  `, [dealId]);
+  
+  // Get stages with progress
+  const stages = await db.query(`
+    SELECT 
+      ds.*,
+      COUNT(DISTINCT dt.id) as total_tasks,
+      COUNT(DISTINCT CASE WHEN dt.status = 'completed' THEN dt.id END) as completed_tasks,
+      COUNT(DISTINCT dd.id) as total_docs,
+      COUNT(DISTINCT CASE WHEN dd.status = 'completed' THEN dd.id END) as completed_docs
+    FROM deal_stages ds
+    LEFT JOIN deal_tasks dt ON dt.deal_stage_id = ds.id
+    LEFT JOIN deal_documents dd ON dd.stage_id = ds.id AND dd.deal_id = ds.deal_id
+    WHERE ds.deal_id = ?
+    GROUP BY ds.id
+    ORDER BY ds.stage_order ASC
+  `, [dealId]);
+  
+  // For each stage, get documents and tasks
+  for (let stage of stages) {
+    // Calculate progress
+    const totalItems = stage.total_tasks + stage.total_docs;
+    const completedItems = stage.completed_tasks + stage.completed_docs;
+    stage.progress_percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+    stage.completed_items = completedItems;
+    stage.total_items = totalItems;
+    
+    // Get documents for this stage
+    stage.documents = await db.query(`
+      SELECT * FROM deal_documents
+      WHERE deal_id = ? AND stage_id = ?
+      ORDER BY document_name ASC
+    `, [dealId, stage.id]);
+    
+    // Get tasks for this stage
+    stage.tasks = await db.query(`
+      SELECT * FROM deal_tasks
+      WHERE deal_stage_id = ?
+      ORDER BY task_order ASC
+    `, [stage.id]);
+    
+    // Auto-expand current stage
+    if (stage.status === 'in_progress') {
+      stage.isExpanded = true;
+    }
+  }
+  
+  // Calculate overall deal progress
+  const totalAllItems = stages.reduce((sum, s) => sum + s.total_items, 0);
+  const completedAllItems = stages.reduce((sum, s) => sum + s.completed_items, 0);
+  deal.overall_progress = totalAllItems > 0 ? Math.round((completedAllItems / totalAllItems) * 100) : 0;
+  
+  deal.stages = stages;
+  return deal;
+}
+```
+
+---
+
+## STEP 4: Auto-Update Progress Logic
+
+**When checkbox is clicked:**
+
+```javascript
+async function updateTaskStatus(taskId, isComplete) {
+  // Update task
+  await db.query(`
+    UPDATE deal_tasks 
+    SET status = ?, completed_at = ?
+    WHERE id = ?
+  `, [
+    isComplete ? 'completed' : 'pending',
+    isComplete ? new Date() : null,
+    taskId
+  ]);
+  
+  // Recalculate stage progress
+  await updateStageProgress(taskId);
+  
+  // Reload page to show updated progress
+  location.reload();
+}
+
+async function updateDocumentStatus(docId, isComplete) {
+  // Update document
+  await db.query(`
+    UPDATE deal_documents 
+    SET status = ?, uploaded_at = ?
+    WHERE id = ?
+  `, [
+    isComplete ? 'completed' : 'pending',
+    isComplete ? new Date() : null,
+    docId
+  ]);
+  
+  // Recalculate stage progress
+  await updateStageProgress(docId);
+  
+  // Reload page
+  location.reload();
+}
+
+async function updateStageProgress(itemId) {
+  // Get stage for this item
+  const stage = await db.query(`
+    SELECT ds.* 
+    FROM deal_stages ds
+    LEFT JOIN deal_tasks dt ON dt.deal_stage_id = ds.id
+    WHERE dt.id = ?
+    LIMIT 1
+  `, [itemId]);
+  
+  if (!stage) {
+    // Try documents
+    stage = await db.query(`
+      SELECT ds.*
+      FROM deal_stages ds
+      JOIN deal_documents dd ON dd.stage_id = ds.id
+      WHERE dd.id = ?
+      LIMIT 1
+    `, [itemId]);
+  }
+  
+  if (!stage) return;
+  
+  // Check if all REQUIRED items are complete
+  const requiredIncomplete = await db.query(`
+    SELECT COUNT(*) as count
+    FROM (
+      SELECT id FROM deal_tasks 
+      WHERE deal_stage_id = ? AND is_required = true AND status != 'completed'
+      UNION ALL
+      SELECT id FROM deal_documents
+      WHERE stage_id = ? AND is_required = true AND status != 'completed'
+    ) as items
+  `, [stage.id, stage.id]);
+  
+  // If all required complete, mark stage complete
+  if (requiredIncomplete.count === 0) {
+    await db.query(`
+      UPDATE deal_stages
+      SET status = 'completed'
+      WHERE id = ?
+    `, [stage.id]);
+    
+    // Activate next stage
+    const nextStage = await db.query(`
+      SELECT * FROM deal_stages
+      WHERE deal_id = ? AND stage_order > ?
+      ORDER BY stage_order ASC
+      LIMIT 1
+    `, [stage.deal_id, stage.stage_order]);
+    
+    if (nextStage) {
+      await db.query(`
+        UPDATE deal_stages
+        SET status = 'in_progress'
+        WHERE id = ?
+      `, [nextStage.id]);
+    }
+  }
+}
+```
+
+---
+
+## STEP 5: Smart Default Behavior
+
+**On page load:**
+- Auto-expand the current "in_progress" stage
+- Collapse all completed stages
+- Collapse all pending stages
+- Show overall progress percentage
+- Highlight next action items
+
+---
+
+## Testing Checklist:
+
+- [ ] Progress bar at top shows all stages with names
+- [ ] Current stage is highlighted in blue with pulse animation
+- [ ] Completed stages show green checkmarks
+- [ ] Each stage card shows progress ring with percentage
+- [ ] Stage cards expand/collapse on click
+- [ ] Documents and tasks are organized inside each stage
+- [ ] Checking off items updates progress in real-time
+- [ ] When all required items complete, stage turns green
+- [ ] Next stage automatically becomes active
+- [ ] Filter buttons work (Tasks Only, Documents Only, etc.)
+- [ ] Overall progress percentage updates correctly
+- [ ] Current stage is auto-expanded on load
+
+---
+
+**This comprehensive redesign creates an intuitive, visual workflow that clearly shows what needs to be done at each stage. Paste this into Replit!**

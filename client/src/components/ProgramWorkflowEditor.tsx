@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -185,6 +185,22 @@ export default function ProgramWorkflowEditor({
 }: ProgramWorkflowEditorProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("steps");
+  const [stepsSaving, setStepsSaving] = useState(false);
+  const stepsSaveRef = React.useRef<(() => Promise<void>) | null>(null);
+
+  const handleSaveWorkflow = async () => {
+    setStepsSaving(true);
+    try {
+      if (stepsSaveRef.current) {
+        await stepsSaveRef.current();
+      }
+      toast({ title: "Workflow saved", description: "All workflow configuration has been saved successfully." });
+    } catch {
+      toast({ title: "Failed to save workflow", variant: "destructive" });
+    } finally {
+      setStepsSaving(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -215,7 +231,7 @@ export default function ProgramWorkflowEditor({
           </TabsList>
 
           <TabsContent value="steps">
-            <StepsTab programId={programId} />
+            <StepsTab programId={programId} onSaveRef={stepsSaveRef} />
           </TabsContent>
           <TabsContent value="documents">
             <DocumentsTab programId={programId} />
@@ -224,12 +240,24 @@ export default function ProgramWorkflowEditor({
             <TasksTab programId={programId} />
           </TabsContent>
         </Tabs>
+
+        <div className="border-t pt-4 mt-2">
+          <Button
+            onClick={handleSaveWorkflow}
+            disabled={stepsSaving}
+            className="w-full"
+            data-testid="button-save-workflow"
+          >
+            {stepsSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
+            Save Workflow
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function StepsTab({ programId }: { programId: number }) {
+function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: React.MutableRefObject<(() => Promise<void>) | null> }) {
   const { toast } = useToast();
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customStepName, setCustomStepName] = useState("");
@@ -261,6 +289,25 @@ function StepsTab({ programId }: { programId: number }) {
   }
 
   const addedDefIds = new Set(configuredSteps.map((s) => s.stepDefinitionId));
+
+  const saveStepsAsync = useCallback(async () => {
+    await apiRequest("PUT", `/api/admin/programs/${programId}/workflow-steps`, {
+      steps: configuredSteps.map((s) => ({
+        stepDefinitionId: s.stepDefinitionId,
+        isRequired: s.isRequired,
+        estimatedDays: s.estimatedDays,
+      })),
+    });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId, "workflow-steps"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+  }, [programId, configuredSteps]);
+
+  useEffect(() => {
+    if (onSaveRef) {
+      onSaveRef.current = saveStepsAsync;
+    }
+  }, [onSaveRef, saveStepsAsync]);
 
   const saveStepsMutation = useMutation({
     mutationFn: async () => {
