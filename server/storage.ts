@@ -7,6 +7,7 @@ import {
   commercialSubmissions, commercialSubmissionDocuments,
   documentReviewResults,
   programReviewRules,
+  creditPolicies,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -22,6 +23,7 @@ import {
   type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
   type DocumentReviewResult, type InsertDocumentReviewResult,
   type ProgramReviewRule, type InsertProgramReviewRule,
+  type CreditPolicy, type InsertCreditPolicy,
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
@@ -1006,6 +1008,42 @@ export class DatabaseStorage implements IStorage {
 
   async deleteReviewRulesByProgramId(programId: number): Promise<void> {
     await db.delete(programReviewRules).where(eq(programReviewRules.programId, programId));
+  }
+
+  async getCreditPolicies(): Promise<CreditPolicy[]> {
+    return db.select().from(creditPolicies).orderBy(desc(creditPolicies.createdAt));
+  }
+
+  async getCreditPolicyById(id: number): Promise<CreditPolicy | undefined> {
+    const [policy] = await db.select().from(creditPolicies).where(eq(creditPolicies.id, id));
+    return policy;
+  }
+
+  async createCreditPolicy(data: InsertCreditPolicy): Promise<CreditPolicy> {
+    const [policy] = await db.insert(creditPolicies).values(data).returning();
+    return policy;
+  }
+
+  async updateCreditPolicy(id: number, data: Partial<InsertCreditPolicy>): Promise<CreditPolicy> {
+    const [updated] = await db.update(creditPolicies)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(creditPolicies.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCreditPolicy(id: number): Promise<void> {
+    await db.delete(creditPolicies).where(eq(creditPolicies.id, id));
+  }
+
+  async getReviewRulesByCreditPolicyId(creditPolicyId: number): Promise<ProgramReviewRule[]> {
+    return db.select().from(programReviewRules)
+      .where(eq(programReviewRules.creditPolicyId, creditPolicyId))
+      .orderBy(asc(programReviewRules.documentType), asc(programReviewRules.sortOrder));
+  }
+
+  async deleteReviewRulesByCreditPolicyId(creditPolicyId: number): Promise<void> {
+    await db.delete(programReviewRules).where(eq(programReviewRules.creditPolicyId, creditPolicyId));
   }
 }
 

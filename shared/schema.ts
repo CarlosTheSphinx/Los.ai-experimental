@@ -672,6 +672,7 @@ export const loanPrograms = pgTable("loan_programs", {
   sortOrder: integer("sort_order").default(0),
   
   reviewGuidelines: text("review_guidelines"),
+  creditPolicyId: integer("credit_policy_id"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1785,9 +1786,24 @@ export const insertDocumentReviewResultSchema = createInsertSchema(documentRevie
 export type DocumentReviewResult = typeof documentReviewResults.$inferSelect;
 export type InsertDocumentReviewResult = z.infer<typeof insertDocumentReviewResultSchema>;
 
+export const creditPolicies = pgTable("credit_policies", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  sourceFileName: varchar("source_file_name", { length: 500 }),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCreditPolicySchema = createInsertSchema(creditPolicies).omit({ id: true, createdAt: true, updatedAt: true });
+export type CreditPolicy = typeof creditPolicies.$inferSelect;
+export type InsertCreditPolicy = z.infer<typeof insertCreditPolicySchema>;
+
 export const programReviewRules = pgTable("program_review_rules", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }),
+  creditPolicyId: integer("credit_policy_id").references(() => creditPolicies.id, { onDelete: 'cascade' }),
   documentType: varchar("document_type", { length: 100 }).notNull(),
   ruleTitle: varchar("rule_title", { length: 500 }).notNull(),
   ruleDescription: text("rule_description"),

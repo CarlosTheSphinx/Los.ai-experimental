@@ -15,6 +15,7 @@ import {
   BookOpen,
   CalendarDays,
   Building2,
+  ShieldCheck,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -74,6 +75,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/deals", label: "Pipeline", icon: FileText, requiredPermission: "pipeline.view" },
   { href: "/admin/commercial-submissions", label: "Commercial", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
+  { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },

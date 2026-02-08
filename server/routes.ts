@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -6262,7 +6262,7 @@ export async function registerRoutes(
         isActive,
         documents,
         tasks,
-        reviewRules
+        creditPolicyId
       } = req.body;
       
       if (!name || !loanType) {
@@ -6284,6 +6284,7 @@ export async function registerRoutes(
           termOptions,
           eligiblePropertyTypes: eligiblePropertyTypes || [],
           isActive: isActive !== false,
+          creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
         }).returning();
         
         // Create inline document templates if provided
@@ -6320,24 +6321,6 @@ export async function registerRoutes(
           }
         }
         
-        if (reviewRules && Array.isArray(reviewRules) && reviewRules.length > 0) {
-          const validRules = reviewRules.filter((r: any) => r.ruleTitle?.trim());
-          if (validRules.length > 0) {
-            const ruleEntries = validRules.map((r: any, idx: number) => ({
-              programId: program.id,
-              documentType: r.documentType || 'General',
-              ruleTitle: r.ruleTitle.trim(),
-              ruleDescription: r.ruleDescription || null,
-              category: r.category || null,
-              isActive: true,
-              sortOrder: idx,
-            }));
-            await tx.insert(programReviewRules).values(ruleEntries);
-            const guidelinesText = validRules.map((r: any) => `[${r.documentType || 'General'}] ${r.ruleTitle}: ${r.ruleDescription || ''}`).join('\n');
-            await tx.update(loanPrograms).set({ reviewGuidelines: guidelinesText }).where(eq(loanPrograms.id, program.id));
-          }
-        }
-
         return program;
       });
       
@@ -6358,7 +6341,7 @@ export async function registerRoutes(
         minLtv, maxLtv, 
         minInterestRate, maxInterestRate,
         termOptions, eligiblePropertyTypes,
-        isActive, reviewGuidelines
+        isActive, reviewGuidelines, creditPolicyId
       } = req.body;
       
       const updateData: any = { updatedAt: new Date() };
@@ -6375,6 +6358,7 @@ export async function registerRoutes(
       if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
       if (isActive !== undefined) updateData.isActive = isActive;
       if (reviewGuidelines !== undefined) updateData.reviewGuidelines = reviewGuidelines;
+      if (creditPolicyId !== undefined) updateData.creditPolicyId = creditPolicyId ? parseInt(creditPolicyId) : null;
       
       const [program] = await db.update(loanPrograms)
         .set(updateData)
@@ -7049,6 +7033,238 @@ Respond ONLY with valid JSON in this format:
       }
 
       res.json({ rules: parsed.rules, programId });
+    } catch (error: any) {
+      console.error('Extract rules error:', error);
+      res.status(500).json({ error: 'Failed to extract rules from document' });
+    }
+  });
+
+  // ==================== CREDIT POLICIES ROUTES ====================
+
+  app.get('/api/admin/credit-policies', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const policies = await storage.getCreditPolicies();
+      const policiesWithRuleCount = await Promise.all(
+        policies.map(async (p) => {
+          const rules = await storage.getReviewRulesByCreditPolicyId(p.id);
+          return { ...p, ruleCount: rules.length };
+        })
+      );
+      res.json(policiesWithRuleCount);
+    } catch (error: any) {
+      console.error('Get credit policies error:', error);
+      res.status(500).json({ error: 'Failed to fetch credit policies' });
+    }
+  });
+
+  app.get('/api/admin/credit-policies/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const policy = await storage.getCreditPolicyById(id);
+      if (!policy) return res.status(404).json({ error: 'Credit policy not found' });
+      const rules = await storage.getReviewRulesByCreditPolicyId(id);
+      res.json({ ...policy, rules });
+    } catch (error: any) {
+      console.error('Get credit policy error:', error);
+      res.status(500).json({ error: 'Failed to fetch credit policy' });
+    }
+  });
+
+  app.post('/api/admin/credit-policies', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, description, sourceFileName, rules } = req.body;
+      if (!name) return res.status(400).json({ error: 'Name is required' });
+
+      const policy = await storage.createCreditPolicy({
+        name,
+        description: description || null,
+        sourceFileName: sourceFileName || null,
+      });
+
+      let createdRules: any[] = [];
+      if (Array.isArray(rules) && rules.length > 0) {
+        createdRules = await storage.createReviewRules(
+          rules.map((r: any, idx: number) => ({
+            creditPolicyId: policy.id,
+            programId: null,
+            documentType: r.documentType || 'General',
+            ruleTitle: r.ruleTitle,
+            ruleDescription: r.ruleDescription || null,
+            category: r.category || null,
+            isActive: r.isActive !== false,
+            sortOrder: idx,
+          }))
+        );
+      }
+
+      res.json({ ...policy, rules: createdRules });
+    } catch (error: any) {
+      console.error('Create credit policy error:', error);
+      res.status(500).json({ error: 'Failed to create credit policy' });
+    }
+  });
+
+  app.put('/api/admin/credit-policies/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, description, rules } = req.body;
+
+      const policy = await storage.updateCreditPolicy(id, {
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+      });
+
+      if (Array.isArray(rules)) {
+        await storage.deleteReviewRulesByCreditPolicyId(id);
+        if (rules.length > 0) {
+          await storage.createReviewRules(
+            rules.map((r: any, idx: number) => ({
+              creditPolicyId: id,
+              programId: null,
+              documentType: r.documentType || 'General',
+              ruleTitle: r.ruleTitle,
+              ruleDescription: r.ruleDescription || null,
+              category: r.category || null,
+              isActive: r.isActive !== false,
+              sortOrder: idx,
+            }))
+          );
+        }
+      }
+
+      const updatedRules = await storage.getReviewRulesByCreditPolicyId(id);
+      res.json({ ...policy, rules: updatedRules });
+    } catch (error: any) {
+      console.error('Update credit policy error:', error);
+      res.status(500).json({ error: 'Failed to update credit policy' });
+    }
+  });
+
+  app.delete('/api/admin/credit-policies/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.update(loanPrograms).set({ creditPolicyId: null }).where(eq(loanPrograms.creditPolicyId, id));
+      await storage.deleteCreditPolicy(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete credit policy error:', error);
+      res.status(500).json({ error: 'Failed to delete credit policy' });
+    }
+  });
+
+  app.post('/api/admin/credit-policies/extract-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { fileContent, fileName } = req.body;
+      if (!fileContent) {
+        return res.status(400).json({ error: 'fileContent is required (base64 encoded)' });
+      }
+
+      const buffer = Buffer.from(fileContent, 'base64');
+      let textContent = '';
+
+      if (fileName?.toLowerCase().endsWith('.pdf')) {
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+        const textParts: string[] = [];
+        for (let i = 1; i <= doc.numPages; i++) {
+          const page = await doc.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item: any) => item.str).join(' ');
+          textParts.push(pageText);
+        }
+        textContent = textParts.join('\n\n');
+      } else if (fileName?.toLowerCase().match(/\.xlsx?$/)) {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheets: string[] = [];
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          sheets.push(`--- Sheet: ${sheetName} ---\n${XLSX.utils.sheet_to_csv(sheet)}`);
+        }
+        textContent = sheets.join('\n\n');
+      } else {
+        textContent = buffer.toString('utf-8');
+      }
+
+      if (!textContent || textContent.trim().length < 20) {
+        return res.status(400).json({ error: 'Could not extract meaningful text from this file.' });
+      }
+
+      const truncatedText = textContent.slice(0, 50000);
+
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert at analyzing loan credit policy documents and extracting specific, actionable review rules from them.
+
+Given a credit policy document, extract individual rules that can be used to evaluate loan documents. Each rule should be specific and testable.
+
+Group the rules by the document type they apply to. Common document types include:
+- Credit Report
+- Bank Statements
+- Tax Returns
+- Appraisal
+- Title Report
+- Insurance
+- Entity Documents
+- Income Verification
+- Property Inspection
+- Environmental Report
+- Purchase Contract
+- General / All Documents
+
+For each rule, provide:
+- documentType: which document type this rule applies to
+- ruleTitle: a short, clear title
+- ruleDescription: detailed description of what to check
+- category: a category like "Credit", "Income", "Property", "Compliance", "LTV", "DSCR", "Eligibility", etc.
+
+Respond ONLY with valid JSON in this format:
+{
+  "rules": [
+    {
+      "documentType": "Credit Report",
+      "ruleTitle": "Minimum credit score",
+      "ruleDescription": "Borrower must have a minimum FICO score of 680. If below 680, the loan is ineligible.",
+      "category": "Credit"
+    }
+  ]
+}`
+          },
+          {
+            role: 'user',
+            content: `Extract all review rules from the following credit policy document:\n\n${truncatedText}`
+          }
+        ],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 8192,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return res.status(500).json({ error: 'AI returned empty response' });
+      }
+
+      let parsed: { rules: any[] };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.status(500).json({ error: 'AI returned invalid response format' });
+      }
+
+      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+        return res.status(500).json({ error: 'AI did not return rules in expected format' });
+      }
+
+      res.json({ rules: parsed.rules });
     } catch (error: any) {
       console.error('Extract rules error:', error);
       res.status(500).json({ error: 'Failed to extract rules from document' });
