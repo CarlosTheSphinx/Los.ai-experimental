@@ -467,23 +467,16 @@ export default function AdminDealDetail() {
   });
 
   const updateDealMutation = useMutation({
-    mutationFn: async (formData: typeof editForm & { _isLoanTypeChange?: boolean }) => {
+    mutationFn: async (formData: typeof editForm) => {
       return apiRequest("PUT", `/api/admin/deals/${dealId}`, formData);
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
-      if (variables._isLoanTypeChange) {
-        toast({
-          title: "Loan type updated",
-          description: "Document checklist has been updated to match the new loan type.",
-        });
-      } else {
-        setEditDialogOpen(false);
-        toast({
-          title: "Deal updated",
-          description: "The loan details have been saved.",
-        });
-      }
+      setEditDialogOpen(false);
+      toast({
+        title: "Deal updated",
+        description: "The loan details have been saved.",
+      });
     },
     onError: () => {
       toast({
@@ -513,39 +506,6 @@ export default function AdminDealDetail() {
     },
   });
 
-  const populateDocumentsMutation = useMutation({
-    mutationFn: async ({ loanType, clearExisting }: { loanType: string; clearExisting?: boolean }) => {
-      return apiRequest("POST", `/api/admin/deals/${dealId}/populate-documents`, { loanType, clearExisting });
-    },
-    onSuccess: (data: any) => {
-      // Documents are part of the main deal response, so invalidate the deal query
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
-      toast({
-        title: "Documents populated",
-        description: data.message || `${data.documentsCreated} documents added from templates.`,
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to populate documents",
-        description: error?.message || "Could not load document templates for this loan type.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const [autoPopulated, setAutoPopulated] = useState(false);
-  useEffect(() => {
-    if (data && !autoPopulated) {
-      const deal = data.deal;
-      const docs = data.documents || [];
-      const loanType = deal?.loanData?.loanType;
-      if (deal && loanType && loanType !== 'unknown' && docs.length === 0) {
-        setAutoPopulated(true);
-        populateDocumentsMutation.mutate({ loanType, clearExisting: false });
-      }
-    }
-  }, [data, autoPopulated]);
 
   const openEditDialog = () => {
     if (deal) {
@@ -882,21 +842,47 @@ export default function AdminDealDetail() {
             <Progress value={progressPercentage} className="h-3" />
             
             {projectStages.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {projectStages.map((stage, i) => (
-                  <div 
-                    key={stage.id} 
-                    className="flex items-center gap-1"
-                  >
-                    {getStageIcon(stage.status)}
-                    <span className={`text-xs ${stage.status === 'in_progress' ? 'font-medium text-blue-600' : stage.status === 'completed' ? 'text-green-600' : 'text-muted-foreground'}`}>
-                      {stage.stageName}
-                    </span>
-                    {i < projectStages.length - 1 && (
-                      <div className={`h-px w-4 ${stage.status === 'completed' ? 'bg-green-300' : 'bg-muted'}`} />
-                    )}
-                  </div>
-                ))}
+              <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                {projectStages.map((stage, i) => {
+                  const isCompleted = stage.status === 'completed';
+                  const isActive = stage.status === 'in_progress';
+                  const completedTasks = (stage.tasks || []).filter(t => t.status === 'completed').length;
+                  const totalTasks = (stage.tasks || []).length;
+                  return (
+                    <div key={stage.id} className="flex items-center min-w-0">
+                      <div className="flex flex-col items-center gap-1 px-2 min-w-[80px]">
+                        <div
+                          className={cn(
+                            "h-8 w-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 flex-shrink-0",
+                            isCompleted && "bg-green-100 border-green-500 text-green-700 dark:bg-green-900 dark:border-green-400 dark:text-green-300",
+                            isActive && "bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-300 animate-pulse",
+                            !isCompleted && !isActive && "bg-muted border-muted-foreground/30 text-muted-foreground"
+                          )}
+                          data-testid={`stage-indicator-${stage.id}`}
+                        >
+                          {isCompleted ? <Check className="h-4 w-4" /> : i + 1}
+                        </div>
+                        <span className={cn(
+                          "text-[10px] text-center leading-tight max-w-[80px]",
+                          isCompleted && "text-green-600 dark:text-green-400 font-medium",
+                          isActive && "text-blue-600 dark:text-blue-400 font-semibold",
+                          !isCompleted && !isActive && "text-muted-foreground"
+                        )}>
+                          {stage.stageName}
+                        </span>
+                        {totalTasks > 0 && (
+                          <span className="text-[9px] text-muted-foreground">{completedTasks}/{totalTasks}</span>
+                        )}
+                      </div>
+                      {i < projectStages.length - 1 && (
+                        <div className={cn(
+                          "h-0.5 w-6 flex-shrink-0 mt-[-16px]",
+                          isCompleted ? "bg-green-400 dark:bg-green-500" : "bg-muted"
+                        )} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">
@@ -904,46 +890,17 @@ export default function AdminDealDetail() {
               </div>
             )}
 
-            <div className="border-t pt-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Type (Document List)</span>
+            {deal.programName && (
+              <div className="border-t pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Program</span>
+                  </div>
+                  <span className="text-sm font-medium" data-testid="text-program-name">{deal.programName}</span>
                 </div>
-                <Select
-                  value={deal.loanData?.loanType || ""}
-                  onValueChange={(value) => {
-                    updateDealMutation.mutate({
-                      customerFirstName: deal.customerFirstName || "",
-                      customerLastName: deal.customerLastName || "",
-                      customerEmail: deal.customerEmail || "",
-                      customerPhone: deal.customerPhone || "",
-                      propertyAddress: deal.propertyAddress || "",
-                      loanAmount: deal.loanData?.loanAmount?.toString() || "",
-                      propertyValue: deal.loanData?.propertyValue?.toString() || "",
-                      interestRate: deal.interestRate || "",
-                      loanType: value,
-                      loanPurpose: deal.loanData?.loanPurpose || "",
-                      propertyType: deal.loanData?.propertyType || "",
-                      _isLoanTypeChange: true,
-                    } as any);
-                  }}
-                  disabled={updateDealMutation.isPending}
-                >
-                  <SelectTrigger className="w-[160px] h-8 text-xs" data-testid="select-loan-type-inline">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rtl">RTL</SelectItem>
-                    <SelectItem value="dscr">DSCR</SelectItem>
-                    <SelectItem value="fix-and-flip">Fix & Flip</SelectItem>
-                    <SelectItem value="bridge">Bridge</SelectItem>
-                    <SelectItem value="ground-up">Ground Up</SelectItem>
-                    <SelectItem value="rental">Rental</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1290,39 +1247,18 @@ export default function AdminDealDetail() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <CardTitle>Documents</CardTitle>
-                <div className="flex items-center gap-2">
-                  {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown' && (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => populateDocumentsMutation.mutate({ 
-                        loanType: deal.loanData?.loanType || 'rtl',
-                        clearExisting: false 
-                      })}
-                      disabled={populateDocumentsMutation.isPending}
-                      data-testid="button-populate-documents-empty"
-                    >
-                      {populateDocumentsMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <FileText className="h-4 w-4 mr-1" />
-                      )}
-                      Load Templates
-                    </Button>
-                  )}
-                  <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document-empty">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Document
-                  </Button>
-                </div>
+                <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document-empty">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Document
+                </Button>
               </CardHeader>
               <CardContent className="py-8 text-center">
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium">No documents yet</h3>
                 <p className="text-muted-foreground">
-                  {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown'
-                    ? 'Click "Load Templates" to populate documents from the loan program, or "Add Document" to add individually.'
-                    : 'Set a loan type first to load document templates, or click "Add Document" to add individually.'}
+                  {deal.programName
+                    ? 'Documents will be auto-populated when the deal is created from a program template.'
+                    : 'Click "Add Document" to add documents to this deal.'}
                 </p>
               </CardContent>
             </Card>
@@ -1336,34 +1272,13 @@ export default function AdminDealDetail() {
                       Required Documents
                     </CardTitle>
                     <CardDescription>
-                      {getLoanTypeLabel(deal.loanData?.loanType)} Loan Document Checklist
+                      {deal.programName ? `${deal.programName} Document Checklist` : 'Document Checklist'}
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => populateDocumentsMutation.mutate({ 
-                          loanType: deal.loanData?.loanType || 'rtl',
-                          clearExisting: false 
-                        })}
-                        disabled={populateDocumentsMutation.isPending}
-                        data-testid="button-populate-documents"
-                      >
-                        {populateDocumentsMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <FileText className="h-4 w-4 mr-1" />
-                        )}
-                        Load Templates
-                      </Button>
-                    )}
-                    <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Document
-                    </Button>
-                  </div>
+                  <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Document
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <div className="mb-6">
@@ -1667,19 +1582,10 @@ export default function AdminDealDetail() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="loanType">Loan Type (Document List)</Label>
-                <Select
-                  value={editForm.loanType}
-                  onValueChange={(value) => setEditForm({ ...editForm, loanType: value })}
-                >
-                  <SelectTrigger data-testid="select-loan-type">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rtl">RTL</SelectItem>
-                    <SelectItem value="dscr">DSCR</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Loan Program</Label>
+                <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm" data-testid="text-edit-program">
+                  {deal?.programName || getLoanTypeLabel(editForm.loanType) || 'Not set'}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="loanPurpose">Loan Purpose</Label>

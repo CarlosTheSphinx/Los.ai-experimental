@@ -4080,6 +4080,64 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Update project task (user milestone task) - allows admin to toggle task completion
+  app.patch('/api/admin/projects/:projectId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const taskId = parseInt(req.params.taskId);
+      const { status } = req.body;
+      
+      const task = await storage.getTaskById(taskId);
+      if (!task || task.projectId !== projectId) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      
+      const updates: Record<string, unknown> = {};
+      if (status) updates.status = status;
+      if (status === 'completed') {
+        updates.completedAt = new Date();
+        updates.completedBy = req.user!.fullName || req.user!.email;
+      }
+      if (status === 'pending') {
+        updates.completedAt = null;
+        updates.completedBy = null;
+      }
+      
+      const updatedTask = await storage.updateTask(taskId, updates);
+      
+      await storage.createProjectActivity({
+        projectId,
+        userId: req.user!.id,
+        activityType: 'task_updated',
+        activityDescription: `Task "${task.taskTitle}" marked as ${status}`,
+        visibleToBorrower: task.visibleToBorrower ?? false,
+      });
+      
+      await updateProjectProgress(projectId, req.user!.id);
+      
+      if (status === 'completed') {
+        const { triggerWebhook } = await import('./utils/webhooks');
+        await triggerWebhook(projectId, 'task_completed', {
+          task_id: task.id,
+          task_title: task.taskTitle,
+          task_type: task.taskType,
+        });
+        
+        await logLoanUpdate(
+          projectId,
+          'task_completed',
+          `Task completed: ${task.taskTitle}`,
+          req.user!.id
+        );
+      }
+      
+      res.json({ task: updatedTask });
+    } catch (error) {
+      console.error('Admin update project task error:', error);
+      res.status(500).json({ error: 'Failed to update task' });
+    }
+  });
+
   // Admin - Update admin task
   app.patch('/api/admin/tasks/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
@@ -5273,36 +5331,29 @@ export async function registerRoutes(
   app.post('/api/admin/deals/:dealId/populate-documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { loanType, clearExisting } = req.body;
+      const { programId: bodyProgramId, clearExisting } = req.body;
       
-      // Validate deal exists
-      const [existingDeal] = await db.select()
-        .from(savedQuotes)
-        .where(eq(savedQuotes.id, dealId))
+      // Look up the project to find its programId
+      const [project] = await db.select({ programId: projects.programId })
+        .from(projects)
+        .where(eq(projects.id, dealId))
         .limit(1);
       
-      if (!existingDeal) {
-        return res.status(404).json({ error: 'Deal not found' });
+      const resolvedProgramId = bodyProgramId || project?.programId;
+      
+      if (!resolvedProgramId) {
+        return res.status(400).json({ error: 'No loan program associated with this deal. Please set a program first.' });
       }
       
-      if (!loanType) {
-        return res.status(400).json({ error: 'Loan type is required' });
-      }
-      
-      // Find loan program matching the loan type
       const [loanProgram] = await db.select()
         .from(loanPrograms)
-        .where(and(
-          eq(loanPrograms.loanType, loanType),
-          eq(loanPrograms.isActive, true)
-        ))
+        .where(eq(loanPrograms.id, resolvedProgramId))
         .limit(1);
       
       if (!loanProgram) {
-        return res.status(404).json({ error: `No active loan program found for type: ${loanType}` });
+        return res.status(404).json({ error: 'Loan program not found' });
       }
       
-      // Get document templates for this loan program
       const templates = await db.select()
         .from(programDocumentTemplates)
         .where(eq(programDocumentTemplates.programId, loanProgram.id))
@@ -5315,7 +5366,6 @@ export async function registerRoutes(
         });
       }
       
-      // Optionally clear existing documents that are still in pending status
       if (clearExisting) {
         await db.delete(dealDocuments)
           .where(and(
@@ -5324,10 +5374,8 @@ export async function registerRoutes(
           ));
       }
       
-      // Create deal documents from templates
       const createdDocs = [];
       for (const template of templates) {
-        // Check if document with same name already exists
         const [existing] = await db.select()
           .from(dealDocuments)
           .where(and(

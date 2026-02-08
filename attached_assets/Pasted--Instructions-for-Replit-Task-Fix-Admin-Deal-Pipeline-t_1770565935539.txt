@@ -1,0 +1,392 @@
+**Instructions for Replit:**
+
+---
+
+## Task: Fix Admin Deal Pipeline to Use Program-Based Auto-Population
+
+### Current Problem (See Screenshots):
+1. Deal detail page shows "LOAN TYPE (DOCUMENT LIST)" dropdown - should reference the program instead
+2. "Load Templates" button shows error: "No active loan program found for type: 'bridge'"
+3. Documents and tasks are not auto-populating from the program template
+4. No visual representation of program stages at the top of the page
+
+### Desired State:
+1. Deal detail page displays the selected program (read-only, already chosen during quote)
+2. Loan progress bar at top shows ALL stages from the program template
+3. Tasks and documents auto-populate based on program stages
+4. Documents/tasks are organized by stage and shown in correct order
+5. "Load Templates" button becomes unnecessary (auto-populated on deal creation)
+
+---
+
+## Implementation Steps:
+
+### STEP 1: Update Deal Detail Page Header
+**Location:** Admin deal detail page (where you see loan amount, interest rate, etc.)
+
+**Replace:** 
+```html
+<!-- Current -->
+<select name="loan_type">
+  <option>Bridge</option>
+  <option>DSCR</option>
+  <!-- etc -->
+</select>
+```
+
+**With:**
+```html
+<!-- New - Display program as read-only field -->
+<div class="program-display">
+  <label>Loan Program</label>
+  <div class="program-name">
+    {deal.program.name}
+    <!-- e.g., "Bridge Loan" -->
+  </div>
+</div>
+```
+
+**Requirements:**
+- Fetch the program name from the deal's `program_id`
+- Display as non-editable text (program is set during quote creation, cannot change later)
+- Remove the dropdown entirely
+
+---
+
+### STEP 2: Create Loan Progress Bar with Program Stages
+**Location:** Top of deal detail page, above the tabs (Tasks, Activity, Documents, Digests)
+
+**Add this component:**
+```html
+<!-- Loan Progress Bar -->
+<div class="loan-progress-bar">
+  {deal.stages.map((stage, index) => (
+    <div 
+      class={`stage ${stage.status}`}
+      data-stage-order={stage.stage_order}
+    >
+      <div class="stage-number">{index + 1}</div>
+      <div class="stage-name">{stage.stage_name}</div>
+      <div class="stage-status-indicator"></div>
+    </div>
+  ))}
+</div>
+```
+
+**Styling Requirements:**
+- Horizontal timeline layout
+- Show all stages in order (stage_order ASC)
+- Visual indicators:
+  - `status: 'pending'` - gray/inactive
+  - `status: 'in_progress'` - blue/active
+  - `status: 'completed'` - green with checkmark
+- Connect stages with lines/arrows
+- Example stages: "Application → Initial Review → Underwriting → Closing"
+
+**Data Source:**
+```javascript
+// Fetch stages for this deal
+const stages = await db.query(`
+  SELECT * FROM deal_stages 
+  WHERE deal_id = ? 
+  ORDER BY stage_order ASC
+`, [dealId]);
+```
+
+---
+
+### STEP 3: Update Documents Tab to Show Stage-Organized Documents
+**Location:** Documents tab (where error currently shows)
+
+**Replace the entire "Load Templates" button logic with:**
+
+```javascript
+// On page load, fetch and display documents organized by stage
+async function loadProgramDocuments(dealId) {
+  // Fetch documents that were auto-created during deal creation
+  const documents = await db.query(`
+    SELECT 
+      dd.*,
+      ps.stage_name,
+      ps.stage_order
+    FROM deal_documents dd
+    LEFT JOIN program_stages ps ON dd.stage_id = ps.id
+    WHERE dd.deal_id = ?
+    ORDER BY ps.stage_order ASC, dd.document_name ASC
+  `, [dealId]);
+  
+  if (documents.length === 0) {
+    return `
+      <div class="empty-state">
+        <p>No documents configured for this loan program.</p>
+        <p>Contact admin to configure documents for this program.</p>
+      </div>
+    `;
+  }
+  
+  // Group documents by stage
+  const documentsByStage = {};
+  documents.forEach(doc => {
+    const stageName = doc.stage_name || 'General Documents';
+    if (!documentsByStage[stageName]) {
+      documentsByStage[stageName] = [];
+    }
+    documentsByStage[stageName].push(doc);
+  });
+  
+  // Render grouped by stage
+  return `
+    <div class="documents-by-stage">
+      ${Object.entries(documentsByStage).map(([stageName, docs]) => `
+        <div class="stage-section">
+          <h3 class="stage-header">${stageName}</h3>
+          <div class="documents-list">
+            ${docs.map(doc => `
+              <div class="document-item ${doc.is_required ? 'required' : ''}">
+                <input 
+                  type="checkbox" 
+                  ${doc.status === 'completed' ? 'checked' : ''}
+                  onchange="updateDocumentStatus(${doc.id}, this.checked)"
+                />
+                <span class="document-name">${doc.document_name}</span>
+                ${doc.is_required ? '<span class="required-badge">Required</span>' : ''}
+                <button onclick="uploadDocument(${doc.id})">Upload</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+```
+
+**Remove:**
+- "Load Templates" button
+- All logic that tries to find documents by loan type string ('bridge', 'dscr', etc.)
+
+**Important:**
+- Documents should already exist from Step 4 in previous instructions (auto-created during deal creation)
+- This is just displaying them, organized by stage
+- Each document shows: checkbox (for completion status), name, required badge, upload button
+
+---
+
+### STEP 4: Update Tasks Tab to Show Stage-Organized Tasks
+**Location:** Tasks tab
+
+**Similar structure to documents:**
+
+```javascript
+// On page load, fetch and display tasks organized by stage
+async function loadProgramTasks(dealId) {
+  // Fetch tasks that were auto-created during deal creation
+  const tasks = await db.query(`
+    SELECT 
+      dt.*,
+      ds.stage_name,
+      ds.stage_order
+    FROM deal_tasks dt
+    JOIN deal_stages ds ON dt.deal_stage_id = ds.id
+    WHERE ds.deal_id = ?
+    ORDER BY ds.stage_order ASC, dt.task_order ASC
+  `, [dealId]);
+  
+  if (tasks.length === 0) {
+    return `
+      <div class="empty-state">
+        <p>No tasks configured for this loan program.</p>
+      </div>
+    `;
+  }
+  
+  // Group tasks by stage
+  const tasksByStage = {};
+  tasks.forEach(task => {
+    const stageName = task.stage_name;
+    if (!tasksByStage[stageName]) {
+      tasksByStage[stageName] = [];
+    }
+    tasksByStage[stageName].push(task);
+  });
+  
+  // Render grouped by stage
+  return `
+    <div class="tasks-by-stage">
+      ${Object.entries(tasksByStage).map(([stageName, tasks]) => `
+        <div class="stage-section">
+          <h3 class="stage-header">${stageName}</h3>
+          <div class="tasks-list">
+            ${tasks.map(task => `
+              <div class="task-item ${task.is_required ? 'required' : ''}">
+                <input 
+                  type="checkbox" 
+                  ${task.status === 'completed' ? 'checked' : ''}
+                  onchange="updateTaskStatus(${task.id}, this.checked)"
+                />
+                <span class="task-name">${task.task_name}</span>
+                ${task.is_required ? '<span class="required-badge">Required</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+```
+
+---
+
+### STEP 5: Update Stage Progress When Tasks/Documents Complete
+**Add this logic:**
+
+```javascript
+// When a task is marked complete
+async function updateTaskStatus(taskId, isComplete) {
+  await db.query(`
+    UPDATE deal_tasks 
+    SET status = ? 
+    WHERE id = ?
+  `, [isComplete ? 'completed' : 'pending', taskId]);
+  
+  // Check if all tasks in this stage are complete
+  await checkStageCompletion(taskId);
+}
+
+// When a document is marked complete
+async function updateDocumentStatus(docId, isComplete) {
+  await db.query(`
+    UPDATE deal_documents 
+    SET status = ? 
+    WHERE id = ?
+  `, [isComplete ? 'completed' : 'pending', docId]);
+  
+  // Check if all documents in this stage are complete
+  await checkStageCompletion(docId);
+}
+
+// Check if stage should be marked complete
+async function checkStageCompletion(taskOrDocId) {
+  // Get the stage for this task/document
+  const stage = await db.query(`
+    SELECT ds.* 
+    FROM deal_stages ds
+    JOIN deal_tasks dt ON dt.deal_stage_id = ds.id
+    WHERE dt.id = ?
+  `, [taskOrDocId]);
+  
+  if (!stage) return;
+  
+  // Check if all required tasks are complete
+  const incompleteTasks = await db.query(`
+    SELECT COUNT(*) as count
+    FROM deal_tasks
+    WHERE deal_stage_id = ?
+    AND is_required = true
+    AND status != 'completed'
+  `, [stage.id]);
+  
+  // Check if all required documents are complete
+  const incompleteDocs = await db.query(`
+    SELECT COUNT(*) as count
+    FROM deal_documents
+    WHERE stage_id = ?
+    AND is_required = true
+    AND status != 'completed'
+  `, [stage.id]);
+  
+  // If all required items are complete, mark stage as complete
+  if (incompleteTasks.count === 0 && incompleteDocs.count === 0) {
+    await db.query(`
+      UPDATE deal_stages
+      SET status = 'completed'
+      WHERE id = ?
+    `, [stage.id]);
+    
+    // Move to next stage
+    const nextStage = await db.query(`
+      SELECT * FROM deal_stages
+      WHERE deal_id = ?
+      AND stage_order > ?
+      ORDER BY stage_order ASC
+      LIMIT 1
+    `, [stage.deal_id, stage.stage_order]);
+    
+    if (nextStage) {
+      await db.query(`
+        UPDATE deal_stages
+        SET status = 'in_progress'
+        WHERE id = ?
+      `, [nextStage.id]);
+    }
+  }
+}
+```
+
+---
+
+## Visual Design Reference:
+
+**Progress Bar Example:**
+```
+[1. Application ✓] ─→ [2. Initial Review (current)] ─→ [3. Underwriting] ─→ [4. Closing]
+   (green)              (blue, pulsing)                   (gray)              (gray)
+```
+
+**Documents Tab Structure:**
+```
+Documents
+─────────────────────────────────────
+┌─ Initial Review ─────────────────┐
+│ ☐ Property Appraisal [Required]  │
+│ ☐ Title Report [Required]        │
+│ ☐ Insurance Certificate           │
+└───────────────────────────────────┘
+
+┌─ Underwriting ───────────────────┐
+│ ☐ Financial Statements [Required]│
+│ ☐ Tax Returns [Required]         │
+└───────────────────────────────────┘
+```
+
+---
+
+## Fix the Current Error:
+
+**The error "No active loan program found for type: 'bridge'" happens because:**
+- Your code is trying to find a program by matching the string "bridge" 
+- It should be using the `program_id` foreign key instead
+
+**Find and replace this logic:**
+```javascript
+// OLD (causing error)
+const program = await db.query(`
+  SELECT * FROM loan_programs 
+  WHERE name = ? OR LOWER(name) = ?
+`, [loanType, loanType.toLowerCase()]);
+
+// NEW (correct way)
+const program = await db.query(`
+  SELECT * FROM loan_programs 
+  WHERE id = ?
+`, [deal.program_id]);
+```
+
+---
+
+## Testing Checklist:
+
+- [ ] Deal detail page shows "Loan Program: Bridge Loan" (not dropdown)
+- [ ] Progress bar appears at top showing all program stages
+- [ ] Documents tab shows documents grouped by stage (no "Load Templates" button)
+- [ ] Tasks tab shows tasks grouped by stage
+- [ ] Documents and tasks are in correct order (by stage_order, then by task/doc order)
+- [ ] Checking off a required task updates stage progress
+- [ ] When all required items in a stage complete, stage turns green
+- [ ] Next stage automatically becomes active (blue)
+- [ ] No more 404 errors about "No active loan program found"
+
+---
+
+**This prompt is ready to paste into Replit. It will fix the document loading error and create the stage-based organization you need.**
