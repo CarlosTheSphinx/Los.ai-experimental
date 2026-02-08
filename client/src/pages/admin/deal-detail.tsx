@@ -62,6 +62,7 @@ import {
   ListChecks,
   Paperclip,
   BarChart3,
+  RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -641,6 +642,32 @@ export default function AdminDealDetail() {
     },
   });
 
+  const { data: loanProgramsData } = useQuery<any[]>({
+    queryKey: ['/api/admin/programs'],
+  });
+
+  const rebuildPipelineMutation = useMutation({
+    mutationFn: async (programId?: number) => {
+      return apiRequest('POST', `/api/admin/projects/${linkedProjectId}/rebuild-pipeline`, programId ? { programId } : {});
+    },
+    onSuccess: async (response) => {
+      const result = await response.json();
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      toast({ 
+        title: "Pipeline synced",
+        description: `${result.stagesCreated} stages, ${result.tasksCreated} tasks, ${result.documentsCreated} documents created from ${result.programName || 'program'}.`,
+      });
+      setSyncDialogOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to sync pipeline", variant: "destructive" });
+    },
+  });
+
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
+
   const copyBorrowerPortalLink = async () => {
     if (!linkedProjectId) {
       toast({ title: "No project linked", description: "Create a loan project first to generate a borrower portal link.", variant: "destructive" });
@@ -903,6 +930,10 @@ export default function AdminDealDetail() {
               <DropdownMenuItem>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 View Borrower Portal
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSyncDialogOpen(true)} data-testid="button-sync-pipeline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync Pipeline from Program
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1569,6 +1600,62 @@ export default function AdminDealDetail() {
           <DigestConfigPanel dealId={deal.id} />
         </div>
       )}
+
+      <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sync Pipeline from Program</DialogTitle>
+            <DialogDescription>
+              This will replace all current stages, tasks, and documents with the selected program's workflow configuration. Any existing progress will be reset.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Loan Program</Label>
+              <Select
+                value={selectedProgramId || (deal?.programId ? String(deal.programId) : "")}
+                onValueChange={setSelectedProgramId}
+              >
+                <SelectTrigger data-testid="select-sync-program">
+                  <SelectValue placeholder="Select a program" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(loanProgramsData || []).map((prog: any) => (
+                    <SelectItem key={prog.id} value={String(prog.id)}>
+                      {prog.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {deal?.programName && !selectedProgramId && (
+              <p className="text-sm text-muted-foreground">
+                Currently linked to: <span className="font-medium">{deal.programName}</span>
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncDialogOpen(false)} data-testid="button-cancel-sync">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const pid = selectedProgramId ? parseInt(selectedProgramId) : (deal?.programId || undefined);
+                if (pid) {
+                  rebuildPipelineMutation.mutate(pid);
+                } else {
+                  toast({ title: "Please select a program", variant: "destructive" });
+                }
+              }}
+              disabled={rebuildPipelineMutation.isPending}
+              data-testid="button-confirm-sync"
+            >
+              {rebuildPipelineMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Sync Pipeline
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

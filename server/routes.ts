@@ -4051,6 +4051,50 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Rebuild project pipeline from linked program
+  app.post('/api/admin/projects/:id/rebuild-pipeline', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProjectByIdInternal(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      const programId = req.body.programId ? parseInt(req.body.programId) : project.programId;
+      if (!programId) {
+        return res.status(400).json({ error: 'No program linked to this project. Please select a program first.' });
+      }
+
+      if (programId !== project.programId) {
+        await db.update(projects)
+          .set({ programId })
+          .where(eq(projects.id, projectId));
+      }
+
+      const { rebuildProjectPipelineFromProgram } = await import('./services/projectPipeline');
+      const result = await rebuildProjectPipelineFromProgram(projectId, programId);
+
+      await storage.createProjectActivity({
+        projectId,
+        userId: req.user!.id,
+        activityType: 'pipeline_rebuilt',
+        activityDescription: `Pipeline rebuilt from program "${result.programName || 'Unknown'}": ${result.stagesCreated} stages, ${result.tasksCreated} tasks, ${result.documentsCreated} documents`,
+        visibleToBorrower: false,
+      });
+
+      res.json({ 
+        success: true, 
+        stagesCreated: result.stagesCreated,
+        tasksCreated: result.tasksCreated,
+        documentsCreated: result.documentsCreated,
+        programName: result.programName,
+      });
+    } catch (error) {
+      console.error('Rebuild pipeline error:', error);
+      res.status(500).json({ error: 'Failed to rebuild pipeline' });
+    }
+  });
+
   // Admin - Create admin task for project
   app.post('/api/admin/projects/:id/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

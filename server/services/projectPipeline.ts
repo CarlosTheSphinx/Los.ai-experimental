@@ -133,6 +133,17 @@ export async function buildProjectPipelineFromProgram(
   };
 }
 
+export async function rebuildProjectPipelineFromProgram(
+  projectId: number,
+  programId: number
+): Promise<PipelineResult> {
+  await db.delete(projectTasks).where(eq(projectTasks.projectId, projectId));
+  await db.delete(projectStages).where(eq(projectStages.projectId, projectId));
+  await db.delete(dealDocuments).where(eq(dealDocuments.dealId, projectId));
+
+  return buildProjectPipelineFromProgram(projectId, programId, projectId);
+}
+
 async function buildProjectPipelineFromLegacyTemplate(projectId: number): Promise<PipelineResult> {
   const { LOAN_CLOSING_STAGES } = await import('../config/loanStages');
 
