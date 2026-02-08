@@ -213,6 +213,12 @@ export default function AdminPrograms() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
+  const [newProgramRules, setNewProgramRules] = useState<any[]>([]);
+  const [isExtractingNewRules, setIsExtractingNewRules] = useState(false);
+  const [newCollapsedSections, setNewCollapsedSections] = useState<Record<string, boolean>>({});
+  const newFileInputRef = useRef<HTMLInputElement>(null);
+  const [isNewDragOver, setIsNewDragOver] = useState(false);
+
   useEffect(() => {
     if (selectedProgram?.id && showEditProgram) {
       fetch(`/api/admin/programs/${selectedProgram.id}/review-rules`, { credentials: 'include' })
@@ -320,6 +326,74 @@ export default function AdminPrograms() {
     return acc;
   }, {});
 
+  const handleNewFileUpload = useCallback(async (file: File) => {
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Please upload a PDF or Excel file.", variant: "destructive" });
+      return;
+    }
+    setIsExtractingNewRules(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiRequest("POST", `/api/admin/programs/0/extract-rules`, {
+        fileContent: base64,
+        fileName: file.name,
+      });
+      const data = await res.json();
+      if (data.rules) {
+        setNewProgramRules(prev => [...prev, ...data.rules]);
+        toast({ title: "Rules extracted", description: `${data.rules.length} rules extracted from ${file.name}` });
+      }
+    } catch (err: any) {
+      toast({ title: "Extraction failed", description: err.message || "Could not extract rules from file.", variant: "destructive" });
+    } finally {
+      setIsExtractingNewRules(false);
+    }
+  }, [toast]);
+
+  const handleNewDropZoneDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsNewDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleNewFileUpload(file);
+  }, [handleNewFileUpload]);
+
+  const updateNewRule = useCallback((index: number, field: string, value: string) => {
+    setNewProgramRules(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  }, []);
+
+  const deleteNewRule = useCallback((index: number) => {
+    setNewProgramRules(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const addNewRuleToGroup = useCallback((documentType: string) => {
+    setNewProgramRules(prev => [...prev, { documentType, ruleTitle: "", ruleDescription: "", category: "general" }]);
+  }, []);
+
+  const toggleNewSection = useCallback((docType: string) => {
+    setNewCollapsedSections(prev => ({ ...prev, [docType]: !prev[docType] }));
+  }, []);
+
+  const groupedNewRules = newProgramRules.reduce<Record<string, { rules: any[], indices: number[] }>>((acc, rule, idx) => {
+    const key = rule.documentType || "Uncategorized";
+    if (!acc[key]) acc[key] = { rules: [], indices: [] };
+    acc[key].rules.push(rule);
+    acc[key].indices.push(idx);
+    return acc;
+  }, {});
+
   // Queries
   const { data: programs, isLoading: loadingPrograms } = useQuery<LoanProgram[]>({
     queryKey: ["/api/admin/programs"],
@@ -345,12 +419,15 @@ export default function AdminPrograms() {
         .filter(task => task.taskName.trim())
         .map(({ id, ...task }) => task);
       
+      const validRules = newProgramRules.filter(r => r.ruleTitle?.trim());
+      
       return apiRequest("/api/admin/programs", {
         method: "POST",
         body: JSON.stringify({
           ...data,
           documents: validDocuments,
           tasks: validTasks,
+          reviewRules: validRules.length > 0 ? validRules : undefined,
         }),
       });
     },
@@ -360,6 +437,7 @@ export default function AdminPrograms() {
       resetProgramForm();
       setInlineDocuments([]);
       setInlineTasks([]);
+      setNewProgramRules([]);
       toast({ title: "Program created successfully" });
     },
     onError: () => {
@@ -626,7 +704,7 @@ export default function AdminPrograms() {
                   Add Program
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Loan Program</DialogTitle>
                   <DialogDescription>
@@ -965,6 +1043,130 @@ export default function AdminPrograms() {
                       </div>
                     )}
                   </div>
+
+                  <div className="space-y-3 border-t pt-4">
+                    <Label className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      Credit Policy & Rules
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Upload a PDF or Excel file containing your credit policy. AI will extract rules automatically, or manage rules manually below.
+                    </p>
+
+                    <input
+                      ref={newFileInputRef}
+                      type="file"
+                      accept=".pdf,.xlsx,.xls"
+                      className="hidden"
+                      data-testid="input-new-rules-file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleNewFileUpload(file);
+                        e.target.value = "";
+                      }}
+                    />
+
+                    {isExtractingNewRules ? (
+                      <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-8 gap-3">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground" data-testid="text-extracting-new-rules">
+                            AI is extracting rules from your document...
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div
+                        className={`border-2 border-dashed rounded-md p-6 text-center cursor-pointer transition-colors ${
+                          isNewDragOver ? "border-emerald-500 bg-emerald-500/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                        }`}
+                        data-testid="dropzone-new-rules-upload"
+                        onClick={() => newFileInputRef.current?.click()}
+                        onDrop={handleNewDropZoneDrop}
+                        onDragOver={(e) => { e.preventDefault(); setIsNewDragOver(true); }}
+                        onDragLeave={(e) => { e.preventDefault(); setIsNewDragOver(false); }}
+                      >
+                        <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm font-medium">Drop file here or click to upload</p>
+                        <p className="text-xs text-muted-foreground mt-1">PDF, Excel (.xlsx, .xls)</p>
+                      </div>
+                    )}
+
+                    {newProgramRules.length > 0 && (
+                      <div className="space-y-3 mt-2">
+                        {Object.entries(groupedNewRules).map(([docType, { rules, indices }]) => {
+                          const isCollapsed = newCollapsedSections[docType];
+                          return (
+                            <Card key={docType}>
+                              <div
+                                className="flex items-center justify-between gap-2 p-3 cursor-pointer"
+                                data-testid={`new-section-header-${docType}`}
+                                onClick={() => toggleNewSection(docType)}
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium">{docType}</span>
+                                  <Badge variant="secondary" className="text-xs">{rules.length}</Badge>
+                                </div>
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </div>
+                              {!isCollapsed && (
+                                <CardContent className="pt-0 space-y-3">
+                                  {rules.map((rule: any, rIdx: number) => {
+                                    const globalIdx = indices[rIdx];
+                                    return (
+                                      <div key={globalIdx} className="border rounded-md p-3 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            value={rule.ruleTitle}
+                                            onChange={(e) => updateNewRule(globalIdx, "ruleTitle", e.target.value)}
+                                            placeholder="Rule title"
+                                            className="text-sm flex-1"
+                                            data-testid={`input-new-rule-title-${globalIdx}`}
+                                          />
+                                          {rule.category && (
+                                            <Badge variant="outline" className="text-xs shrink-0">{rule.category}</Badge>
+                                          )}
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => deleteNewRule(globalIdx)}
+                                            data-testid={`button-delete-new-rule-${globalIdx}`}
+                                          >
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                          </Button>
+                                        </div>
+                                        <Textarea
+                                          value={rule.ruleDescription}
+                                          onChange={(e) => updateNewRule(globalIdx, "ruleDescription", e.target.value)}
+                                          placeholder="Rule description"
+                                          className="text-sm min-h-[60px]"
+                                          data-testid={`input-new-rule-description-${globalIdx}`}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => addNewRuleToGroup(docType)}
+                                    data-testid={`button-add-new-rule-${docType}`}
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add Rule
+                                  </Button>
+                                </CardContent>
+                              )}
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
@@ -972,6 +1174,9 @@ export default function AdminPrograms() {
                     onClick={() => {
                       setShowAddProgram(false);
                       resetProgramForm();
+                      setNewProgramRules([]);
+                      setNewCollapsedSections({});
+                      setIsNewDragOver(false);
                     }}
                   >
                     Cancel
