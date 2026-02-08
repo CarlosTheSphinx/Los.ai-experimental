@@ -58,7 +58,8 @@ export async function buildProjectPipelineFromProgram(
   let tasksCreated = 0;
   let documentsCreated = 0;
 
-  const stageIdMap = new Map<number, number>();
+  const stageIdByOrder = new Map<number, number>();
+  const stageIdByStepId = new Map<number, number>();
 
   for (const step of workflowSteps) {
     const stage = await storage.createProjectStage({
@@ -72,7 +73,8 @@ export async function buildProjectPipelineFromProgram(
       visibleToBorrower: true,
       startedAt: step.stepOrder === 1 ? new Date() : null,
     });
-    stageIdMap.set(step.stepOrder, stage.id);
+    stageIdByOrder.set(step.stepOrder, stage.id);
+    stageIdByStepId.set(step.stepId, stage.id);
     stagesCreated++;
 
     const tasks = await db.select()
@@ -115,6 +117,7 @@ export async function buildProjectPipelineFromProgram(
       isRequired: doc.isRequired ?? true,
       sortOrder: doc.sortOrder || index,
       status: 'pending' as const,
+      stageId: doc.stepId ? (stageIdByStepId.get(doc.stepId) || stageIdByOrder.get(doc.stepId) || null) : null,
     }));
 
     await db.insert(dealDocuments).values(newDocuments);

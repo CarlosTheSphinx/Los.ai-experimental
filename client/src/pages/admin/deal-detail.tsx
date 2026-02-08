@@ -110,6 +110,7 @@ interface Deal {
 interface DealDocument {
   id: number;
   dealId: number;
+  stageId: number | null;
   documentName: string;
   documentCategory: string | null;
   documentDescription: string | null;
@@ -157,6 +158,7 @@ interface DealDetailResponse {
 
 interface ProjectTask {
   id: number;
+  stageId: number | null;
   taskTitle: string;
   taskType: string;
   priority: string;
@@ -484,17 +486,19 @@ export default function AdminDealDetail() {
     });
   };
 
-  const getStageDocuments = (stageId: number) => {
-    return documents.filter(d => {
-      return true;
-    });
+  const getStageDocuments = (stage: ProjectStage): DealDocument[] => {
+    return documents.filter(d => d.stageId === stage.id);
   };
 
-  const computeStageProgress = (stage: ProjectStage, stageIndex: number) => {
+  const getUnassignedDocuments = (): DealDocument[] => {
+    return documents.filter(d => !d.stageId);
+  };
+
+  const computeStageProgress = (stage: ProjectStage) => {
     const tasks = stage.tasks || [];
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const totalTasks = tasks.length;
-    const stageDocs = stageIndex === 0 ? documents : [];
+    const stageDocs = getStageDocuments(stage);
     const completedDocs = stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
     const totalItems = totalTasks + stageDocs.length;
     const completedItems = completedTasks + completedDocs;
@@ -505,16 +509,15 @@ export default function AdminDealDetail() {
   const computeOverallProgress = () => {
     let totalItems = 0;
     let completedItems = 0;
-    projectStages.forEach((stage, i) => {
-      const progress = computeStageProgress(stage, i);
+    projectStages.forEach((stage) => {
+      const progress = computeStageProgress(stage);
       totalItems += progress.totalItems;
       completedItems += progress.completedItems;
     });
-    if (projectStages.length === 0) {
-      const docCompleted = documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
-      totalItems += documents.length;
-      completedItems += docCompleted;
-    }
+    const unassigned = getUnassignedDocuments();
+    const unassignedCompleted = unassigned.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+    totalItems += unassigned.length;
+    completedItems += unassignedCompleted;
     return {
       totalItems,
       completedItems,
@@ -522,8 +525,8 @@ export default function AdminDealDetail() {
     };
   };
 
-  const deriveStageStatus = (stage: ProjectStage, stageIndex: number): string => {
-    const progress = computeStageProgress(stage, stageIndex);
+  const deriveStageStatus = (stage: ProjectStage): string => {
+    const progress = computeStageProgress(stage);
     if (progress.totalItems > 0 && progress.completedItems >= progress.totalItems) {
       return 'completed';
     }
@@ -918,10 +921,10 @@ export default function AdminDealDetail() {
               </div>
               <div className="flex items-start justify-between relative">
                 {projectStages.map((stage, i) => {
-                  const derivedStatus = deriveStageStatus(stage, i);
+                  const derivedStatus = deriveStageStatus(stage);
                   const isCompleted = derivedStatus === 'completed';
                   const isActive = derivedStatus === 'in_progress';
-                  const progress = computeStageProgress(stage, i);
+                  const progress = computeStageProgress(stage);
                   return (
                     <div key={stage.id} className="flex flex-col items-center relative flex-1" data-testid={`progress-stage-${stage.id}`}>
                       <div
@@ -1216,11 +1219,12 @@ export default function AdminDealDetail() {
           {projectStages.length > 0 ? (
             projectStages.map((stage, stageIndex) => {
               const isExpanded = expandedStages.has(stage.id);
-              const derivedStatus = deriveStageStatus(stage, stageIndex);
+              const derivedStatus = deriveStageStatus(stage);
               const isCompleted = derivedStatus === 'completed';
               const isActive = derivedStatus === 'in_progress';
-              const progress = computeStageProgress(stage, stageIndex);
+              const progress = computeStageProgress(stage);
               const stageTasks = stage.tasks || [];
+              const stageDocs = getStageDocuments(stage);
               const showTasks = activeFilter === 'all' || activeFilter === 'tasks';
               const showDocs = activeFilter === 'all' || activeFilter === 'documents';
 
@@ -1286,14 +1290,14 @@ export default function AdminDealDetail() {
 
                   {isExpanded && (
                     <div className="border-t px-5 pb-5">
-                      {showDocs && documents.length > 0 && stageIndex === 0 && (
+                      {showDocs && stageDocs.length > 0 && (
                         <div className="mt-5">
                           <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
                             <FileText className="h-4 w-4 text-muted-foreground" />
-                            Required Documents ({documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{documents.length})
+                            Required Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{stageDocs.length})
                           </h4>
                           <div className="space-y-2">
-                            {documents.map((doc) => (
+                            {stageDocs.map((doc) => (
                               <div
                                 key={doc.id}
                                 className={cn(
@@ -1443,7 +1447,7 @@ export default function AdminDealDetail() {
                         </div>
                       )}
 
-                      {showTasks && stageTasks.length === 0 && showDocs && documents.length === 0 && (
+                      {showTasks && stageTasks.length === 0 && showDocs && stageDocs.length === 0 && (
                         <div className="py-6 text-center text-sm text-muted-foreground">
                           No items in this stage yet.
                         </div>
@@ -1461,6 +1465,66 @@ export default function AdminDealDetail() {
                 <p className="text-muted-foreground">
                   Create a loan project from this deal to track stages and tasks.
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Show unassigned documents that aren't linked to any stage */}
+          {(activeFilter === 'all' || activeFilter === 'documents') && getUnassignedDocuments().length > 0 && (
+            <Card className="mt-4" data-testid="card-unassigned-docs">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  General Documents ({getUnassignedDocuments().filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{getUnassignedDocuments().length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {getUnassignedDocuments().map((doc) => (
+                    <div
+                      key={doc.id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 p-3 rounded-lg border",
+                        (doc.status === 'approved' || doc.status === 'uploaded') && "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 opacity-80",
+                        doc.status === 'rejected' && "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                      )}
+                      data-testid={`doc-row-${doc.id}`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <Checkbox
+                          checked={doc.status === 'approved' || doc.status === 'uploaded'}
+                          onCheckedChange={(checked) => {
+                            updateDocumentStatus.mutate({
+                              docId: doc.id,
+                              status: checked ? 'uploaded' : 'pending'
+                            });
+                          }}
+                          data-testid={`checkbox-doc-${doc.id}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className={cn(
+                            "text-sm font-medium truncate",
+                            (doc.status === 'approved' || doc.status === 'uploaded') && "line-through text-muted-foreground"
+                          )}>
+                            {doc.documentName}
+                          </p>
+                          {doc.documentDescription && (
+                            <p className="text-xs text-muted-foreground truncate">{doc.documentDescription}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge variant={
+                          doc.status === 'approved' ? 'default' :
+                          doc.status === 'uploaded' ? 'secondary' :
+                          doc.status === 'rejected' ? 'destructive' : 'outline'
+                        }>
+                          {doc.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}

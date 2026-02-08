@@ -4029,6 +4029,12 @@ export async function registerRoutes(
       const adminTasks = await storage.getAdminTasksByProjectId(projectId);
       const adminActivityList = await storage.getAdminActivityByProjectId(projectId);
       
+      // Nest tasks under their stages
+      const stagesWithTasks = stages.map(stage => ({
+        ...stage,
+        tasks: tasks.filter(t => t.stageId === stage.id),
+      }));
+      
       // Get owner info
       let owner = null;
       if (project.userId) {
@@ -4038,7 +4044,7 @@ export async function registerRoutes(
         }
       }
       
-      res.json({ project, stages, tasks, activity, adminTasks, adminActivity: adminActivityList, owner });
+      res.json({ project, stages: stagesWithTasks, tasks, activity, adminTasks, adminActivity: adminActivityList, owner });
     } catch (error) {
       console.error('Admin project detail error:', error);
       res.status(500).json({ error: 'Failed to load project' });
