@@ -528,14 +528,14 @@ export default function AdminDeals() {
       });
       setPartnerInputMode("select");
       toast({
-        title: "Deal created",
-        description: "The deal has been added successfully.",
+        title: "Project created",
+        description: "The project has been added to the pipeline.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to create deal. Please try again.",
+        description: "Failed to create project. Please try again.",
         variant: "destructive",
       });
     },
@@ -580,16 +580,16 @@ export default function AdminDeals() {
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-deal">
+            <Button data-testid="button-add-project">
               <Plus className="h-4 w-4 mr-2" />
-              Add Deal
+              Add Project
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Deal</DialogTitle>
+              <DialogTitle>Add New Project</DialogTitle>
               <DialogDescription>
-                Manually add a new deal to the pipeline
+                Manually add a new project to the pipeline
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -686,45 +686,23 @@ export default function AdminDeals() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="propertyType">Property Type</Label>
-                  <Select
-                    value={newDeal.propertyType}
-                    onValueChange={(value) => setNewDeal({ ...newDeal, propertyType: value })}
-                  >
-                    <SelectTrigger data-testid="select-property-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="single-family">Single Family</SelectItem>
-                      <SelectItem value="multi-family">Multi-Family</SelectItem>
-                      <SelectItem value="condo">Condo</SelectItem>
-                      <SelectItem value="townhouse">Townhouse</SelectItem>
-                      <SelectItem value="commercial">Commercial</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="stage">Initial Stage</Label>
-                  <Select
-                    value={newDeal.stage}
-                    onValueChange={(value) => setNewDeal({ ...newDeal, stage: value })}
-                  >
-                    <SelectTrigger data-testid="select-stage">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="initial-review">Initial Review</SelectItem>
-                      <SelectItem value="term-sheet">Term Sheet</SelectItem>
-                      <SelectItem value="onboarding">Onboarding</SelectItem>
-                      <SelectItem value="processing">Processing</SelectItem>
-                      <SelectItem value="underwriting">Underwriting</SelectItem>
-                      <SelectItem value="closing">Closing</SelectItem>
-                      <SelectItem value="closed">Closed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="propertyType">Property Type</Label>
+                <Select
+                  value={newDeal.propertyType}
+                  onValueChange={(value) => setNewDeal({ ...newDeal, propertyType: value })}
+                >
+                  <SelectTrigger data-testid="select-property-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single-family">Single Family</SelectItem>
+                    <SelectItem value="multi-family">Multi-Family</SelectItem>
+                    <SelectItem value="condo">Condo</SelectItem>
+                    <SelectItem value="townhouse">Townhouse</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -781,9 +759,9 @@ export default function AdminDeals() {
               <Button
                 onClick={handleCreateDeal}
                 disabled={createDealMutation.isPending}
-                data-testid="button-create-deal"
+                data-testid="button-create-project"
               >
-                {createDealMutation.isPending ? "Creating..." : "Create Deal"}
+                {createDealMutation.isPending ? "Creating..." : "Create Project"}
               </Button>
             </DialogFooter>
           </DialogContent>
