@@ -1,12 +1,10 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -59,6 +57,11 @@ import {
   MapPin,
   Trash2,
   UserPlus,
+  ChevronDown,
+  ChevronRight,
+  ListChecks,
+  Paperclip,
+  BarChart3,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -453,6 +456,80 @@ export default function AdminDealDetail() {
   const projectActivity = projectDetailData?.activity || [];
   const project = projectDetailData?.project;
 
+  const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests'>('all');
+  const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
+  const [stageExpandInitialized, setStageExpandInitialized] = useState(false);
+
+  useEffect(() => {
+    if (projectStages.length > 0 && !stageExpandInitialized) {
+      const activeStage = projectStages.find(s => s.status === 'in_progress');
+      if (activeStage) {
+        setExpandedStages(new Set([activeStage.id]));
+      } else if (projectStages.length > 0) {
+        setExpandedStages(new Set([projectStages[0].id]));
+      }
+      setStageExpandInitialized(true);
+    }
+  }, [projectStages, stageExpandInitialized]);
+
+  const toggleStageExpanded = (stageId: number) => {
+    setExpandedStages(prev => {
+      const next = new Set(prev);
+      if (next.has(stageId)) {
+        next.delete(stageId);
+      } else {
+        next.add(stageId);
+      }
+      return next;
+    });
+  };
+
+  const getStageDocuments = (stageId: number) => {
+    return documents.filter(d => {
+      return true;
+    });
+  };
+
+  const computeStageProgress = (stage: ProjectStage, stageIndex: number) => {
+    const tasks = stage.tasks || [];
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const totalTasks = tasks.length;
+    const stageDocs = stageIndex === 0 ? documents : [];
+    const completedDocs = stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+    const totalItems = totalTasks + stageDocs.length;
+    const completedItems = completedTasks + completedDocs;
+    const percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+    return { completedItems, totalItems, percent };
+  };
+
+  const computeOverallProgress = () => {
+    let totalItems = 0;
+    let completedItems = 0;
+    projectStages.forEach((stage, i) => {
+      const progress = computeStageProgress(stage, i);
+      totalItems += progress.totalItems;
+      completedItems += progress.completedItems;
+    });
+    if (projectStages.length === 0) {
+      const docCompleted = documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+      totalItems += documents.length;
+      completedItems += docCompleted;
+    }
+    return {
+      totalItems,
+      completedItems,
+      percent: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
+    };
+  };
+
+  const deriveStageStatus = (stage: ProjectStage, stageIndex: number): string => {
+    const progress = computeStageProgress(stage, stageIndex);
+    if (progress.totalItems > 0 && progress.completedItems >= progress.totalItems) {
+      return 'completed';
+    }
+    return stage.status;
+  };
+
   const updateDocumentStatus = useMutation({
     mutationFn: async ({ docId, status }: { docId: number; status: string }) => {
       return apiRequest("PATCH", `/api/admin/deals/${dealId}/documents/${docId}`, { status });
@@ -829,80 +906,138 @@ export default function AdminDealDetail() {
         </div>
       </div>
 
-      {/* Two-column top section: Loan Progress + Borrower */}
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Loan Progress</CardTitle>
-              <span className="text-2xl font-bold">{progressPercentage}%</span>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Progress value={progressPercentage} className="h-3" />
-            
-            {projectStages.length > 0 ? (
-              <div className="flex items-start gap-0 overflow-x-auto pb-2">
+      {/* Enhanced Progress Bar */}
+      {projectStages.length > 0 && (() => {
+        const overall = computeOverallProgress();
+        return (
+          <Card data-testid="card-loan-progress">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-base font-semibold">Loan Progress</h3>
+                <span className="text-2xl font-bold" data-testid="text-overall-progress">{overall.percent}% Complete</span>
+              </div>
+              <div className="flex items-start justify-between relative">
                 {projectStages.map((stage, i) => {
-                  const isCompleted = stage.status === 'completed';
-                  const isActive = stage.status === 'in_progress';
-                  const completedTasks = (stage.tasks || []).filter(t => t.status === 'completed').length;
-                  const totalTasks = (stage.tasks || []).length;
+                  const derivedStatus = deriveStageStatus(stage, i);
+                  const isCompleted = derivedStatus === 'completed';
+                  const isActive = derivedStatus === 'in_progress';
+                  const progress = computeStageProgress(stage, i);
                   return (
-                    <div key={stage.id} className="flex items-center min-w-0">
-                      <div className="flex flex-col items-center gap-1 px-2 min-w-[80px]">
-                        <div
-                          className={cn(
-                            "h-8 w-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 flex-shrink-0",
-                            isCompleted && "bg-green-100 border-green-500 text-green-700 dark:bg-green-900 dark:border-green-400 dark:text-green-300",
-                            isActive && "bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-300 animate-pulse",
-                            !isCompleted && !isActive && "bg-muted border-muted-foreground/30 text-muted-foreground"
-                          )}
-                          data-testid={`stage-indicator-${stage.id}`}
-                        >
-                          {isCompleted ? <Check className="h-4 w-4" /> : i + 1}
-                        </div>
-                        <span className={cn(
-                          "text-[10px] text-center leading-tight max-w-[80px]",
-                          isCompleted && "text-green-600 dark:text-green-400 font-medium",
+                    <div key={stage.id} className="flex flex-col items-center relative flex-1" data-testid={`progress-stage-${stage.id}`}>
+                      <div
+                        className={cn(
+                          "h-12 w-12 rounded-full flex items-center justify-center text-sm font-semibold border-[3px] flex-shrink-0 transition-all z-10",
+                          isCompleted && "bg-emerald-500 border-emerald-500 text-white dark:bg-emerald-600 dark:border-emerald-600",
+                          isActive && "bg-blue-500 border-blue-500 text-white dark:bg-blue-600 dark:border-blue-600 animate-pulse",
+                          !isCompleted && !isActive && "bg-muted border-border text-muted-foreground"
+                        )}
+                        data-testid={`stage-indicator-${stage.id}`}
+                      >
+                        {isCompleted ? <Check className="h-5 w-5" /> : i + 1}
+                      </div>
+                      <div className="mt-3 text-center max-w-[120px]">
+                        <div className={cn(
+                          "text-[13px] font-medium leading-tight",
+                          isCompleted && "text-emerald-600 dark:text-emerald-400",
                           isActive && "text-blue-600 dark:text-blue-400 font-semibold",
                           !isCompleted && !isActive && "text-muted-foreground"
                         )}>
                           {stage.stageName}
-                        </span>
-                        {totalTasks > 0 && (
-                          <span className="text-[9px] text-muted-foreground">{completedTasks}/{totalTasks}</span>
+                        </div>
+                        {progress.totalItems > 0 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {progress.completedItems}/{progress.totalItems}
+                          </div>
                         )}
                       </div>
                       {i < projectStages.length - 1 && (
-                        <div className={cn(
-                          "h-0.5 w-6 flex-shrink-0 mt-[-16px]",
-                          isCompleted ? "bg-green-400 dark:bg-green-500" : "bg-muted"
-                        )} />
+                        <div
+                          className={cn(
+                            "absolute top-6 left-[calc(50%+24px)] h-[3px] z-0",
+                            isCompleted ? "bg-emerald-400 dark:bg-emerald-500" : "bg-border"
+                          )}
+                          style={{ width: 'calc(100% - 48px)' }}
+                        />
                       )}
                     </div>
                   );
                 })}
               </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                No loan project linked. Create a project to track stages.
-              </div>
-            )}
-
-            {deal.programName && (
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Program</span>
+              {deal.programName && (
+                <div className="border-t mt-5 pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Program</span>
+                    </div>
+                    <span className="text-sm font-medium" data-testid="text-program-name">{deal.programName}</span>
                   </div>
-                  <span className="text-sm font-medium" data-testid="text-program-name">{deal.programName}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* People + Metrics Row */}
+      <div className="grid md:grid-cols-3 gap-6">
+        <div className="md:col-span-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Loan Amount</div>
+                  <div className="font-semibold" data-testid="text-loan-amount">{formatCurrency(deal.loanData?.loanAmount || 0)}</div>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold text-sm">%</span>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Interest Rate</div>
+                  <div className="font-semibold" data-testid="text-interest-rate">{deal.interestRate || '\u2014'}</div>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                  <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Term</div>
+                  <div className="font-semibold" data-testid="text-loan-term">{deal.loanData?.loanTerm || '12 months'}</div>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Property</div>
+                  <div className="font-semibold truncate" data-testid="text-property-type">{deal.loanData?.propertyType || '\u2014'}</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+          {deal.propertyAddress && (
+            <Card className="p-4 mt-4">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Property Address:</span>
+                <span className="text-sm text-muted-foreground" data-testid="text-property-address">{deal.propertyAddress}</span>
+              </div>
+            </Card>
+          )}
+        </div>
 
         <Card>
           <CardHeader className="pb-3">
@@ -930,16 +1065,10 @@ export default function AdminDealDetail() {
                 </div>
               )}
             </div>
-
             <div className="border-t pt-3">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Processor</div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAddProcessor(true)}
-                  data-testid="button-add-processor"
-                >
+                <Button variant="ghost" size="sm" onClick={() => setShowAddProcessor(true)} data-testid="button-add-processor">
                   <UserPlus className="h-3.5 w-3.5 mr-1" />
                   {dealProcessorsData && dealProcessorsData.length > 0 ? "Edit" : "Assign"}
                 </Button>
@@ -962,7 +1091,6 @@ export default function AdminDealDetail() {
                 <p className="text-xs text-muted-foreground italic ml-9">Not assigned</p>
               )}
             </div>
-
             <div className="border-t pt-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Broker</div>
               {deal.userName ? (
@@ -983,73 +1111,12 @@ export default function AdminDealDetail() {
         </Card>
       </div>
 
-      {/* 4-column metrics row */}
-      <div className="grid md:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <DollarSign className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Loan Amount</div>
-              <div className="font-semibold" data-testid="text-loan-amount">{formatCurrency(deal.loanData?.loanAmount || 0)}</div>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <span className="text-blue-600 font-semibold text-sm">%</span>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Interest Rate</div>
-              <div className="font-semibold" data-testid="text-interest-rate">{deal.interestRate || '—'}</div>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Term</div>
-              <div className="font-semibold" data-testid="text-loan-term">{deal.loanData?.loanTerm || '12 months'}</div>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-orange-600" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Property</div>
-              <div className="font-semibold truncate" data-testid="text-property-type">{deal.loanData?.propertyType || '—'}</div>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Property Address card */}
-      {deal.propertyAddress && (
-        <Card className="p-4">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Property Address:</span>
-            <span className="text-sm text-muted-foreground" data-testid="text-property-address">{deal.propertyAddress}</span>
-          </div>
-        </Card>
-      )}
-
       {/* Manage Processor Dialog */}
       <Dialog open={showAddProcessor} onOpenChange={setShowAddProcessor}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Manage Processor</DialogTitle>
-            <DialogDescription>
-              Assign or change the processor on this deal.
-            </DialogDescription>
+            <DialogDescription>Assign or change the processor on this deal.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {dealProcessorsData && dealProcessorsData.length > 0 && (
@@ -1067,13 +1134,7 @@ export default function AdminDealDetail() {
                           <div className="text-xs text-muted-foreground">{proc.user?.email}</div>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive"
-                        onClick={() => removeProcessorMutation.mutate(proc.id)}
-                        data-testid={`button-remove-processor-${proc.id}`}
-                      >
+                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeProcessorMutation.mutate(proc.id)} data-testid={`button-remove-processor-${proc.id}`}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1091,9 +1152,7 @@ export default function AdminDealDetail() {
                   {(availableProcessors || [])
                     .filter((p: any) => !dealProcessorsData?.some((dp: any) => dp.userId === p.id))
                     .map((p: any) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.fullName || p.email}
-                      </SelectItem>
+                      <SelectItem key={p.id} value={String(p.id)}>{p.fullName || p.email}</SelectItem>
                     ))}
                 </SelectContent>
               </Select>
@@ -1101,11 +1160,7 @@ export default function AdminDealDetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddProcessor(false)}>Cancel</Button>
-            <Button
-              onClick={() => selectedProcessorId && addProcessorMutation.mutate(parseInt(selectedProcessorId))}
-              disabled={!selectedProcessorId || addProcessorMutation.isPending}
-              data-testid="button-confirm-add-processor"
-            >
+            <Button onClick={() => selectedProcessorId && addProcessorMutation.mutate(parseInt(selectedProcessorId))} disabled={!selectedProcessorId || addProcessorMutation.isPending} data-testid="button-confirm-add-processor">
               {addProcessorMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Add Processor
             </Button>
@@ -1113,91 +1168,291 @@ export default function AdminDealDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Tabs matching Loans page: Tasks, Activity, Documents, Digests */}
-      <Tabs defaultValue="tasks" className="space-y-4" data-testid="tabs-deal-detail">
-        <TabsList data-testid="tabs-list">
-          <TabsTrigger value="tasks" className="flex items-center gap-2" data-testid="tab-tasks">
-            <CheckSquare className="h-4 w-4" />
-            Tasks
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="flex items-center gap-2" data-testid="tab-activity">
-            <Activity className="h-4 w-4" />
-            Activity
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="flex items-center gap-2" data-testid="tab-documents">
-            <FileText className="h-4 w-4" />
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="digests" className="flex items-center gap-2" data-testid="tab-digests">
-            <CalendarDays className="h-4 w-4" />
-            Digests
-          </TabsTrigger>
-        </TabsList>
+      {/* Filter Bar */}
+      <Card data-testid="card-filter-bar">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {([
+                { key: 'all' as const, label: 'All Items', icon: ListChecks },
+                { key: 'tasks' as const, label: 'Tasks', icon: CheckSquare },
+                { key: 'documents' as const, label: 'Documents', icon: FileText },
+                { key: 'activity' as const, label: 'Activity', icon: Activity },
+                { key: 'digests' as const, label: 'Digests', icon: BarChart3 },
+              ]).map(filter => (
+                <Button
+                  key={filter.key}
+                  variant={activeFilter === filter.key ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveFilter(filter.key)}
+                  data-testid={`filter-${filter.key}`}
+                >
+                  <filter.icon className="h-4 w-4 mr-1.5" />
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              {(() => {
+                const overall = computeOverallProgress();
+                return (
+                  <span className="text-sm text-muted-foreground" data-testid="text-quick-stats">
+                    <strong>{overall.completedItems}</strong> / {overall.totalItems} completed
+                  </span>
+                );
+              })()}
+              <Button size="sm" variant="outline" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Doc
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Tasks Tab - Stage cards with tasks matching Loans page */}
-        <TabsContent value="tasks" className="space-y-4">
+      {/* Stage-based workflow content */}
+      {(activeFilter === 'all' || activeFilter === 'tasks' || activeFilter === 'documents') && (
+        <div className="space-y-4" data-testid="stages-workflow">
           {projectStages.length > 0 ? (
-            projectStages.map((stage) => (
-              <Card key={stage.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {getStageIcon(stage.status)}
+            projectStages.map((stage, stageIndex) => {
+              const isExpanded = expandedStages.has(stage.id);
+              const derivedStatus = deriveStageStatus(stage, stageIndex);
+              const isCompleted = derivedStatus === 'completed';
+              const isActive = derivedStatus === 'in_progress';
+              const progress = computeStageProgress(stage, stageIndex);
+              const stageTasks = stage.tasks || [];
+              const showTasks = activeFilter === 'all' || activeFilter === 'tasks';
+              const showDocs = activeFilter === 'all' || activeFilter === 'documents';
+
+              return (
+                <Card
+                  key={stage.id}
+                  className={cn(
+                    "transition-all",
+                    isActive && "border-blue-500 dark:border-blue-400 ring-2 ring-blue-500/10",
+                    isCompleted && "border-emerald-500 dark:border-emerald-400 opacity-90"
+                  )}
+                  data-testid={`stage-card-${stage.id}`}
+                >
+                  <div
+                    className="flex items-center justify-between gap-4 p-5 cursor-pointer hover-elevate rounded-md"
+                    onClick={() => toggleStageExpanded(stage.id)}
+                    data-testid={`stage-header-${stage.id}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",
+                        isCompleted && "bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400",
+                        isActive && "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400",
+                        !isCompleted && !isActive && "bg-muted text-muted-foreground"
+                      )}>
+                        {isCompleted ? <CheckCircle2 className="h-5 w-5" /> : isActive ? <Clock className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                      </div>
                       <div>
-                        <CardTitle className="text-base">{stage.stageName}</CardTitle>
-                        <CardDescription>{stage.stageDescription}</CardDescription>
+                        <h3 className="text-base font-semibold">{stageIndex + 1}. {stage.stageName}</h3>
+                        {stage.stageDescription && (
+                          <p className="text-sm text-muted-foreground">{stage.stageDescription}</p>
+                        )}
                       </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {(stage.tasks || []).filter(t => t.status === 'completed').length}/{(stage.tasks || []).length} complete
+                    <div className="flex items-center gap-4">
+                      <div className="relative h-12 w-12 flex-shrink-0" data-testid={`progress-ring-${stage.id}`}>
+                        <svg viewBox="0 0 36 36" className="h-12 w-12 -rotate-90">
+                          <path
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            className="stroke-border"
+                            strokeWidth="3"
+                          />
+                          <path
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            className={cn(
+                              isCompleted ? "stroke-emerald-500" : "stroke-blue-500"
+                            )}
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeDasharray={`${progress.percent}, 100`}
+                            style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-xs font-semibold">{progress.percent}%</span>
+                        </div>
+                      </div>
+                      {isExpanded ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
                     </div>
                   </div>
-                </CardHeader>
-                {(stage.tasks || []).length > 0 && (
-                  <CardContent>
-                    <div className="space-y-2">
-                      {(stage.tasks || []).map((task) => (
-                        <div 
-                          key={task.id} 
-                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
-                        >
-                          <Checkbox
-                            checked={task.status === 'completed'}
-                            onCheckedChange={(checked) => {
-                              if (linkedProjectId) {
-                                updateProjectTaskMutation.mutate({
-                                  projectId: linkedProjectId,
-                                  taskId: task.id,
-                                  status: checked ? 'completed' : 'pending'
-                                });
-                              }
-                            }}
-                            data-testid={`checkbox-task-${task.id}`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                                {task.taskTitle}
-                              </span>
-                              {getPriorityBadge(task.priority)}
-                              {task.borrowerActionRequired && (
-                                <Badge variant="outline" className="text-xs">Borrower Action</Badge>
-                              )}
-                            </div>
-                            {task.completedAt && (
-                              <div className="text-xs text-muted-foreground mt-0.5">
-                                Completed {formatDateTime(task.completedAt)}
-                                {task.completedBy && ` by ${task.completedBy}`}
+
+                  {isExpanded && (
+                    <div className="border-t px-5 pb-5">
+                      {showDocs && documents.length > 0 && stageIndex === 0 && (
+                        <div className="mt-5">
+                          <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            Required Documents ({documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{documents.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {documents.map((doc) => (
+                              <div
+                                key={doc.id}
+                                className={cn(
+                                  "flex items-center justify-between gap-3 p-3 rounded-lg border",
+                                  (doc.status === 'approved' || doc.status === 'uploaded') && "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 opacity-80",
+                                  doc.status === 'rejected' && "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                                )}
+                                data-testid={`doc-row-${doc.id}`}
+                              >
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  <Checkbox
+                                    checked={doc.status === 'approved' || doc.status === 'uploaded'}
+                                    onCheckedChange={(checked) => {
+                                      updateDocumentStatus.mutate({
+                                        docId: doc.id,
+                                        status: checked ? 'uploaded' : 'pending'
+                                      });
+                                    }}
+                                    data-testid={`checkbox-doc-${doc.id}`}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={cn("text-sm font-medium", (doc.status === 'approved' || doc.status === 'uploaded') && "line-through text-muted-foreground")}>
+                                        {doc.documentName}
+                                      </span>
+                                      {doc.isRequired && (
+                                        <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Required</Badge>
+                                      )}
+                                    </div>
+                                    {doc.fileName && doc.uploadedAt && (
+                                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                                        <Paperclip className="h-3 w-3" />
+                                        {doc.fileName} <span className="mx-1">-</span> {new Date(doc.uploadedAt).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  {getDocumentStatusBadge(doc.status)}
+                                  {uploadingDocId === doc.id && (
+                                    <div className="flex items-center gap-1">
+                                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                      <span className="text-xs text-muted-foreground">{uploadProgress}%</span>
+                                    </div>
+                                  )}
+                                  {doc.filePath && (
+                                    <>
+                                      <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); handleViewDocument(doc.id); }} data-testid={`button-view-${doc.id}`} title="View">
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); handleDownloadDocument(doc.id, doc.fileName); }} data-testid={`button-download-${doc.id}`} title="Download">
+                                        <Download className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </>
+                                  )}
+                                  <input type="file" id={`file-input-${doc.id}`} className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={handleFileInputChange(doc.id)} data-testid={`input-file-${doc.id}`} />
+                                  {doc.status === 'pending' && (
+                                    <>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'not_applicable' }); }} disabled={updateDocumentStatus.isPending || uploadingDocId === doc.id} data-testid={`button-na-${doc.id}`}>N/A</Button>
+                                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); document.getElementById(`file-input-${doc.id}`)?.click(); }} disabled={uploadingDocId === doc.id} data-testid={`button-upload-${doc.id}`}>
+                                        <Upload className="h-3 w-3 mr-1" />Upload
+                                      </Button>
+                                    </>
+                                  )}
+                                  {doc.status === 'uploaded' && (
+                                    <>
+                                      <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); document.getElementById(`file-input-${doc.id}`)?.click(); }} disabled={uploadingDocId === doc.id} data-testid={`button-reupload-${doc.id}`} title="Replace"><Upload className="h-3.5 w-3.5" /></Button>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'rejected' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-reject-${doc.id}`}>
+                                        <XCircle className="h-3 w-3 mr-1" />Reject
+                                      </Button>
+                                      <Button size="sm" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'approved' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-approve-${doc.id}`}>
+                                        <Check className="h-3 w-3 mr-1" />Approve
+                                      </Button>
+                                    </>
+                                  )}
+                                  {doc.status === 'approved' && (
+                                    <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); document.getElementById(`file-input-${doc.id}`)?.click(); }} disabled={uploadingDocId === doc.id} data-testid={`button-reupload-${doc.id}`} title="Replace"><Upload className="h-3.5 w-3.5" /></Button>
+                                  )}
+                                  {doc.status === 'rejected' && (
+                                    <>
+                                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); document.getElementById(`file-input-${doc.id}`)?.click(); }} disabled={uploadingDocId === doc.id} data-testid={`button-upload-${doc.id}`}>
+                                        <Upload className="h-3 w-3 mr-1" />Re-upload
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'pending' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-reset-${doc.id}`}>Reset</Button>
+                                    </>
+                                  )}
+                                  {doc.status === 'not_applicable' && (
+                                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'pending' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-reset-${doc.id}`}>Reset</Button>
+                                  )}
+                                </div>
                               </div>
-                            )}
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {showTasks && stageTasks.length > 0 && (
+                        <div className="mt-5">
+                          <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
+                            <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                            Tasks ({stageTasks.filter(t => t.status === 'completed').length}/{stageTasks.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {stageTasks.map((task) => (
+                              <div
+                                key={task.id}
+                                className={cn(
+                                  "flex items-center gap-3 p-3 rounded-lg border",
+                                  task.status === 'completed' && "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 opacity-80"
+                                )}
+                                data-testid={`task-row-${task.id}`}
+                              >
+                                <Checkbox
+                                  checked={task.status === 'completed'}
+                                  onCheckedChange={(checked) => {
+                                    if (linkedProjectId) {
+                                      updateProjectTaskMutation.mutate({
+                                        projectId: linkedProjectId,
+                                        taskId: task.id,
+                                        status: checked ? 'completed' : 'pending'
+                                      });
+                                    }
+                                  }}
+                                  data-testid={`checkbox-task-${task.id}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={cn("text-sm font-medium", task.status === 'completed' && "line-through text-muted-foreground")}>
+                                      {task.taskTitle}
+                                    </span>
+                                    {getPriorityBadge(task.priority)}
+                                    {task.borrowerActionRequired && (
+                                      <Badge variant="outline" className="text-xs">Borrower Action</Badge>
+                                    )}
+                                  </div>
+                                  {task.completedAt && (
+                                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                                      <Check className="h-3 w-3 text-emerald-500" />
+                                      {formatDateTime(task.completedAt)}
+                                      {task.completedBy && ` by ${task.completedBy}`}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {showTasks && stageTasks.length === 0 && showDocs && documents.length === 0 && (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          No items in this stage yet.
+                        </div>
+                      )}
                     </div>
-                  </CardContent>
-                )}
-              </Card>
-            ))
+                  )}
+                </Card>
+              );
+            })
           ) : (
             <Card>
               <CardContent className="py-12 text-center">
@@ -1209,282 +1464,47 @@ export default function AdminDealDetail() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        {/* Activity Tab */}
-        <TabsContent value="activity">
-          <Card>
-            <CardContent className="pt-6">
-              {projectActivity.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No activity yet
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {projectActivity.map((item, i) => (
-                    <div key={item.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="h-2 w-2 rounded-full bg-primary" />
-                        {i < projectActivity.length - 1 && <div className="flex-1 w-px bg-border" />}
-                      </div>
-                      <div className="flex-1 pb-4">
-                        <div className="text-sm">{item.activityDescription}</div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {formatDateTime(item.createdAt)}
-                        </div>
-                      </div>
+      {/* Activity view */}
+      {activeFilter === 'activity' && (
+        <Card data-testid="card-activity">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Activity Timeline
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {projectActivity.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No activity yet</div>
+            ) : (
+              <div className="space-y-4">
+                {projectActivity.map((item, i) => (
+                  <div key={item.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="h-2 w-2 rounded-full bg-primary" />
+                      {i < projectActivity.length - 1 && <div className="flex-1 w-px bg-border" />}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="mt-6">
-          {documents.length === 0 ? (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
-                <CardTitle>Documents</CardTitle>
-                <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document-empty">
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Document
-                </Button>
-              </CardHeader>
-              <CardContent className="py-8 text-center">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">No documents yet</h3>
-                <p className="text-muted-foreground">
-                  {deal.programName
-                    ? 'Documents will be auto-populated when the deal is created from a program template.'
-                    : 'Click "Add Document" to add documents to this deal.'}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              <Card>
-                <CardHeader className="pb-4 flex flex-row items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <FileText className="h-5 w-5" />
-                      Required Documents
-                    </CardTitle>
-                    <CardDescription>
-                      {deal.programName ? `${deal.programName} Document Checklist` : 'Document Checklist'}
-                    </CardDescription>
-                  </div>
-                  <Button size="sm" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Document
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Progress</span>
-                      <span className="text-sm font-medium">
-                        {documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length} of {documents.length} complete
-                      </span>
+                    <div className="flex-1 pb-4">
+                      <div className="text-sm">{item.activityDescription}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{formatDateTime(item.createdAt)}</div>
                     </div>
-                    <Progress 
-                      value={(documents.filter(d => d.status === 'approved' || d.status === 'uploaded').length / documents.length) * 100} 
-                    />
                   </div>
-                  
-                  {(() => {
-                    const categories = Array.from(new Set(documents.map(d => d.documentCategory)));
-                    return categories.map((category) => (
-                      <div key={category} className="mb-6 last:mb-0">
-                        <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
-                          {getCategoryIcon(category)}
-                          {getCategoryLabel(category)}
-                        </div>
-                        <div className="space-y-2">
-                          {documents
-                            .filter(d => d.documentCategory === category)
-                            .map((doc) => (
-                              <div
-                                key={doc.id}
-                                className="flex items-center justify-between p-3 border rounded-lg hover-elevate"
-                                data-testid={`doc-row-${doc.id}`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  {getDocumentStatusIcon(doc.status)}
-                                  <div>
-                                    <p className="font-medium text-sm">{doc.documentName}</p>
-                                    {doc.documentDescription && (
-                                      <p className="text-xs text-muted-foreground max-w-md">{doc.documentDescription}</p>
-                                    )}
-                                    {doc.fileName && doc.uploadedAt && (
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {doc.fileName} • Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {doc.isRequired && (
-                                    <Badge variant="outline" className="text-xs">Required</Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {getDocumentStatusBadge(doc.status)}
-                                  
-                                  {/* Upload progress indicator */}
-                                  {uploadingDocId === doc.id && (
-                                    <div className="flex items-center gap-2">
-                                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                      <span className="text-xs text-muted-foreground">{uploadProgress}%</span>
-                                    </div>
-                                  )}
-                                  
-                                  <div className="flex gap-1">
-                                    {/* View/Download buttons for uploaded files */}
-                                    {doc.filePath && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleViewDocument(doc.id)}
-                                          data-testid={`button-view-${doc.id}`}
-                                          title="View document"
-                                        >
-                                          <Eye className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
-                                          data-testid={`button-download-${doc.id}`}
-                                          title="Download document"
-                                        >
-                                          <Download className="h-3 w-3" />
-                                        </Button>
-                                      </>
-                                    )}
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-                                    {/* File upload input (hidden) */}
-                                    <input
-                                      type="file"
-                                      id={`file-input-${doc.id}`}
-                                      className="hidden"
-                                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                                      onChange={handleFileInputChange(doc.id)}
-                                      data-testid={`input-file-${doc.id}`}
-                                    />
-                                    
-                                    {doc.status === 'pending' && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'not_applicable' })}
-                                          disabled={updateDocumentStatus.isPending || uploadingDocId === doc.id}
-                                          data-testid={`button-na-${doc.id}`}
-                                        >
-                                          N/A
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => document.getElementById(`file-input-${doc.id}`)?.click()}
-                                          disabled={uploadingDocId === doc.id}
-                                          data-testid={`button-upload-${doc.id}`}
-                                        >
-                                          <Upload className="h-3 w-3 mr-1" />
-                                          Upload
-                                        </Button>
-                                      </>
-                                    )}
-                                    {doc.status === 'uploaded' && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => document.getElementById(`file-input-${doc.id}`)?.click()}
-                                          disabled={uploadingDocId === doc.id}
-                                          data-testid={`button-reupload-${doc.id}`}
-                                          title="Replace file"
-                                        >
-                                          <Upload className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'rejected' })}
-                                          disabled={updateDocumentStatus.isPending}
-                                          data-testid={`button-reject-${doc.id}`}
-                                        >
-                                          <XCircle className="h-3 w-3 mr-1" />
-                                          Reject
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="default"
-                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'approved' })}
-                                          disabled={updateDocumentStatus.isPending}
-                                          data-testid={`button-approve-${doc.id}`}
-                                        >
-                                          <Check className="h-3 w-3 mr-1" />
-                                          Approve
-                                        </Button>
-                                      </>
-                                    )}
-                                    {doc.status === 'approved' && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => document.getElementById(`file-input-${doc.id}`)?.click()}
-                                        disabled={uploadingDocId === doc.id}
-                                        data-testid={`button-reupload-${doc.id}`}
-                                        title="Replace file"
-                                      >
-                                        <Upload className="h-3 w-3" />
-                                      </Button>
-                                    )}
-                                    {doc.status === 'rejected' && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => document.getElementById(`file-input-${doc.id}`)?.click()}
-                                          disabled={uploadingDocId === doc.id}
-                                          data-testid={`button-upload-${doc.id}`}
-                                        >
-                                          <Upload className="h-3 w-3 mr-1" />
-                                          Re-upload
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => updateDocumentStatus.mutate({ docId: doc.id, status: 'pending' })}
-                                          disabled={updateDocumentStatus.isPending}
-                                          data-testid={`button-reset-${doc.id}`}
-                                        >
-                                          Reset
-                                        </Button>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="digests" className="mt-6" data-testid="tabcontent-digests">
-          <div data-testid="digest-config-container">
-            <DigestConfigPanel dealId={deal.id} />
-          </div>
-        </TabsContent>
-      </Tabs>
+      {/* Digests view */}
+      {activeFilter === 'digests' && (
+        <div data-testid="digest-config-container">
+          <DigestConfigPanel dealId={deal.id} />
+        </div>
+      )}
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
