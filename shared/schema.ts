@@ -524,10 +524,15 @@ export const dealDocuments = pgTable("deal_documents", {
   
   sortOrder: integer("sort_order").default(0),
   
+  googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
+  googleDriveFileUrl: text("google_drive_file_url"),
+  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default("NOT_SYNCED"),
+  driveUploadError: text("drive_upload_error"),
+  
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({ id: true, createdAt: true, uploadedAt: true, reviewedAt: true });
+export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({ id: true, createdAt: true, uploadedAt: true, reviewedAt: true, googleDriveFileId: true, googleDriveFileUrl: true, driveUploadStatus: true, driveUploadError: true });
 export type DealDocument = typeof dealDocuments.$inferSelect;
 export type InsertDealDocument = z.infer<typeof insertDealDocumentSchema>;
 

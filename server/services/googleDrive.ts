@@ -1,7 +1,7 @@
 import { google, drive_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { db } from '../db';
-import { users, projects, projectDocuments, savedQuotes, systemSettings } from '@shared/schema';
+import { users, projects, projectDocuments, savedQuotes, systemSettings, dealDocuments } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { Readable } from 'stream';
 
@@ -343,6 +343,77 @@ export async function syncDocumentToDrive(documentId: number): Promise<void> {
         driveUploadError: error.message || 'Unknown error uploading to Drive',
       })
       .where(eq(projectDocuments.id, documentId));
+
+    throw error;
+  }
+}
+
+export async function syncDealDocumentToDrive(docId: number): Promise<void> {
+  const [doc] = await db.select()
+    .from(dealDocuments)
+    .where(eq(dealDocuments.id, docId))
+    .limit(1);
+
+  if (!doc || !doc.filePath) {
+    throw new Error(`Deal document ${docId} not found or has no file`);
+  }
+
+  await db.update(dealDocuments)
+    .set({ driveUploadStatus: 'PENDING', driveUploadError: null })
+    .where(eq(dealDocuments.id, docId));
+
+  try {
+    const { ObjectStorageService } = await import('../replit_integrations/object_storage/objectStorage');
+    const objectStorageService = new ObjectStorageService();
+    const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
+    const fileStream = objectFile.createReadStream();
+
+    const mimeType = doc.mimeType || 'application/octet-stream';
+
+    const { googleDriveFolderId } = await ensureDealFolder(doc.dealId);
+
+    const admin = await getAdminWithDriveTokens();
+    if (!admin) {
+      throw new Error('GOOGLE_DRIVE_NOT_CONNECTED: No admin with Google Drive tokens found.');
+    }
+
+    const drive = getDriveClient(admin.googleRefreshToken, admin.googleAccessToken);
+
+    const response = await drive.files.create({
+      requestBody: {
+        name: doc.fileName || doc.documentName,
+        parents: [googleDriveFolderId],
+      },
+      media: {
+        mimeType,
+        body: fileStream,
+      },
+      fields: 'id, webViewLink',
+      supportsAllDrives: true,
+    });
+
+    const fileId = response.data.id;
+    const webViewLink = response.data.webViewLink;
+
+    if (!fileId || !webViewLink) {
+      throw new Error('GOOGLE_DRIVE_ERROR: Failed to upload file - missing id or webViewLink');
+    }
+
+    await db.update(dealDocuments)
+      .set({
+        googleDriveFileId: fileId,
+        googleDriveFileUrl: webViewLink,
+        driveUploadStatus: 'OK',
+        driveUploadError: null,
+      })
+      .where(eq(dealDocuments.id, docId));
+  } catch (error: any) {
+    await db.update(dealDocuments)
+      .set({
+        driveUploadStatus: 'ERROR',
+        driveUploadError: error.message || 'Unknown error uploading to Drive',
+      })
+      .where(eq(dealDocuments.id, docId));
 
     throw error;
   }

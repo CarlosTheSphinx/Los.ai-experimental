@@ -5158,6 +5158,19 @@ export async function registerRoutes(
         );
       }
       
+      // Google Drive sync (non-blocking)
+      try {
+        const { isDriveIntegrationEnabled, syncDealDocumentToDrive } = await import('./services/googleDrive');
+        const driveEnabled = await isDriveIntegrationEnabled();
+        if (driveEnabled) {
+          syncDealDocumentToDrive(updated.id).catch((err: any) => {
+            console.error(`Drive sync failed for deal doc ${updated.id}:`, err.message);
+          });
+        }
+      } catch (driveErr: any) {
+        console.error('Drive sync check error:', driveErr.message);
+      }
+      
       res.json({ document: updated });
     } catch (error) {
       console.error('Admin upload complete error:', error);
