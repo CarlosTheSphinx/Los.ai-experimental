@@ -3134,6 +3134,18 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/admin/deals/:dealId/documents/:docId/drive/retry', authenticateUser, requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const { syncDealDocumentToDrive } = await import('./services/googleDrive');
+      await syncDealDocumentToDrive(docId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Drive deal doc retry error:', error);
+      res.status(500).json({ error: error.message || 'Failed to upload to Drive' });
+    }
+  });
+
   app.post('/api/admin/deals/:id/drive/push', authenticateUser, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);

@@ -1,0 +1,457 @@
+**Instructions for Replit: Auto-Upload Documents to Deal's Google Drive Folder**
+
+---
+
+## Task: Upload Deal Documents Directly to Google Drive Folder
+
+### Current State:
+- When a new deal is created → Google Drive folder is created ✅
+- When a document is uploaded to a deal → Document is NOT going to the Drive folder ❌
+
+### Desired State:
+- Document uploads automatically save to the deal's Google Drive folder
+- Document metadata (Drive file ID, URL) is stored in database
+- Users can view/download documents from Drive
+
+---
+
+## STEP 1: Store Drive Folder ID When Deal is Created
+
+**Modify the deal creation logic:**
+
+```javascript
+// When creating a new deal and Google Drive folder
+async function createDealWithDriveFolder(dealData) {
+  // 1. Create deal in database
+  const deal = await db.insert('deals', {
+    ...dealData,
+    created_at: new Date()
+  });
+  
+  const dealId = deal.id;
+  
+  // 2. Create Google Drive folder
+  const parentFolderId = '1e4BT2y1TTtnizDwrZl-V5jpeKthCWgYG'; // Your parent folder
+  
+  const driveFolder = await createDriveFolder({
+    name: `Deal ${dealId} - ${dealData.borrower_name || dealData.property_address}`,
+    parentId: parentFolderId,
+    accessToken: dealData.user_access_token // From logged-in user's session
+  });
+  
+  // 3. CRITICAL: Store the Drive folder ID in the deal record
+  await db.query(`
+    UPDATE deals 
+    SET drive_folder_id = ?, drive_folder_url = ?
+    WHERE id = ?
+  `, [
+    driveFolder.id,
+    `https://drive.google.com/drive/folders/${driveFolder.id}`,
+    dealId
+  ]);
+  
+  console.log(`Created Drive folder ${driveFolder.id} for deal ${dealId}`);
+  
+  return { ...deal, drive_folder_id: driveFolder.id };
+}
+
+// Helper function to create Drive folder
+async function createDriveFolder({ name, parentId, accessToken }) {
+  const response = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId]
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to create Drive folder: ${await response.text()}`);
+  }
+  
+  return await response.json();
+}
+```
+
+**Database Change Needed:**
+```sql
+-- Add drive_folder_id column to deals table if not exists
+ALTER TABLE deals ADD COLUMN drive_folder_id VARCHAR(255);
+ALTER TABLE deals ADD COLUMN drive_folder_url TEXT;
+```
+
+---
+
+## STEP 2: Upload Documents to Drive Folder on Document Upload
+
+**Modify the document upload handler:**
+
+```javascript
+// Route: POST /api/deals/:dealId/documents/upload
+async function handleDocumentUpload(req, res) {
+  const { dealId } = req.params;
+  const file = req.file; // Assuming you're using multer or similar
+  const { document_id } = req.body; // The deal_documents record ID
+  
+  try {
+    // 1. Get deal's Drive folder ID
+    const deal = await db.query(`
+      SELECT drive_folder_id, drive_folder_url 
+      FROM deals 
+      WHERE id = ?
+    `, [dealId]);
+    
+    if (!deal || !deal.drive_folder_id) {
+      return res.status(400).json({ 
+        error: 'Deal does not have a Google Drive folder. Please contact support.' 
+      });
+    }
+    
+    // 2. Get user's access token from session
+    const accessToken = req.session.google_access_token;
+    
+    if (!accessToken) {
+      return res.status(401).json({ 
+        error: 'Not authenticated with Google. Please log in again.' 
+      });
+    }
+    
+    // 3. Upload file to Google Drive
+    const driveFile = await uploadFileToDrive({
+      file: file,
+      fileName: file.originalname,
+      folderId: deal.drive_folder_id,
+      accessToken: accessToken
+    });
+    
+    console.log(`Uploaded file ${driveFile.id} to Drive folder ${deal.drive_folder_id}`);
+    
+    // 4. Update document record with Drive info
+    await db.query(`
+      UPDATE deal_documents 
+      SET 
+        drive_file_id = ?,
+        drive_file_url = ?,
+        uploaded_file = ?,
+        uploaded_at = ?,
+        status = 'completed'
+      WHERE id = ?
+    `, [
+      driveFile.id,
+      driveFile.webViewLink,
+      file.originalname,
+      new Date(),
+      document_id
+    ]);
+    
+    res.json({
+      success: true,
+      file: {
+        id: driveFile.id,
+        name: file.originalname,
+        url: driveFile.webViewLink
+      }
+    });
+    
+  } catch (error) {
+    console.error('Document upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Helper function to upload file to Drive
+async function uploadFileToDrive({ file, fileName, folderId, accessToken }) {
+  // Create form data with file metadata
+  const metadata = {
+    name: fileName,
+    parents: [folderId]
+  };
+  
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', file.buffer, { filename: fileName });
+  
+  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: form
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Drive upload failed: ${error}`);
+  }
+  
+  return await response.json();
+}
+```
+
+**Alternative: If using file.buffer approach doesn't work, try this:**
+
+```javascript
+async function uploadFileToDrive({ file, fileName, folderId, accessToken }) {
+  // Step 1: Create file metadata
+  const metadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: fileName,
+      parents: [folderId]
+    })
+  });
+  
+  if (!metadataResponse.ok) {
+    throw new Error(`Failed to create file metadata: ${await metadataResponse.text()}`);
+  }
+  
+  const fileMetadata = await metadataResponse.json();
+  
+  // Step 2: Upload file content
+  const uploadResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileMetadata.id}?uploadType=media`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': file.mimetype || 'application/octet-stream'
+    },
+    body: file.buffer
+  });
+  
+  if (!uploadResponse.ok) {
+    throw new Error(`Failed to upload file content: ${await uploadResponse.text()}`);
+  }
+  
+  // Step 3: Get file details with webViewLink
+  const detailsResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileMetadata.id}?fields=id,name,webViewLink,webContentLink`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+  
+  return await detailsResponse.json();
+}
+```
+
+---
+
+## STEP 3: Update Database Schema for Documents
+
+**Add columns to store Drive info:**
+
+```sql
+-- Add Drive-related columns to deal_documents table
+ALTER TABLE deal_documents ADD COLUMN drive_file_id VARCHAR(255);
+ALTER TABLE deal_documents ADD COLUMN drive_file_url TEXT;
+
+-- Index for faster lookups
+CREATE INDEX idx_drive_file_id ON deal_documents(drive_file_id);
+```
+
+---
+
+## STEP 4: Update Document View/Download Buttons
+
+**Modify the "View" button to open Drive link:**
+
+```javascript
+// In your frontend
+function viewDocument(docId) {
+  // Fetch document info
+  fetch(`/api/documents/${docId}`)
+    .then(r => r.json())
+    .then(doc => {
+      if (doc.drive_file_url) {
+        // Open Google Drive link in new tab
+        window.open(doc.drive_file_url, '_blank');
+      } else {
+        alert('Document not found in Google Drive');
+      }
+    });
+}
+```
+
+**Or add a "View in Drive" button:**
+
+```html
+{doc.drive_file_url && (
+  <button 
+    class="btn-view-drive" 
+    onclick="window.open('{doc.drive_file_url}', '_blank')"
+  >
+    📂 View in Drive
+  </button>
+)}
+```
+
+---
+
+## STEP 5: Handle OAuth Token Refresh
+
+**Important: Access tokens expire after 1 hour. Add refresh logic:**
+
+```javascript
+async function getValidAccessToken(req) {
+  const accessToken = req.session.google_access_token;
+  const refreshToken = req.session.google_refresh_token;
+  const expiresAt = req.session.token_expires_at;
+  
+  // Check if token is still valid
+  if (accessToken && Date.now() < expiresAt) {
+    return accessToken;
+  }
+  
+  // Token expired, refresh it
+  if (refreshToken) {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token'
+      })
+    });
+    
+    const tokens = await response.json();
+    
+    // Update session
+    req.session.google_access_token = tokens.access_token;
+    req.session.token_expires_at = Date.now() + (tokens.expires_in * 1000);
+    
+    return tokens.access_token;
+  }
+  
+  throw new Error('No valid Google token available. Please log in again.');
+}
+
+// Use in upload function:
+const accessToken = await getValidAccessToken(req);
+```
+
+---
+
+## STEP 6: Error Handling and User Feedback
+
+**Add error messages for common issues:**
+
+```javascript
+try {
+  // ... upload logic
+} catch (error) {
+  console.error('Drive upload error:', error);
+  
+  // User-friendly error messages
+  let userMessage = 'Failed to upload document to Google Drive.';
+  
+  if (error.message.includes('401') || error.message.includes('Invalid Credentials')) {
+    userMessage = 'Your Google login has expired. Please log out and log back in.';
+  } else if (error.message.includes('403') || error.message.includes('insufficient permission')) {
+    userMessage = 'Permission denied. Make sure Google Drive access is enabled.';
+  } else if (error.message.includes('404')) {
+    userMessage = 'Drive folder not found. The folder may have been deleted.';
+  }
+  
+  res.status(500).json({ 
+    error: userMessage,
+    details: error.message 
+  });
+}
+```
+
+---
+
+## STEP 7: Test with Existing Deals (Migration)
+
+**If you have existing deals without drive_folder_id:**
+
+```javascript
+// One-time migration script or admin function
+async function createDriveFoldersForExistingDeals() {
+  const deals = await db.query(`
+    SELECT id, borrower_name, property_address 
+    FROM deals 
+    WHERE drive_folder_id IS NULL
+  `);
+  
+  for (const deal of deals) {
+    try {
+      const driveFolder = await createDriveFolder({
+        name: `Deal ${deal.id} - ${deal.borrower_name || deal.property_address}`,
+        parentId: '1e4BT2y1TTtnizDwrZl-V5jpeKthCWgYG',
+        accessToken: ADMIN_ACCESS_TOKEN // Use admin's token
+      });
+      
+      await db.query(`
+        UPDATE deals 
+        SET drive_folder_id = ?, drive_folder_url = ?
+        WHERE id = ?
+      `, [
+        driveFolder.id,
+        `https://drive.google.com/drive/folders/${driveFolder.id}`,
+        deal.id
+      ]);
+      
+      console.log(`Created folder for deal ${deal.id}`);
+    } catch (error) {
+      console.error(`Failed to create folder for deal ${deal.id}:`, error);
+    }
+  }
+}
+```
+
+---
+
+## Testing Checklist:
+
+- [ ] New deals get a `drive_folder_id` stored in database
+- [ ] Uploading a document saves it to the correct Drive folder
+- [ ] Document record stores `drive_file_id` and `drive_file_url`
+- [ ] "View" button opens document in Google Drive
+- [ ] Multiple documents can be uploaded to same deal
+- [ ] Documents appear in correct Drive folder structure
+- [ ] Access token refresh works for long sessions
+- [ ] Error messages are clear when Drive upload fails
+- [ ] Existing deals can have folders created retroactively
+
+---
+
+## Quick Debug Steps:
+
+1. **Check if deal has folder ID:**
+   ```sql
+   SELECT id, drive_folder_id, drive_folder_url FROM deals WHERE id = YOUR_DEAL_ID;
+   ```
+
+2. **Check document upload logs:**
+   - Look for console.log outputs showing Drive file ID
+   - Check for error messages about permissions
+
+3. **Verify OAuth scopes include Drive:**
+   - Make sure your OAuth consent screen includes `https://www.googleapis.com/auth/drive.file`
+   - User may need to log out and log back in to grant new scope
+
+4. **Test Drive API directly:**
+   ```javascript
+   // Quick test endpoint
+   app.get('/test-drive', async (req, res) => {
+     const accessToken = req.session.google_access_token;
+     const response = await fetch('https://www.googleapis.com/drive/v3/files', {
+       headers: { 'Authorization': `Bearer ${accessToken}` }
+     });
+     res.json(await response.json());
+   });
+   ```
+
+---
+
+**This complete implementation will automatically upload documents to the correct Google Drive folder for each deal. Paste this into Replit!**

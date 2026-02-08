@@ -41,7 +41,7 @@ async function getAdminWithDriveTokens(): Promise<{ id: number; googleRefreshTok
   return admin;
 }
 
-function getDriveClient(refreshToken: string, accessToken?: string | null): drive_v3.Drive {
+async function getDriveClient(refreshToken: string, accessToken?: string | null, tokenExpiresAt?: Date | null): Promise<drive_v3.Drive> {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -50,10 +50,33 @@ function getDriveClient(refreshToken: string, accessToken?: string | null): driv
   }
 
   const oauth2Client = new OAuth2Client(clientId, clientSecret);
+  
+  const isTokenExpired = !accessToken || !tokenExpiresAt || new Date() >= tokenExpiresAt;
+  
   oauth2Client.setCredentials({
     refresh_token: refreshToken,
-    access_token: accessToken || undefined,
+    access_token: isTokenExpired ? undefined : (accessToken || undefined),
   });
+
+  if (isTokenExpired) {
+    try {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      oauth2Client.setCredentials(credentials);
+      
+      if (credentials.access_token) {
+        const expiryDate = credentials.expiry_date ? new Date(credentials.expiry_date) : new Date(Date.now() + 3600 * 1000);
+        await db.update(users)
+          .set({
+            googleAccessToken: credentials.access_token,
+            googleTokenExpiresAt: expiryDate,
+          })
+          .where(eq(users.googleRefreshToken, refreshToken));
+      }
+    } catch (refreshErr: any) {
+      console.error('Failed to refresh Google access token:', refreshErr.message);
+      throw new Error(`GOOGLE_DRIVE_TOKEN_EXPIRED: Failed to refresh token - ${refreshErr.message}`);
+    }
+  }
 
   return google.drive({ version: 'v3', auth: oauth2Client });
 }
@@ -86,7 +109,7 @@ async function createDriveFolder(folderName: string): Promise<{ folderId: string
     throw new Error('GOOGLE_DRIVE_NOT_CONNECTED: No admin with Google Drive tokens found. An admin must log in with Google first.');
   }
 
-  const drive = getDriveClient(admin.googleRefreshToken, admin.googleAccessToken);
+  const drive = await getDriveClient(admin.googleRefreshToken, admin.googleAccessToken, admin.googleTokenExpiresAt);
 
   const response = await drive.files.create({
     requestBody: {
@@ -125,7 +148,7 @@ export async function createProjectFolder({
     throw new Error('GOOGLE_DRIVE_NOT_CONNECTED: No admin with Google Drive tokens found. An admin must log in with Google first.');
   }
 
-  const drive = getDriveClient(admin.googleRefreshToken, admin.googleAccessToken);
+  const drive = await getDriveClient(admin.googleRefreshToken, admin.googleAccessToken, admin.googleTokenExpiresAt);
 
   const folderName = `${projectName} - ${projectId}`;
 
@@ -273,7 +296,7 @@ export async function uploadFileToProjectFolder({
     throw new Error('GOOGLE_DRIVE_NOT_CONNECTED: No admin with Google Drive tokens found.');
   }
 
-  const drive = getDriveClient(admin.googleRefreshToken, admin.googleAccessToken);
+  const drive = await getDriveClient(admin.googleRefreshToken, admin.googleAccessToken, admin.googleTokenExpiresAt);
 
   const response = await drive.files.create({
     requestBody: {
@@ -377,7 +400,7 @@ export async function syncDealDocumentToDrive(docId: number): Promise<void> {
       throw new Error('GOOGLE_DRIVE_NOT_CONNECTED: No admin with Google Drive tokens found.');
     }
 
-    const drive = getDriveClient(admin.googleRefreshToken, admin.googleAccessToken);
+    const drive = await getDriveClient(admin.googleRefreshToken, admin.googleAccessToken, admin.googleTokenExpiresAt);
 
     const response = await drive.files.create({
       requestBody: {

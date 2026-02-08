@@ -52,7 +52,10 @@ The application integrates with Google Drive to automatically organize project d
   - `GET /api/projects/:id/documents` - List project documents
   - `POST /api/projects/:id/drive/retry` - Retry Drive folder creation (admin only)
   - `POST /api/documents/:id/drive/retry` - Retry Drive document upload (admin only)
+  - `POST /api/admin/deals/:dealId/documents/:docId/drive/retry` - Retry Drive upload for deal documents (admin only)
   - `GET /api/admin/drive/status` - Check Drive integration status (admin only)
+- **Auto-sync**: When documents are uploaded to a deal via admin panel, they automatically sync to the deal's Google Drive folder (non-blocking). The `syncDealDocumentToDrive` function in `server/services/googleDrive.ts` handles this.
+- **Token refresh**: The `getDriveClient` function now automatically refreshes expired Google OAuth tokens and persists them to the database.
 
 ## External Dependencies
 
