@@ -538,7 +538,7 @@ export default function AdminDealDetail() {
       const deal = data.deal;
       const docs = data.documents || [];
       const loanType = deal?.loanData?.loanType;
-      if (deal && loanType && docs.length === 0) {
+      if (deal && loanType && loanType !== 'unknown' && docs.length === 0) {
         setAutoPopulated(true);
         populateDocumentsMutation.mutate({ loanType, clearExisting: false });
       }
@@ -1282,7 +1282,7 @@ export default function AdminDealDetail() {
               <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <CardTitle>Documents</CardTitle>
                 <div className="flex items-center gap-2">
-                  {deal?.loanData?.loanType && (
+                  {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown' && (
                     <Button 
                       size="sm" 
                       variant="outline"
@@ -1311,7 +1311,7 @@ export default function AdminDealDetail() {
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium">No documents yet</h3>
                 <p className="text-muted-foreground">
-                  {deal?.loanData?.loanType 
+                  {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown'
                     ? 'Click "Load Templates" to populate documents from the loan program, or "Add Document" to add individually.'
                     : 'Set a loan type first to load document templates, or click "Add Document" to add individually.'}
                 </p>
@@ -1331,7 +1331,7 @@ export default function AdminDealDetail() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {deal?.loanData?.loanType && (
+                    {deal?.loanData?.loanType && deal.loanData.loanType !== 'unknown' && (
                       <Button 
                         size="sm" 
                         variant="outline"

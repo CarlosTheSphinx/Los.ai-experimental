@@ -4832,6 +4832,23 @@ export async function registerRoutes(
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
       
+      let resolvedLoanType = project.loanType;
+      if (!resolvedLoanType && project.quoteId) {
+        const [linkedQuote] = await db.select({ loanData: savedQuotes.loanData })
+          .from(savedQuotes)
+          .where(eq(savedQuotes.id, project.quoteId))
+          .limit(1);
+        if (linkedQuote?.loanData) {
+          const qld = linkedQuote.loanData as Record<string, unknown>;
+          resolvedLoanType = (qld.loanType as string) || null;
+          if (resolvedLoanType && resolvedLoanType !== 'unknown') {
+            await db.update(projects)
+              .set({ loanType: resolvedLoanType })
+              .where(eq(projects.id, project.id));
+          }
+        }
+      }
+      
       const deal = {
         id: project.id,
         projectId: project.id,
@@ -4845,7 +4862,7 @@ export async function registerRoutes(
         loanData: {
           loanAmount: project.loanAmount || 0,
           propertyValue: 0,
-          loanType: project.loanType || 'unknown',
+          loanType: resolvedLoanType || 'unknown',
           propertyType: project.propertyType || 'unknown',
           loanTerm: project.loanTermMonths ? `${project.loanTermMonths} months` : '12 months',
         },
@@ -5192,11 +5209,28 @@ export async function registerRoutes(
         .where(eq(savedQuotes.id, dealId))
         .returning();
       
+      // Sync loanType back to the projects table
+      const newLoanType = updatedLoanData.loanType as string | undefined;
+      if (newLoanType && newLoanType !== 'unknown') {
+        const linkedProjects = await db.select({ id: projects.id })
+          .from(projects)
+          .where(or(
+            eq(projects.quoteId, dealId),
+            eq(projects.id, dealId)
+          ))
+          .limit(1);
+        
+        if (linkedProjects.length > 0) {
+          await db.update(projects)
+            .set({ loanType: newLoanType })
+            .where(eq(projects.id, linkedProjects[0].id));
+        }
+      }
+      
       // Auto-populate documents if loan type changed and there are no existing documents
       const previousLoanType = existingLoanData.loanType as string | undefined;
-      const newLoanType = updatedLoanData.loanType as string | undefined;
       
-      if (newLoanType && newLoanType !== previousLoanType) {
+      if (newLoanType && newLoanType !== 'unknown' && newLoanType !== previousLoanType) {
         // Get loan program for new loan type
         const [loanProgram] = await db.select()
           .from(loanPrograms)
