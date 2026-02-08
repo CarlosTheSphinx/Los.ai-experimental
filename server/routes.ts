@@ -4721,6 +4721,7 @@ export async function registerRoutes(
       
       const parsedProgramId = reqProgramId ? parseInt(reqProgramId) : null;
       const effectiveLoanType = loanType || 'rtl';
+      const borrowerName = `${customerFirstName} ${customerLastName}`.trim();
       
       const [deal] = await db.insert(savedQuotes).values({
         userId: req.user!.id,
@@ -4748,81 +4749,47 @@ export async function registerRoutes(
         stage: stage || 'initial-review',
       }).returning();
       
-      // Try to get templates from the selected program first, then fallback to loanType match
-      let activeProgram: typeof loanPrograms.$inferSelect | undefined;
-      if (parsedProgramId) {
-        const [found] = await db.select().from(loanPrograms)
-          .where(and(
-            eq(loanPrograms.id, parsedProgramId),
-            eq(loanPrograms.isActive, true)
-          ))
-          .limit(1);
-        activeProgram = found;
-      }
-      if (!activeProgram) {
-        const [found] = await db.select().from(loanPrograms)
-          .where(and(
-            eq(loanPrograms.loanType, effectiveLoanType),
-            eq(loanPrograms.isActive, true)
-          ))
-          .limit(1);
-        activeProgram = found;
-      }
+      const projectNumber = await storage.generateProjectNumber();
+      const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
       
-      let documentEntries: any[] = [];
-      let taskEntries: any[] = [];
+      const project = await storage.createProject({
+        userId: req.user!.id,
+        projectName: `${borrowerName} - ${propertyAddress}`,
+        projectNumber,
+        loanAmount: loanAmountNum,
+        interestRate: interestRate ? parseFloat(interestRate) : null,
+        loanTermMonths: null,
+        loanType: effectiveLoanType,
+        programId: parsedProgramId,
+        propertyAddress,
+        propertyType: propertyType || 'single-family',
+        borrowerName,
+        borrowerEmail: '',
+        borrowerPhone: null,
+        status: 'active',
+        currentStage: 'documentation',
+        progressPercentage: 0,
+        applicationDate: new Date(),
+        targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        borrowerPortalToken: borrowerToken,
+        borrowerPortalEnabled: true,
+        quoteId: deal.id,
+        notes: null,
+      });
       
-      if (activeProgram) {
-        // Get document templates from program
-        const programDocs = await db.select().from(programDocumentTemplates)
-          .where(eq(programDocumentTemplates.programId, activeProgram.id))
-          .orderBy(programDocumentTemplates.sortOrder);
-        
-        documentEntries = programDocs.map((doc, index) => ({
-          dealId: deal.id,
-          documentName: doc.documentName,
-          documentCategory: doc.documentCategory,
-          documentDescription: doc.documentDescription,
-          isRequired: doc.isRequired,
-          sortOrder: doc.sortOrder || index,
-          status: 'pending',
-        }));
-        
-        // Get task templates from program
-        const programTasks = await db.select().from(programTaskTemplates)
-          .where(eq(programTaskTemplates.programId, activeProgram.id))
-          .orderBy(programTaskTemplates.sortOrder);
-        
-        taskEntries = programTasks.map((task, index) => ({
-          dealId: deal.id,
-          taskName: task.taskName,
-          taskDescription: task.taskDescription,
-          priority: task.priority,
-          status: 'pending',
-        }));
-      } else {
-        // Fall back to hardcoded templates
-        const documentTemplates = getDocumentTemplatesForLoanType(effectiveLoanType);
-        documentEntries = documentTemplates.map((template, index) => ({
-          dealId: deal.id,
-          documentName: template.name,
-          documentCategory: template.category,
-          documentDescription: template.description || null,
-          isRequired: template.isRequired,
-          sortOrder: index,
-          status: 'pending',
-        }));
-      }
+      const { buildProjectPipelineFromProgram } = await import('./services/projectPipeline');
+      const pipelineResult = await buildProjectPipelineFromProgram(project.id, parsedProgramId);
+      console.log(`Admin deal pipeline created: ${pipelineResult.stagesCreated} stages, ${pipelineResult.tasksCreated} tasks, ${pipelineResult.documentsCreated} documents (program: ${pipelineResult.usedProgramTemplate ? pipelineResult.programName : 'legacy'})`);
       
-      if (documentEntries.length > 0) {
-        await db.insert(dealDocuments).values(documentEntries);
-      }
-      
-      if (taskEntries.length > 0) {
-        await db.insert(dealTasks).values(taskEntries);
-      }
+      await storage.createProjectActivity({
+        projectId: project.id,
+        userId: req.user!.id,
+        activityType: 'project_created',
+        activityDescription: `Deal ${projectNumber} created manually by admin`,
+        visibleToBorrower: true,
+      });
 
-      res.json({ deal });
+      res.json({ deal, projectId: project.id });
     } catch (error) {
       console.error('Admin create deal error:', error);
       res.status(500).json({ error: 'Failed to create deal' });

@@ -59,6 +59,7 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  ArrowUpDown,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -452,6 +453,7 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
 export default function AdminDeals() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "amount-high" | "amount-low">("newest");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { toast } = useToast();
   
@@ -552,7 +554,22 @@ export default function AdminDeals() {
   };
 
   const stats = data?.stats;
-  const deals = data?.deals || [];
+  const rawDeals = data?.deals || [];
+  
+  const deals = [...rawDeals].sort((a, b) => {
+    switch (sortBy) {
+      case "newest":
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      case "oldest":
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      case "amount-high":
+        return (b.loanData?.loanAmount || 0) - (a.loanData?.loanAmount || 0);
+      case "amount-low":
+        return (a.loanData?.loanAmount || 0) - (b.loanData?.loanAmount || 0);
+      default:
+        return 0;
+    }
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -829,6 +846,18 @@ export default function AdminDeals() {
                 data-testid="input-search-deals"
               />
             </div>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+              <SelectTrigger className="w-[180px]" data-testid="select-sort-deals">
+                <ArrowUpDown className="h-4 w-4 mr-2 shrink-0" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="amount-high">Amount: High to Low</SelectItem>
+                <SelectItem value="amount-low">Amount: Low to High</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="flex items-center border rounded-md">
               <Button
                 variant="ghost"
