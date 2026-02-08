@@ -874,6 +874,46 @@ export default function AdminDealDetail() {
                 No loan project linked. Create a project to track stages.
               </div>
             )}
+
+            <div className="border-t pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Type (Document List)</span>
+                </div>
+                <Select
+                  value={deal.loanData?.loanType || ""}
+                  onValueChange={(value) => {
+                    updateDealMutation.mutate({
+                      customerFirstName: deal.customerFirstName || "",
+                      customerLastName: deal.customerLastName || "",
+                      customerEmail: deal.customerEmail || "",
+                      customerPhone: deal.customerPhone || "",
+                      propertyAddress: deal.propertyAddress || "",
+                      loanAmount: deal.loanData?.loanAmount?.toString() || "",
+                      propertyValue: deal.loanData?.propertyValue?.toString() || "",
+                      interestRate: deal.interestRate || "",
+                      loanType: value,
+                      loanPurpose: deal.loanData?.loanPurpose || "",
+                      propertyType: deal.loanData?.propertyType || "",
+                    });
+                  }}
+                  disabled={updateDealMutation.isPending}
+                >
+                  <SelectTrigger className="w-[160px] h-8 text-xs" data-testid="select-loan-type-inline">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="rtl">RTL</SelectItem>
+                    <SelectItem value="dscr">DSCR</SelectItem>
+                    <SelectItem value="fix-and-flip">Fix & Flip</SelectItem>
+                    <SelectItem value="bridge">Bridge</SelectItem>
+                    <SelectItem value="ground-up">Ground Up</SelectItem>
+                    <SelectItem value="rental">Rental</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
