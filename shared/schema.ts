@@ -362,6 +362,7 @@ export const projects = pgTable("projects", {
 export const projectStages = pgTable("project_stages", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  programStepId: integer("program_step_id"),
   
   stageName: varchar("stage_name", { length: 100 }).notNull(),
   stageKey: varchar("stage_key", { length: 50 }).notNull(),
@@ -382,6 +383,7 @@ export const projectTasks = pgTable("project_tasks", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
   stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'cascade' }),
+  programTaskTemplateId: integer("program_task_template_id"),
   
   taskTitle: varchar("task_title", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
@@ -502,6 +504,7 @@ export const dealDocuments = pgTable("deal_documents", {
   id: serial("id").primaryKey(),
   dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
   stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'set null' }),
+  programDocumentTemplateId: integer("program_document_template_id"),
   
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentCategory: varchar("document_category", { length: 100 }), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs

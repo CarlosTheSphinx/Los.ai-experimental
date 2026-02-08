@@ -6201,6 +6201,8 @@ export async function registerRoutes(
       }).returning();
       
       res.json({ document: doc });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Add program document error:', error);
       res.status(500).json({ error: 'Failed to add document template' });
@@ -6222,6 +6224,9 @@ export async function registerRoutes(
         }
       });
       res.json({ success: true });
+      const { programId } = req.params;
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Batch update document steps error:', error);
       res.status(500).json({ error: 'Failed to update document assignments' });
@@ -6248,6 +6253,8 @@ export async function registerRoutes(
         .returning();
       
       res.json({ document: doc });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(req.params.programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Update program document error:', error);
       res.status(500).json({ error: 'Failed to update document template' });
@@ -6257,11 +6264,13 @@ export async function registerRoutes(
   // Delete document template
   app.delete('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { docId } = req.params;
+      const { programId, docId } = req.params;
       
       await db.delete(programDocumentTemplates).where(eq(programDocumentTemplates.id, parseInt(docId)));
       
       res.json({ success: true });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Delete program document error:', error);
       res.status(500).json({ error: 'Failed to delete document template' });
@@ -6292,6 +6301,8 @@ export async function registerRoutes(
       }).returning();
       
       res.json({ task });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Add program task error:', error);
       res.status(500).json({ error: 'Failed to add task template' });
@@ -6315,6 +6326,9 @@ export async function registerRoutes(
         }
       });
       res.json({ success: true });
+      const { programId } = req.params;
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Batch update task steps error:', error);
       res.status(500).json({ error: 'Failed to update task assignments' });
@@ -6342,6 +6356,8 @@ export async function registerRoutes(
         .returning();
       
       res.json({ task });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(req.params.programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Update program task error:', error);
       res.status(500).json({ error: 'Failed to update task template' });
@@ -6351,11 +6367,13 @@ export async function registerRoutes(
   // Delete task template
   app.delete('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { taskId } = req.params;
+      const { programId, taskId } = req.params;
       
       await db.delete(programTaskTemplates).where(eq(programTaskTemplates.id, parseInt(taskId)));
       
       res.json({ success: true });
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Delete program task error:', error);
       res.status(500).json({ error: 'Failed to delete task template' });
@@ -6484,11 +6502,22 @@ export async function registerRoutes(
       if (!Array.isArray(steps)) {
         return res.status(400).json({ error: 'Steps must be an array' });
       }
+      const pid = parseInt(programId);
+      const oldSteps = await db.select({
+        id: programWorkflowSteps.id,
+        stepDefinitionId: programWorkflowSteps.stepDefinitionId,
+      }).from(programWorkflowSteps).where(eq(programWorkflowSteps.programId, pid));
+
+      const oldDefIdToStepId = new Map<number, number>();
+      for (const s of oldSteps) {
+        oldDefIdToStepId.set(s.stepDefinitionId, s.id);
+      }
+
       await db.transaction(async (tx) => {
-        await tx.delete(programWorkflowSteps).where(eq(programWorkflowSteps.programId, parseInt(programId)));
+        await tx.delete(programWorkflowSteps).where(eq(programWorkflowSteps.programId, pid));
         if (steps.length > 0) {
           const entries = steps.map((step: any, index: number) => ({
-            programId: parseInt(programId),
+            programId: pid,
             stepDefinitionId: step.stepDefinitionId,
             stepOrder: index + 1,
             isRequired: step.isRequired !== false,
@@ -6497,6 +6526,68 @@ export async function registerRoutes(
           await tx.insert(programWorkflowSteps).values(entries);
         }
       });
+
+      const newSteps = await db.select({
+        id: programWorkflowSteps.id,
+        stepDefinitionId: programWorkflowSteps.stepDefinitionId,
+      }).from(programWorkflowSteps).where(eq(programWorkflowSteps.programId, pid));
+
+      const newDefIdToStepId = new Map<number, number>();
+      for (const s of newSteps) {
+        newDefIdToStepId.set(s.stepDefinitionId, s.id);
+      }
+
+      const oldStepIdToNew = new Map<number, number | null>();
+      for (const [defId, oldId] of oldDefIdToStepId.entries()) {
+        const newId = newDefIdToStepId.get(defId) ?? null;
+        oldStepIdToNew.set(oldId, newId);
+      }
+
+      const docsToRemap = await db.select({ id: programDocumentTemplates.id, stepId: programDocumentTemplates.stepId })
+        .from(programDocumentTemplates)
+        .where(eq(programDocumentTemplates.programId, pid));
+
+      for (const doc of docsToRemap) {
+        if (doc.stepId) {
+          const newStepId = oldStepIdToNew.get(doc.stepId) ?? null;
+          if (newStepId !== doc.stepId) {
+            await db.update(programDocumentTemplates)
+              .set({ stepId: newStepId })
+              .where(eq(programDocumentTemplates.id, doc.id));
+          }
+        }
+      }
+
+      const tasksToRemap = await db.select({ id: programTaskTemplates.id, stepId: programTaskTemplates.stepId })
+        .from(programTaskTemplates)
+        .where(eq(programTaskTemplates.programId, pid));
+
+      for (const task of tasksToRemap) {
+        if (task.stepId) {
+          const newStepId = oldStepIdToNew.get(task.stepId) ?? null;
+          if (newStepId !== task.stepId) {
+            await db.update(programTaskTemplates)
+              .set({ stepId: newStepId })
+              .where(eq(programTaskTemplates.id, task.id));
+          }
+        }
+      }
+
+      const stagesToRemap = await db.select({ id: projectStages.id, programStepId: projectStages.programStepId })
+        .from(projectStages)
+        .innerJoin(projects, eq(projectStages.projectId, projects.id))
+        .where(eq(projects.programId, pid));
+
+      for (const stage of stagesToRemap) {
+        if (stage.programStepId) {
+          const newStepId = oldStepIdToNew.get(stage.programStepId) ?? null;
+          if (newStepId !== stage.programStepId) {
+            await db.update(projectStages)
+              .set({ programStepId: newStepId })
+              .where(eq(projectStages.id, stage.id));
+          }
+        }
+      }
       const updated = await db.select({
         id: programWorkflowSteps.id,
         programId: programWorkflowSteps.programId,
@@ -6519,6 +6610,8 @@ export async function registerRoutes(
         .where(eq(programWorkflowSteps.programId, parseInt(programId)))
         .orderBy(programWorkflowSteps.stepOrder);
       res.json(updated);
+      const { syncProgramToProjects } = await import('./services/projectPipeline');
+      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Save program workflow steps error:', error);
       res.status(500).json({ error: 'Failed to save workflow steps' });

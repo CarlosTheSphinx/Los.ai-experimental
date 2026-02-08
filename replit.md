@@ -56,6 +56,15 @@ The application integrates with Google Drive to automatically organize project d
   - `GET /api/admin/drive/status` - Check Drive integration status (admin only)
 - **Auto-sync**: When documents are uploaded to a deal via admin panel, they automatically sync to the deal's Google Drive folder (non-blocking). The `syncDealDocumentToDrive` function in `server/services/googleDrive.ts` handles this.
 - **Token refresh**: The `getDriveClient` function now automatically refreshes expired Google OAuth tokens and persists them to the database.
+- **Drive folder targeting**: `syncDealDocumentToDrive` checks if `dealId` is a project first (using `ensureProjectFolder`) before falling back to `ensureDealFolder`, ensuring documents go to the correct project's folder.
+
+## Program-to-Project Sync
+
+When a loan program's workflow is edited (documents moved between stages, tasks added/removed/updated, workflow steps changed), those changes automatically propagate to all existing projects assigned to that program:
+- **Template reference tracking**: `projectStages.programStepId`, `projectTasks.programTaskTemplateId`, and `dealDocuments.programDocumentTemplateId` link project-level items back to program templates.
+- **Non-destructive sync**: `syncProgramToProjects()` in `server/services/projectPipeline.ts` performs a merge — updates existing items, creates new ones, marks removed templates as skipped/not_applicable. Completed tasks and uploaded documents are never deleted.
+- **Step ID remapping**: When workflow steps are saved (delete/recreate), old step IDs are remapped to new IDs on templates and project stages to maintain stage assignments.
+- **Auto-trigger**: Sync runs in the background after every program template change (add/update/delete/batch-step for documents, tasks, and workflow steps).
 
 ## External Dependencies
 

@@ -4,7 +4,7 @@ import {
   loanPrograms, programWorkflowSteps, workflowStepDefinitions,
   programTaskTemplates, programDocumentTemplates
 } from "@shared/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, isNull, isNotNull, inArray } from "drizzle-orm";
 import { storage } from "../storage";
 
 interface PipelineResult {
@@ -64,6 +64,7 @@ export async function buildProjectPipelineFromProgram(
   for (const step of workflowSteps) {
     const stage = await storage.createProjectStage({
       projectId,
+      programStepId: step.stepId,
       stageName: step.defName,
       stageKey: step.defKey,
       stageOrder: step.stepOrder,
@@ -89,6 +90,7 @@ export async function buildProjectPipelineFromProgram(
       await storage.createProjectTask({
         projectId,
         stageId: stage.id,
+        programTaskTemplateId: task.id,
         taskTitle: task.taskName,
         taskDescription: task.taskDescription,
         taskType: task.taskCategory || 'general',
@@ -111,6 +113,7 @@ export async function buildProjectPipelineFromProgram(
   if (docTemplates.length > 0) {
     const newDocuments = docTemplates.map((doc, index) => ({
       dealId: docTargetId,
+      programDocumentTemplateId: doc.id,
       documentName: doc.documentName,
       documentCategory: doc.documentCategory,
       documentDescription: doc.documentDescription,
@@ -186,4 +189,218 @@ async function buildProjectPipelineFromLegacyTemplate(projectId: number): Promis
     documentsCreated: 0,
     usedProgramTemplate: false,
   };
+}
+
+export async function syncProgramToProjects(programId: number): Promise<{ projectsSynced: number }> {
+  const linkedProjects = await db.select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.programId, programId));
+
+  if (linkedProjects.length === 0) {
+    return { projectsSynced: 0 };
+  }
+
+  const workflowSteps = await db.select({
+    stepId: programWorkflowSteps.id,
+    stepOrder: programWorkflowSteps.stepOrder,
+    isRequired: programWorkflowSteps.isRequired,
+    estimatedDays: programWorkflowSteps.estimatedDays,
+    defName: workflowStepDefinitions.name,
+    defKey: workflowStepDefinitions.key,
+    defDescription: workflowStepDefinitions.description,
+  })
+    .from(programWorkflowSteps)
+    .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+    .where(eq(programWorkflowSteps.programId, programId))
+    .orderBy(asc(programWorkflowSteps.stepOrder));
+
+  const docTemplates = await db.select()
+    .from(programDocumentTemplates)
+    .where(eq(programDocumentTemplates.programId, programId))
+    .orderBy(asc(programDocumentTemplates.sortOrder));
+
+  const taskTemplates = await db.select()
+    .from(programTaskTemplates)
+    .where(eq(programTaskTemplates.programId, programId))
+    .orderBy(asc(programTaskTemplates.sortOrder));
+
+  for (const project of linkedProjects) {
+    await syncSingleProject(project.id, workflowSteps, docTemplates, taskTemplates);
+  }
+
+  return { projectsSynced: linkedProjects.length };
+}
+
+async function syncSingleProject(
+  projectId: number,
+  workflowSteps: Array<{ stepId: number; stepOrder: number; isRequired: boolean | null; estimatedDays: number | null; defName: string; defKey: string; defDescription: string | null }>,
+  docTemplates: Array<any>,
+  taskTemplates: Array<any>
+) {
+  const existingStages = await db.select()
+    .from(projectStages)
+    .where(eq(projectStages.projectId, projectId));
+
+  const stageByProgramStepId = new Map<number, typeof existingStages[0]>();
+  for (const s of existingStages) {
+    if (s.programStepId) {
+      stageByProgramStepId.set(s.programStepId, s);
+    }
+  }
+
+  const newStageIdByStepId = new Map<number, number>();
+
+  for (const step of workflowSteps) {
+    const existingStage = stageByProgramStepId.get(step.stepId);
+    if (existingStage) {
+      await db.update(projectStages)
+        .set({
+          stageName: step.defName,
+          stageKey: step.defKey,
+          stageOrder: step.stepOrder,
+          stageDescription: step.defDescription || null,
+          estimatedDurationDays: step.estimatedDays || null,
+        })
+        .where(eq(projectStages.id, existingStage.id));
+      newStageIdByStepId.set(step.stepId, existingStage.id);
+    } else {
+      const stage = await storage.createProjectStage({
+        projectId,
+        programStepId: step.stepId,
+        stageName: step.defName,
+        stageKey: step.defKey,
+        stageOrder: step.stepOrder,
+        stageDescription: step.defDescription || null,
+        estimatedDurationDays: step.estimatedDays || null,
+        status: 'pending',
+        visibleToBorrower: true,
+        startedAt: null,
+      });
+      newStageIdByStepId.set(step.stepId, stage.id);
+    }
+  }
+
+  const currentStepIds = new Set(workflowSteps.map(s => s.stepId));
+  for (const stage of existingStages) {
+    if (stage.programStepId && !currentStepIds.has(stage.programStepId)) {
+      if (stage.status !== 'completed') {
+        await db.update(projectStages)
+          .set({ status: 'skipped' })
+          .where(eq(projectStages.id, stage.id));
+      }
+    }
+  }
+
+  const existingTasks = await db.select()
+    .from(projectTasks)
+    .where(eq(projectTasks.projectId, projectId));
+
+  const taskByTemplateId = new Map<number, typeof existingTasks[0]>();
+  for (const t of existingTasks) {
+    if (t.programTaskTemplateId) {
+      taskByTemplateId.set(t.programTaskTemplateId, t);
+    }
+  }
+
+  const currentTaskTemplateIds = new Set(taskTemplates.map(t => t.id));
+
+  for (const template of taskTemplates) {
+    const stageId = template.stepId ? (newStageIdByStepId.get(template.stepId) || null) : null;
+    const existingTask = taskByTemplateId.get(template.id);
+
+    if (existingTask) {
+      const updates: Record<string, any> = {};
+      if (existingTask.taskTitle !== template.taskName) updates.taskTitle = template.taskName;
+      if (existingTask.taskDescription !== template.taskDescription) updates.taskDescription = template.taskDescription;
+      if (existingTask.taskType !== (template.taskCategory || 'general')) updates.taskType = template.taskCategory || 'general';
+      if (existingTask.stageId !== stageId) updates.stageId = stageId;
+      if (existingTask.priority !== (template.priority || 'medium')) updates.priority = template.priority || 'medium';
+
+      if (Object.keys(updates).length > 0) {
+        await db.update(projectTasks)
+          .set(updates)
+          .where(eq(projectTasks.id, existingTask.id));
+      }
+    } else {
+      await storage.createProjectTask({
+        projectId,
+        stageId,
+        programTaskTemplateId: template.id,
+        taskTitle: template.taskName,
+        taskDescription: template.taskDescription,
+        taskType: template.taskCategory || 'general',
+        priority: template.priority || 'medium',
+        requiresDocument: false,
+        visibleToBorrower: true,
+        borrowerActionRequired: false,
+        status: 'pending',
+      });
+    }
+  }
+
+  for (const task of existingTasks) {
+    if (task.programTaskTemplateId && !currentTaskTemplateIds.has(task.programTaskTemplateId)) {
+      if (task.status !== 'completed') {
+        await db.update(projectTasks)
+          .set({ status: 'not_applicable' })
+          .where(eq(projectTasks.id, task.id));
+      }
+    }
+  }
+
+  const existingDocs = await db.select()
+    .from(dealDocuments)
+    .where(eq(dealDocuments.dealId, projectId));
+
+  const docByTemplateId = new Map<number, typeof existingDocs[0]>();
+  for (const d of existingDocs) {
+    if (d.programDocumentTemplateId) {
+      docByTemplateId.set(d.programDocumentTemplateId, d);
+    }
+  }
+
+  const currentDocTemplateIds = new Set(docTemplates.map(d => d.id));
+
+  for (const template of docTemplates) {
+    const stageId = template.stepId ? (newStageIdByStepId.get(template.stepId) || null) : null;
+    const existingDoc = docByTemplateId.get(template.id);
+
+    if (existingDoc) {
+      const updates: Record<string, any> = {};
+      if (existingDoc.documentName !== template.documentName) updates.documentName = template.documentName;
+      if (existingDoc.documentCategory !== template.documentCategory) updates.documentCategory = template.documentCategory;
+      if (existingDoc.documentDescription !== template.documentDescription) updates.documentDescription = template.documentDescription;
+      if (existingDoc.isRequired !== (template.isRequired ?? true)) updates.isRequired = template.isRequired ?? true;
+      if (existingDoc.sortOrder !== template.sortOrder) updates.sortOrder = template.sortOrder;
+      if (existingDoc.stageId !== stageId) updates.stageId = stageId;
+
+      if (Object.keys(updates).length > 0) {
+        await db.update(dealDocuments)
+          .set(updates)
+          .where(eq(dealDocuments.id, existingDoc.id));
+      }
+    } else {
+      await db.insert(dealDocuments).values({
+        dealId: projectId,
+        programDocumentTemplateId: template.id,
+        documentName: template.documentName,
+        documentCategory: template.documentCategory,
+        documentDescription: template.documentDescription,
+        isRequired: template.isRequired ?? true,
+        sortOrder: template.sortOrder || 0,
+        status: 'pending',
+        stageId,
+      });
+    }
+  }
+
+  for (const doc of existingDocs) {
+    if (doc.programDocumentTemplateId && !currentDocTemplateIds.has(doc.programDocumentTemplateId)) {
+      if (!doc.filePath) {
+        await db.update(dealDocuments)
+          .set({ status: 'not_applicable', isRequired: false })
+          .where(eq(dealDocuments.id, doc.id));
+      }
+    }
+  }
 }
