@@ -5,6 +5,7 @@ import {
   projects, projectStages, projectTasks, projectActivity, projectDocuments, projectWebhooks,
   systemSettings, adminTasks, adminActivity, dealStages, teamPermissions,
   commercialSubmissions, commercialSubmissionDocuments,
+  documentReviewResults,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -18,6 +19,7 @@ import {
   type TeamPermission, PERMISSION_KEYS,
   type CommercialSubmission, type InsertCommercialSubmission,
   type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
+  type DocumentReviewResult, type InsertDocumentReviewResult,
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
@@ -75,6 +77,11 @@ export interface IStorage {
   getCommercialSubmissionDocuments(submissionId: number): Promise<CommercialSubmissionDocument[]>;
   getCommercialSubmissionDocumentById(id: number): Promise<CommercialSubmissionDocument | undefined>;
   deleteCommercialSubmissionDocument(id: number): Promise<void>;
+
+  createDocumentReview(review: InsertDocumentReviewResult): Promise<DocumentReviewResult>;
+  getDocumentReviewsByDocumentId(documentId: number): Promise<DocumentReviewResult[]>;
+  getDocumentReviewsByProjectId(projectId: number): Promise<DocumentReviewResult[]>;
+  getLatestDocumentReview(documentId: number): Promise<DocumentReviewResult | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -939,6 +946,31 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCommercialSubmissionDocument(id: number): Promise<void> {
     await db.delete(commercialSubmissionDocuments).where(eq(commercialSubmissionDocuments.id, id));
+  }
+
+  async createDocumentReview(review: InsertDocumentReviewResult): Promise<DocumentReviewResult> {
+    const [created] = await db.insert(documentReviewResults).values(review).returning();
+    return created;
+  }
+
+  async getDocumentReviewsByDocumentId(documentId: number): Promise<DocumentReviewResult[]> {
+    return db.select().from(documentReviewResults)
+      .where(eq(documentReviewResults.documentId, documentId))
+      .orderBy(desc(documentReviewResults.reviewedAt));
+  }
+
+  async getDocumentReviewsByProjectId(projectId: number): Promise<DocumentReviewResult[]> {
+    return db.select().from(documentReviewResults)
+      .where(eq(documentReviewResults.projectId, projectId))
+      .orderBy(desc(documentReviewResults.reviewedAt));
+  }
+
+  async getLatestDocumentReview(documentId: number): Promise<DocumentReviewResult | undefined> {
+    const [review] = await db.select().from(documentReviewResults)
+      .where(eq(documentReviewResults.documentId, documentId))
+      .orderBy(desc(documentReviewResults.reviewedAt))
+      .limit(1);
+    return review;
   }
 }
 

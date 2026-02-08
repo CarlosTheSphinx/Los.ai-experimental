@@ -64,6 +64,10 @@ import {
   BarChart3,
   RefreshCw,
   CloudUpload,
+  Sparkles,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -662,6 +666,36 @@ export default function AdminDealDetail() {
   const [newDocName, setNewDocName] = useState("");
   const [newDocCategory, setNewDocCategory] = useState("other");
   const [newDocRequired, setNewDocRequired] = useState(true);
+  const [reviewingDocId, setReviewingDocId] = useState<number | null>(null);
+  const [expandedReviewDocId, setExpandedReviewDocId] = useState<number | null>(null);
+
+  const { data: aiReviewsData, isLoading: aiReviewsLoading } = useQuery<{ reviews: any[] }>({
+    queryKey: [`/api/admin/projects/${linkedProjectId}/ai-reviews`],
+    enabled: !!linkedProjectId,
+  });
+
+  const aiReviewsByDocId = (aiReviewsData?.reviews || []).reduce((acc: Record<number, any>, review: any) => {
+    if (!acc[review.documentId]) acc[review.documentId] = review;
+    return acc;
+  }, {} as Record<number, any>);
+
+  const triggerAiReview = useMutation({
+    mutationFn: async (docId: number) => {
+      setReviewingDocId(docId);
+      const res = await apiRequest('POST', `/api/admin/documents/${docId}/ai-review`, { projectId: linkedProjectId });
+      return res.json();
+    },
+    onSuccess: (data: any, docId: number) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/projects/${linkedProjectId}/ai-reviews`] });
+      setReviewingDocId(null);
+      setExpandedReviewDocId(docId);
+      toast({ title: "AI Review Complete", description: data?.summary || "Review finished" });
+    },
+    onError: (error: any) => {
+      setReviewingDocId(null);
+      toast({ title: "AI Review Failed", description: error.message, variant: "destructive" });
+    },
+  });
 
   const createStageTaskMutation = useMutation({
     mutationFn: async ({ stageId }: { stageId: number }) => {
@@ -1494,13 +1528,17 @@ export default function AdminDealDetail() {
                             Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{stageDocs.length})
                           </h4>
                           <div className="space-y-2">
-                            {stageDocs.map((doc) => (
+                            {stageDocs.map((doc) => {
+                              const docReview = aiReviewsByDocId[doc.id];
+                              const isReviewing = reviewingDocId === doc.id;
+                              return (
+                              <div key={doc.id} className="space-y-0">
                               <div
-                                key={doc.id}
                                 className={cn(
                                   "flex items-center justify-between gap-3 p-3 rounded-lg border",
                                   (doc.status === 'approved' || doc.status === 'uploaded') && "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 opacity-80",
-                                  doc.status === 'rejected' && "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                                  doc.status === 'rejected' && "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
+                                  expandedReviewDocId === doc.id && "rounded-b-none"
                                 )}
                                 data-testid={`doc-row-${doc.id}`}
                               >
@@ -1522,6 +1560,17 @@ export default function AdminDealDetail() {
                                       </span>
                                       {doc.isRequired && (
                                         <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Required</Badge>
+                                      )}
+                                      {docReview && (
+                                        <Badge
+                                          variant={docReview.overallStatus === 'pass' ? 'default' : docReview.overallStatus === 'fail' ? 'destructive' : 'secondary'}
+                                          className={cn("text-[10px] cursor-pointer", docReview.overallStatus === 'pass' && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200")}
+                                          onClick={(e) => { e.stopPropagation(); setExpandedReviewDocId(expandedReviewDocId === doc.id ? null : doc.id); }}
+                                          data-testid={`badge-ai-review-${doc.id}`}
+                                        >
+                                          {docReview.overallStatus === 'pass' ? <ShieldCheck className="h-3 w-3 mr-0.5" /> : docReview.overallStatus === 'fail' ? <ShieldAlert className="h-3 w-3 mr-0.5" /> : <ShieldQuestion className="h-3 w-3 mr-0.5" />}
+                                          AI: {docReview.overallStatus === 'pass' ? 'Pass' : docReview.overallStatus === 'fail' ? 'Fail' : 'Review'}
+                                        </Badge>
                                       )}
                                     </div>
                                     {doc.fileName && doc.uploadedAt && (
@@ -1565,6 +1614,17 @@ export default function AdminDealDetail() {
                                           Drive
                                         </Button>
                                       )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={(e) => { e.stopPropagation(); triggerAiReview.mutate(doc.id); }}
+                                        disabled={isReviewing}
+                                        data-testid={`button-ai-review-${doc.id}`}
+                                        title="AI Document Review"
+                                      >
+                                        {isReviewing ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                                        {isReviewing ? 'Reviewing...' : 'AI Review'}
+                                      </Button>
                                     </>
                                   )}
                                   <input type="file" id={`file-input-${doc.id}`} className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={handleFileInputChange(doc.id)} data-testid={`input-file-${doc.id}`} />
@@ -1603,7 +1663,54 @@ export default function AdminDealDetail() {
                                   )}
                                 </div>
                               </div>
-                            ))}
+                              {expandedReviewDocId === doc.id && docReview && (
+                                <div className="border border-t-0 rounded-b-lg p-3 bg-muted/30 space-y-2" data-testid={`review-panel-${doc.id}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      {docReview.overallStatus === 'pass' ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> : docReview.overallStatus === 'fail' ? <ShieldAlert className="h-4 w-4 text-red-600" /> : <ShieldQuestion className="h-4 w-4 text-amber-600" />}
+                                      <span className="text-sm font-medium">
+                                        AI Review: {docReview.overallStatus === 'pass' ? 'Passed' : docReview.overallStatus === 'fail' ? 'Failed' : 'Needs Review'}
+                                      </span>
+                                    </div>
+                                    <Button size="icon" variant="ghost" onClick={() => setExpandedReviewDocId(null)} data-testid={`button-close-review-${doc.id}`}>
+                                      <XCircle className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                  {docReview.summary && (
+                                    <p className="text-xs text-muted-foreground">{docReview.summary}</p>
+                                  )}
+                                  {docReview.findings && docReview.findings.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      {docReview.findings.map((finding: any, idx: number) => (
+                                        <div key={idx} data-testid={`finding-row-${doc.id}-${idx}`} className={cn(
+                                          "flex items-start gap-2 p-2 rounded-md text-xs border",
+                                          finding.status === 'pass' && "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800",
+                                          finding.status === 'fail' && "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800",
+                                          finding.status === 'warning' && "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800",
+                                          finding.status === 'info' && "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                                        )}>
+                                          <div className="flex-shrink-0 mt-0.5">
+                                            {finding.status === 'pass' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> :
+                                             finding.status === 'fail' ? <XCircle className="h-3.5 w-3.5 text-red-600" /> :
+                                             finding.status === 'warning' ? <AlertCircle className="h-3.5 w-3.5 text-amber-600" /> :
+                                             <Circle className="h-3.5 w-3.5 text-blue-600" />}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="font-medium">{finding.title}</span>
+                                              <Badge variant="outline" className="text-[9px] px-1 py-0">{finding.category}</Badge>
+                                            </div>
+                                            <p className="text-muted-foreground mt-0.5">{finding.detail}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

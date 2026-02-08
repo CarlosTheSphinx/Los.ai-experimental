@@ -671,6 +671,8 @@ export const loanPrograms = pgTable("loan_programs", {
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
   
+  reviewGuidelines: text("review_guidelines"),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1763,3 +1765,22 @@ export const commercialSubmissionDocuments = pgTable("commercial_submission_docu
 export const insertCommercialSubmissionDocumentSchema = createInsertSchema(commercialSubmissionDocuments).omit({ id: true, uploadedAt: true });
 export type CommercialSubmissionDocument = typeof commercialSubmissionDocuments.$inferSelect;
 export type InsertCommercialSubmissionDocument = z.infer<typeof insertCommercialSubmissionDocumentSchema>;
+
+export const documentReviewResults = pgTable("document_review_results", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => dealDocuments.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
+  
+  overallStatus: varchar("overall_status", { length: 50 }).notNull(),
+  summary: text("summary"),
+  findings: text("findings"),
+  
+  model: varchar("model", { length: 100 }),
+  reviewedAt: timestamp("reviewed_at").defaultNow(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+});
+
+export const insertDocumentReviewResultSchema = createInsertSchema(documentReviewResults).omit({ id: true, reviewedAt: true });
+export type DocumentReviewResult = typeof documentReviewResults.$inferSelect;
+export type InsertDocumentReviewResult = z.infer<typeof insertDocumentReviewResultSchema>;

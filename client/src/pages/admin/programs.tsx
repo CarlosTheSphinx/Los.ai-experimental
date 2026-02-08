@@ -60,6 +60,7 @@ interface LoanProgram {
   eligiblePropertyTypes: string[] | null;
   isActive: boolean;
   sortOrder: number | null;
+  reviewGuidelines: string | null;
   createdAt: string;
   documentCount?: number;
   taskCount?: number;
@@ -182,6 +183,7 @@ export default function AdminPrograms() {
     maxInterestRate: "12",
     termOptions: "12, 24",
     eligiblePropertyTypes: [] as string[],
+    reviewGuidelines: "",
   });
 
   const [inlineDocuments, setInlineDocuments] = useState<InlineDocument[]>([]);
@@ -362,6 +364,7 @@ export default function AdminPrograms() {
       maxInterestRate: "12",
       termOptions: "12, 24",
       eligiblePropertyTypes: [],
+      reviewGuidelines: "",
     });
     setInlineDocuments([]);
     setInlineTasks([]);
@@ -448,6 +451,7 @@ export default function AdminPrograms() {
       maxInterestRate: String(program.maxInterestRate || 12),
       termOptions: program.termOptions || "",
       eligiblePropertyTypes: program.eligiblePropertyTypes || [],
+      reviewGuidelines: program.reviewGuidelines || "",
     });
     setSelectedProgram(program);
     setShowEditProgram(true);
@@ -1259,6 +1263,21 @@ export default function AdminPrograms() {
                   </Badge>
                 ))}
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>AI Document Review Guidelines</Label>
+              <p className="text-xs text-muted-foreground">
+                Paste your program-specific guidelines here. When an admin triggers an AI review on uploaded documents, these guidelines will be used to evaluate the document.
+              </p>
+              <Textarea
+                value={programForm.reviewGuidelines}
+                onChange={(e) =>
+                  setProgramForm({ ...programForm, reviewGuidelines: e.target.value })
+                }
+                placeholder="e.g., Minimum credit score: 680&#10;Maximum LTV: 75%&#10;Borrower must provide 12 months bank statements&#10;Property must be in eligible state..."
+                className="min-h-[150px] text-sm"
+                data-testid="input-review-guidelines"
+              />
             </div>
           </div>
           <DialogFooter>

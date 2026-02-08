@@ -5379,6 +5379,62 @@ export async function registerRoutes(
     }
   });
 
+  // AI Document Review - Trigger review for a specific document
+  app.post('/api/admin/documents/:docId/ai-review', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const { projectId } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: 'projectId is required' });
+      }
+
+      const { reviewDocument } = await import('./services/documentReview');
+      const result = await reviewDocument(docId, parseInt(projectId), req.user!.id);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json(result.result);
+    } catch (error: any) {
+      console.error('AI review error:', error);
+      res.status(500).json({ error: 'Failed to perform AI review' });
+    }
+  });
+
+  // Get AI review results for a document
+  app.get('/api/admin/documents/:docId/ai-reviews', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const reviews = await storage.getDocumentReviewsByDocumentId(docId);
+      const parsed = reviews.map(r => ({
+        ...r,
+        findings: r.findings ? JSON.parse(r.findings) : [],
+      }));
+      res.json({ reviews: parsed });
+    } catch (error: any) {
+      console.error('Get AI reviews error:', error);
+      res.status(500).json({ error: 'Failed to fetch reviews' });
+    }
+  });
+
+  // Get all AI review results for a project
+  app.get('/api/admin/projects/:projectId/ai-reviews', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const reviews = await storage.getDocumentReviewsByProjectId(projectId);
+      const parsed = reviews.map(r => ({
+        ...r,
+        findings: r.findings ? JSON.parse(r.findings) : [],
+      }));
+      res.json({ reviews: parsed });
+    } catch (error: any) {
+      console.error('Get project AI reviews error:', error);
+      res.status(500).json({ error: 'Failed to fetch project reviews' });
+    }
+  });
+
   // Admin - Update deal stage
   app.patch('/api/admin/deals/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
@@ -6283,7 +6339,7 @@ export async function registerRoutes(
         minLtv, maxLtv, 
         minInterestRate, maxInterestRate,
         termOptions, eligiblePropertyTypes,
-        isActive
+        isActive, reviewGuidelines
       } = req.body;
       
       const updateData: any = { updatedAt: new Date() };
@@ -6299,6 +6355,7 @@ export async function registerRoutes(
       if (termOptions !== undefined) updateData.termOptions = termOptions;
       if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (reviewGuidelines !== undefined) updateData.reviewGuidelines = reviewGuidelines;
       
       const [program] = await db.update(loanPrograms)
         .set(updateData)
