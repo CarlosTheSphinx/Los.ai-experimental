@@ -81,7 +81,7 @@ export async function buildProjectPipelineFromProgram(
       .from(programTaskTemplates)
       .where(and(
         eq(programTaskTemplates.programId, programId),
-        eq(programTaskTemplates.stepId, step.stepOrder)
+        eq(programTaskTemplates.stepId, step.stepId)
       ))
       .orderBy(asc(programTaskTemplates.sortOrder));
 
