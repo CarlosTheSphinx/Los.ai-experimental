@@ -658,6 +658,7 @@ export default function AdminDealDetail() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("medium");
+  const [newTaskAssignedTo, setNewTaskAssignedTo] = useState("");
   const [newDocName, setNewDocName] = useState("");
   const [newDocCategory, setNewDocCategory] = useState("other");
   const [newDocRequired, setNewDocRequired] = useState(true);
@@ -668,6 +669,7 @@ export default function AdminDealDetail() {
         taskTitle: newTaskTitle,
         taskDescription: newTaskDescription || undefined,
         priority: newTaskPriority,
+        assignedTo: newTaskAssignedTo && newTaskAssignedTo !== 'unassigned' ? newTaskAssignedTo : undefined,
       });
     },
     onSuccess: () => {
@@ -677,6 +679,7 @@ export default function AdminDealDetail() {
       setNewTaskTitle("");
       setNewTaskDescription("");
       setNewTaskPriority("medium");
+      setNewTaskAssignedTo("");
     },
     onError: (error: any) => {
       toast({ title: "Failed to add task", description: error.message, variant: "destructive" });
@@ -1319,10 +1322,6 @@ export default function AdminDealDetail() {
                   </span>
                 );
               })()}
-              <Button size="sm" variant="outline" onClick={() => setDocumentDialogOpen(true)} data-testid="button-add-document">
-                <Plus className="h-4 w-4 mr-1" />
-                Add Doc
-              </Button>
             </div>
           </div>
         </CardContent>
@@ -2164,7 +2163,7 @@ export default function AdminDealDetail() {
       </Dialog>
 
       {/* Add Stage Task Dialog */}
-      <Dialog open={addTaskStageId !== null} onOpenChange={(open) => { if (!open) { setAddTaskStageId(null); setNewTaskTitle(""); setNewTaskDescription(""); setNewTaskPriority("medium"); } }}>
+      <Dialog open={addTaskStageId !== null} onOpenChange={(open) => { if (!open) { setAddTaskStageId(null); setNewTaskTitle(""); setNewTaskDescription(""); setNewTaskPriority("medium"); setNewTaskAssignedTo(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Task to Stage</DialogTitle>
@@ -2207,9 +2206,25 @@ export default function AdminDealDetail() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="stage-task-assigned">Assign To</Label>
+              <Select value={newTaskAssignedTo} onValueChange={setNewTaskAssignedTo}>
+                <SelectTrigger data-testid="select-stage-task-assigned">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {teamData?.teamMembers?.filter((m: any) => m.role === 'admin' || m.role === 'super_admin' || m.role === 'staff').map((member: any) => (
+                    <SelectItem key={member.id} value={String(member.id)}>
+                      {member.fullName || member.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddTaskStageId(null); setNewTaskTitle(""); setNewTaskDescription(""); setNewTaskPriority("medium"); }} data-testid="button-cancel-stage-task">
+            <Button variant="outline" onClick={() => { setAddTaskStageId(null); setNewTaskTitle(""); setNewTaskDescription(""); setNewTaskPriority("medium"); setNewTaskAssignedTo(""); }} data-testid="button-cancel-stage-task">
               Cancel
             </Button>
             <Button

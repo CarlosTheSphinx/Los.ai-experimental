@@ -4347,7 +4347,7 @@ export async function registerRoutes(
     try {
       const projectId = parseInt(req.params.projectId);
       const stageId = parseInt(req.params.stageId);
-      const { taskTitle, taskDescription, priority } = req.body;
+      const { taskTitle, taskDescription, priority, assignedTo } = req.body;
 
       if (!taskTitle || !taskTitle.trim()) {
         return res.status(400).json({ error: 'Task title is required' });
@@ -4365,6 +4365,7 @@ export async function registerRoutes(
         taskDescription: taskDescription?.trim() || null,
         priority: priority || 'medium',
         status: 'pending',
+        ...(assignedTo ? { assignedTo } : {}),
       });
 
       await storage.createProjectActivity({
