@@ -4704,6 +4704,7 @@ export async function registerRoutes(
         propertyValue, 
         interestRate, 
         loanType, 
+        programId: reqProgramId,
         propertyType, 
         stage,
         partnerId,
@@ -4718,6 +4719,7 @@ export async function registerRoutes(
       const propertyValueNum = propertyValue ? parseFloat(propertyValue) : loanAmountNum * 1.25;
       const ltv = ((loanAmountNum / propertyValueNum) * 100).toFixed(0) + '%';
       
+      const parsedProgramId = reqProgramId ? parseInt(reqProgramId) : null;
       const effectiveLoanType = loanType || 'rtl';
       
       const [deal] = await db.insert(savedQuotes).values({
@@ -4727,6 +4729,7 @@ export async function registerRoutes(
         customerFirstName,
         customerLastName,
         propertyAddress,
+        programId: parsedProgramId,
         loanData: {
           loanAmount: loanAmountNum,
           propertyValue: propertyValueNum,
@@ -4745,13 +4748,26 @@ export async function registerRoutes(
         stage: stage || 'initial-review',
       }).returning();
       
-      // Try to get templates from an active program first
-      const [activeProgram] = await db.select().from(loanPrograms)
-        .where(and(
-          eq(loanPrograms.loanType, effectiveLoanType),
-          eq(loanPrograms.isActive, true)
-        ))
-        .limit(1);
+      // Try to get templates from the selected program first, then fallback to loanType match
+      let activeProgram: typeof loanPrograms.$inferSelect | undefined;
+      if (parsedProgramId) {
+        const [found] = await db.select().from(loanPrograms)
+          .where(and(
+            eq(loanPrograms.id, parsedProgramId),
+            eq(loanPrograms.isActive, true)
+          ))
+          .limit(1);
+        activeProgram = found;
+      }
+      if (!activeProgram) {
+        const [found] = await db.select().from(loanPrograms)
+          .where(and(
+            eq(loanPrograms.loanType, effectiveLoanType),
+            eq(loanPrograms.isActive, true)
+          ))
+          .limit(1);
+        activeProgram = found;
+      }
       
       let documentEntries: any[] = [];
       let taskEntries: any[] = [];

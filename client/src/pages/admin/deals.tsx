@@ -463,6 +463,7 @@ export default function AdminDeals() {
     propertyValue: "",
     interestRate: "",
     loanType: "rtl",
+    programId: "",
     propertyType: "single-family",
     stage: "initial-review",
     partnerId: "",
@@ -470,7 +471,16 @@ export default function AdminDeals() {
   });
   
   const [partnerInputMode, setPartnerInputMode] = useState<"select" | "manual">("select");
-  
+
+  const { data: programsData } = useQuery<{ programs: Array<{ id: number; name: string; loanType: string; isActive: boolean }> }>({
+    queryKey: ["/api/programs-with-pricing"],
+    queryFn: async () => {
+      const res = await fetch("/api/programs-with-pricing", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch programs");
+      return res.json();
+    },
+  });
+
   const { data: partnersData } = useQuery<{ partners: Partner[] }>({
     queryKey: ["/api/admin/partners"],
     queryFn: async () => {
@@ -508,6 +518,7 @@ export default function AdminDeals() {
         propertyValue: "",
         interestRate: "",
         loanType: "rtl",
+        programId: "",
         propertyType: "single-family",
         stage: "initial-review",
         partnerId: "",
@@ -633,17 +644,27 @@ export default function AdminDeals() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="loanType">Loan Type</Label>
+                  <Label htmlFor="programId">Loan Program</Label>
                   <Select
-                    value={newDeal.loanType}
-                    onValueChange={(value) => setNewDeal({ ...newDeal, loanType: value })}
+                    value={newDeal.programId}
+                    onValueChange={(value) => {
+                      const program = programsData?.programs?.find(p => String(p.id) === value);
+                      setNewDeal({
+                        ...newDeal,
+                        programId: value,
+                        loanType: program?.loanType || newDeal.loanType,
+                      });
+                    }}
                   >
-                    <SelectTrigger data-testid="select-loan-type">
-                      <SelectValue />
+                    <SelectTrigger data-testid="select-loan-program">
+                      <SelectValue placeholder="Select a program" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="rtl">RTL (Residential Transition Loan)</SelectItem>
-                      <SelectItem value="dscr">DSCR</SelectItem>
+                      {programsData?.programs?.filter(p => p.isActive).map((program) => (
+                        <SelectItem key={program.id} value={String(program.id)}>
+                          {program.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
