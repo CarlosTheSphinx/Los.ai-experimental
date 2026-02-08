@@ -1784,3 +1784,20 @@ export const documentReviewResults = pgTable("document_review_results", {
 export const insertDocumentReviewResultSchema = createInsertSchema(documentReviewResults).omit({ id: true, reviewedAt: true });
 export type DocumentReviewResult = typeof documentReviewResults.$inferSelect;
 export type InsertDocumentReviewResult = z.infer<typeof insertDocumentReviewResultSchema>;
+
+export const programReviewRules = pgTable("program_review_rules", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  documentType: varchar("document_type", { length: 100 }).notNull(),
+  ruleTitle: varchar("rule_title", { length: 500 }).notNull(),
+  ruleDescription: text("rule_description"),
+  category: varchar("category", { length: 100 }),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProgramReviewRuleSchema = createInsertSchema(programReviewRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type ProgramReviewRule = typeof programReviewRules.$inferSelect;
+export type InsertProgramReviewRule = z.infer<typeof insertProgramReviewRuleSchema>;

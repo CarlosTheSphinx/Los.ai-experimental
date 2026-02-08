@@ -2,8 +2,8 @@ import OpenAI from "openai";
 import { objectStorageService } from "../replit_integrations/object_storage/objectStorage";
 import { storage } from "../storage";
 import { db } from "../db";
-import { loanPrograms, dealDocuments, projects, savedQuotes } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { loanPrograms, dealDocuments, projects, savedQuotes, programReviewRules } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -78,13 +78,46 @@ export async function reviewDocument(
     if (project.programId) {
       const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, project.programId));
       if (program) {
-        guidelines = program.reviewGuidelines;
         programId = program.id;
+        
+        const rules = await db.select().from(programReviewRules)
+          .where(and(
+            eq(programReviewRules.programId, program.id),
+            eq(programReviewRules.isActive, true)
+          ))
+          .orderBy(programReviewRules.sortOrder);
+
+        if (rules.length > 0) {
+          const docCategory = doc.documentCategory || 'General';
+          const docName = (doc.documentName || doc.fileName || '').toLowerCase();
+          
+          const relevantRules = rules.filter(r => {
+            const ruleDocType = (r.documentType || '').toLowerCase();
+            if (ruleDocType === 'general' || ruleDocType === 'all documents' || ruleDocType === 'general / all documents') return true;
+            if (ruleDocType.includes(docCategory.toLowerCase())) return true;
+            if (docName.includes(ruleDocType.replace(/\s+/g, ' ').trim())) return true;
+            const ruleWords = ruleDocType.split(/[\s\/]+/).filter(w => w.length > 3);
+            return ruleWords.some(w => docName.includes(w) || docCategory.toLowerCase().includes(w));
+          });
+
+          const allRules = relevantRules.length > 0 ? relevantRules : rules;
+          
+          guidelines = allRules.map(r => {
+            const parts = [];
+            if (r.documentType) parts.push(`[${r.documentType}]`);
+            if (r.category) parts.push(`(${r.category})`);
+            parts.push(r.ruleTitle);
+            if (r.ruleDescription) parts.push(`- ${r.ruleDescription}`);
+            return parts.join(' ');
+          }).join('\n');
+        } else {
+          guidelines = program.reviewGuidelines;
+        }
       }
     }
 
     if (!guidelines) {
-      return { success: false, error: 'No review guidelines configured for this loan program. Please add guidelines in the program settings first.' };
+      return { success: false, error: 'No review rules configured for this loan program. Please upload a credit policy document or add review rules in the program settings first.' };
     }
 
     let documentText: string;

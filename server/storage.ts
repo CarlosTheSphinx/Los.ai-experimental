@@ -6,6 +6,7 @@ import {
   systemSettings, adminTasks, adminActivity, dealStages, teamPermissions,
   commercialSubmissions, commercialSubmissionDocuments,
   documentReviewResults,
+  programReviewRules,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -20,6 +21,7 @@ import {
   type CommercialSubmission, type InsertCommercialSubmission,
   type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
   type DocumentReviewResult, type InsertDocumentReviewResult,
+  type ProgramReviewRule, type InsertProgramReviewRule,
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count } from "drizzle-orm";
 
@@ -82,6 +84,12 @@ export interface IStorage {
   getDocumentReviewsByDocumentId(documentId: number): Promise<DocumentReviewResult[]>;
   getDocumentReviewsByProjectId(projectId: number): Promise<DocumentReviewResult[]>;
   getLatestDocumentReview(documentId: number): Promise<DocumentReviewResult | undefined>;
+
+  getReviewRulesByProgramId(programId: number): Promise<ProgramReviewRule[]>;
+  createReviewRules(rules: InsertProgramReviewRule[]): Promise<ProgramReviewRule[]>;
+  updateReviewRule(id: number, data: Partial<InsertProgramReviewRule>): Promise<ProgramReviewRule>;
+  deleteReviewRule(id: number): Promise<void>;
+  deleteReviewRulesByProgramId(programId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -971,6 +979,33 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(documentReviewResults.reviewedAt))
       .limit(1);
     return review;
+  }
+
+  async getReviewRulesByProgramId(programId: number): Promise<ProgramReviewRule[]> {
+    return db.select().from(programReviewRules)
+      .where(eq(programReviewRules.programId, programId))
+      .orderBy(asc(programReviewRules.documentType), asc(programReviewRules.sortOrder));
+  }
+
+  async createReviewRules(rules: InsertProgramReviewRule[]): Promise<ProgramReviewRule[]> {
+    if (rules.length === 0) return [];
+    return db.insert(programReviewRules).values(rules).returning();
+  }
+
+  async updateReviewRule(id: number, data: Partial<InsertProgramReviewRule>): Promise<ProgramReviewRule> {
+    const [updated] = await db.update(programReviewRules)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(programReviewRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteReviewRule(id: number): Promise<void> {
+    await db.delete(programReviewRules).where(eq(programReviewRules.id, id));
+  }
+
+  async deleteReviewRulesByProgramId(programId: number): Promise<void> {
+    await db.delete(programReviewRules).where(eq(programReviewRules.programId, programId));
   }
 }
 

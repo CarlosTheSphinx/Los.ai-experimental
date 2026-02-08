@@ -6846,6 +6846,196 @@ export async function registerRoutes(
   });
 
 
+  // ==================== PROGRAM REVIEW RULES ROUTES ====================
+
+  app.get('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseInt(req.params.programId);
+      const rules = await storage.getReviewRulesByProgramId(programId);
+      res.json({ rules });
+    } catch (error: any) {
+      console.error('Get review rules error:', error);
+      res.status(500).json({ error: 'Failed to fetch review rules' });
+    }
+  });
+
+  app.post('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseInt(req.params.programId);
+      const { rules } = req.body;
+      if (!Array.isArray(rules)) {
+        return res.status(400).json({ error: 'rules must be an array' });
+      }
+      await storage.deleteReviewRulesByProgramId(programId);
+      const created = await storage.createReviewRules(
+        rules.map((r: any, idx: number) => ({
+          programId,
+          documentType: r.documentType || 'General',
+          ruleTitle: r.ruleTitle,
+          ruleDescription: r.ruleDescription || null,
+          category: r.category || null,
+          isActive: r.isActive !== false,
+          sortOrder: idx,
+        }))
+      );
+      const guidelinesText = created.map(r => `[${r.documentType}] ${r.ruleTitle}: ${r.ruleDescription || ''}`).join('\n');
+      await db.update(loanPrograms).set({ reviewGuidelines: guidelinesText }).where(eq(loanPrograms.id, programId));
+      res.json({ rules: created });
+    } catch (error: any) {
+      console.error('Save review rules error:', error);
+      res.status(500).json({ error: 'Failed to save review rules' });
+    }
+  });
+
+  app.put('/api/admin/programs/:programId/review-rules/:ruleId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const ruleId = parseInt(req.params.ruleId);
+      const { ruleTitle, ruleDescription, documentType, category, isActive } = req.body;
+      const updated = await storage.updateReviewRule(ruleId, {
+        ...(ruleTitle !== undefined && { ruleTitle }),
+        ...(ruleDescription !== undefined && { ruleDescription }),
+        ...(documentType !== undefined && { documentType }),
+        ...(category !== undefined && { category }),
+        ...(isActive !== undefined && { isActive }),
+      });
+      res.json(updated);
+    } catch (error: any) {
+      console.error('Update review rule error:', error);
+      res.status(500).json({ error: 'Failed to update review rule' });
+    }
+  });
+
+  app.delete('/api/admin/programs/:programId/review-rules/:ruleId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const ruleId = parseInt(req.params.ruleId);
+      await storage.deleteReviewRule(ruleId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete review rule error:', error);
+      res.status(500).json({ error: 'Failed to delete review rule' });
+    }
+  });
+
+  app.post('/api/admin/programs/:programId/extract-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseInt(req.params.programId);
+      const { fileContent, fileName } = req.body;
+      if (!fileContent) {
+        return res.status(400).json({ error: 'fileContent is required (base64 encoded)' });
+      }
+
+      const buffer = Buffer.from(fileContent, 'base64');
+      let textContent = '';
+
+      if (fileName?.toLowerCase().endsWith('.pdf')) {
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+        const textParts: string[] = [];
+        for (let i = 1; i <= doc.numPages; i++) {
+          const page = await doc.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item: any) => item.str).join(' ');
+          textParts.push(pageText);
+        }
+        textContent = textParts.join('\n\n');
+      } else if (fileName?.toLowerCase().match(/\.xlsx?$/)) {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheets: string[] = [];
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          sheets.push(`--- Sheet: ${sheetName} ---\n${XLSX.utils.sheet_to_csv(sheet)}`);
+        }
+        textContent = sheets.join('\n\n');
+      } else {
+        textContent = buffer.toString('utf-8');
+      }
+
+      if (!textContent || textContent.trim().length < 20) {
+        return res.status(400).json({ error: 'Could not extract meaningful text from this file.' });
+      }
+
+      const truncatedText = textContent.slice(0, 50000);
+
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert at analyzing loan credit policy documents and extracting specific, actionable review rules from them.
+
+Given a credit policy document, extract individual rules that can be used to evaluate loan documents. Each rule should be specific and testable.
+
+Group the rules by the document type they apply to. Common document types include:
+- Credit Report
+- Bank Statements
+- Tax Returns
+- Appraisal
+- Title Report
+- Insurance
+- Entity Documents
+- Income Verification
+- Property Inspection
+- Environmental Report
+- Purchase Contract
+- General / All Documents
+
+For each rule, provide:
+- documentType: which document type this rule applies to
+- ruleTitle: a short, clear title
+- ruleDescription: detailed description of what to check
+- category: a category like "Credit", "Income", "Property", "Compliance", "LTV", "DSCR", "Eligibility", etc.
+
+Respond ONLY with valid JSON in this format:
+{
+  "rules": [
+    {
+      "documentType": "Credit Report",
+      "ruleTitle": "Minimum credit score",
+      "ruleDescription": "Borrower must have a minimum FICO score of 680. If below 680, the loan is ineligible.",
+      "category": "Credit"
+    }
+  ]
+}`
+          },
+          {
+            role: 'user',
+            content: `Extract all review rules from the following credit policy document:\n\n${truncatedText}`
+          }
+        ],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 8192,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return res.status(500).json({ error: 'AI returned empty response' });
+      }
+
+      let parsed: { rules: any[] };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.status(500).json({ error: 'AI returned invalid response format' });
+      }
+
+      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+        return res.status(500).json({ error: 'AI did not return rules in expected format' });
+      }
+
+      res.json({ rules: parsed.rules, programId });
+    } catch (error: any) {
+      console.error('Extract rules error:', error);
+      res.status(500).json({ error: 'Failed to extract rules from document' });
+    }
+  });
+
   // ==================== DEAL PROCESSORS ROUTES ====================
 
   // Get processors for a project/deal

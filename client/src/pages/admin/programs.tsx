@@ -39,8 +39,11 @@ import {
   ChevronDown,
   ChevronUp,
   Workflow,
+  Upload,
+  Sparkles,
+  Check,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import ProgramWorkflowEditor from "@/components/ProgramWorkflowEditor";
@@ -202,6 +205,120 @@ export default function AdminPrograms() {
     taskCategory: "other",
     priority: "medium",
   });
+
+  const [extractedRules, setExtractedRules] = useState<any[]>([]);
+  const [isExtractingRules, setIsExtractingRules] = useState(false);
+  const [isSavingRules, setIsSavingRules] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  useEffect(() => {
+    if (selectedProgram?.id && showEditProgram) {
+      fetch(`/api/admin/programs/${selectedProgram.id}/review-rules`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : { rules: [] })
+        .then(data => {
+          if (data.rules && data.rules.length > 0) {
+            setExtractedRules(data.rules);
+          }
+        })
+        .catch(() => {});
+    } else if (!showEditProgram) {
+      setExtractedRules([]);
+    }
+  }, [selectedProgram?.id, showEditProgram]);
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (!selectedProgram?.id) return;
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Please upload a PDF or Excel file.", variant: "destructive" });
+      return;
+    }
+    setIsExtractingRules(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiRequest("POST", `/api/admin/programs/${selectedProgram.id}/extract-rules`, {
+        fileContent: base64,
+        fileName: file.name,
+      });
+      const data = await res.json();
+      if (data.rules) {
+        setExtractedRules(prev => [...prev, ...data.rules]);
+        toast({ title: "Rules extracted", description: `${data.rules.length} rules extracted from ${file.name}` });
+      }
+    } catch (err: any) {
+      toast({ title: "Extraction failed", description: err.message || "Could not extract rules from file.", variant: "destructive" });
+    } finally {
+      setIsExtractingRules(false);
+    }
+  }, [selectedProgram?.id, toast]);
+
+  const handleSaveRules = useCallback(async () => {
+    if (!selectedProgram?.id) return;
+    setIsSavingRules(true);
+    try {
+      await apiRequest("POST", `/api/admin/programs/${selectedProgram.id}/review-rules`, { rules: extractedRules });
+      toast({ title: "Rules saved successfully" });
+    } catch (err: any) {
+      toast({ title: "Failed to save rules", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingRules(false);
+    }
+  }, [selectedProgram?.id, extractedRules, toast]);
+
+  const handleDropZoneDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  }, [handleFileUpload]);
+
+  const handleDropZoneDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDropZoneDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const updateRule = useCallback((index: number, field: string, value: string) => {
+    setExtractedRules(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  }, []);
+
+  const deleteRule = useCallback((index: number) => {
+    setExtractedRules(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const addRuleToGroup = useCallback((documentType: string) => {
+    setExtractedRules(prev => [...prev, { documentType, ruleTitle: "", ruleDescription: "", category: "general" }]);
+  }, []);
+
+  const toggleSection = useCallback((docType: string) => {
+    setCollapsedSections(prev => ({ ...prev, [docType]: !prev[docType] }));
+  }, []);
+
+  const groupedRules = extractedRules.reduce<Record<string, { rules: any[], indices: number[] }>>((acc, rule, idx) => {
+    const key = rule.documentType || "Uncategorized";
+    if (!acc[key]) acc[key] = { rules: [], indices: [] };
+    acc[key].rules.push(rule);
+    acc[key].indices.push(idx);
+    return acc;
+  }, {});
 
   // Queries
   const { data: programs, isLoading: loadingPrograms } = useQuery<LoanProgram[]>({
@@ -1129,7 +1246,7 @@ export default function AdminPrograms() {
 
       {/* Edit Program Dialog */}
       <Dialog open={showEditProgram} onOpenChange={setShowEditProgram}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Loan Program</DialogTitle>
             <DialogDescription>Update the loan program settings.</DialogDescription>
@@ -1264,20 +1381,142 @@ export default function AdminPrograms() {
                 ))}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>AI Document Review Guidelines</Label>
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                Credit Policy & Rules
+              </Label>
               <p className="text-xs text-muted-foreground">
-                Paste your program-specific guidelines here. When an admin triggers an AI review on uploaded documents, these guidelines will be used to evaluate the document.
+                Upload a PDF or Excel file containing your credit policy. AI will extract rules automatically, or manage rules manually below.
               </p>
-              <Textarea
-                value={programForm.reviewGuidelines}
-                onChange={(e) =>
-                  setProgramForm({ ...programForm, reviewGuidelines: e.target.value })
-                }
-                placeholder="e.g., Minimum credit score: 680&#10;Maximum LTV: 75%&#10;Borrower must provide 12 months bank statements&#10;Property must be in eligible state..."
-                className="min-h-[150px] text-sm"
-                data-testid="input-review-guidelines"
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.xlsx,.xls"
+                className="hidden"
+                data-testid="input-rules-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                  e.target.value = "";
+                }}
               />
+
+              {isExtractingRules ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-8 gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground" data-testid="text-extracting-rules">
+                      AI is extracting rules from your document...
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div
+                  className={`border-2 border-dashed rounded-md p-6 text-center cursor-pointer transition-colors ${
+                    isDragOver ? "border-emerald-500 bg-emerald-500/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                  }`}
+                  data-testid="dropzone-rules-upload"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDrop={handleDropZoneDrop}
+                  onDragOver={handleDropZoneDragOver}
+                  onDragLeave={handleDropZoneDragLeave}
+                >
+                  <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium">Drop file here or click to upload</p>
+                  <p className="text-xs text-muted-foreground mt-1">PDF, Excel (.xlsx, .xls)</p>
+                </div>
+              )}
+
+              {extractedRules.length > 0 && (
+                <div className="space-y-3 mt-2">
+                  {Object.entries(groupedRules).map(([docType, { rules, indices }]) => {
+                    const isCollapsed = collapsedSections[docType];
+                    return (
+                      <Card key={docType}>
+                        <div
+                          className="flex items-center justify-between gap-2 p-3 cursor-pointer"
+                          data-testid={`section-header-${docType}`}
+                          onClick={() => toggleSection(docType)}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">{docType}</span>
+                            <Badge variant="secondary" className="text-xs">{rules.length}</Badge>
+                          </div>
+                          {isCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        {!isCollapsed && (
+                          <CardContent className="pt-0 space-y-3">
+                            {rules.map((rule: any, rIdx: number) => {
+                              const globalIdx = indices[rIdx];
+                              return (
+                                <div key={globalIdx} className="border rounded-md p-3 space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      value={rule.ruleTitle}
+                                      onChange={(e) => updateRule(globalIdx, "ruleTitle", e.target.value)}
+                                      placeholder="Rule title"
+                                      className="text-sm flex-1"
+                                      data-testid={`input-rule-title-${globalIdx}`}
+                                    />
+                                    {rule.category && (
+                                      <Badge variant="outline" className="text-xs shrink-0">{rule.category}</Badge>
+                                    )}
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => deleteRule(globalIdx)}
+                                      data-testid={`button-delete-rule-${globalIdx}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </div>
+                                  <Textarea
+                                    value={rule.ruleDescription}
+                                    onChange={(e) => updateRule(globalIdx, "ruleDescription", e.target.value)}
+                                    placeholder="Rule description"
+                                    className="text-sm min-h-[60px]"
+                                    data-testid={`input-rule-description-${globalIdx}`}
+                                  />
+                                </div>
+                              );
+                            })}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => addRuleToGroup(docType)}
+                              data-testid={`button-add-rule-${docType}`}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Rule
+                            </Button>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+
+                  <Button
+                    onClick={handleSaveRules}
+                    disabled={isSavingRules}
+                    className="w-full"
+                    data-testid="button-save-rules"
+                  >
+                    {isSavingRules ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-2" />
+                    )}
+                    Save Rules
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
