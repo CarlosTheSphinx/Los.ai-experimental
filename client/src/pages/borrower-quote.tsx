@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Calculator, CheckCircle2, AlertCircle, Loader2, RotateCcw, Save, MapPin, DollarSign, Home, TrendingUp, FileText } from "lucide-react";
@@ -41,6 +42,8 @@ export default function BorrowerQuote() {
   const [rtlResult, setRtlResult] = useState<RTLPricingResponse | null>(null);
   const [rtlFormData, setRtlFormData] = useState<RTLPricingFormData | null>(null);
 
+  const [borrowerFirstName, setBorrowerFirstName] = useState(user?.firstName || "");
+  const [borrowerLastName, setBorrowerLastName] = useState(user?.lastName || "");
   const [propertyAddress, setPropertyAddress] = useState("");
 
   const { mutate: getPricing, isPending: dscrPending } = usePricing();
@@ -103,8 +106,8 @@ export default function BorrowerQuote() {
       }
 
       return apiRequest("POST", "/api/quotes", {
-        customerFirstName: user?.firstName || "",
-        customerLastName: user?.lastName || "",
+        customerFirstName: borrowerFirstName.trim(),
+        customerLastName: borrowerLastName.trim(),
         customerCompanyName: "",
         propertyAddress,
         loanData: formData,
@@ -128,6 +131,10 @@ export default function BorrowerQuote() {
   });
 
   const handleSaveQuote = () => {
+    if (!borrowerFirstName.trim() || !borrowerLastName.trim()) {
+      toast({ title: "Missing Information", description: "Please enter your first and last name.", variant: "destructive" });
+      return;
+    }
     if (!propertyAddress.trim()) {
       toast({ title: "Missing Information", description: "Please enter a property address.", variant: "destructive" });
       return;
@@ -254,22 +261,30 @@ export default function BorrowerQuote() {
                     Save This Quote
                   </CardTitle>
                   <CardDescription>
-                    Save this quote for your records. Your name will be auto-filled from your profile.
+                    Save this quote for your records.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-sm text-muted-foreground">First Name</Label>
-                      <p className="font-medium" data-testid="text-borrower-first-name">
-                        {user?.firstName || "—"}
-                      </p>
+                      <Label htmlFor="borrower-first-name">First Name</Label>
+                      <Input
+                        id="borrower-first-name"
+                        value={borrowerFirstName}
+                        onChange={(e) => setBorrowerFirstName(e.target.value)}
+                        placeholder="First name"
+                        data-testid="input-borrower-first-name"
+                      />
                     </div>
                     <div>
-                      <Label className="text-sm text-muted-foreground">Last Name</Label>
-                      <p className="font-medium" data-testid="text-borrower-last-name">
-                        {user?.lastName || "—"}
-                      </p>
+                      <Label htmlFor="borrower-last-name">Last Name</Label>
+                      <Input
+                        id="borrower-last-name"
+                        value={borrowerLastName}
+                        onChange={(e) => setBorrowerLastName(e.target.value)}
+                        placeholder="Last name"
+                        data-testid="input-borrower-last-name"
+                      />
                     </div>
                   </div>
                   <div>
