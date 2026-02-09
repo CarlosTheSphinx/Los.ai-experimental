@@ -121,7 +121,7 @@ function ProjectCard({
   if (isDragOverlay) return content;
 
   return (
-    <Link href={`/admin/projects/${project.id}`} data-testid={`link-project-${project.id}`}>
+    <Link href={`/admin/deals/${project.id}`} data-testid={`link-project-${project.id}`}>
       {content}
     </Link>
   );
@@ -292,7 +292,7 @@ export default function KanbanView({ data }: KanbanViewProps) {
               {data.unassigned.map((project) => (
                 <Link
                   key={project.id}
-                  href={`/admin/projects/${project.id}`}
+                  href={`/admin/deals/${project.id}`}
                   data-testid={`link-unassigned-project-${project.id}`}
                 >
                   <ProjectCard project={project} />

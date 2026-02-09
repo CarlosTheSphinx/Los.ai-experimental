@@ -189,7 +189,7 @@ function ProgramPipeline({ program }: { program: PipelineProgram }) {
               {selectedStage.projects.map((project) => (
                 <Link
                   key={project.id}
-                  href={`/admin/projects/${project.id}`}
+                  href={`/admin/deals/${project.id}`}
                   data-testid={`link-pipeline-project-${project.id}`}
                 >
                   <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md hover-elevate flex-wrap">
@@ -249,7 +249,7 @@ export default function PipelineView({ data }: PipelineViewProps) {
               {data.unassigned.map((project) => (
                 <Link
                   key={project.id}
-                  href={`/admin/projects/${project.id}`}
+                  href={`/admin/deals/${project.id}`}
                   data-testid={`link-unassigned-pipeline-project-${project.id}`}
                 >
                   <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md hover-elevate flex-wrap">

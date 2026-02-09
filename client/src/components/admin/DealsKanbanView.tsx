@@ -185,7 +185,7 @@ function DealCardContent({
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-1">
           <Link
-            href={`/admin/projects/${project.id}`}
+            href={`/admin/deals/${project.id}`}
             data-testid={`link-kanban-deal-${project.id}`}
           >
             <span className="text-sm font-medium hover:underline leading-tight line-clamp-2">
@@ -375,7 +375,7 @@ export default function DealsKanbanView() {
               {pipelineData.unassigned.map((project) => (
                 <Link
                   key={project.id}
-                  href={`/admin/projects/${project.id}`}
+                  href={`/admin/deals/${project.id}`}
                   data-testid={`link-unassigned-deal-${project.id}`}
                 >
                   <DealCardContent project={project} />
