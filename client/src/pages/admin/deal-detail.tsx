@@ -161,9 +161,24 @@ interface TeamMember {
   role: string;
 }
 
+interface DealProperty {
+  id: number;
+  dealId: number;
+  address: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  propertyType: string | null;
+  estimatedValue: number | null;
+  isPrimary: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
 interface DealDetailResponse {
   deal: Deal;
   documents: DealDocument[];
+  properties: DealProperty[];
 }
 
 interface ProjectTask {
@@ -400,6 +415,18 @@ export default function AdminDealDetail() {
     isRequired: true,
   });
 
+  const [propertyDialogOpen, setPropertyDialogOpen] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<DealProperty | null>(null);
+  const [propertyForm, setPropertyForm] = useState({
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    propertyType: "",
+    estimatedValue: "",
+    isPrimary: false,
+  });
+
   const { data, isLoading, error } = useQuery<DealDetailResponse>({
     queryKey: [`/api/admin/deals/${dealId}`],
     enabled: !!dealId,
@@ -466,6 +493,50 @@ export default function AdminDealDetail() {
     },
   });
   
+  const addPropertyMutation = useMutation({
+    mutationFn: async (propertyData: { address: string; city?: string; state?: string; zip?: string; propertyType?: string; estimatedValue?: number | null; isPrimary?: boolean }) => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/properties`, propertyData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setPropertyDialogOpen(false);
+      setPropertyForm({ address: "", city: "", state: "", zip: "", propertyType: "", estimatedValue: "", isPrimary: false });
+      toast({ title: "Property added" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add property", variant: "destructive" });
+    },
+  });
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: async ({ propertyId, ...propertyData }: { propertyId: number; address: string; city?: string; state?: string; zip?: string; propertyType?: string; estimatedValue?: number | null; isPrimary?: boolean }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/properties/${propertyId}`, propertyData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setPropertyDialogOpen(false);
+      setEditingProperty(null);
+      setPropertyForm({ address: "", city: "", state: "", zip: "", propertyType: "", estimatedValue: "", isPrimary: false });
+      toast({ title: "Property updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update property", variant: "destructive" });
+    },
+  });
+
+  const deletePropertyMutation = useMutation({
+    mutationFn: async (propertyId: number) => {
+      return apiRequest("DELETE", `/api/admin/deals/${dealId}/properties/${propertyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      toast({ title: "Property deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete property", variant: "destructive" });
+    },
+  });
+
   const stages = stagesData?.stages || [];
   const projectStages = projectDetailData?.stages || [];
   const projectActivity = (projectDetailData?.activity || []).filter(
@@ -1249,15 +1320,101 @@ export default function AdminDealDetail() {
               </div>
             </Card>
           </div>
-          {deal.propertyAddress && (
-            <Card className="p-4 mt-4">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Property Address:</span>
-                <span className="text-sm text-muted-foreground" data-testid="text-property-address">{deal.propertyAddress}</span>
-              </div>
-            </Card>
-          )}
+          <Card className="mt-4">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Properties
+              </CardTitle>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingProperty(null);
+                  setPropertyForm({ address: "", city: "", state: "", zip: "", propertyType: "", estimatedValue: "", isPrimary: false });
+                  setPropertyDialogOpen(true);
+                }}
+                data-testid="button-add-property"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Property
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(data?.properties || []).length > 0 ? (
+                (data?.properties || []).map((property) => (
+                  <div key={property.id} className="flex items-start justify-between gap-2 p-3 rounded-md border" data-testid={`property-row-${property.id}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {property.isPrimary && (
+                          <Badge className="text-xs" data-testid={`badge-primary-${property.id}`}>Primary</Badge>
+                        )}
+                        <span className="font-medium text-sm" data-testid={`text-property-address-${property.id}`}>{property.address}</span>
+                      </div>
+                      {(property.city || property.state || property.zip) && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {[property.city, property.state, property.zip].filter(Boolean).join(", ")}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {property.propertyType && (
+                          <Badge variant="outline" className="text-xs" data-testid={`badge-property-type-${property.id}`}>{property.propertyType}</Badge>
+                        )}
+                        {property.estimatedValue != null && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-property-value-${property.id}`}>{formatCurrency(property.estimatedValue)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingProperty(property);
+                          setPropertyForm({
+                            address: property.address,
+                            city: property.city || "",
+                            state: property.state || "",
+                            zip: property.zip || "",
+                            propertyType: property.propertyType || "",
+                            estimatedValue: property.estimatedValue != null ? String(property.estimatedValue) : "",
+                            isPrimary: property.isPrimary,
+                          });
+                          setPropertyDialogOpen(true);
+                        }}
+                        data-testid={`button-edit-property-${property.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deletePropertyMutation.mutate(property.id)}
+                        data-testid={`button-delete-property-${property.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : deal.propertyAddress ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground mb-2">No properties added</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addPropertyMutation.mutate({ address: deal.propertyAddress, isPrimary: true })}
+                    disabled={addPropertyMutation.isPending}
+                    data-testid="button-import-property"
+                  >
+                    {addPropertyMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                    Import from deal address
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No properties added</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
@@ -2589,6 +2746,133 @@ export default function AdminDealDetail() {
                 </>
               ) : (
                 "Add Document"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={propertyDialogOpen} onOpenChange={(open) => { if (!open) { setPropertyDialogOpen(false); setEditingProperty(null); setPropertyForm({ address: "", city: "", state: "", zip: "", propertyType: "", estimatedValue: "", isPrimary: false }); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingProperty ? "Edit Property" : "Add Property"}</DialogTitle>
+            <DialogDescription>
+              {editingProperty ? "Update property details." : "Add a new property to this deal."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="property-address">Address</Label>
+              <Input
+                id="property-address"
+                value={propertyForm.address}
+                onChange={(e) => setPropertyForm(prev => ({ ...prev, address: e.target.value }))}
+                placeholder="123 Main St"
+                data-testid="input-property-address"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="property-city">City</Label>
+                <Input
+                  id="property-city"
+                  value={propertyForm.city}
+                  onChange={(e) => setPropertyForm(prev => ({ ...prev, city: e.target.value }))}
+                  placeholder="City"
+                  data-testid="input-property-city"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="property-state">State</Label>
+                <Input
+                  id="property-state"
+                  value={propertyForm.state}
+                  onChange={(e) => setPropertyForm(prev => ({ ...prev, state: e.target.value }))}
+                  placeholder="ST"
+                  data-testid="input-property-state"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="property-zip">Zip</Label>
+                <Input
+                  id="property-zip"
+                  value={propertyForm.zip}
+                  onChange={(e) => setPropertyForm(prev => ({ ...prev, zip: e.target.value }))}
+                  placeholder="12345"
+                  data-testid="input-property-zip"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="property-type">Property Type</Label>
+              <Select value={propertyForm.propertyType} onValueChange={(val) => setPropertyForm(prev => ({ ...prev, propertyType: val }))}>
+                <SelectTrigger data-testid="select-property-type">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="single-family">Single Family</SelectItem>
+                  <SelectItem value="multi-family">Multi Family</SelectItem>
+                  <SelectItem value="condo">Condo</SelectItem>
+                  <SelectItem value="townhouse">Townhouse</SelectItem>
+                  <SelectItem value="commercial">Commercial</SelectItem>
+                  <SelectItem value="mixed-use">Mixed Use</SelectItem>
+                  <SelectItem value="land">Land</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="property-estimated-value">Estimated Value</Label>
+              <Input
+                id="property-estimated-value"
+                type="number"
+                value={propertyForm.estimatedValue}
+                onChange={(e) => setPropertyForm(prev => ({ ...prev, estimatedValue: e.target.value }))}
+                placeholder="0"
+                data-testid="input-property-estimated-value"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="property-is-primary"
+                checked={propertyForm.isPrimary}
+                onCheckedChange={(checked) => setPropertyForm(prev => ({ ...prev, isPrimary: checked as boolean }))}
+                data-testid="checkbox-property-is-primary"
+              />
+              <Label htmlFor="property-is-primary" className="font-normal">
+                Primary property
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPropertyDialogOpen(false); setEditingProperty(null); setPropertyForm({ address: "", city: "", state: "", zip: "", propertyType: "", estimatedValue: "", isPrimary: false }); }} data-testid="button-cancel-property">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const payload = {
+                  address: propertyForm.address,
+                  city: propertyForm.city || undefined,
+                  state: propertyForm.state || undefined,
+                  zip: propertyForm.zip || undefined,
+                  propertyType: propertyForm.propertyType || undefined,
+                  estimatedValue: propertyForm.estimatedValue ? Number(propertyForm.estimatedValue) : null,
+                  isPrimary: propertyForm.isPrimary,
+                };
+                if (editingProperty) {
+                  updatePropertyMutation.mutate({ propertyId: editingProperty.id, ...payload });
+                } else {
+                  addPropertyMutation.mutate(payload);
+                }
+              }}
+              disabled={!propertyForm.address.trim() || addPropertyMutation.isPending || updatePropertyMutation.isPending}
+              data-testid="button-save-property"
+            >
+              {(addPropertyMutation.isPending || updatePropertyMutation.isPending) ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
               )}
             </Button>
           </DialogFooter>

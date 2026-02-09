@@ -59,6 +59,21 @@ The application integrates with Google Drive to automatically organize project d
 - **Token refresh**: The `getDriveClient` function now automatically refreshes expired Google OAuth tokens and persists them to the database.
 - **Drive folder targeting**: `syncDealDocumentToDrive` checks if `dealId` is a project first (using `ensureProjectFolder`) before falling back to `ensureDealFolder`, ensuring documents go to the correct project's folder.
 
+## Multi-Property Support
+
+Loans can have multiple properties (portfolio/blanket loans):
+- **`deal_properties` table**: Stores multiple addresses per deal/project with address, city, state, zip, propertyType, estimatedValue, isPrimary, and sortOrder.
+- **Auto-creation**: When a quote is accepted or a project is created manually with a property address, a primary `dealProperty` record is automatically created. Additional properties from `loanData.additionalProperties` are also created.
+- **Deal detail page**: Properties section with full CRUD (add/edit/delete), "Import from deal address" fallback for existing deals.
+- **Borrower quote form**: "Add Another Property" button allows adding multiple property addresses when creating a quote.
+- **AI Document Review**: All deal property addresses are passed as reference data. Address-matching rules check against ALL properties — a match to any one constitutes a pass.
+- **Document linking**: `dealDocuments.dealPropertyId` optionally links a document to a specific property.
+- **API endpoints**:
+  - `GET /api/admin/deals/:dealId/properties` - List properties
+  - `POST /api/admin/deals/:dealId/properties` - Add property
+  - `PATCH /api/admin/deals/:dealId/properties/:propId` - Update property
+  - `DELETE /api/admin/deals/:dealId/properties/:propId` - Delete property
+
 ## Program-to-Project Sync
 
 When a loan program's workflow is edited (documents moved between stages, tasks added/removed/updated, workflow steps changed), those changes automatically propagate to all existing projects assigned to that program:

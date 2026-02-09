@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -1445,6 +1445,32 @@ export async function registerRoutes(
         notes: `Accepted from borrower quote #${quoteId}`,
       });
 
+      if (quote.propertyAddress) {
+        const ld = quote.loanData as Record<string, any>;
+        await db.insert(dealProperties).values({
+          dealId: project.id,
+          address: quote.propertyAddress,
+          propertyType: ld?.propertyType || null,
+          estimatedValue: ld?.propertyValue || ld?.asIsValue || null,
+          isPrimary: true,
+          sortOrder: 0,
+        });
+        const additionalProps = (ld?.additionalProperties || []) as Array<Record<string, any>>;
+        for (let i = 0; i < additionalProps.length; i++) {
+          const ap = additionalProps[i];
+          if (ap.address) {
+            await db.insert(dealProperties).values({
+              dealId: project.id,
+              address: ap.address,
+              propertyType: ap.propertyType || null,
+              estimatedValue: ap.estimatedValue || null,
+              isPrimary: false,
+              sortOrder: i + 1,
+            });
+          }
+        }
+      }
+
       // Create stages/tasks/documents from program template
       const { buildProjectPipelineFromProgram } = await import('./services/projectPipeline');
       const pipelineResult = await buildProjectPipelineFromProgram(
@@ -2857,6 +2883,16 @@ export async function registerRoutes(
         notes,
       });
       
+      if (propertyAddress) {
+        await db.insert(dealProperties).values({
+          dealId: project.id,
+          address: propertyAddress,
+          propertyType: propertyType || null,
+          isPrimary: true,
+          sortOrder: 0,
+        });
+      }
+
       // Create stages/tasks/documents from program template (or legacy fallback)
       const { buildProjectPipelineFromProgram } = await import('./services/projectPipeline');
       const pipelineResult = await buildProjectPipelineFromProgram(project.id, reqProgramId ? parseInt(reqProgramId) : null);
@@ -5404,8 +5440,13 @@ export async function registerRoutes(
         .from(dealDocuments)
         .where(eq(dealDocuments.dealId, projectId))
         .orderBy(dealDocuments.sortOrder);
+
+      const props = await db.select()
+        .from(dealProperties)
+        .where(eq(dealProperties.dealId, projectId))
+        .orderBy(dealProperties.sortOrder);
       
-      res.json({ deal, documents: docs, project });
+      res.json({ deal, documents: docs, project, properties: props });
     } catch (error) {
       console.error('Admin get deal error:', error);
       res.status(500).json({ error: 'Failed to load deal' });
@@ -5484,6 +5525,97 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin get deal program stages error:', error);
       res.status(500).json({ error: 'Failed to load program stages' });
+    }
+  });
+
+  // Admin - Get deal properties
+  app.get('/api/admin/deals/:dealId/properties', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const props = await db.select().from(dealProperties).where(eq(dealProperties.dealId, dealId)).orderBy(dealProperties.sortOrder);
+      res.json(props);
+    } catch (error) {
+      console.error('Get deal properties error:', error);
+      res.status(500).json({ error: 'Failed to load properties' });
+    }
+  });
+
+  // Admin - Add deal property
+  app.post('/api/admin/deals/:dealId/properties', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { address, city, state, zip, propertyType, estimatedValue, isPrimary } = req.body;
+      if (!address || !address.trim()) {
+        return res.status(400).json({ error: 'Address is required' });
+      }
+      if (isPrimary) {
+        await db.update(dealProperties).set({ isPrimary: false }).where(eq(dealProperties.dealId, dealId));
+      }
+      const existingCount = await db.select({ count: sql<number>`count(*)` }).from(dealProperties).where(eq(dealProperties.dealId, dealId));
+      const count = Number(existingCount[0]?.count || 0);
+      const [prop] = await db.insert(dealProperties).values({
+        dealId,
+        address: address.trim(),
+        city: city || null,
+        state: state || null,
+        zip: zip || null,
+        propertyType: propertyType || null,
+        estimatedValue: estimatedValue || null,
+        isPrimary: isPrimary || count === 0,
+        sortOrder: count,
+      }).returning();
+      res.json(prop);
+    } catch (error) {
+      console.error('Add deal property error:', error);
+      res.status(500).json({ error: 'Failed to add property' });
+    }
+  });
+
+  // Admin - Update deal property
+  app.patch('/api/admin/deals/:dealId/properties/:propId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const propId = parseInt(req.params.propId);
+      const { address, city, state, zip, propertyType, estimatedValue, isPrimary } = req.body;
+      const updateData: Record<string, any> = {};
+      if (address !== undefined) updateData.address = address.trim();
+      if (city !== undefined) updateData.city = city;
+      if (state !== undefined) updateData.state = state;
+      if (zip !== undefined) updateData.zip = zip;
+      if (propertyType !== undefined) updateData.propertyType = propertyType;
+      if (estimatedValue !== undefined) updateData.estimatedValue = estimatedValue;
+      if (isPrimary !== undefined) {
+        updateData.isPrimary = isPrimary;
+        if (isPrimary) {
+          await db.update(dealProperties).set({ isPrimary: false }).where(and(eq(dealProperties.dealId, dealId), sql`id != ${propId}`));
+        }
+      }
+      const [updated] = await db.update(dealProperties).set(updateData).where(and(eq(dealProperties.id, propId), eq(dealProperties.dealId, dealId))).returning();
+      if (!updated) return res.status(404).json({ error: 'Property not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Update deal property error:', error);
+      res.status(500).json({ error: 'Failed to update property' });
+    }
+  });
+
+  // Admin - Delete deal property
+  app.delete('/api/admin/deals/:dealId/properties/:propId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const propId = parseInt(req.params.propId);
+      const [deleted] = await db.delete(dealProperties).where(and(eq(dealProperties.id, propId), eq(dealProperties.dealId, dealId))).returning();
+      if (!deleted) return res.status(404).json({ error: 'Property not found' });
+      if (deleted.isPrimary) {
+        const [nextProp] = await db.select().from(dealProperties).where(eq(dealProperties.dealId, dealId)).orderBy(dealProperties.sortOrder).limit(1);
+        if (nextProp) {
+          await db.update(dealProperties).set({ isPrimary: true }).where(eq(dealProperties.id, nextProp.id));
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete deal property error:', error);
+      res.status(500).json({ error: 'Failed to delete property' });
     }
   });
 

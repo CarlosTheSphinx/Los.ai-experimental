@@ -3,7 +3,7 @@ import { ObjectStorageService } from "../replit_integrations/object_storage/obje
 const objectStorageService = new ObjectStorageService();
 import { storage } from "../storage";
 import { db } from "../db";
-import { loanPrograms, dealDocuments, dealDocumentFiles, projects, savedQuotes, programReviewRules, programDocumentTemplates } from "@shared/schema";
+import { loanPrograms, dealDocuments, dealDocumentFiles, dealProperties, projects, savedQuotes, programReviewRules, programDocumentTemplates } from "@shared/schema";
 import { eq, and, or, asc } from "drizzle-orm";
 
 const openai = new OpenAI({
@@ -241,11 +241,24 @@ export async function reviewDocument(
     if (project.borrowerName) referenceDataParts.push(`- Borrower Name (from application): ${project.borrowerName}`);
     if (project.borrowerEmail) referenceDataParts.push(`- Borrower Email (from application): ${project.borrowerEmail}`);
     if (project.borrowerPhone) referenceDataParts.push(`- Borrower Phone (from application): ${project.borrowerPhone}`);
-    if (project.propertyAddress) referenceDataParts.push(`- Property Address (from application): ${project.propertyAddress}`);
-    if (project.propertyType) referenceDataParts.push(`- Property Type (from application): ${project.propertyType}`);
     if (project.loanAmount) referenceDataParts.push(`- Loan Amount (from application): $${Number(project.loanAmount).toLocaleString()}`);
     if (project.loanType) referenceDataParts.push(`- Loan Type (from application): ${project.loanType}`);
     if (project.interestRate) referenceDataParts.push(`- Interest Rate (from application): ${project.interestRate}%`);
+
+    const props = await db.select().from(dealProperties).where(eq(dealProperties.dealId, project.id)).orderBy(dealProperties.sortOrder);
+    if (props.length > 0) {
+      referenceDataParts.push(`\nProperty Addresses on this loan (${props.length} ${props.length === 1 ? 'property' : 'properties'}):`);
+      props.forEach((p, idx) => {
+        const label = p.isPrimary ? 'Primary' : `Property ${idx + 1}`;
+        referenceDataParts.push(`- ${label}: ${p.address}${p.city ? `, ${p.city}` : ''}${p.state ? `, ${p.state}` : ''}${p.zip ? ` ${p.zip}` : ''}`);
+        if (p.propertyType) referenceDataParts.push(`  Type: ${p.propertyType}`);
+        if (p.estimatedValue) referenceDataParts.push(`  Estimated Value: $${Number(p.estimatedValue).toLocaleString()}`);
+      });
+      referenceDataParts.push(`\nIMPORTANT: When checking address matching rules, the document address should match ANY of the ${props.length} property addresses listed above. A match to any one of them constitutes a pass.`);
+    } else {
+      if (project.propertyAddress) referenceDataParts.push(`- Property Address (from application): ${project.propertyAddress}`);
+      if (project.propertyType) referenceDataParts.push(`- Property Type (from application): ${project.propertyType}`);
+    }
 
     if (project.quoteId) {
       const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, project.quoteId));
@@ -255,7 +268,7 @@ export async function reviewDocument(
         if (quote.customerCompanyName) referenceDataParts.push(`- Company Name (from quote): ${quote.customerCompanyName}`);
         if (quote.customerEmail) referenceDataParts.push(`- Email (from quote): ${quote.customerEmail}`);
         if (quote.customerPhone) referenceDataParts.push(`- Phone (from quote): ${quote.customerPhone}`);
-        if (quote.propertyAddress) referenceDataParts.push(`- Property Address (from quote): ${quote.propertyAddress}`);
+        if (!props.length && quote.propertyAddress) referenceDataParts.push(`- Property Address (from quote): ${quote.propertyAddress}`);
       }
     }
 

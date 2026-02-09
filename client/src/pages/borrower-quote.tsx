@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Calculator, CheckCircle2, AlertCircle, Loader2, RotateCcw, Save, MapPin, DollarSign, Home, TrendingUp, FileText } from "lucide-react";
+import { Calculator, CheckCircle2, AlertCircle, Loader2, RotateCcw, Save, MapPin, DollarSign, Home, TrendingUp, FileText, Plus, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -45,6 +45,7 @@ export default function BorrowerQuote() {
   const [borrowerFirstName, setBorrowerFirstName] = useState(user?.firstName || "");
   const [borrowerLastName, setBorrowerLastName] = useState(user?.lastName || "");
   const [propertyAddress, setPropertyAddress] = useState("");
+  const [additionalProperties, setAdditionalProperties] = useState<string[]>([]);
 
   const { mutate: getPricing, isPending: dscrPending } = usePricing();
 
@@ -105,12 +106,17 @@ export default function BorrowerQuote() {
         pointsCharged = 2;
       }
 
+      const enrichedLoanData = {
+        ...formData,
+        additionalProperties: additionalProperties.filter(a => a.trim()).map(a => ({ address: a.trim() })),
+      };
+
       return apiRequest("POST", "/api/quotes", {
         customerFirstName: borrowerFirstName.trim(),
         customerLastName: borrowerLastName.trim(),
         customerCompanyName: "",
         propertyAddress,
-        loanData: formData,
+        loanData: enrichedLoanData,
         interestRate: formattedRate,
         pointsCharged,
         programId: selectedProgramId || null,
@@ -297,6 +303,45 @@ export default function BorrowerQuote() {
                       data-testid="input-property-address"
                     />
                   </div>
+                  {additionalProperties.length > 0 && (
+                    <div className="space-y-2">
+                      {additionalProperties.map((addr, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Additional Property {idx + 1}</Label>
+                            <AddressAutocomplete
+                              value={addr}
+                              onChange={(val) => {
+                                const updated = [...additionalProperties];
+                                updated[idx] = val;
+                                setAdditionalProperties(updated);
+                              }}
+                              placeholder="Enter additional property address"
+                              data-testid={`input-additional-property-${idx}`}
+                            />
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setAdditionalProperties(additionalProperties.filter((_, i) => i !== idx))}
+                            className="mt-5 flex-shrink-0"
+                            data-testid={`button-remove-additional-property-${idx}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAdditionalProperties([...additionalProperties, ""])}
+                    data-testid="button-add-additional-property"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Add Another Property
+                  </Button>
                   <Button
                     onClick={handleSaveQuote}
                     disabled={saveQuoteMutation.isPending}

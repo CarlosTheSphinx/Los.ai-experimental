@@ -505,6 +505,7 @@ export const dealDocuments = pgTable("deal_documents", {
   dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
   stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'set null' }),
   programDocumentTemplateId: integer("program_document_template_id"),
+  dealPropertyId: integer("deal_property_id").references(() => dealProperties.id, { onDelete: 'set null' }),
   
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentCategory: varchar("document_category", { length: 100 }), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
@@ -557,6 +558,25 @@ export const dealDocumentFiles = pgTable("deal_document_files", {
 });
 
 export type DealDocumentFile = typeof dealDocumentFiles.$inferSelect;
+
+export const dealProperties = pgTable("deal_properties", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zip: varchar("zip", { length: 20 }),
+  propertyType: varchar("property_type", { length: 100 }),
+  estimatedValue: real("estimated_value"),
+  isPrimary: boolean("is_primary").default(false),
+  sortOrder: integer("sort_order").default(0),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDealPropertySchema = createInsertSchema(dealProperties).omit({ id: true, createdAt: true });
+export type DealProperty = typeof dealProperties.$inferSelect;
+export type InsertDealProperty = z.infer<typeof insertDealPropertySchema>;
 
 // Deal tasks - tasks assigned to team members for a deal
 export const dealTasks = pgTable("deal_tasks", {
