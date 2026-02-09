@@ -207,19 +207,31 @@ export async function reviewDocument(
     }
 
     let dealInfo = '';
-    if (project.dealId) {
-      const [deal] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, project.dealId));
-      if (deal) {
-        dealInfo = `
-Loan Details:
-- Borrower: ${deal.customerFirstName || ''} ${deal.customerLastName || ''}
-- Property Address: ${deal.propertyAddress || 'N/A'}
-- Loan Amount: ${deal.loanAmount ? `$${Number(deal.loanAmount).toLocaleString()}` : 'N/A'}
-- Loan Type: ${deal.loanType || 'N/A'}
-- Property Type: ${deal.propertyType || 'N/A'}
-`;
+    const referenceDataParts: string[] = [];
+
+    referenceDataParts.push(`Project/Application Reference Data:`);
+    if (project.borrowerName) referenceDataParts.push(`- Borrower Name (from application): ${project.borrowerName}`);
+    if (project.borrowerEmail) referenceDataParts.push(`- Borrower Email (from application): ${project.borrowerEmail}`);
+    if (project.borrowerPhone) referenceDataParts.push(`- Borrower Phone (from application): ${project.borrowerPhone}`);
+    if (project.propertyAddress) referenceDataParts.push(`- Property Address (from application): ${project.propertyAddress}`);
+    if (project.propertyType) referenceDataParts.push(`- Property Type (from application): ${project.propertyType}`);
+    if (project.loanAmount) referenceDataParts.push(`- Loan Amount (from application): $${Number(project.loanAmount).toLocaleString()}`);
+    if (project.loanType) referenceDataParts.push(`- Loan Type (from application): ${project.loanType}`);
+    if (project.interestRate) referenceDataParts.push(`- Interest Rate (from application): ${project.interestRate}%`);
+
+    if (project.quoteId) {
+      const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, project.quoteId));
+      if (quote) {
+        const fullName = `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim();
+        if (fullName) referenceDataParts.push(`- Borrower Full Name (from quote): ${fullName}`);
+        if (quote.customerCompanyName) referenceDataParts.push(`- Company Name (from quote): ${quote.customerCompanyName}`);
+        if (quote.customerEmail) referenceDataParts.push(`- Email (from quote): ${quote.customerEmail}`);
+        if (quote.customerPhone) referenceDataParts.push(`- Phone (from quote): ${quote.customerPhone}`);
+        if (quote.propertyAddress) referenceDataParts.push(`- Property Address (from quote): ${quote.propertyAddress}`);
       }
     }
+
+    dealInfo = referenceDataParts.join('\n');
 
     const rulesForPrompt = rules.map((r, idx) => ({
       ruleIndex: idx + 1,
@@ -242,6 +254,9 @@ For EACH rule provided, you must produce exactly one finding with:
 - "title": a short title for the finding
 - "detail": detailed explanation of what you found
 - "evidence": the specific text, value, or excerpt from the document that supports your finding. Quote directly from the document when possible.${isImage ? ' Describe what you see in the image.' : ''}
+  IMPORTANT FOR CROSS-REFERENCE/COMPARISON RULES: When a rule requires matching, comparing, or cross-referencing information between this document and the application/project data (e.g. name matching, address verification, amount verification), you MUST present BOTH sides of the comparison in your evidence. Format it as:
+  "Found on document: [value from document] | Application/reference data: [value from reference data]"
+  This allows the reviewer to see exactly what is being compared. Always show both values even when they match.
 - "pageReference": which page(s) of the document are relevant (e.g. "Page 1", "Pages 2-3")
 
 Also provide:
@@ -271,6 +286,8 @@ Respond ONLY with valid JSON in this exact format:
     const userTextContent = `## Document Being Reviewed
 **Document Name:** ${doc.documentName || doc.fileName || 'Unknown'}
 **Document Category:** ${doc.documentCategory || 'General'}
+
+## Application & Reference Data (use this for cross-referencing)
 ${dealInfo}
 
 ## Rules to Check (${rulesForPrompt.length} rules)
