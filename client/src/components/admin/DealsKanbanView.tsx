@@ -243,13 +243,16 @@ function resolveColor(color: string): string {
 }
 
 const DEFAULT_STAGES: DealStageConfig[] = [
-  { id: 0, key: "initial-review", label: "Initial Review", color: "yellow", sortOrder: 0, isActive: true },
-  { id: 1, key: "term-sheet", label: "Term Sheet", color: "blue", sortOrder: 1, isActive: true },
-  { id: 2, key: "onboarding", label: "Onboarding", color: "purple", sortOrder: 2, isActive: true },
-  { id: 3, key: "processing", label: "Processing", color: "cyan", sortOrder: 3, isActive: true },
-  { id: 4, key: "underwriting", label: "Underwriting", color: "indigo", sortOrder: 4, isActive: true },
-  { id: 5, key: "closing", label: "Closing", color: "teal", sortOrder: 5, isActive: true },
-  { id: 6, key: "closed", label: "Closed", color: "green", sortOrder: 6, isActive: true },
+  { id: 0, key: "new", label: "New", color: "gray", sortOrder: 0, isActive: true },
+  { id: 1, key: "initial-review", label: "Initial Review", color: "yellow", sortOrder: 1, isActive: true },
+  { id: 2, key: "under-review", label: "Under Review", color: "orange", sortOrder: 2, isActive: true },
+  { id: 3, key: "term-sheet", label: "Term Sheet", color: "blue", sortOrder: 3, isActive: true },
+  { id: 4, key: "approved", label: "Approved", color: "emerald", sortOrder: 4, isActive: true },
+  { id: 5, key: "processing", label: "Processing", color: "cyan", sortOrder: 5, isActive: true },
+  { id: 6, key: "underwriting", label: "Underwriting", color: "indigo", sortOrder: 6, isActive: true },
+  { id: 7, key: "closing", label: "Closing", color: "teal", sortOrder: 7, isActive: true },
+  { id: 8, key: "funded", label: "Funded", color: "green", sortOrder: 8, isActive: true },
+  { id: 9, key: "closed", label: "Closed", color: "green", sortOrder: 9, isActive: true },
 ];
 
 export default function DealsKanbanView({ deals }: DealsKanbanViewProps) {
@@ -263,6 +266,10 @@ export default function DealsKanbanView({ deals }: DealsKanbanViewProps) {
   const stages = stagesData?.stages?.length
     ? [...stagesData.stages].filter(s => s.isActive).sort((a, b) => a.sortOrder - b.sortOrder)
     : DEFAULT_STAGES;
+
+  const stageKeys = new Set(stages.map(s => s.key));
+  const unmatchedDeals = deals.filter(d => !stageKeys.has(d.stage));
+  const hasUnmatched = unmatchedDeals.length > 0;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -332,6 +339,18 @@ export default function DealsKanbanView({ deals }: DealsKanbanViewProps) {
             </DroppableColumn>
           );
         })}
+        {hasUnmatched && (
+          <DroppableColumn
+            stageKey="other"
+            stageLabel="Other"
+            stageColor="gray"
+            deals={unmatchedDeals}
+          >
+            {unmatchedDeals.map((deal) => (
+              <DraggableDealCard key={deal.id} deal={deal} />
+            ))}
+          </DroppableColumn>
+        )}
       </div>
 
       <DragOverlay>
