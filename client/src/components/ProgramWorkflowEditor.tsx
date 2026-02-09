@@ -37,6 +37,10 @@ import {
   ListChecks,
   Trash2,
   Check,
+  Sparkles,
+  AlertTriangle,
+  Info,
+  ShieldCheck,
 } from "lucide-react";
 
 interface WorkflowStepDefinition {
@@ -728,6 +732,7 @@ function DocumentsTab({ programId }: { programId: number }) {
               <DocumentCard
                 key={doc.id}
                 doc={doc}
+                programId={programId}
                 onDragStart={handleDragStart}
                 onDelete={(id) => deleteDocMutation.mutate(id)}
               />
@@ -769,6 +774,7 @@ function DocumentsTab({ programId }: { programId: number }) {
                     <DocumentCard
                       key={doc.id}
                       doc={doc}
+                      programId={programId}
                       onDragStart={handleDragStart}
                       onDelete={(id) => deleteDocMutation.mutate(id)}
                     />
@@ -897,49 +903,287 @@ function DocumentsTab({ programId }: { programId: number }) {
   );
 }
 
+interface ReviewRule {
+  id?: number;
+  ruleTitle: string;
+  ruleDescription: string;
+  ruleType: string;
+  severity: string;
+  isActive: boolean;
+}
+
+const RULE_TYPE_OPTIONS = [
+  { value: "presence", label: "Presence Check" },
+  { value: "numeric_threshold", label: "Numeric Threshold" },
+  { value: "format", label: "Format / Structure" },
+  { value: "consistency", label: "Cross-Reference / Consistency" },
+  { value: "red_flag", label: "Red Flag Detection" },
+  { value: "signature_date", label: "Signature / Date Check" },
+  { value: "general", label: "General" },
+];
+
+const SEVERITY_OPTIONS = [
+  { value: "fail", label: "Fail", color: "text-red-600" },
+  { value: "warn", label: "Warning", color: "text-amber-600" },
+  { value: "info", label: "Info", color: "text-blue-600" },
+];
+
+function DocumentRulesDialog({
+  templateId,
+  programId,
+  documentName,
+  open,
+  onOpenChange,
+}: {
+  templateId: number;
+  programId: number;
+  documentName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [rules, setRules] = useState<ReviewRule[]>([]);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const { data: rulesData, isLoading } = useQuery<{ rules: any[] }>({
+    queryKey: [`/api/admin/document-templates/${templateId}/review-rules`],
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (rulesData?.rules) {
+      setRules(rulesData.rules.map((r: any) => ({
+        id: r.id,
+        ruleTitle: r.ruleTitle || '',
+        ruleDescription: r.ruleDescription || '',
+        ruleType: r.ruleType || 'general',
+        severity: r.severity || 'fail',
+        isActive: r.isActive !== false,
+      })));
+      setHasChanges(false);
+    }
+  }, [rulesData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/admin/document-templates/${templateId}/review-rules`, {
+        programId,
+        rules: rules.filter(r => r.ruleTitle.trim()).map((r, idx) => ({
+          ruleTitle: r.ruleTitle.trim(),
+          ruleDescription: r.ruleDescription.trim(),
+          ruleType: r.ruleType,
+          severity: r.severity,
+          documentType: documentName,
+          isActive: r.isActive,
+          sortOrder: idx,
+        })),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Rules saved' });
+      setHasChanges(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/document-templates/${templateId}/review-rules`] });
+    },
+    onError: () => {
+      toast({ title: 'Failed to save rules', variant: 'destructive' });
+    },
+  });
+
+  const addRule = () => {
+    setRules([...rules, { ruleTitle: '', ruleDescription: '', ruleType: 'general', severity: 'fail', isActive: true }]);
+    setHasChanges(true);
+  };
+
+  const updateRule = (index: number, field: keyof ReviewRule, value: any) => {
+    const updated = [...rules];
+    (updated[index] as any)[field] = value;
+    setRules(updated);
+    setHasChanges(true);
+  };
+
+  const removeRule = (index: number) => {
+    setRules(rules.filter((_, i) => i !== index));
+    setHasChanges(true);
+  };
+
+  const moveRule = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= rules.length) return;
+    const updated = [...rules];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setRules(updated);
+    setHasChanges(true);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            AI Review Rules
+          </DialogTitle>
+          <DialogDescription>
+            Configure review rules for "{documentName}". The AI will use these rules when reviewing uploaded documents of this type.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rules.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No review rules configured yet. Add rules to enable AI document review for this document type.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {rules.map((rule, idx) => (
+                  <div key={idx} className="border rounded-md p-3 space-y-2 bg-muted/20" data-testid={`wf-rule-row-${templateId}-${idx}`}>
+                    <div className="flex items-start gap-2">
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <button onClick={() => moveRule(idx, 'up')} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-30" data-testid={`button-wf-rule-up-${idx}`}>
+                          <ChevronUp className="h-3 w-3" />
+                        </button>
+                        <button onClick={() => moveRule(idx, 'down')} disabled={idx === rules.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30" data-testid={`button-wf-rule-down-${idx}`}>
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <Input
+                          placeholder="Rule title (e.g., Verify borrower name matches across all pages)"
+                          value={rule.ruleTitle}
+                          onChange={(e) => updateRule(idx, 'ruleTitle', e.target.value)}
+                          className="text-sm"
+                          data-testid={`input-wf-rule-title-${idx}`}
+                        />
+                        <Textarea
+                          placeholder="Detailed instructions for the AI reviewer..."
+                          value={rule.ruleDescription}
+                          onChange={(e) => updateRule(idx, 'ruleDescription', e.target.value)}
+                          className="text-sm min-h-[60px]"
+                          data-testid={`input-wf-rule-desc-${idx}`}
+                        />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Select value={rule.ruleType} onValueChange={(v) => updateRule(idx, 'ruleType', v)}>
+                            <SelectTrigger className="w-[180px] text-xs h-8" data-testid={`select-wf-rule-type-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {RULE_TYPE_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={rule.severity} onValueChange={(v) => updateRule(idx, 'severity', v)}>
+                            <SelectTrigger className="w-[130px] text-xs h-8" data-testid={`select-wf-rule-severity-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SEVERITY_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  <span className={opt.color}>{opt.label}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <Button size="icon" variant="ghost" onClick={() => removeRule(idx)} className="text-destructive flex-shrink-0" data-testid={`button-wf-remove-rule-${idx}`}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <Button size="sm" variant="outline" onClick={addRule} data-testid={`button-wf-add-rule-${templateId}`}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Rule
+              </Button>
+              {hasChanges && (
+                <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid={`button-wf-save-rules-${templateId}`}>
+                  {saveMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ShieldCheck className="h-3 w-3 mr-1" />}
+                  Save Rules
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DocumentCard({
   doc,
+  programId,
   onDragStart,
   onDelete,
 }: {
   doc: ProgramDocument;
+  programId: number;
   onDragStart: (e: React.DragEvent, docId: number) => void;
   onDelete: (docId: number) => void;
 }) {
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
+
   return (
-    <Card
-      draggable="true"
-      onDragStart={(e) => onDragStart(e, doc.id)}
-      className="cursor-grab active:cursor-grabbing"
-      data-testid={`card-document-${doc.id}`}
-    >
-      <CardContent className="p-2 space-y-1">
-        <div className="flex items-start gap-1.5">
-          <FileText className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
-          <span className="text-xs font-medium leading-tight break-words" data-testid={`text-doc-name-${doc.id}`}>
-            {doc.documentName}
-          </span>
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-            {getCategoryLabel(doc.documentCategory, DOCUMENT_CATEGORIES)}
-          </Badge>
-          {doc.isRequired && (
-            <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-              Required
+    <>
+      <Card
+        draggable="true"
+        onDragStart={(e) => onDragStart(e, doc.id)}
+        className="cursor-grab active:cursor-grabbing"
+        data-testid={`card-document-${doc.id}`}
+      >
+        <CardContent className="p-2 space-y-1">
+          <div className="flex items-start gap-1.5">
+            <FileText className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+            <span className="text-xs font-medium leading-tight break-words" data-testid={`text-doc-name-${doc.id}`}>
+              {doc.documentName}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 flex-wrap">
+            <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+              {getCategoryLabel(doc.documentCategory, DOCUMENT_CATEGORIES)}
             </Badge>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
-            data-testid={`button-delete-doc-${doc.id}`}
-          >
-            <Trash2 className="w-3 h-3" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            {doc.isRequired && (
+              <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                Required
+              </Badge>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setShowRulesDialog(true); }}
+              data-testid={`button-ai-rules-${doc.id}`}
+            >
+              <Sparkles className="w-3 h-3" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
+              data-testid={`button-delete-doc-${doc.id}`}
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <DocumentRulesDialog
+        templateId={doc.id}
+        programId={programId}
+        documentName={doc.documentName}
+        open={showRulesDialog}
+        onOpenChange={setShowRulesDialog}
+      />
+    </>
   );
 }
 
