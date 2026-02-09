@@ -468,7 +468,9 @@ export default function AdminDealDetail() {
   
   const stages = stagesData?.stages || [];
   const projectStages = projectDetailData?.stages || [];
-  const projectActivity = projectDetailData?.activity || [];
+  const projectActivity = (projectDetailData?.activity || []).filter(
+    (a: any) => a.activityType !== 'task_updated' && a.activityType !== 'task_added'
+  );
   const project = projectDetailData?.project;
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests'>('all');
