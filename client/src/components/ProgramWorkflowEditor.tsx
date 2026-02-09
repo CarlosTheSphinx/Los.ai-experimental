@@ -1158,12 +1158,14 @@ function DocumentCard({
               </Badge>
             )}
             <Button
-              size="icon"
-              variant="ghost"
+              size="sm"
+              variant="outline"
               onClick={(e) => { e.stopPropagation(); e.preventDefault(); setShowRulesDialog(true); }}
+              className="h-5 text-[10px] px-1.5 gap-1"
               data-testid={`button-ai-rules-${doc.id}`}
             >
               <Sparkles className="w-3 h-3" />
+              AI Review
             </Button>
             <Button
               size="icon"
