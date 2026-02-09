@@ -17,6 +17,7 @@ import {
   Building2,
   ShieldCheck,
   DollarSign,
+  Sparkles,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -79,6 +80,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
+  { href: "/admin/ai-review", label: "AI Review", icon: Sparkles, requiredPermission: "programs.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view" },
