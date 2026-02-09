@@ -230,31 +230,31 @@ interface DealStage {
   key: string;
   label: string;
   color: string;
+  icon?: string;
   sortOrder: number;
   isActive: boolean;
 }
 
-const stageColorMap: Record<string, string> = {
-  gray: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  yellow: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  orange: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  blue: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
-  cyan: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
-  indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
-  teal: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
-  green: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  red: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  purple: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-};
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  } : null;
+}
 
-function getStageColorFromStages(stage: string, stages: DealStage[]): string {
+function getStageStyle(stage: string, stages: DealStage[]): { backgroundColor: string; color: string } {
   const stageObj = stages.find(s => s.key === stage);
-  if (stageObj) {
-    return stageColorMap[stageObj.color] || stageColorMap.gray;
+  const hex = stageObj?.color || '#6b7280';
+  const rgb = hexToRgb(hex);
+  if (rgb) {
+    return {
+      backgroundColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`,
+      color: hex,
+    };
   }
-  return stageColorMap.gray;
+  return { backgroundColor: 'rgba(107, 114, 128, 0.15)', color: '#6b7280' };
 }
 
 function getStageLabelFromStages(stage: string, stages: DealStage[]): string {
@@ -425,7 +425,8 @@ export default function AdminDealDetail() {
   });
 
   const { data: stagesData } = useQuery<{ stages: DealStage[] }>({
-    queryKey: ['/api/admin/deal-stages'],
+    queryKey: [`/api/admin/deals/${dealId}/program-stages`],
+    enabled: !!dealId,
   });
 
   const { data: dealProcessorsData } = useQuery<any[]>({
@@ -581,11 +582,14 @@ export default function AdminDealDetail() {
 
   const updateStageMutation = useMutation({
     mutationFn: async (stage: string) => {
-      return apiRequest("PUT", `/api/admin/deals/${dealId}`, { stage });
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}`, { stage });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/tasks`] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/deals'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/pipeline'] });
       toast({
         title: "Stage updated",
         description: "The deal stage has been updated.",
@@ -999,25 +1003,35 @@ export default function AdminDealDetail() {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground font-mono">DEAL-{deal.id}</span>
-            <Select 
-              value={deal.stage} 
-              onValueChange={(value) => updateStageMutation.mutate(value)}
-              disabled={updateStageMutation.isPending}
-            >
-              <SelectTrigger 
-                className={cn("w-auto h-6 text-xs font-medium px-2", getStageColorFromStages(deal.stage, stages))}
-                data-testid="select-deal-stage"
+            {stages.length > 0 ? (
+              <Select 
+                value={deal.stage} 
+                onValueChange={(value) => updateStageMutation.mutate(value)}
+                disabled={updateStageMutation.isPending}
               >
-                <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {stages.filter(s => s.isActive !== false).map((stage) => (
-                  <SelectItem key={stage.id} value={stage.key}>
-                    {stage.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger 
+                  className="w-auto h-6 text-xs font-semibold px-2 rounded-md border-0"
+                  style={getStageStyle(deal.stage, stages)}
+                  data-testid="select-deal-stage"
+                >
+                  <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {stages.filter(s => s.isActive !== false).map((stage) => (
+                    <SelectItem key={stage.id} value={stage.key}>
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
+                        {stage.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge variant="secondary" className="text-xs">
+                {deal.stage || 'No Stage'}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-semibold" data-testid="text-borrower-name">{borrowerName}</h1>
@@ -1077,26 +1091,43 @@ export default function AdminDealDetail() {
                   const isCompleted = derivedStatus === 'completed';
                   const isActive = derivedStatus === 'in_progress';
                   const progress = computeStageProgress(stage);
+                  const programStage = stages.find(s => s.key === stage.stageKey);
+                  const stageColor = programStage?.color || (isCompleted ? '#10b981' : isActive ? '#3b82f6' : undefined);
+                  const rgb = stageColor ? hexToRgb(stageColor) : null;
                   return (
                     <div key={stage.id} className="flex flex-col items-center relative flex-1" data-testid={`progress-stage-${stage.id}`}>
                       <div
                         className={cn(
                           "h-12 w-12 rounded-full flex items-center justify-center text-sm font-semibold border-[3px] flex-shrink-0 transition-all z-10",
-                          isCompleted && "bg-emerald-500 border-emerald-500 text-white dark:bg-emerald-600 dark:border-emerald-600",
-                          isActive && "bg-blue-500 border-blue-500 text-white dark:bg-blue-600 dark:border-blue-600 animate-pulse",
-                          !isCompleted && !isActive && "bg-muted border-border text-muted-foreground"
+                          !isCompleted && !isActive && "bg-muted border-border text-muted-foreground",
+                          isActive && !stageColor && "animate-pulse"
                         )}
+                        style={
+                          (isCompleted || isActive) && rgb
+                            ? {
+                                backgroundColor: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
+                                borderColor: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
+                                color: '#fff',
+                              }
+                            : undefined
+                        }
                         data-testid={`stage-indicator-${stage.id}`}
                       >
                         {isCompleted ? <Check className="h-5 w-5" /> : i + 1}
                       </div>
                       <div className="mt-3 text-center max-w-[120px]">
-                        <div className={cn(
-                          "text-[13px] font-medium leading-tight",
-                          isCompleted && "text-emerald-600 dark:text-emerald-400",
-                          isActive && "text-blue-600 dark:text-blue-400 font-semibold",
-                          !isCompleted && !isActive && "text-muted-foreground"
-                        )}>
+                        <div
+                          className={cn(
+                            "text-[13px] font-medium leading-tight",
+                            !isCompleted && !isActive && "text-muted-foreground",
+                            isActive && "font-semibold"
+                          )}
+                          style={
+                            (isCompleted || isActive) && rgb
+                              ? { color: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` }
+                              : undefined
+                          }
+                        >
                           {stage.stageName}
                         </div>
                         {progress.totalItems > 0 && (
@@ -1107,11 +1138,13 @@ export default function AdminDealDetail() {
                       </div>
                       {i < projectStages.length - 1 && (
                         <div
-                          className={cn(
-                            "absolute top-6 left-[calc(50%+24px)] h-[3px] z-0",
-                            isCompleted ? "bg-emerald-400 dark:bg-emerald-500" : "bg-border"
-                          )}
-                          style={{ width: 'calc(100% - 48px)' }}
+                          className="absolute top-6 left-[calc(50%+24px)] h-[3px] z-0"
+                          style={{
+                            width: 'calc(100% - 48px)',
+                            backgroundColor: isCompleted && rgb
+                              ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`
+                              : 'var(--border)',
+                          }}
                         />
                       )}
                     </div>

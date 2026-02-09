@@ -4966,6 +4966,35 @@ export async function registerRoutes(
         .where(eq(projects.isArchived, false))
         .orderBy(desc(projects.createdAt));
       
+      // Pre-load project current workflow step keys for all projects
+      const allProjectStagesForDeals = await db.select({
+        projectId: projectStages.projectId,
+        stageKey: projectStages.stageKey,
+        status: projectStages.status,
+        programStepId: projectStages.programStepId,
+      }).from(projectStages);
+
+      const allProgramStepMappingsForDeals = await db.select({
+        programStepId: programWorkflowSteps.id,
+        stepKey: workflowStepDefinitions.key,
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id));
+      const stepIdToKeyForDeals = new Map(allProgramStepMappingsForDeals.map(m => [m.programStepId, m.stepKey]));
+
+      const projectToStepKey = new Map<number, string>();
+      for (const p of allProjects) {
+        const stages = allProjectStagesForDeals.filter(s => s.projectId === p.id);
+        const inProgress = stages.find(s => s.status === 'in_progress');
+        if (inProgress) {
+          if (inProgress.programStepId && stepIdToKeyForDeals.has(inProgress.programStepId)) {
+            projectToStepKey.set(p.id, stepIdToKeyForDeals.get(inProgress.programStepId)!);
+          } else {
+            projectToStepKey.set(p.id, inProgress.stageKey);
+          }
+        }
+      }
+
       // Transform projects to deal format for frontend compatibility
       const deals = allProjects.map(p => {
         const nameParts = (p.borrowerName || '').split(' ');
@@ -4990,7 +5019,8 @@ export async function registerRoutes(
             loanTerm: p.loanTermMonths ? `${p.loanTermMonths} months` : '12 months',
           },
           interestRate: p.interestRate ? `${p.interestRate}%` : '—',
-          stage: p.status || 'active',
+          stage: projectToStepKey.get(p.id) || p.currentStage || 'application',
+          projectStatus: p.status || 'active',
           currentStage: p.currentStage,
           progressPercentage: p.progressPercentage || 0,
           createdAt: p.createdAt,
@@ -5302,6 +5332,32 @@ export async function registerRoutes(
         programName = prog?.name || null;
       }
 
+      // Determine current workflow step key from projectStages
+      const pStages = await db.select({
+        stageKey: projectStages.stageKey,
+        status: projectStages.status,
+        programStepId: projectStages.programStepId,
+        stageOrder: projectStages.stageOrder,
+      })
+        .from(projectStages)
+        .where(eq(projectStages.projectId, projectId))
+        .orderBy(asc(projectStages.stageOrder));
+
+      let currentWorkflowStepKey: string | null = null;
+      const inProgressStage = pStages.find(s => s.status === 'in_progress');
+      if (inProgressStage) {
+        if (inProgressStage.programStepId) {
+          const [stepMapping] = await db.select({ stepKey: workflowStepDefinitions.key })
+            .from(programWorkflowSteps)
+            .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+            .where(eq(programWorkflowSteps.id, inProgressStage.programStepId))
+            .limit(1);
+          currentWorkflowStepKey = stepMapping?.stepKey || inProgressStage.stageKey;
+        } else {
+          currentWorkflowStepKey = inProgressStage.stageKey;
+        }
+      }
+
       const deal = {
         id: project.id,
         projectId: project.id,
@@ -5320,7 +5376,8 @@ export async function registerRoutes(
           loanTerm: project.loanTermMonths ? `${project.loanTermMonths} months` : '12 months',
         },
         interestRate: project.interestRate ? `${project.interestRate}%` : '—',
-        stage: project.status || 'active',
+        stage: currentWorkflowStepKey || project.currentStage || 'application',
+        projectStatus: project.status || 'active',
         currentStage: project.currentStage,
         progressPercentage: project.progressPercentage || 0,
         createdAt: project.createdAt,
@@ -5370,6 +5427,53 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin get project error:', error);
       res.status(500).json({ error: 'Failed to load project' });
+    }
+  });
+
+  // Admin - Get program workflow stages for a deal (used by stage dropdown)
+  app.get('/api/admin/deals/:dealId/program-stages', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      const [project] = await db.select({
+        id: projects.id,
+        programId: projects.programId,
+      })
+        .from(projects)
+        .where(eq(projects.id, dealId))
+        .limit(1);
+      
+      if (!project || !project.programId) {
+        return res.json({ stages: [] });
+      }
+      
+      const steps = await db.select({
+        id: programWorkflowSteps.id,
+        stepOrder: programWorkflowSteps.stepOrder,
+        stepKey: workflowStepDefinitions.key,
+        stepName: workflowStepDefinitions.name,
+        stepColor: workflowStepDefinitions.color,
+        stepIcon: workflowStepDefinitions.icon,
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+        .where(eq(programWorkflowSteps.programId, project.programId))
+        .orderBy(asc(programWorkflowSteps.stepOrder));
+      
+      const stages = steps.map(s => ({
+        id: s.id,
+        key: s.stepKey,
+        label: s.stepName,
+        color: s.stepColor || '#6366f1',
+        icon: s.stepIcon,
+        sortOrder: s.stepOrder,
+        isActive: true,
+      }));
+      
+      res.json({ stages });
+    } catch (error) {
+      console.error('Admin get deal program stages error:', error);
+      res.status(500).json({ error: 'Failed to load program stages' });
     }
   });
 
@@ -5632,43 +5736,132 @@ export async function registerRoutes(
       const dealId = parseInt(req.params.id);
       const { stage } = req.body;
       
-      const validStages = ['initial-review', 'term-sheet', 'onboarding', 'processing', 'underwriting', 'closing', 'closed'];
-      if (stage && !validStages.includes(stage)) {
-        return res.status(400).json({ error: 'Invalid stage' });
+      if (!stage) {
+        return res.status(400).json({ error: 'Stage is required' });
       }
       
-      // Get current deal to check for stage change
-      const [existingDeal] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, dealId)).limit(1);
-      const previousStage = existingDeal?.stage;
+      // Deal is a project - get the project and its program
+      const [project] = await db.select({
+        id: projects.id,
+        programId: projects.programId,
+        userId: projects.userId,
+        currentStage: projects.currentStage,
+      })
+        .from(projects)
+        .where(eq(projects.id, dealId))
+        .limit(1);
       
-      const [updated] = await db.update(savedQuotes)
-        .set({ stage })
-        .where(eq(savedQuotes.id, dealId))
-        .returning();
-      
-      if (!updated) {
+      if (!project) {
         return res.status(404).json({ error: 'Deal not found' });
       }
       
-      // Send notification if stage changed
-      if (stage && previousStage !== stage && updated.userId) {
-        const stageLabels: Record<string, string> = {
-          'initial-review': 'Initial Review',
-          'term-sheet': 'Term Sheet',
-          'onboarding': 'Onboarding',
-          'processing': 'Processing',
-          'underwriting': 'Underwriting',
-          'closing': 'Closing',
-          'closed': 'Closed'
-        };
-        await postDealNotification(
-          updated.userId,
-          dealId,
-          `🔄 Deal status updated to: ${stageLabels[stage] || stage}`
-        );
+      // Get the project's workflow stages
+      const pStages = await db.select({
+        id: projectStages.id,
+        stageKey: projectStages.stageKey,
+        stageName: projectStages.stageName,
+        stageOrder: projectStages.stageOrder,
+        status: projectStages.status,
+        programStepId: projectStages.programStepId,
+      })
+        .from(projectStages)
+        .where(eq(projectStages.projectId, dealId))
+        .orderBy(asc(projectStages.stageOrder));
+      
+      if (pStages.length === 0) {
+        return res.status(400).json({ error: 'No workflow stages found for this deal' });
       }
       
-      res.json({ deal: updated });
+      // Find the target stage by workflow step key
+      // First build a mapping from programStepId to workflow step key
+      let targetStage = pStages.find(s => s.stageKey === stage);
+      
+      if (!targetStage && project.programId) {
+        // Try to find by workflow step definition key via programStepId mapping
+        const stepMappings = await db.select({
+          programStepId: programWorkflowSteps.id,
+          stepKey: workflowStepDefinitions.key,
+        })
+          .from(programWorkflowSteps)
+          .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+          .where(eq(programWorkflowSteps.programId, project.programId));
+        
+        const keyToStepId = new Map(stepMappings.map(m => [m.stepKey, m.programStepId]));
+        const targetProgramStepId = keyToStepId.get(stage);
+        if (targetProgramStepId) {
+          targetStage = pStages.find(s => s.programStepId === targetProgramStepId);
+        }
+      }
+      
+      if (!targetStage) {
+        return res.status(400).json({ error: `Invalid stage: ${stage}` });
+      }
+      
+      const previousStageKey = project.currentStage;
+      
+      // Update all project stages: completed for stages before target, in_progress for target, pending for after
+      for (const ps of pStages) {
+        let newStatus: string;
+        if (ps.stageOrder < targetStage.stageOrder) {
+          newStatus = 'completed';
+        } else if (ps.id === targetStage.id) {
+          newStatus = 'in_progress';
+        } else {
+          newStatus = 'pending';
+        }
+        
+        const updateData: Record<string, any> = { status: newStatus };
+        if (newStatus === 'in_progress' && ps.status !== 'in_progress') {
+          updateData.startedAt = new Date();
+        }
+        if (newStatus === 'completed' && ps.status !== 'completed') {
+          updateData.completedAt = new Date();
+        }
+        
+        await db.update(projectStages)
+          .set(updateData)
+          .where(eq(projectStages.id, ps.id));
+      }
+      
+      // Update project's currentStage and progressPercentage
+      const completedCount = pStages.filter(s => s.stageOrder < targetStage.stageOrder).length;
+      const totalStages = pStages.length;
+      const progressPercentage = Math.round((completedCount / totalStages) * 100);
+      
+      await db.update(projects)
+        .set({
+          currentStage: targetStage.stageKey,
+          progressPercentage,
+        })
+        .where(eq(projects.id, dealId));
+      
+      // Log activity
+      try {
+        await db.insert(projectActivity).values({
+          projectId: dealId,
+          activityType: 'stage_change',
+          activityDescription: `Stage changed from "${previousStageKey || 'unknown'}" to "${targetStage.stageName}"`,
+          performedBy: (req as any).user?.id || null,
+          visibleToBorrower: true,
+        });
+      } catch (e) {
+        // Non-critical, continue
+      }
+      
+      // Send notification if stage changed
+      if (project.userId && previousStageKey !== targetStage.stageKey) {
+        try {
+          await postDealNotification(
+            project.userId,
+            dealId,
+            `Deal stage updated to: ${targetStage.stageName}`
+          );
+        } catch (e) {
+          // Non-critical
+        }
+      }
+      
+      res.json({ success: true, stage: targetStage.stageKey, stageName: targetStage.stageName });
     } catch (error) {
       console.error('Admin update deal error:', error);
       res.status(500).json({ error: 'Failed to update deal' });
@@ -5730,7 +5923,6 @@ export async function registerRoutes(
           propertyAddress: propertyAddress || existingDeal.propertyAddress,
           interestRate: interestRate || existingDeal.interestRate,
           loanData: updatedLoanData,
-          stage: stage || existingDeal.stage,
         })
         .where(eq(savedQuotes.id, dealId))
         .returning();

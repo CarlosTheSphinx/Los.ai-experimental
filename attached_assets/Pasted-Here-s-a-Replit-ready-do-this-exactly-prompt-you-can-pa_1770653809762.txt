@@ -1,0 +1,139 @@
+Here’s a Replit-ready “do this exactly” prompt you can paste into your AI coder. It’s written to force a single source of truth for stages (the loan program config) and wire every UI element (deal dropdown, progress bar, pipeline widget, kanban) to that same stage model.
+
+```text
+TASK: Unify and synchronize Deal Stages across the entire admin dashboard.
+
+PROBLEM:
+We currently have multiple “stage” representations that are inconsistent:
+1) Deal page stage dropdown uses its own list.
+2) Loan Progress bar uses stages tied to the loan program (this is the intended source of truth).
+3) “Pipeline by Stage” widget is partially tied to loan programs.
+4) Kanban columns are tied to loan programs (source of truth).
+
+GOAL:
+Make ALL stage-driven UI (dropdown, progress bar, pipeline widget, kanban) derive stages ONLY from the stages configured in Loan Programs (create/edit/delete). Any change to loan program stages must immediately reflect everywhere across the site for deals using that program.
+
+NON-NEGOTIABLE SOURCE OF TRUTH:
+LoanProgram.stages is the single source of truth for stage definitions and order.
+Deals must reference a stage by stageId that belongs to the selected loan program.
+
+REQUIREMENTS (IMPLEMENT EXPLICITLY):
+
+A) DATA MODEL / SCHEMA
+1) Add/confirm LoanProgram has:
+   - stages: array of stage objects, each:
+     {
+       id: string (uuid),
+       name: string,
+       order: number (or array order),
+       key?: string (optional stable slug),
+       color?: string (optional),
+       isTerminal?: boolean (optional),
+       isDefault?: boolean (optional)
+     }
+
+2) Add/confirm Deal has:
+   - loanProgramId: string (required)
+   - stageId: string (required)
+   - stageUpdatedAt: datetime
+   NOTE: Remove any hardcoded “status” enums or free-text stage fields used by dropdown/kanban/pipeline.
+   Deal.stageId must match one of Deal.loanProgram.stages[].id.
+
+3) Migration:
+   - For existing deals: map current stage/status to a best-match stage name in the related loan program.
+   - If no match, set stageId = first stage in that loan program and log a warning.
+
+B) BACKEND API (SINGLE SOURCE OF TRUTH)
+1) Build/confirm endpoint:
+   GET /api/loan-programs/:id/stages
+   returns ordered stages for that program.
+
+2) Build/confirm deal update endpoint:
+   PATCH /api/deals/:id
+   accepts { stageId } and validates:
+   - deal.loanProgramId exists
+   - stageId exists inside that loan program’s stages
+   - if invalid, return 400 with clear error
+
+3) When loan program stages change (edit/add/delete/reorder):
+   - Update LoanProgram.stages.
+   - For deals under that program:
+     - If a stage was deleted, move those deals to a fallback:
+       - Prefer stage marked isDefault
+       - Else first stage by order
+     - Keep stageUpdatedAt updated when a deal stage changes.
+   - IMPORTANT: do NOT leave deals pointing at missing stageIds.
+
+C) FRONTEND: REPLACE ALL STAGE LISTS WITH PROGRAM STAGES
+Implement a shared stage loader hook/utility:
+- useLoanProgramStages(loanProgramId) -> { stages, loading, error }
+- cache by programId
+- always return ordered stages
+
+Update these components to use that hook:
+
+1) Deal page stage dropdown:
+   - Options = stages from the deal’s loan program only.
+   - Selected value = deal.stageId.
+   - On change: PATCH /api/deals/:id { stageId }.
+   - After success, refresh deal state and update all dependent UI.
+
+2) Loan Progress bar:
+   - Render steps from stages (ordered).
+   - “Current step” determined by deal.stageId.
+   - Progress percent calculated from index / total stages.
+   - Remove hardcoded steps like Application/Processing/Underwriting/etc unless they come from stages config.
+
+3) Pipeline by Stage widget:
+   - For each loan program, show counts grouped by stageId using that program’s stages (ordered).
+   - Ensure missing stages are never shown. If data contains unknown stageId, treat as “Unassigned” and surface as a warning in console (but should not happen after migration).
+
+4) Kanban view:
+   - Columns must be generated from stages of the selected loan program (or if showing multiple programs, group by program, then columns by that program’s stages).
+   - Drag-and-drop updates deal.stageId via PATCH.
+   - Column counts reflect stageId grouping.
+
+D) MULTI-PROGRAM BEHAVIOR (VERY IMPORTANT)
+- A deal’s stage dropdown and progress bar must ALWAYS reflect its own loanProgramId.
+- If the “All Deals” kanban supports multiple loan programs at once, implement one of these (choose the simplest consistent approach and implement fully):
+  Option 1 (recommended): Program tabs/filter. User selects a loan program, and the kanban shows only deals for that program with columns = that program stages.
+  Option 2: Separate kanban boards per program on the same page (like headings “RTL”, “DSCR”), each with its own stage columns.
+
+No mixing stages from different programs into one shared column set.
+
+E) REAL-TIME / REFRESH CONSISTENCY
+- When loan program stages are edited, all pages using them must reflect changes:
+  - On next navigation, refetch stages.
+  - If you have a global store/query cache, invalidate the cache for that programId after saving stages.
+  - If you have websockets/SSE already, broadcast “loanProgramStagesUpdated(programId)” and refresh. If not, implement cache invalidation at minimum.
+
+F) ADMIN UX FOR STAGE CONFIG
+In the loan program create/edit UI:
+- add stage CRUD + reorder UI (if not already present)
+- validate:
+  - non-empty stage names
+  - at least 1 stage required
+  - enforce unique names within a program (case-insensitive)
+- allow marking a default stage (isDefault). If none selected, first stage is default.
+
+G) ACCEPTANCE TESTS (MUST PASS)
+1) Edit a loan program stage name -> Deal dropdown, progress bar, pipeline widget, kanban column header all update accordingly.
+2) Add a new stage to a loan program -> appears everywhere for that program.
+3) Delete a stage -> deals in that stage are reassigned to default/first stage; UI shows no deleted stage.
+4) Reorder stages -> progress bar order + kanban column order match new ordering.
+5) A deal cannot be set to a stageId not belonging to its loan program (backend validation).
+
+DELIVERABLES:
+- Identify all places in code where stages/status are hardcoded and remove them.
+- Implement schema + migration + validation.
+- Implement shared stage loader + update all UI components to use it.
+- Ensure consistent behavior with multiple loan programs.
+- Provide a brief summary of files changed and how to test locally.
+
+DO NOT:
+- Introduce new hardcoded stage enums.
+- Allow free-text stages anywhere.
+- Mix stages between programs.
+```
+
+If you want, I can also tailor the prompt to your actual stack (Next.js vs Express, Prisma vs Supabase, React Query vs Zustand, etc.) once you paste your repo structure or tell me what DB layer you’re using.

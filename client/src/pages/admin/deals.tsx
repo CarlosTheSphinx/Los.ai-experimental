@@ -68,7 +68,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { DigestConfigPanel } from "@/components/DigestConfigPanel";
@@ -233,38 +232,38 @@ function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
   );
 }
 
-function getStageColor(stage: string): string {
-  const colors: Record<string, string> = {
-    "active": "bg-green-100 text-green-800",
-    "on_hold": "bg-yellow-100 text-yellow-800",
-    "cancelled": "bg-red-100 text-red-800",
-    "completed": "bg-blue-100 text-blue-800",
-    "initial-review": "bg-yellow-100 text-yellow-800",
-    "term-sheet": "bg-blue-100 text-blue-800",
-    "onboarding": "bg-purple-100 text-purple-800",
-    "processing": "bg-red-100 text-red-800",
-    "underwriting": "bg-indigo-100 text-indigo-800",
-    "closing": "bg-teal-100 text-teal-800",
-    "closed": "bg-green-100 text-green-800",
-  };
-  return colors[stage] || "bg-gray-100 text-gray-800";
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  } : null;
 }
 
-function getStageLabel(stage: string): string {
-  const labels: Record<string, string> = {
-    "active": "Active",
-    "on_hold": "On Hold",
-    "cancelled": "Cancelled",
-    "completed": "Completed",
-    "initial-review": "Initial Review",
-    "term-sheet": "Term Sheet",
-    "onboarding": "Onboarding",
-    "processing": "Processing",
-    "underwriting": "Underwriting",
-    "closing": "Closing",
-    "closed": "Closed",
-  };
-  return labels[stage] || stage;
+function getStageStyle(stage: string, stageStats?: StageInfo[]): React.CSSProperties | undefined {
+  if (stageStats) {
+    const stageInfo = stageStats.find(s => s.stage === stage);
+    if (stageInfo?.color) {
+      const rgb = hexToRgb(stageInfo.color);
+      if (rgb) {
+        return {
+          backgroundColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`,
+          color: stageInfo.color,
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+function getStageLabel(stage: string, stageStats?: StageInfo[]): string {
+  if (stageStats) {
+    const stageInfo = stageStats.find(s => s.stage === stage);
+    if (stageInfo) return stageInfo.label;
+  }
+  const words = stage.replace(/[-_]/g, ' ').split(' ');
+  return words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 function formatCurrency(amount: number) {
@@ -361,12 +360,12 @@ function DrivePushButton({ deal }: { deal: Deal }) {
 interface DealExpandedCardProps {
   deal: Deal;
   formatCurrency: (amount: number) => string;
-  getStageColor: (stage: string) => string;
-  getStageLabel: (stage: string) => string;
+  getStageLabel: (stage: string, stageStats?: StageInfo[]) => string;
   getLoanTypeLabel: (type: string) => string;
+  stageStats?: StageInfo[];
 }
 
-function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, getLoanTypeLabel }: DealExpandedCardProps) {
+function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabel, stageStats }: DealExpandedCardProps) {
   const progress = deal.progressPercentage || 0;
   const loanTitle = `${deal.customerFirstName} ${deal.customerLastName} - ${getLoanTypeLabel(deal.loanData?.loanType)}`;
   const targetDate = deal.targetCloseDate ? new Date(deal.targetCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
@@ -383,8 +382,8 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
                   {deal.projectNumber}
                 </span>
               )}
-              <Badge className={cn("text-xs", getStageColor(deal.stage))} data-testid={`badge-status-${deal.id}`}>
-                {getStageLabel(deal.stage)}
+              <Badge className="text-xs" style={getStageStyle(deal.stage, stageStats)} data-testid={`badge-status-${deal.id}`}>
+                {getStageLabel(deal.stage, stageStats)}
               </Badge>
               <Badge variant="outline" className="text-xs" data-testid={`badge-loantype-${deal.id}`}>
                 {getLoanTypeLabel(deal.loanData?.loanType)}
@@ -876,9 +875,9 @@ export default function AdminDeals() {
                 key={deal.id} 
                 deal={deal} 
                 formatCurrency={formatCurrency}
-                getStageColor={getStageColor}
                 getStageLabel={getStageLabel}
                 getLoanTypeLabel={getLoanTypeLabel}
+                stageStats={data?.stats?.stageStats}
               />
             ))}
           </div>
@@ -932,8 +931,8 @@ export default function AdminDeals() {
                       {deal.loanData?.loanAmount ? formatCurrency(deal.loanData.loanAmount) : "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn("text-xs", getStageColor(deal.stage))}>
-                        {getStageLabel(deal.stage)}
+                      <Badge className="text-xs" style={getStageStyle(deal.stage, data?.stats?.stageStats)}>
+                        {getStageLabel(deal.stage, data?.stats?.stageStats)}
                       </Badge>
                     </TableCell>
                     <TableCell>
