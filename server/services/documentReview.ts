@@ -11,10 +11,41 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
+const SUPPORTED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+function isImageMimeType(mimeType?: string | null): boolean {
+  if (!mimeType) return false;
+  return SUPPORTED_IMAGE_MIMES.includes(mimeType);
+}
+
+function isImageFile(filePath: string, mimeType?: string | null): boolean {
+  if (isImageMimeType(mimeType)) return true;
+  const ext = filePath.toLowerCase().split('.').pop();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
+}
+
+function getImageMediaType(mimeType?: string | null, filePath?: string): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' {
+  if (mimeType === 'image/png') return 'image/png';
+  if (mimeType === 'image/gif') return 'image/gif';
+  if (mimeType === 'image/webp') return 'image/webp';
+  if (filePath) {
+    const ext = filePath.toLowerCase().split('.').pop();
+    if (ext === 'png') return 'image/png';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'webp') return 'image/webp';
+  }
+  return 'image/jpeg';
+}
+
+async function downloadDocumentBuffer(filePath: string): Promise<Buffer> {
+  const objectFile = await objectStorageService.getObjectEntityFile(filePath);
+  const [buffer] = await objectFile.download();
+  return buffer;
+}
+
 async function extractTextFromDocument(filePath: string, mimeType?: string | null): Promise<string> {
   try {
-    const objectFile = await objectStorageService.getObjectEntityFile(filePath);
-    const [buffer] = await objectFile.download();
+    const buffer = await downloadDocumentBuffer(filePath);
     
     if (mimeType?.includes('pdf') || filePath.toLowerCase().endsWith('.pdf')) {
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -148,18 +179,32 @@ export async function reviewDocument(
       return { success: false, error: 'No review rules configured for this document. Add rules to the document template in Admin > Programs, or assign review rules at the program level.' };
     }
 
-    let documentText: string;
-    try {
-      documentText = await extractTextFromDocument(doc.filePath, doc.mimeType);
-    } catch (err: any) {
-      return { success: false, error: `Could not read document: ${err.message}` };
-    }
+    const isImage = isImageFile(doc.filePath, doc.mimeType);
+    let documentText: string | null = null;
+    let imageBase64: string | null = null;
+    let imageMediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' = 'image/jpeg';
 
-    if (!documentText || documentText.trim().length < 10) {
-      return { success: false, error: 'Could not extract meaningful text from this document. It may be an image-only PDF or an unsupported format.' };
-    }
+    if (isImage) {
+      try {
+        const buffer = await downloadDocumentBuffer(doc.filePath);
+        imageBase64 = buffer.toString('base64');
+        imageMediaType = getImageMediaType(doc.mimeType, doc.filePath);
+      } catch (err: any) {
+        return { success: false, error: `Could not read image document: ${err.message}` };
+      }
+    } else {
+      try {
+        documentText = await extractTextFromDocument(doc.filePath, doc.mimeType);
+      } catch (err: any) {
+        return { success: false, error: `Could not read document: ${err.message}` };
+      }
 
-    const truncatedText = documentText.slice(0, 30000);
+      if (!documentText || documentText.trim().length < 10) {
+        return { success: false, error: 'Could not extract meaningful text from this document. It may be an image-only PDF or an unsupported format.' };
+      }
+
+      documentText = documentText.slice(0, 30000);
+    }
 
     let dealInfo = '';
     if (project.dealId) {
@@ -186,7 +231,7 @@ Loan Details:
     }));
 
     const systemPrompt = `You are an expert loan document reviewer for a private lending company. You review documents against specific rules and produce structured, rule-by-rule findings.
-
+${isImage ? '\nIMPORTANT: The document is provided as an IMAGE. You must visually examine the image to read all text, names, dates, numbers, and other information visible in the document. Look carefully at the full image content.\n' : ''}
 For EACH rule provided, you must produce exactly one finding with:
 - "ruleIndex": the rule number from the input
 - "status": one of "pass", "fail", "warning", "info"
@@ -196,7 +241,7 @@ For EACH rule provided, you must produce exactly one finding with:
     - INFO severity rules: use "info" with relevant observations, or "pass" if clearly met
 - "title": a short title for the finding
 - "detail": detailed explanation of what you found
-- "evidence": the specific text, value, or excerpt from the document that supports your finding. Quote directly from the document when possible.
+- "evidence": the specific text, value, or excerpt from the document that supports your finding. Quote directly from the document when possible.${isImage ? ' Describe what you see in the image.' : ''}
 - "pageReference": which page(s) of the document are relevant (e.g. "Page 1", "Pages 2-3")
 
 Also provide:
@@ -219,27 +264,53 @@ Respond ONLY with valid JSON in this exact format:
   ]
 }`;
 
-    const userPrompt = `## Document Being Reviewed
+    const rulesText = rulesForPrompt.map(r => `Rule ${r.ruleIndex} [ID:${r.ruleId}] (${r.ruleType.toUpperCase()}, Severity: ${r.severity.toUpperCase()}):
+  "${r.ruleName}"
+  Instructions: ${r.instructions}`).join('\n\n');
+
+    const userTextContent = `## Document Being Reviewed
 **Document Name:** ${doc.documentName || doc.fileName || 'Unknown'}
 **Document Category:** ${doc.documentCategory || 'General'}
 ${dealInfo}
 
 ## Rules to Check (${rulesForPrompt.length} rules)
-${rulesForPrompt.map(r => `Rule ${r.ruleIndex} [ID:${r.ruleId}] (${r.ruleType.toUpperCase()}, Severity: ${r.severity.toUpperCase()}):
-  "${r.ruleName}"
-  Instructions: ${r.instructions}`).join('\n\n')}
-
-## Document Content
-${truncatedText}
+${rulesText}
+${!isImage ? `\n## Document Content\n${documentText}` : '\n## Document Image\nThe document image is attached. Please visually examine it to verify each rule.'}
 
 Review this document against ALL ${rulesForPrompt.length} rules above. Produce one finding per rule.`;
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5-mini',
-      messages: [
+    if (isImage && !imageBase64) {
+      return { success: false, error: 'Failed to load image data for vision analysis.' };
+    }
+
+    let messages: any[];
+    if (isImage && imageBase64) {
+      messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: userTextContent },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${imageMediaType};base64,${imageBase64}`,
+                detail: 'high',
+              },
+            },
+          ],
+        },
+      ];
+    } else {
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userTextContent },
+      ];
+    }
+
+    const response = await openai.chat.completions.create({
+      model: isImage ? 'gpt-4o' : 'gpt-5-mini',
+      messages,
       response_format: { type: 'json_object' },
       max_completion_tokens: 8192,
     });
@@ -293,7 +364,7 @@ Review this document against ALL ${rulesForPrompt.length} rules above. Produce o
       rulesPassed,
       rulesFailed,
       rulesWarning,
-      model: 'gpt-5-mini',
+      model: isImage ? 'gpt-4o' : 'gpt-5-mini',
       reviewedBy: userId,
     });
 
