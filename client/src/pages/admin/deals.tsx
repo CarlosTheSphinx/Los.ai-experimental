@@ -55,6 +55,7 @@ import {
   Clock,
   LayoutGrid,
   List,
+  Columns3,
   FolderUp,
   ExternalLink,
   Loader2,
@@ -71,6 +72,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { DigestConfigPanel } from "@/components/DigestConfigPanel";
+import DealsKanbanView from "@/components/admin/DealsKanbanView";
 
 interface DealStage {
   id: number;
@@ -452,7 +454,7 @@ function DealExpandedCard({ deal, formatCurrency, getStageColor, getStageLabel, 
 
 export default function AdminDeals() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("grid");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "amount-high" | "amount-low">("newest");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { toast } = useToast();
@@ -836,25 +838,24 @@ export default function AdminDeals() {
                 <SelectItem value="amount-low">Amount: Low to High</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex items-center border rounded-md">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("rounded-r-none", viewMode === "grid" && "bg-muted")}
-                onClick={() => setViewMode("grid")}
-                data-testid="btn-view-grid"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("rounded-l-none", viewMode === "list" && "bg-muted")}
-                onClick={() => setViewMode("list")}
-                data-testid="btn-view-list"
-              >
-                <List className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center gap-1 rounded-md border p-0.5">
+              {([
+                { mode: "grid" as const, label: "Cards", icon: LayoutGrid },
+                { mode: "list" as const, label: "List", icon: List },
+                { mode: "kanban" as const, label: "Kanban", icon: Columns3 },
+              ]).map(({ mode, label, icon: Icon }) => (
+                <Button
+                  key={mode}
+                  variant={viewMode === mode ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode(mode)}
+                  data-testid={`btn-view-${mode}`}
+                  className="gap-1.5"
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{label}</span>
+                </Button>
+              ))}
             </div>
           </div>
         </div>
@@ -875,6 +876,8 @@ export default function AdminDeals() {
               </p>
             </CardContent>
           </Card>
+        ) : viewMode === "kanban" ? (
+          <DealsKanbanView deals={deals} />
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {deals.map((deal) => (
