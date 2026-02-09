@@ -5037,18 +5037,58 @@ export async function registerRoutes(
         loanTypeStats[loanType].amount += p.loanAmount || 0;
       });
       
-      // Calculate pipeline by status
-      const statusOrder = ['active', 'on_hold', 'cancelled', 'completed'];
-      const statusLabels: Record<string, string> = {
-        'active': 'Active',
-        'on_hold': 'On Hold',
-        'cancelled': 'Cancelled',
-        'completed': 'Completed'
-      };
-      const stageStats = statusOrder.map(status => ({
-        stage: status,
-        label: statusLabels[status] || status,
-        count: allProjects.filter(p => p.status === status).length
+      // Calculate pipeline by program workflow steps
+      const allStepDefs = await db.select({
+        id: workflowStepDefinitions.id,
+        name: workflowStepDefinitions.name,
+        key: workflowStepDefinitions.key,
+        color: workflowStepDefinitions.color,
+        sortOrder: workflowStepDefinitions.sortOrder,
+      })
+        .from(workflowStepDefinitions)
+        .where(eq(workflowStepDefinitions.isActive, true))
+        .orderBy(asc(workflowStepDefinitions.sortOrder));
+
+      // Get all project stages to find each project's current (in_progress) step
+      const allProjectStages = await db.select({
+        projectId: projectStages.projectId,
+        stageKey: projectStages.stageKey,
+        status: projectStages.status,
+        programStepId: projectStages.programStepId,
+      }).from(projectStages);
+
+      // Pre-load all program workflow step -> step definition key mappings
+      const allProgramStepMappings = await db.select({
+        programStepId: programWorkflowSteps.id,
+        stepKey: workflowStepDefinitions.key,
+      })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id));
+      const stepIdToKey = new Map(allProgramStepMappings.map(m => [m.programStepId, m.stepKey]));
+
+      // Map each project to its current workflow step key
+      const projectCurrentStepKey = new Map<number, string>();
+      const projectIds = [...new Set(allProjectStages.map(s => s.projectId))];
+      for (const pid of projectIds) {
+        const stages = allProjectStages.filter(s => s.projectId === pid);
+        const inProgress = stages.find(s => s.status === 'in_progress');
+        if (inProgress) {
+          if (inProgress.programStepId && stepIdToKey.has(inProgress.programStepId)) {
+            projectCurrentStepKey.set(pid, stepIdToKey.get(inProgress.programStepId)!);
+          } else {
+            projectCurrentStepKey.set(pid, inProgress.stageKey);
+          }
+        }
+      }
+
+      const stageStats = allStepDefs.map(step => ({
+        stage: step.key,
+        label: step.name,
+        color: step.color || '#6366f1',
+        count: allProjects.filter(p => {
+          const stepKey = projectCurrentStepKey.get(p.id);
+          return stepKey === step.key;
+        }).length,
       }));
       
       // Calculate deals by month (last 6 months)

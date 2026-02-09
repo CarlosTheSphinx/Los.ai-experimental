@@ -146,6 +146,7 @@ interface StageInfo {
   stage: string;
   label: string;
   count: number;
+  color?: string;
 }
 
 interface DealsStats {
@@ -199,16 +200,6 @@ function StatsCard({
 }
 
 function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
-  const stageColors: Record<string, string> = {
-    "initial-review": "bg-yellow-500",
-    "term-sheet": "bg-blue-400",
-    "onboarding": "bg-purple-400",
-    "processing": "bg-red-500",
-    "underwriting": "bg-indigo-500",
-    "closing": "bg-teal-500",
-    "closed": "bg-green-500",
-  };
-
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -224,14 +215,14 @@ function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
               </span>
               <div className="flex items-center w-full mt-2 gap-1">
                 <div
-                  className={cn(
-                    "h-2 flex-1 rounded-full",
-                    stageColors[stageInfo.stage] || "bg-gray-400"
-                  )}
-                  style={{ opacity: stageInfo.count > 0 ? 1 : 0.3 }}
+                  className="h-2 flex-1 rounded-full"
+                  style={{
+                    backgroundColor: stageInfo.color || '#6b7280',
+                    opacity: stageInfo.count > 0 ? 1 : 0.3,
+                  }}
                 />
                 {index < stageStats.length - 1 && (
-                  <span className="text-muted-foreground text-xs">→</span>
+                  <span className="text-muted-foreground text-xs">&rarr;</span>
                 )}
               </div>
             </div>
