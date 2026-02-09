@@ -2735,6 +2735,44 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== COMMISSIONS ROUTE ====================
+
+  app.get('/api/commissions', authenticateUser, requireOnboarding, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+
+      const rows = await db
+        .select({
+          projectId: projects.id,
+          projectName: projects.projectName,
+          projectNumber: projects.projectNumber,
+          status: projects.status,
+          currentStage: projects.currentStage,
+          loanAmount: projects.loanAmount,
+          loanType: projects.loanType,
+          propertyAddress: projects.propertyAddress,
+          borrowerName: projects.borrowerName,
+          createdAt: projects.createdAt,
+          fundingDate: projects.fundingDate,
+          commission: savedQuotes.commission,
+          pointsCharged: savedQuotes.pointsCharged,
+          pointsAmount: savedQuotes.pointsAmount,
+          tpoPremiumAmount: savedQuotes.tpoPremiumAmount,
+          totalRevenue: savedQuotes.totalRevenue,
+          interestRate: savedQuotes.interestRate,
+        })
+        .from(projects)
+        .innerJoin(savedQuotes, eq(projects.quoteId, savedQuotes.id))
+        .where(eq(projects.userId, userId))
+        .orderBy(projects.createdAt);
+
+      res.json({ commissions: rows });
+    } catch (error) {
+      console.error('Get commissions error:', error);
+      res.status(500).json({ error: 'Failed to get commissions' });
+    }
+  });
+
   // ==================== PROJECTS ROUTES ====================
 
   // Get all projects

@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Building2,
   ShieldCheck,
+  DollarSign,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -57,6 +58,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/quotes", label: "Saved Quotes", icon: FileText },
   { href: "/agreements", label: "Term Sheets", icon: ClipboardList },
   { href: "/projects", label: "Loans", icon: FolderKanban },
+  { href: "/commissions", label: "My Commissions", icon: DollarSign },
   { href: "/commercial-submission/new", label: "Commercial", icon: Building2 },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
   { href: "/resources", label: "Resources", icon: BookOpen },

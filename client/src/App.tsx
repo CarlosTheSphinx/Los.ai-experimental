@@ -38,6 +38,7 @@ import ResourcesPage from "@/pages/resources";
 import SelectRolePage from "@/pages/select-role";
 import CommercialSubmissionPage from "@/pages/commercial-submission";
 import CommercialSubmissionConfirmation from "@/pages/commercial-submission-confirmation";
+import CommissionsPage from "@/pages/commissions";
 import BorrowerQuote from "@/pages/borrower-quote";
 import BorrowerQuotes from "@/pages/borrower-quotes";
 import AdminCommercialSubmissions from "@/pages/admin/commercial-submissions";
@@ -120,6 +121,7 @@ function MainRoutes() {
         <Route path="/quotes" component={() => <ProtectedRoute component={Quotes} />} />
         <Route path="/agreements" component={() => <ProtectedRoute component={Agreements} />} />
         <Route path="/agreements/:id" component={() => <ProtectedRoute component={AgreementDetail} />} />
+        <Route path="/commissions" component={() => <ProtectedRoute component={CommissionsPage} />} />
         <Route path="/projects" component={() => <ProtectedRoute component={Projects} />} />
         <Route path="/projects/new" component={() => <ProtectedRoute component={NewProject} />} />
         <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectDetail} />} />
