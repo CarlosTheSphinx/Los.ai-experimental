@@ -1,5 +1,6 @@
 import OpenAI from "openai";
-import { objectStorageService } from "../replit_integrations/object_storage/objectStorage";
+import { ObjectStorageService } from "../replit_integrations/object_storage/objectStorage";
+const objectStorageService = new ObjectStorageService();
 import { storage } from "../storage";
 import { db } from "../db";
 import { loanPrograms, dealDocuments, projects, savedQuotes, programReviewRules, programDocumentTemplates } from "@shared/schema";
