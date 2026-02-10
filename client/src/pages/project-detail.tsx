@@ -13,7 +13,6 @@ import {
   MoreHorizontal,
   Building2,
   Calendar,
-  CalendarDays,
   DollarSign,
   User,
   Mail,
@@ -29,7 +28,8 @@ import {
   Loader2,
   HardDrive,
   Download,
-  Trash2
+  Trash2,
+  MessageSquare
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,13 +40,14 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DigestConfigPanel } from "@/components/DigestConfigPanel";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Task {
   id: number;
@@ -97,6 +98,23 @@ interface ProjectDocument {
   driveUploadError: string | null;
 }
 
+interface DealDocument {
+  id: number;
+  dealId: number;
+  documentName: string;
+  documentCategory: string | null;
+  documentDescription: string | null;
+  status: string;
+  isRequired: boolean;
+  filePath: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedAt: string | null;
+  reviewNotes: string | null;
+  sortOrder: number;
+}
+
 interface Project {
   id: number;
   projectNumber: string;
@@ -124,12 +142,51 @@ interface Project {
   driveSyncStatus: string;
 }
 
+interface MessageThread {
+  id: number;
+  dealId: number | null;
+  userId: number;
+  subject: string | null;
+  lastMessageAt: string;
+}
+
+interface Message {
+  id: number;
+  threadId: number;
+  senderId: number | null;
+  senderRole: string;
+  body: string;
+  createdAt: string;
+  senderName?: string;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  borrower_docs: "Borrower Documents",
+  entity_docs: "Entity Documents",
+  property_docs: "Property Documents",
+  financial_docs: "Financial Documents",
+  closing_docs: "Closing Documents",
+  application: "Application",
+  identity: "Identity",
+  legal: "Legal",
+  financial: "Financial",
+  property: "Property",
+  contacts: "Contacts",
+};
+
 export default function ProjectDetail() {
   const [, params] = useRoute("/projects/:id");
   const projectId = params?.id;
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isBorrower = user?.userType === 'borrower';
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dealDocFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
+  const [uploadingDealDocId, setUploadingDealDocId] = useState<number | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [newThreadSubject, setNewThreadSubject] = useState("");
+  const [newThreadMessage, setNewThreadMessage] = useState("");
 
   const { data, isLoading, refetch } = useQuery<{ 
     project: Project; 
@@ -153,6 +210,38 @@ export default function ProjectDetail() {
       return res.json();
     },
     enabled: !!projectId,
+  });
+
+  const { data: dealDocsData, refetch: refetchDealDocs } = useQuery<DealDocument[]>({
+    queryKey: ['/api/projects', projectId, 'deal-documents'],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/deal-documents`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch deal documents');
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: threadsData, refetch: refetchThreads } = useQuery<{ threads: MessageThread[] }>({
+    queryKey: ['/api/messages/threads', { dealId: projectId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/messages/threads?dealId=${projectId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch threads');
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const currentThread = threadsData?.threads?.[0];
+
+  const { data: threadMessagesData, refetch: refetchMessages } = useQuery<{ thread: MessageThread; messages: Message[] }>({
+    queryKey: ['/api/messages/threads', currentThread?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/messages/threads/${currentThread!.id}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch messages');
+      return res.json();
+    },
+    enabled: !!currentThread?.id,
   });
 
   const updateTaskMutation = useMutation({
@@ -191,6 +280,45 @@ export default function ProjectDetail() {
     },
   });
 
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ threadId, body }: { threadId: number; body: string }) => {
+      return apiRequest('POST', `/api/messages/threads/${threadId}/messages`, { body, type: 'message' });
+    },
+    onSuccess: () => {
+      setNewMessage("");
+      refetchMessages();
+      refetchThreads();
+    },
+    onError: () => {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    },
+  });
+
+  const createThreadMutation = useMutation({
+    mutationFn: async ({ dealId, subject, message }: { dealId: number; subject: string; message: string }) => {
+      const threadRes = await apiRequest('POST', '/api/messages/threads', { 
+        dealId, 
+        userId: user!.id, 
+        subject: subject || 'Message about loan' 
+      });
+      const threadData = await threadRes.json();
+      await apiRequest('POST', `/api/messages/threads/${threadData.thread.id}/messages`, { 
+        body: message, 
+        type: 'message' 
+      });
+      return threadData;
+    },
+    onSuccess: () => {
+      setNewThreadSubject("");
+      setNewThreadMessage("");
+      refetchThreads();
+      toast({ title: "Message sent" });
+    },
+    onError: () => {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    },
+  });
+
   const handleFileUpload = useCallback(async (files: FileList) => {
     for (const file of Array.from(files)) {
       const fileName = file.name;
@@ -226,6 +354,38 @@ export default function ProjectDetail() {
     refetchDocs();
     refetch();
   }, [projectId, toast, refetchDocs, refetch]);
+
+  const handleDealDocUpload = useCallback(async (docId: number, file: File) => {
+    setUploadingDealDocId(docId);
+    try {
+      const urlRes = await apiRequest('POST', `/api/projects/${projectId}/documents/upload-url`, {
+        name: file.name,
+        size: file.size,
+        contentType: file.type,
+      });
+      const urlData = await urlRes.json();
+
+      await fetch(urlData.uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      });
+
+      await apiRequest('POST', `/api/projects/${projectId}/deal-documents/${docId}/upload-complete`, {
+        objectPath: urlData.objectPath,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+      });
+
+      toast({ title: `Uploaded: ${file.name}` });
+      refetchDealDocs();
+    } catch (err) {
+      toast({ title: `Failed to upload ${file.name}`, variant: "destructive" });
+    } finally {
+      setUploadingDealDocId(null);
+    }
+  }, [projectId, toast, refetchDealDocs]);
 
   const copyBorrowerLink = async () => {
     try {
@@ -288,11 +448,32 @@ export default function ProjectDetail() {
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
       case 'critical': return <Badge variant="destructive" className="text-xs">Critical</Badge>;
-      case 'high': return <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-xs">High</Badge>;
+      case 'high': return <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 text-xs">High</Badge>;
       case 'medium': return <Badge variant="secondary" className="text-xs">Medium</Badge>;
       default: return null;
     }
   };
+
+  const getDealDocStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved': return <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">Approved</Badge>;
+      case 'uploaded': return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs">Uploaded</Badge>;
+      case 'rejected': return <Badge variant="destructive" className="text-xs">Rejected</Badge>;
+      case 'not_applicable': return <Badge variant="secondary" className="text-xs">N/A</Badge>;
+      default: return <Badge variant="outline" className="text-xs">Pending</Badge>;
+    }
+  };
+
+  const filteredActivity = isBorrower 
+    ? activity.filter(item => item.visibleToBorrower) 
+    : activity;
+
+  const dealDocsByCategory = (dealDocsData || []).reduce<Record<string, DealDocument[]>>((acc, doc) => {
+    const cat = doc.documentCategory || 'other';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(doc);
+    return acc;
+  }, {});
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -310,7 +491,7 @@ export default function ProjectDetail() {
             </Badge>
           </div>
           <h1 className="text-xl font-semibold" data-testid="text-project-name">{project.projectName}</h1>
-          {project.driveSyncStatus === 'OK' && project.googleDriveFolderId && (
+          {!isBorrower && project.driveSyncStatus === 'OK' && project.googleDriveFolderId && (
             <a 
               href={`https://drive.google.com/drive/folders/${project.googleDriveFolderId}`} 
               target="_blank" 
@@ -323,58 +504,60 @@ export default function ProjectDetail() {
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
-          {project.driveSyncStatus === 'PENDING' && (
+          {!isBorrower && project.driveSyncStatus === 'PENDING' && (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Syncing Drive folder...
             </span>
           )}
-          {project.driveSyncStatus === 'ERROR' && (
+          {!isBorrower && project.driveSyncStatus === 'ERROR' && (
             <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
               <CloudOff className="h-3 w-3" />
               Drive folder sync failed
             </span>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={copyBorrowerLink} data-testid="button-copy-portal-link">
-            <Copy className="h-4 w-4 mr-2" />
-            Borrower Link
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" data-testid="button-more-actions">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={pushToLOS}>
-                <Send className="h-4 w-4 mr-2" />
-                Push to LOS
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                View Borrower Portal
-              </DropdownMenuItem>
-              {project.googleDriveFolderId && (
-                <DropdownMenuItem onClick={() => window.open(`https://drive.google.com/drive/folders/${project.googleDriveFolderId}`, '_blank')}>
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  Open Drive Folder
+        {!isBorrower && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={copyBorrowerLink} data-testid="button-copy-portal-link">
+              <Copy className="h-4 w-4 mr-2" />
+              Borrower Link
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" data-testid="button-more-actions">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={pushToLOS}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Push to LOS
                 </DropdownMenuItem>
-              )}
-              {project.driveSyncStatus === 'ERROR' && (
-                <DropdownMenuItem onClick={() => retryDriveFolderMutation.mutate()} disabled={retryDriveFolderMutation.isPending}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry Drive Folder Sync
+                <DropdownMenuItem>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Borrower Portal
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                {project.googleDriveFolderId && (
+                  <DropdownMenuItem onClick={() => window.open(`https://drive.google.com/drive/folders/${project.googleDriveFolderId}`, '_blank')}>
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Open Drive Folder
+                  </DropdownMenuItem>
+                )}
+                {project.driveSyncStatus === 'ERROR' && (
+                  <DropdownMenuItem onClick={() => retryDriveFolderMutation.mutate()} disabled={retryDriveFolderMutation.isPending}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry Drive Folder Sync
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2">
+      <div className={`grid gap-6 ${isBorrower ? '' : 'md:grid-cols-3'}`}>
+        <Card className={isBorrower ? '' : 'md:col-span-2'}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Loan Progress</CardTitle>
@@ -403,36 +586,38 @@ export default function ProjectDetail() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Borrower
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div>
-              <span className="font-medium">{project.borrowerName}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Mail className="h-3.5 w-3.5" />
-              <span>{project.borrowerEmail}</span>
-            </div>
-            {project.borrowerPhone && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="h-3.5 w-3.5" />
-                <span>{project.borrowerPhone}</span>
+        {!isBorrower && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Borrower
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div>
+                <span className="font-medium">{project.borrowerName}</span>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Mail className="h-3.5 w-3.5" />
+                <span>{project.borrowerEmail}</span>
+              </div>
+              {project.borrowerPhone && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5" />
+                  <span>{project.borrowerPhone}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="grid md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <DollarSign className="h-5 w-5 text-green-600" />
+            <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Loan Amount</div>
@@ -442,8 +627,8 @@ export default function ProjectDetail() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <span className="text-blue-600 font-semibold text-sm">%</span>
+            <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <span className="text-blue-600 dark:text-blue-400 font-semibold text-sm">%</span>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Interest Rate</div>
@@ -453,8 +638,8 @@ export default function ProjectDetail() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-purple-600" />
+            <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+              <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Term</div>
@@ -464,8 +649,8 @@ export default function ProjectDetail() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-orange-600" />
+            <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Property</div>
@@ -499,87 +684,105 @@ export default function ProjectDetail() {
             <FileText className="h-4 w-4 mr-2" />
             Documents
           </TabsTrigger>
-          <TabsTrigger value="digests" data-testid="tab-digests">
-            <CalendarDays className="h-4 w-4 mr-2" />
-            Digests
+          <TabsTrigger value="checklist" data-testid="tab-checklist">
+            <CheckSquare className="h-4 w-4 mr-2" />
+            Checklist
+          </TabsTrigger>
+          <TabsTrigger value="messages" data-testid="tab-messages">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Messages
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tasks" className="space-y-4">
-          {stages.map((stage) => (
-            <Card key={stage.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {getStageIcon(stage.status)}
-                    <div>
-                      <CardTitle className="text-base">{stage.stageName}</CardTitle>
-                      <CardDescription>{stage.stageDescription}</CardDescription>
+          {stages.map((stage) => {
+            const visibleTasks = isBorrower 
+              ? stage.tasks.filter(t => t.visibleToBorrower) 
+              : stage.tasks;
+            
+            if (isBorrower && visibleTasks.length === 0) return null;
+
+            return (
+              <Card key={stage.id}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {getStageIcon(stage.status)}
+                      <div>
+                        <CardTitle className="text-base">{stage.stageName}</CardTitle>
+                        <CardDescription>{stage.stageDescription}</CardDescription>
+                      </div>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {visibleTasks.filter(t => t.status === 'completed').length}/{visibleTasks.length} complete
                     </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {stage.tasks.filter(t => t.status === 'completed').length}/{stage.tasks.length} complete
-                  </div>
-                </div>
-              </CardHeader>
-              {stage.tasks.length > 0 && (
-                <CardContent>
-                  <div className="space-y-2">
-                    {stage.tasks.map((task) => (
-                      <div 
-                        key={task.id} 
-                        className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
-                      >
-                        <Checkbox
-                          checked={task.status === 'completed'}
-                          onCheckedChange={(checked) => {
-                            updateTaskMutation.mutate({
-                              taskId: task.id,
-                              status: checked ? 'completed' : 'pending'
-                            });
-                          }}
-                          data-testid={`checkbox-task-${task.id}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                              {task.taskTitle}
-                            </span>
-                            {getPriorityBadge(task.priority)}
-                            {task.borrowerActionRequired && (
-                              <Badge variant="outline" className="text-xs">Borrower Action</Badge>
+                </CardHeader>
+                {visibleTasks.length > 0 && (
+                  <CardContent>
+                    <div className="space-y-2">
+                      {visibleTasks.map((task) => (
+                        <div 
+                          key={task.id} 
+                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
+                        >
+                          {isBorrower ? (
+                            task.status === 'completed' 
+                              ? <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                              : <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
+                          ) : (
+                            <Checkbox
+                              checked={task.status === 'completed'}
+                              onCheckedChange={(checked) => {
+                                updateTaskMutation.mutate({
+                                  taskId: task.id,
+                                  status: checked ? 'completed' : 'pending'
+                                });
+                              }}
+                              data-testid={`checkbox-task-${task.id}`}
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                                {task.taskTitle}
+                              </span>
+                              {getPriorityBadge(task.priority)}
+                              {task.borrowerActionRequired && (
+                                <Badge variant="outline" className="text-xs">Borrower Action</Badge>
+                              )}
+                            </div>
+                            {task.completedAt && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                Completed {formatDateTime(task.completedAt)}
+                                {task.completedBy && ` by ${task.completedBy}`}
+                              </div>
                             )}
                           </div>
-                          {task.completedAt && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              Completed {formatDateTime(task.completedAt)}
-                              {task.completedBy && ` by ${task.completedBy}`}
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          ))}
+                      ))}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
         </TabsContent>
 
         <TabsContent value="activity">
           <Card>
             <CardContent className="pt-6">
-              {activity.length === 0 ? (
+              {filteredActivity.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No activity yet
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {activity.map((item, i) => (
+                  {filteredActivity.map((item, i) => (
                     <div key={item.id} className="flex gap-3">
                       <div className="flex flex-col items-center">
                         <div className="h-2 w-2 rounded-full bg-primary" />
-                        {i < activity.length - 1 && <div className="flex-1 w-px bg-border" />}
+                        {i < filteredActivity.length - 1 && <div className="flex-1 w-px bg-border" />}
                       </div>
                       <div className="flex-1 pb-4">
                         <div className="text-sm">{item.activityDescription}</div>
@@ -600,7 +803,7 @@ export default function ProjectDetail() {
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
               <CardTitle className="text-base">Project Documents</CardTitle>
               <div className="flex items-center gap-2">
-                {project.googleDriveFolderId && (
+                {!isBorrower && project.googleDriveFolderId && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -654,7 +857,7 @@ export default function ProjectDetail() {
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>No documents uploaded yet</p>
-                  <p className="text-xs mt-1">Upload files to store them here and sync to Google Drive</p>
+                  <p className="text-xs mt-1">Upload files to store them with your loan</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -673,7 +876,7 @@ export default function ProjectDetail() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        {doc.driveUploadStatus === 'OK' && doc.googleDriveFileUrl && (
+                        {!isBorrower && doc.driveUploadStatus === 'OK' && doc.googleDriveFileUrl && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -684,12 +887,12 @@ export default function ProjectDetail() {
                             <HardDrive className="h-4 w-4 text-green-600" />
                           </Button>
                         )}
-                        {doc.driveUploadStatus === 'PENDING' && (
+                        {!isBorrower && doc.driveUploadStatus === 'PENDING' && (
                           <span title="Syncing to Drive">
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                           </span>
                         )}
-                        {doc.driveUploadStatus === 'ERROR' && (
+                        {!isBorrower && doc.driveUploadStatus === 'ERROR' && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -713,8 +916,225 @@ export default function ProjectDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="digests">
-          {projectId && <DigestConfigPanel projectId={Number(projectId)} />}
+        <TabsContent value="checklist">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Required Documents Checklist</CardTitle>
+              <CardDescription>Upload the required documents for your loan application</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(!dealDocsData || dealDocsData.length === 0) ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No document requirements set up yet</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <input
+                    ref={dealDocFileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0 && uploadingDealDocId) {
+                        handleDealDocUpload(uploadingDealDocId, e.target.files[0]);
+                        e.target.value = '';
+                      }
+                    }}
+                    data-testid="input-deal-doc-upload"
+                  />
+                  {Object.entries(dealDocsByCategory).map(([category, docs]) => (
+                    <div key={category}>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                        {CATEGORY_LABELS[category] || category}
+                      </h3>
+                      <div className="space-y-2">
+                        {docs.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center gap-3 p-3 rounded-md border"
+                            data-testid={`deal-doc-row-${doc.id}`}
+                          >
+                            {doc.status === 'approved' ? (
+                              <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                            ) : doc.status === 'uploaded' ? (
+                              <Clock className="h-5 w-5 text-blue-500 shrink-0" />
+                            ) : doc.status === 'rejected' ? (
+                              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium">{doc.documentName}</span>
+                                {doc.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
+                              </div>
+                              {doc.documentDescription && (
+                                <div className="text-xs text-muted-foreground mt-0.5">{doc.documentDescription}</div>
+                              )}
+                              {doc.status === 'rejected' && doc.reviewNotes && (
+                                <div className="text-xs text-destructive mt-1">
+                                  Rejection reason: {doc.reviewNotes}
+                                </div>
+                              )}
+                              {doc.fileName && (
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  {doc.fileName}
+                                  {doc.fileSize ? ` · ${(doc.fileSize / 1024).toFixed(1)} KB` : ''}
+                                  {doc.uploadedAt && ` · ${formatDateTime(doc.uploadedAt)}`}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {getDealDocStatusBadge(doc.status)}
+                              {(doc.status === 'pending' || doc.status === 'rejected') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={uploadingDealDocId === doc.id}
+                                  onClick={() => {
+                                    setUploadingDealDocId(doc.id);
+                                    dealDocFileInputRef.current?.click();
+                                  }}
+                                  data-testid={`button-upload-deal-doc-${doc.id}`}
+                                >
+                                  {uploadingDealDocId === doc.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="messages">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Messages
+              </CardTitle>
+              <CardDescription>Communicate with your loan team</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!currentThread ? (
+                <div className="space-y-4">
+                  <div className="text-center py-4 text-muted-foreground">
+                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No messages yet. Start a conversation with your loan team.</p>
+                  </div>
+                  <div className="space-y-3">
+                    <Textarea
+                      placeholder="Subject (optional)"
+                      value={newThreadSubject}
+                      onChange={(e) => setNewThreadSubject(e.target.value)}
+                      className="resize-none"
+                      rows={1}
+                      data-testid="input-thread-subject"
+                    />
+                    <Textarea
+                      placeholder="Type your message..."
+                      value={newThreadMessage}
+                      onChange={(e) => setNewThreadMessage(e.target.value)}
+                      className="resize-none"
+                      rows={3}
+                      data-testid="input-thread-message"
+                    />
+                    <Button
+                      onClick={() => {
+                        if (newThreadMessage.trim() && projectId) {
+                          createThreadMutation.mutate({
+                            dealId: parseInt(projectId),
+                            subject: newThreadSubject,
+                            message: newThreadMessage,
+                          });
+                        }
+                      }}
+                      disabled={!newThreadMessage.trim() || createThreadMutation.isPending}
+                      data-testid="button-send-first-message"
+                    >
+                      {createThreadMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      Send Message
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {threadMessagesData?.messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`p-3 rounded-md ${
+                          msg.senderId === user?.id 
+                            ? 'bg-primary/10 ml-8' 
+                            : 'bg-muted/50 mr-8'
+                        }`}
+                        data-testid={`message-${msg.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-xs font-medium">
+                            {msg.senderName || (msg.senderId === user?.id ? 'You' : 'Team')}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTime(msg.createdAt)}
+                          </span>
+                        </div>
+                        <div className="text-sm whitespace-pre-wrap">{msg.body}</div>
+                      </div>
+                    ))}
+                    {(!threadMessagesData?.messages || threadMessagesData.messages.length === 0) && (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        No messages in this thread yet
+                      </div>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Type a reply..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      className="resize-none flex-1"
+                      rows={2}
+                      data-testid="input-reply-message"
+                    />
+                    <Button
+                      size="icon"
+                      onClick={() => {
+                        if (newMessage.trim() && currentThread) {
+                          sendMessageMutation.mutate({
+                            threadId: currentThread.id,
+                            body: newMessage,
+                          });
+                        }
+                      }}
+                      disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                      data-testid="button-send-reply"
+                    >
+                      {sendMessageMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

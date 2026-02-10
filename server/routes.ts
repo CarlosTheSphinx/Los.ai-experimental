@@ -3301,6 +3301,59 @@ export async function registerRoutes(
     }
   });
 
+  // Get deal documents for a project (borrower accessible)
+  app.get('/api/projects/:id/deal-documents', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const projectId = parseInt(req.params.id);
+
+      const project = await storage.getProjectById(projectId, userId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const docs = await db.select().from(dealDocuments)
+        .where(eq(dealDocuments.dealId, projectId))
+        .orderBy(asc(dealDocuments.sortOrder));
+
+      res.json(docs);
+    } catch (error) {
+      console.error('Get deal documents error:', error);
+      res.status(500).json({ error: 'Failed to load documents' });
+    }
+  });
+
+  // Mark deal document upload complete (borrower accessible)
+  app.post('/api/projects/:id/deal-documents/:docId/upload-complete', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const projectId = parseInt(req.params.id);
+      const docId = parseInt(req.params.docId);
+
+      const project = await storage.getProjectById(projectId, userId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+
+      const { objectPath, fileName, fileSize, mimeType } = req.body;
+
+      await db.update(dealDocuments)
+        .set({
+          filePath: objectPath,
+          fileName: fileName,
+          fileSize: fileSize,
+          mimeType: mimeType,
+          status: 'uploaded',
+          uploadedAt: new Date(),
+          uploadedBy: userId,
+        })
+        .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Deal doc upload error:', error);
+      res.status(500).json({ error: 'Failed to complete upload' });
+    }
+  });
+
   // Retry Drive folder sync for a project
   app.post('/api/projects/:id/drive/retry', authenticateUser, requireAdmin, async (req: AuthRequest, res) => {
     try {
