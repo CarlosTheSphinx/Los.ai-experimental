@@ -15,6 +15,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { sendSigningInvitation, sendCompletedDocument, sendVoidNotification, sendSigningReminder, sendPasswordResetEmail } from './email';
+import { sendCommercialNotification, checkExpiredSubmissions } from './services/commercialNotifications';
 import { 
   hashPassword, 
   comparePassword, 
@@ -12093,6 +12094,7 @@ Return JSON only:
         numberOfSimilarProjects: data.numberOfSimilarProjects,
         netWorth: data.netWorth,
         liquidity: data.liquidity,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       };
 
       // Check required documents are uploaded (passed as documentIds in body)
@@ -12282,6 +12284,10 @@ Return JSON only:
 
       await storage.updateCommercialSubmissionStatus(id, "NEW");
 
+      // Send broker confirmation + admin notification (fire and forget)
+      sendCommercialNotification('submission_received', submission).catch(() => {});
+      sendCommercialNotification('admin_new_submission', submission).catch(() => {});
+
       // Trigger AI review in background (fire and forget)
       const submissionId = id;
       (async () => {
@@ -12295,6 +12301,13 @@ Return JSON only:
                     result.decision === 'auto_approved' ? 'APPROVED' : 'UNDER_REVIEW',
             reviewedAt: new Date(),
           });
+
+          if (result.decision === 'needs_review') {
+            const updatedSub = await storage.getCommercialSubmissionById(submissionId);
+            if (updatedSub) {
+              sendCommercialNotification('admin_needs_review', updatedSub, { reason: result.reason }).catch(() => {});
+            }
+          }
         } catch (err) {
           console.error('AI review failed for submission', submissionId, err);
         }
@@ -12368,6 +12381,15 @@ Return JSON only:
       const updated = await storage.updateCommercialSubmissionStatus(id, status, adminNotes);
       if (!updated) {
         return res.status(404).json({ error: "Submission not found" });
+      }
+
+      // Send notification based on status change (fire and forget)
+      if (status === 'APPROVED') {
+        sendCommercialNotification('submission_approved', updated, { adminNotes }).catch(() => {});
+      } else if (status === 'DECLINED') {
+        sendCommercialNotification('submission_declined', updated, { reason: adminNotes, adminNotes }).catch(() => {});
+      } else if (status === 'NEEDS_INFO') {
+        sendCommercialNotification('info_needed', updated, { message: adminNotes, adminNotes }).catch(() => {});
       }
 
       res.json(updated);
@@ -12747,6 +12769,20 @@ Return JSON only:
       res.status(500).json({ error: error.message });
     }
   });
+
+  // Run expired submission check every hour
+  setInterval(() => {
+    checkExpiredSubmissions().catch(err => {
+      console.error('Scheduled expiration check failed:', err);
+    });
+  }, 60 * 60 * 1000);
+
+  // Run once on startup after a short delay
+  setTimeout(() => {
+    checkExpiredSubmissions().catch(err => {
+      console.error('Initial expiration check failed:', err);
+    });
+  }, 10000);
 
   return httpServer;
 }
