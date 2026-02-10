@@ -6014,6 +6014,15 @@ export async function registerRoutes(
         .set({ findings: JSON.stringify(findings), overallStatus: newOverallStatus })
         .where(eq(documentReviewResults.id, reviewId));
 
+      if (action === 'clear') {
+        const [doc] = await db.select().from(dealDocuments).where(eq(dealDocuments.id, review.documentId));
+        if (doc && (doc.status === 'rejected' || doc.status === 'approved')) {
+          await db.update(dealDocuments)
+            .set({ status: 'pending', reviewNotes: null })
+            .where(eq(dealDocuments.id, review.documentId));
+        }
+      }
+
       if (action === 'reject' && reason) {
         const [doc] = await db.select().from(dealDocuments).where(eq(dealDocuments.id, review.documentId));
         if (doc) {

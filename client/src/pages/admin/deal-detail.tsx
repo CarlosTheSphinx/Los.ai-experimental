@@ -1947,7 +1947,7 @@ export default function AdminDealDetail() {
                                         const findingKey = `${docReview.id}-${idx}`;
                                         const isOverridden = !!finding.overrideAction;
                                         const showRejectInput = rejectingFindingKey === findingKey;
-                                        const canAct = (finding.status === 'fail' || finding.status === 'warning') && doc.status !== 'approved' && doc.status !== 'rejected';
+                                        const canAct = (finding.status === 'fail' || finding.status === 'warning');
 
                                         return (
                                         <div key={idx} data-testid={`finding-row-${doc.id}-${idx}`} className={cn(
