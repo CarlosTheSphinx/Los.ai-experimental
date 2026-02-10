@@ -1,0 +1,2028 @@
+**Enhanced Commercial Deal Submission Portal - REVISED Feature Specification**
+
+---
+
+## Core Feature + Strategic Enhancements (UPDATED)
+
+### **KEY CHANGES:**
+1. ✅ **Expanded deal details**: Budget, track record, exit strategy, sponsor financials, partnership structure
+2. ✅ **NO pricing estimates** - removed all rate/LTV preliminary terms
+3. ✅ **Separate admin sidebar** - Commercial Configuration + Commercial Deal Review sections
+4. ✅ **Isolated commercial pipeline** - completely separate from normal deal pipeline
+
+---
+
+## **Complete Feature Layout (REVISED)**
+
+### **USER FLOW - BROKER SIDE:**
+
+#### **Step 1: Pre-Screener (Takes 2 minutes)**
+```
+┌─────────────────────────────────────────┐
+│  Quick Deal Check                       │
+│  Answer 5 questions before uploading    │
+├─────────────────────────────────────────┤
+│  1. Loan Amount Needed: $______         │
+│  2. Asset Class: [Dropdown]             │
+│  3. Property State: [Dropdown]          │
+│  4. Deal Type: [Dropdown]               │
+│  5. Sponsor Credit Score: [Range]       │
+│                                         │
+│  [Check If We Can Help] ──────────────► │
+└─────────────────────────────────────────┘
+         │
+         ▼
+   AI Instant Response:
+   ✅ "Great fit! Proceed with full submission"
+   ❌ "We don't finance gas stations in California"
+   ⚠️ "Loan size is below our minimum ($2M), but submit if sponsor is strong"
+```
+
+#### **Step 2: Full Submission Form (EXPANDED)**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Commercial Deal Submission                             │
+├─────────────────────────────────────────────────────────┤
+│  PROPERTY INFORMATION                                   │
+│  ─────────────────────                                  │
+│  Property Address: [_______________________________]    │
+│  City: [__________] State: [__] Zip: [_____]           │
+│  County: [__________]                                   │
+│  Property Type: [Auto-filled from screener]             │
+│  Year Built: [____] Square Footage: [______] SF        │
+│  Number of Units/Spaces: [____]                         │
+│  Current Occupancy: [___]%                              │
+│                                                         │
+│  FINANCIAL DETAILS                                      │
+│  ─────────────────────                                  │
+│  Purchase Price / Current Value: $[____________]        │
+│  Loan Amount Requested: $[____________]                 │
+│  Calculated LTV: [Auto-calc]%                           │
+│  Current Annual NOI: $[____________]                    │
+│  Projected Annual NOI (if value-add): $[______]         │
+│  Current Annual Debt Service: $[____________]           │
+│  Calculated DSCR: [Auto-calc]                           │
+│  In-Place Rent PSF/Unit: $[____]                        │
+│  Market Rent PSF/Unit: $[____]                          │
+│  Property Taxes (Annual): $[____________]               │
+│  Insurance (Annual): $[____________]                    │
+│                                                         │
+│  DEAL STRUCTURE                                         │
+│  ─────────────────────                                  │
+│  Deal Type: [Auto-filled] (Acquisition/Refi/Construction)│
+│  Loan Purpose: [Dropdown]                               │
+│    Options: Purchase, Refinance, Cash-out Refi,         │
+│             Ground-up Construction, Renovation,         │
+│             Bridge to Permanent                         │
+│  Requested Loan Term: [__] months                       │
+│  Desired Closing Timeline: [Dropdown]                   │
+│    Options: <30 days, 30-45 days, 45-60 days, 60-90 days│
+│  Exit Strategy: [Dropdown]                              │
+│    Options: Refinance to perm, Sale, Portfolio refi,    │
+│             Hold long-term                              │
+│                                                         │
+│  CONSTRUCTION/RENOVATION BUDGET (if applicable)         │
+│  ─────────────────────────────────────                  │
+│  Total Project Cost: $[____________]                    │
+│  Land/Acquisition Cost: $[____________]                 │
+│  Hard Costs: $[____________]                            │
+│  Soft Costs: $[____________]                            │
+│  Contingency: $[____________] ([__]%)                   │
+│  Project Timeline: [__] months                          │
+│  Construction Start Date: [Date picker]                 │
+│  Stabilization Date: [Date picker]                      │
+│  General Contractor: [____________]                     │
+│  GC Licensed & Bonded? [Yes/No]                         │
+│                                                         │
+│  SPONSOR INFORMATION                                    │
+│  ─────────────────────                                  │
+│  Primary Sponsor Name: [_______________________]        │
+│  Entity Name: [_______________________]                 │
+│  Entity Type: [Dropdown]                                │
+│    Options: LLC, LP, Corporation, Individual, Trust     │
+│  Date Established: [Date]                               │
+│  Ownership Structure: [Dropdown]                        │
+│    Options: Single Owner, Partnership, Syndication,     │
+│             Family Office, Institutional                │
+│                                                         │
+│  Additional Sponsors/Partners:                          │
+│  [+ Add Sponsor] (repeatable section)                   │
+│    Name: [____________] Ownership %: [__]%              │
+│                                                         │
+│  Sponsor Credit Score: [Dropdown]                       │
+│    Options: <600, 600-649, 650-699, 700-749, 750+       │
+│  Personal Liquidity: $[____________]                    │
+│  Personal Net Worth: $[____________]                    │
+│  Years of Real Estate Experience: [__]                  │
+│                                                         │
+│  TRACK RECORD                                           │
+│  ─────────────────────                                  │
+│  Number of Similar Projects Completed: [__]             │
+│  Total Units/SF Owned/Managed: [____________]           │
+│  Current Portfolio Value: $[____________]               │
+│  Similar Deals in Last 3 Years: [__]                    │
+│  Ever Defaulted on a Loan? [Yes/No]                     │
+│    If Yes, explain: [Textarea]                          │
+│  Any Current Litigation? [Yes/No]                       │
+│    If Yes, explain: [Textarea]                          │
+│  Any Bankruptcy in Last 7 Years? [Yes/No]               │
+│    If Yes, explain: [Textarea]                          │
+│                                                         │
+│  PROPERTY CONDITION & OCCUPANCY                         │
+│  ─────────────────────────────────                      │
+│  Property Condition: [Dropdown]                         │
+│    Options: Excellent, Good, Fair, Needs Renovation     │
+│  Deferred Maintenance Estimate: $[______] ([__]% of value)│
+│  Environmental Issues Known? [Yes/No]                   │
+│    If Yes, describe: [Textarea]                         │
+│  Zoning: [____________]                                 │
+│  Current Zoning Compliant? [Yes/No]                     │
+│                                                         │
+│  If Multifamily:                                        │
+│    Number of Units: [__]                                │
+│    Unit Mix: [__] Studios, [__] 1BR, [__] 2BR, [__] 3BR│
+│    Average Rent: $[____]/month                          │
+│    Market Rent: $[____]/month                           │
+│                                                         │
+│  If Retail/Office:                                      │
+│    Number of Tenants: [__]                              │
+│    Largest Tenant: [__________] ([__]% of NRA)          │
+│    Average Lease Term Remaining: [__] years             │
+│    Tenant Credit Quality: [Dropdown]                    │
+│                                                         │
+│  EXISTING DEBT (if refinance)                           │
+│  ─────────────────────────                              │
+│  Current Lender: [____________]                         │
+│  Current Loan Balance: $[____________]                  │
+│  Current Interest Rate: [__]%                           │
+│  Maturity Date: [Date]                                  │
+│  Prepayment Penalty: $[______] or N/A                   │
+│                                                         │
+│  CUSTOM QUESTIONS (Admin Configured)                    │
+│  ─────────────────────────────────                      │
+│  [Dynamic fields based on admin setup]                  │
+│  - Is there a signed PSA? [Yes/No]                      │
+│  - Earnest money deposited? [Yes/No] Amount: $[___]     │
+│  - Any tenant disputes? [Yes/No]                        │
+│  - Property management in place? [Yes/No]               │
+│                                                         │
+│  REQUIRED DOCUMENTS ✓                                   │
+│  ─────────────────────                                  │
+│  ✅ Property Photos - Exterior (3 uploaded)             │
+│  ✅ Property Photos - Interior (5 uploaded)             │
+│  ✅ T12 Operating Statement (1 uploaded)                │
+│  ⏳ Rent Roll (Required)                                │
+│  ⏳ Last 2 Years Tax Returns - Property (Required)      │
+│  ⏳ Last 2 Years Tax Returns - Sponsor (Required)       │
+│  ⏳ Personal Financial Statement (Required)             │
+│  ⏳ Purchase & Sale Agreement (If acquisition)          │
+│  ⏳ Current Loan Documents (If refinance)               │
+│  ⏳ Title Report/Commitment (Optional)                  │
+│  ⏳ Environmental Phase I (Optional)                    │
+│  ⏳ Previous Appraisal (Optional)                       │
+│  ⏳ Construction Budget (If construction)               │
+│  ⏳ Building Plans/Specs (If construction)              │
+│  ⏳ GC Contract (If construction)                       │
+│  ⏳ Permits (If construction)                           │
+│                                                         │
+│  [+ Upload Files] [Drag & Drop Zone]                   │
+│                                                         │
+│  ADDITIONAL NOTES                                       │
+│  ─────────────────                                      │
+│  [Text area - describe unique aspects, challenges,      │
+│   sponsor strengths, market opportunity, etc.]          │
+│                                                         │
+│  [Save as Draft] [Submit for Review]                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### **Step 3: AI Review Process (Broker sees status)**
+```
+┌─────────────────────────────────────────┐
+│  🟡 Reviewing Your Deal...              │
+│                                         │
+│  Our AI is analyzing your submission    │
+│  against our credit policies.           │
+│                                         │
+│  Typical review time: 5-15 minutes      │
+│                                         │
+│  [Progress bar animation]               │
+└─────────────────────────────────────────┘
+```
+
+#### **Step 4: AI Response (3 Possible Outcomes) - NO PRICING**
+
+**OUTCOME A: Approved for Underwriting**
+```
+┌─────────────────────────────────────────┐
+│  ✅ DEAL APPROVED FOR UNDERWRITING      │
+├─────────────────────────────────────────┤
+│  Great news! Your deal meets our        │
+│  initial credit criteria.               │
+│                                         │
+│  🎯 NEXT STEPS                          │
+│  ────────────────                       │
+│  1. Our underwriting team will contact │
+│     you within 48 business hours        │
+│  2. We'll schedule a site visit         │
+│  3. Full underwriting process begins    │
+│  4. Pricing will be provided after      │
+│     underwriting review                 │
+│                                         │
+│  Deal ID: #CM-2401-045                  │
+│  Assigned to: Sarah Chen                │
+│  Contact: sarah.chen@sphinxcap.com      │
+│                                         │
+│  [Track Progress]                       │
+└─────────────────────────────────────────┘
+```
+
+**OUTCOME B: More Information Needed**
+```
+┌─────────────────────────────────────────┐
+│  🔵 ADDITIONAL INFORMATION NEEDED       │
+├─────────────────────────────────────────┤
+│  We need a few more items to evaluate:  │
+│                                         │
+│  REQUIRED:                              │
+│  ☐ Updated rent roll (current one shows │
+│     3 vacant units without explanation) │
+│  ☐ Sponsor's last 2 years personal tax  │
+│     returns                             │
+│  ☐ Property insurance quote or binder   │
+│  ☐ Explanation of $150K deferred        │
+│     maintenance noted                   │
+│                                         │
+│  OPTIONAL (Strengthens Application):    │
+│  ☐ Recent appraisal (within 6 months)   │
+│  ☐ Capital improvement budget/plan      │
+│  ☐ Property management agreement        │
+│                                         │
+│  [Upload Documents]                     │
+│                                         │
+│  ⚠️ Deal will expire in 7 days if not  │
+│  completed.                             │
+└─────────────────────────────────────────┘
+```
+
+**OUTCOME C: Declined**
+```
+┌─────────────────────────────────────────┐
+│  ❌ DEAL DOES NOT MEET CRITERIA         │
+├─────────────────────────────────────────┤
+│  Unfortunately, this deal doesn't fit   │
+│  our current lending parameters.        │
+│                                         │
+│  REASON(S):                             │
+│  • Loan size ($850K) below our minimum  │
+│    of $2M for commercial deals          │
+│  • DSCR of 1.15 is below our 1.25       │
+│    minimum requirement                  │
+│  • Sponsor has limited track record (2  │
+│    deals vs. our 5 deal minimum for     │
+│    this size)                           │
+│                                         │
+│  💡 ALTERNATIVE OPTIONS                 │
+│  ────────────────────────               │
+│  Consider these for this deal type:     │
+│  • SBA 504 loan programs                │
+│  • Local credit unions                  │
+│  • CMBS lenders (for smaller deals)     │
+│                                         │
+│  🔄 WHAT WOULD MAKE IT WORK?            │
+│  ────────────────────────────           │
+│  To meet our criteria:                  │
+│  • Loan amounts: $2M - $50M             │
+│  • DSCR minimum: 1.25x                  │
+│  • Sponsor track record: 5+ similar deals│
+│  • Asset classes: Multifamily, retail,  │
+│    office, industrial                   │
+│  • Stabilized properties (>85% occupied)│
+│                                         │
+│  [Submit Different Deal]                │
+└─────────────────────────────────────────┘
+```
+
+#### **Step 5: Broker Dashboard View**
+```
+┌───────────────────────────────────────────────────────────┐
+│  My Commercial Deals                   [+ New Submission] │
+├───────────────────────────────────────────────────────────┤
+│  Active Deals (3)                                         │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 🟢 123 Main St, Dallas TX           #CM-2401-045    │ │
+│  │    Multifamily | $4.5M              Underwriting    │ │
+│  │    Submitted: Jan 15                Updated: 2d ago │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ 🔵 456 Oak Ave, Miami FL            #CM-2401-038    │ │
+│  │    Office | $8.2M                   Needs Docs      │ │
+│  │    Missing: Rent roll, Tax returns, PFS             │ │
+│  │    ⚠️ Expires in 4 days             [Upload Now]   │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ 🟡 789 Elm St, Austin TX            #CM-2401-051    │ │
+│  │    Retail | $3.1M                   AI Reviewing    │ │
+│  │    Submitted: 15 min ago                           │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  Past Deals (12)                              [View All] │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ ✅ 234 Pine Rd, Houston TX          #CM-2312-089    │ │
+│  │    Multifamily | $6.2M              FUNDED          │ │
+│  │    Funded: Dec 20, 2023                            │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ ❌ 567 Maple Dr, Denver CO          #CM-2311-102    │ │
+│  │    Hotel | $12M                     Declined        │ │
+│  │    Reason: Insufficient sponsor track record       │ │
+│  └─────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **ADMIN SIDE - SEPARATE SIDEBAR SECTIONS:**
+
+#### **New Admin Sidebar Items:**
+```
+┌─────────────────────────┐
+│  ADMIN NAVIGATION       │
+├─────────────────────────┤
+│  Dashboard              │
+│  Programs               │
+│  Pipeline               │ ← Existing residential/bridge pipeline
+│  Projects               │
+│  Brokers                │
+│                         │
+│  ── COMMERCIAL ──       │ ← NEW SECTION
+│  📋 Commercial Config   │ ← NEW
+│  🏢 Commercial Deals    │ ← NEW
+│                         │
+│  Settings               │
+│  Users                  │
+└─────────────────────────┘
+```
+
+---
+
+### **ADMIN PANEL 1: Commercial Configuration**
+
+**Page:** `/admin/commercial/config`
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Commercial Submission Configuration                    │
+├─────────────────────────────────────────────────────────┤
+│  [Tab: Pre-Screener] [Tab: Intake Form] [Tab: Documents]│
+│  [Tab: AI Rules] [Tab: Notifications]                   │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ═══ TAB 1: PRE-SCREENER CRITERIA ═══                  │
+│                                                         │
+│  LOAN SIZE REQUIREMENTS                                 │
+│  ─────────────────────                                  │
+│  Minimum Loan Size: $[2,000,000]                        │
+│  Maximum Loan Size: $[50,000,000]                       │
+│                                                         │
+│  APPROVED ASSET CLASSES                                 │
+│  ─────────────────────                                  │
+│  ☑ Multifamily (5+ units)  ☑ Office                    │
+│  ☑ Retail                  ☑ Industrial/Warehouse       │
+│  ☑ Self-Storage            ☑ Mixed-Use                  │
+│  ☐ Hospitality (Hotels)    ☐ Senior Living              │
+│  ☐ Gas Stations            ☐ Churches                   │
+│  ☐ Special Purpose         ☐ Land/Development           │
+│                                                         │
+│  GEOGRAPHIC RESTRICTIONS                                │
+│  ─────────────────────                                  │
+│  Approved States:                                       │
+│  ☑ Texas        ☑ Florida      ☑ California            │
+│  ☑ New York     ☑ Georgia      ☑ North Carolina        │
+│  ☐ All Other States                                     │
+│                                                         │
+│  Excluded MSAs (blacklist):                             │
+│  [+ Add MSA to Exclude]                                 │
+│  • Detroit, MI               [Remove]                   │
+│  • Gary, IN                  [Remove]                   │
+│                                                         │
+│  DEAL TYPE RESTRICTIONS                                 │
+│  ─────────────────────                                  │
+│  ☑ Acquisition             ☑ Refinance                  │
+│  ☑ Cash-Out Refinance      ☑ Bridge Loans               │
+│  ☑ Value-Add/Renovation    ☐ Ground-Up Construction     │
+│  ☐ Land Acquisition        ☐ Development                │
+│                                                         │
+│  [Save Pre-Screener Settings]                           │
+│                                                         │
+│  ═══ TAB 2: CUSTOM INTAKE FORM FIELDS ═══              │
+│                                                         │
+│  FORM BUILDER (Drag to Reorder)                        │
+│  ─────────────────────────                              │
+│  [All hardcoded fields shown above are always included] │
+│                                                         │
+│  Additional Custom Questions:                           │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ 1. ≡ Is there a signed PSA?      [Required] [⚙] │   │
+│  │    Type: Yes/No                               │   │
+│  │    Applies to: Acquisition only                │   │
+│  ├─────────────────────────────────────────────────┤   │
+│  │ 2. ≡ Earnest money deposited?    [Required] [⚙] │   │
+│  │    Type: Yes/No + Currency                    │   │
+│  │    Applies to: Acquisition only                │   │
+│  ├─────────────────────────────────────────────────┤   │
+│  │ 3. ≡ Property management in place? [Optional] [⚙]│   │
+│  │    Type: Yes/No                               │   │
+│  │    Applies to: All deal types                 │   │
+│  ├─────────────────────────────────────────────────┤   │
+│  │ 4. ≡ Any tenant disputes?        [Optional] [⚙] │   │
+│  │    Type: Yes/No + Text Area                   │   │
+│  │    Applies to: Multifamily, Office, Retail    │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  [+ Add Custom Question]                                │
+│                                                         │
+│  AVAILABLE FIELD TYPES:                                 │
+│  • Text Field    • Number       • Currency              │
+│  • Yes/No        • Dropdown     • Date                  │
+│  • Text Area     • Checkbox     • File Upload           │
+│  • Phone         • Email        • Percentage            │
+│                                                         │
+│  [Save Form Configuration]                              │
+│                                                         │
+│  ═══ TAB 3: REQUIRED DOCUMENTS ═══                     │
+│                                                         │
+│  DOCUMENT CHECKLIST BY DEAL TYPE                        │
+│  ────────────────────────────                           │
+│  [Subtab: Acquisition] [Subtab: Refinance]             │
+│  [Subtab: Construction] [Subtab: All Deals]            │
+│                                                         │
+│  ── ACQUISITION DOCUMENTS ──                            │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Document Name                  Req'd  Order      │   │
+│  ├─────────────────────────────────────────────────┤   │
+│  │ Property Photos - Exterior      ☑     1    [⚙]  │   │
+│  │ Property Photos - Interior      ☑     2    [⚙]  │   │
+│  │ T12 Operating Statement         ☑     3    [⚙]  │   │
+│  │ Rent Roll (if applicable)       ☑     4    [⚙]  │   │
+│  │ Purchase & Sale Agreement       ☑     5    [⚙]  │   │
+│  │ Sponsor Tax Returns (2 years)   ☑     6    [⚙]  │   │
+│  │ Personal Financial Statement    ☑     7    [⚙]  │   │
+│  │ Property Tax Returns (2 years)  ☑     8    [⚙]  │   │
+│  │ Title Report/Commitment         ☐     9    [⚙]  │   │
+│  │ Environmental Phase I           ☐    10    [⚙]  │   │
+│  │ Previous Appraisal              ☐    11    [⚙]  │   │
+│  │ Insurance Quote/Binder          ☐    12    [⚙]  │   │
+│  └─────────────────────────────────────────────────┘   │
+│  [+ Add Document Requirement]                           │
+│                                                         │
+│  ── REFINANCE DOCUMENTS ──                              │
+│  [Similar list with refinance-specific docs]            │
+│                                                         │
+│  ── CONSTRUCTION DOCUMENTS ──                           │
+│  [Construction-specific docs: plans, budget, GC, etc.]  │
+│                                                         │
+│  [Save Document Requirements]                           │
+│                                                         │
+│  ═══ TAB 4: AI REVIEW RULES ═══                        │
+│                                                         │
+│  AUTO-DECLINE RULES                                     │
+│  ─────────────────────                                  │
+│  If ANY of these conditions are met, auto-decline:      │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Rule                            Active           │   │
+│  ├─────────────────────────────────────────────────┤   │
+│  │ LTV > 80%                        ☑        [⚙][🗑]│   │
+│  │ DSCR < 1.25                      ☑        [⚙][🗑]│   │
+│  │ Sponsor Credit Score < 650       ☑        [⚙][🗑]│   │
+│  │ Loan Amount < $2M                ☑        [⚙][🗑]│   │
+│  │ Loan Amount > $50M               ☑        [⚙][🗑]│   │
+│  │ Deferred Maintenance > 20% value ☑        [⚙][🗑]│   │
+│  │ Occupancy < 75%                  ☑        [⚙][🗑]│   │
+│  │ Sponsor has bankruptcy < 3 yrs   ☑        [⚙][🗑]│   │
+│  │ Sponsor track record < 3 deals   ☑        [⚙][🗑]│   │
+│  │ Outstanding litigation           ☑        [⚙][🗑]│   │
+│  └─────────────────────────────────────────────────┘   │
+│  [+ Add Decline Rule]                                   │
+│                                                         │
+│  REQUEST MORE INFO RULES                                │
+│  ─────────────────────────                              │
+│  Request additional documents/clarification if:         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Missing any required documents   ☑        [⚙][🗑]│   │
+│  │ NOI data is incomplete/unclear   ☑        [⚙][🗑]│   │
+│  │ Rent roll doesn't match units    ☑        [⚙][🗑]│   │
+│  │ Deferred maintenance > 10% but <20% ☑     [⚙][🗑]│   │
+│  │ Environmental issues mentioned   ☑        [⚙][🗑]│   │
+│  │ Sponsor liquidity < 6mo reserves ☑        [⚙][🗑]│   │
+│  │ Occupancy 75-85% (borderline)    ☑        [⚙][🗑]│   │
+│  │ LTV 70-80% (requires explanation)☑        [⚙][🗑]│   │
+│  └─────────────────────────────────────────────────┘   │
+│  [+ Add More Info Rule]                                 │
+│                                                         │
+│  AUTO-APPROVE FOR UNDERWRITING RULES                    │
+│  ────────────────────────────────────                   │
+│  Approve for underwriting if ALL of these are met:      │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ All required documents present   ☑        [⚙][🗑]│   │
+│  │ LTV ≤ 75%                        ☑        [⚙][🗑]│   │
+│  │ DSCR ≥ 1.35                      ☑        [⚙][🗑]│   │
+│  │ Sponsor credit score ≥ 700       ☑        [⚙][🗑]│   │
+│  │ Occupancy ≥ 85%                  ☑        [⚙][🗑]│   │
+│  │ Sponsor track record ≥ 5 deals   ☑        [⚙][🗑]│   │
+│  │ No deferred maintenance issues   ☑        [⚙][🗑]│   │
+│  │ No litigation or bankruptcy      ☑        [⚙][🗑]│   │
+│  │ Property in approved MSA         ☑        [⚙][🗑]│   │
+│  └─────────────────────────────────────────────────┘   │
+│  [+ Add Approval Rule]                                  │
+│                                                         │
+│  CUSTOM AI REVIEW INSTRUCTIONS                          │
+│  ──────────────────────────                             │
+│  Additional context for AI to consider:                 │
+│  [Text area with rich editor]                           │
+│  Example:                                               │
+│  "Be more lenient on occupancy for value-add deals      │
+│   where sponsor has strong renovation track record.     │
+│   Flag any deals in flood zones for manual review.      │
+│   For construction deals, require detailed timeline     │
+│   and milestone schedule."                              │
+│                                                         │
+│  [Save AI Review Rules]                                 │
+│                                                         │
+│  ═══ TAB 5: NOTIFICATIONS ═══                          │
+│                                                         │
+│  BROKER EMAIL NOTIFICATIONS                             │
+│  ─────────────────────────                              │
+│  Send email to broker when:                             │
+│  ☑ Deal submitted (confirmation)                        │
+│  ☑ AI review complete - Approved                        │
+│  ☑ AI review complete - Declined                        │
+│  ☑ AI requests more documents                           │
+│  ☑ Deal expires in 3 days (reminder)                    │
+│  ☑ Deal expired                                         │
+│  ☑ Admin adds internal note (optional notification)     │
+│                                                         │
+│  ADMIN EMAIL NOTIFICATIONS                              │
+│  ─────────────────────────                              │
+│  Send email to admin team when:                         │
+│  ☑ New commercial deal submitted                        │
+│  ☑ Deal approved by AI (ready for underwriting)         │
+│  ☑ Deal requires manual review (AI uncertain)           │
+│  ☑ Deal re-submitted after requesting docs              │
+│  ☐ Daily digest of all submissions                      │
+│                                                         │
+│  ADMIN EMAIL RECIPIENTS                                 │
+│  ─────────────────────────                              │
+│  [+ Add Email]                                          │
+│  • sarah.chen@sphinxcap.com                  [Remove]   │
+│  • underwriting@sphinxcap.com                [Remove]   │
+│  • carlos@sphinxcap.com                      [Remove]   │
+│                                                         │
+│  EMAIL TEMPLATE CUSTOMIZATION                           │
+│  ──────────────────────────                             │
+│  [Edit Templates] → Opens template editor for each type │
+│                                                         │
+│  [Save Notification Settings]                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **ADMIN PANEL 2: Commercial Deal Review Queue**
+
+**Page:** `/admin/commercial/deals`
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Commercial Deal Queue                                    │
+│  [Export CSV] [Analytics Dashboard]                      │
+├───────────────────────────────────────────────────────────┤
+│  FILTERS                                                  │
+│  [All Statuses ▼] [All Brokers ▼] [All Asset Classes ▼]  │
+│  [Last 30 Days ▼] [Loan Size: Any ▼]                     │
+│  [Search by property address, sponsor name, deal ID...]   │
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│  📊 QUICK STATS (Filtered Results)                        │
+│  ┌─────────┬─────────┬─────────┬─────────┬─────────┐     │
+│  │ Total   │ Reviewing│ Needs   │ Approved│ Declined│     │
+│  │ Deals   │         │ Docs    │         │         │     │
+│  ├─────────┼─────────┼─────────┼─────────┼─────────┤     │
+│  │   47    │    5    │    8    │   24    │   10    │     │
+│  └─────────┴─────────┴─────────┴─────────┴─────────┘     │
+│                                                           │
+│  ═══ NEEDS MANUAL REVIEW (2) ═══                         │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 🟡 #CM-2401-052                          [Expand ▼] │ │
+│  │ 789 Commerce St, Seattle WA                         │ │
+│  │ Mixed-Use | $7.5M | Submitted 2 hours ago           │ │
+│  │ Broker: Mike's Realty (mike@mikesrealty.com)        │ │
+│  │                                                     │ │
+│  │ ⚠️ AI FLAGGED FOR REVIEW:                           │ │
+│  │ "Sponsor has bankruptcy from 4 years ago (outside   │ │
+│  │  auto-decline window but requires review). DSCR is  │ │
+│  │  1.28 (borderline). Strong track record (12 deals)  │ │
+│  │  but liquidity only covers 4 months (below our 6mo  │ │
+│  │  preference)."                                      │ │
+│  │                                                     │ │
+│  │ 📋 DEAL SUMMARY:                                    │ │
+│  │ • LTV: 72% | DSCR: 1.28 | Occupancy: 88%            │ │
+│  │ • Sponsor: ABC Holdings LLC                         │ │
+│  │ • Credit: 680 | Track Record: 12 deals              │ │
+│  │ • All required docs uploaded ✓                      │ │
+│  │                                                     │ │
+│  │ 📂 DOCUMENTS (18 files) [View in Drive]            │ │
+│  │ ✓ Property Photos    ✓ T12 Statement               │ │
+│  │ ✓ Rent Roll          ✓ Tax Returns                 │ │
+│  │ ✓ PFS                ✓ PSA                         │ │
+│  │ [View All Documents]                               │ │
+│  │                                                     │ │
+│  │ 💬 INTERNAL NOTES (2)                              │ │
+│  │ ┌───────────────────────────────────────────────┐ │ │
+│  │ │ Sarah Chen - 1 hour ago:                      │ │ │
+│  │ │ "Called broker. Sponsor's bankruptcy was due  │ │ │
+│  │ │  to partner dispute, not financial issues.    │ │ │
+│  │ │  Has been clean since. Requesting updated     │ │ │
+│  │ │  liquidity statement - expecting inheritance."│ │ │
+│  │ └───────────────────────────────────────────────┘ │ │
+│  │                                                     │ │
+│  │ [Add Note] _________________________________ [Save] │ │
+│  │                                                     │ │
+│  │ 🎯 ACTIONS:                                         │ │
+│  │ [✅ Approve for UW] [❌ Decline] [🔵 Request Docs]  │ │
+│  │ [👤 Assign to Team Member ▼]                        │ │
+│  │ [📧 Email Broker] [📞 Log Call]                     │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 🟡 #CM-2401-048                          [Expand ▼] │ │
+│  │ 1200 Industrial Blvd, Phoenix AZ                    │ │
+│  │ Warehouse | $15M | Submitted 1 day ago              │ │
+│  │ ⚠️ AI: "Rent roll shows high vacancy but sponsor    │ │
+│  │     claims it's transitional. Needs clarification." │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ═══ APPROVED FOR UNDERWRITING (24) ═══      [View All] │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ ✅ #CM-2401-045 | 123 Main St, Dallas TX            │ │
+│  │    Multifamily | $4.5M | Assigned to: Sarah Chen   │ │
+│  │    Status: Site visit scheduled 2/15                │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ ✅ #CM-2401-040 | 456 Retail Plaza, Miami FL        │ │
+│  │    Retail | $8.2M | Assigned to: John Smith        │ │
+│  │    Status: Underwriting in progress (60% complete)  │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ═══ NEEDS DOCUMENTS (8) ═══                 [View All] │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 🔵 #CM-2401-038 | 456 Oak Ave, Miami FL             │ │
+│  │    Office | $8.2M | Expires in 4 days               │ │
+│  │    Missing: Rent roll, Sponsor tax returns, PFS     │ │
+│  │    [Send Reminder Email] [Extend Deadline]          │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ═══ DECLINED (10) ═══                       [View All] │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ ❌ #CM-2401-035 | 890 Gas Station, Denver CO        │ │
+│  │    Gas Station | $5M | Declined 5 days ago          │ │
+│  │    Reason: Asset class not approved                 │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ═══ AI REVIEWING (5) ═══                    [View All] │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 🟡 #CM-2401-051 | 789 Elm St, Austin TX             │ │
+│  │    Retail | $3.1M | Submitted 15 min ago            │ │
+│  │    AI analysis in progress... (avg 10 min)          │ │
+│  └─────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────┐
+│  📊 ANALYTICS DASHBOARD                       [Last 30d ▼]│
+├───────────────────────────────────────────────────────────┤
+│  SUBMISSION METRICS                                       │
+│  ┌──────────────────────┬──────────────────────────────┐ │
+│  │ Total Submissions: 47│ Avg Loan Size: $6.8M         │ │
+│  │ Approved: 24 (51%)   │ Avg Time to Decision: 2.3d   │ │
+│  │ Declined: 10 (21%)   │ Conversion Rate: 51%         │ │
+│  │ Pending: 13 (28%)    │ Avg Docs per Deal: 14        │ │
+│  └──────────────────────┴──────────────────────────────┘ │
+│                                                           │
+│  TOP DECLINE REASONS                                      │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 1. Loan size below minimum ($2M)............ 6 deals│ │
+│  │ 2. DSCR below 1.25 threshold................ 5 deals│ │
+│  │ 3. Asset class not approved................. 4 deals│ │
+│  │ 4. Insufficient sponsor track record........ 3 deals│ │
+│  │ 5. Occupancy below 75%....................... 2 deals│ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  DEAL VOLUME BY ASSET CLASS                               │
+│  [Bar chart showing Multifamily: 18, Office: 12, etc.]   │
+│                                                           │
+│  TOP PERFORMING BROKERS                                   │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ 1. Mike's Realty..................... 8 deals (63%)│ │
+│  │ 2. Coastal Properties................ 6 deals (50%)│ │
+│  │ 3. Metro Capital Group............... 5 deals (40%)│ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                           │
+│  DEAL PIPELINE FUNNEL                                     │
+│  [Visual funnel: 47 submitted → 24 approved → 12 UW      │
+│   → 6 term sheets → 3 funded]                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+---
+
+## **Complete Replit Prompt (REVISED)**
+
+**Copy and paste this entire prompt into Replit:**
+
+---
+
+**BUILD: Commercial Deal Submission Portal with AI Review - COMPLETE SYSTEM**
+
+Create a standalone commercial deal submission and review system, completely separate from the existing residential/bridge pipeline.
+
+## DATABASE SCHEMA
+
+Create these new tables:
+
+```sql
+-- Broker commercial deal submissions
+CREATE TABLE commercial_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  broker_id INTEGER NOT NULL,
+  
+  -- Property Info
+  property_address TEXT NOT NULL,
+  city VARCHAR(100),
+  state VARCHAR(2),
+  zip VARCHAR(10),
+  county VARCHAR(100),
+  asset_class VARCHAR(100),
+  year_built INTEGER,
+  square_footage INTEGER,
+  number_of_units INTEGER,
+  current_occupancy DECIMAL(5,2),
+  
+  -- Financial Details
+  property_value DECIMAL(15,2),
+  loan_amount_requested DECIMAL(15,2),
+  ltv_calculated DECIMAL(5,2),
+  current_annual_noi DECIMAL(15,2),
+  projected_annual_noi DECIMAL(15,2),
+  current_annual_debt_service DECIMAL(15,2),
+  dscr_calculated DECIMAL(5,2),
+  in_place_rent DECIMAL(10,2),
+  market_rent DECIMAL(10,2),
+  property_taxes DECIMAL(15,2),
+  insurance DECIMAL(15,2),
+  
+  -- Deal Structure
+  deal_type VARCHAR(100), -- 'acquisition', 'refinance', 'construction', etc.
+  loan_purpose VARCHAR(100),
+  requested_loan_term INTEGER,
+  closing_timeline VARCHAR(50),
+  exit_strategy VARCHAR(100),
+  
+  -- Construction/Renovation (if applicable)
+  total_project_cost DECIMAL(15,2),
+  land_acquisition_cost DECIMAL(15,2),
+  hard_costs DECIMAL(15,2),
+  soft_costs DECIMAL(15,2),
+  contingency_amount DECIMAL(15,2),
+  contingency_percent DECIMAL(5,2),
+  project_timeline_months INTEGER,
+  construction_start_date DATE,
+  stabilization_date DATE,
+  general_contractor VARCHAR(255),
+  gc_licensed_bonded BOOLEAN,
+  
+  -- Sponsor Info
+  sponsor_name VARCHAR(255) NOT NULL,
+  sponsor_entity VARCHAR(255),
+  entity_type VARCHAR(100),
+  entity_date_established DATE,
+  ownership_structure VARCHAR(100),
+  sponsor_credit_score VARCHAR(50),
+  personal_liquidity DECIMAL(15,2),
+  personal_net_worth DECIMAL(15,2),
+  years_re_experience INTEGER,
+  
+  -- Track Record
+  similar_projects_completed INTEGER,
+  total_units_sf_owned INTEGER,
+  current_portfolio_value DECIMAL(15,2),
+  similar_deals_last_3years INTEGER,
+  ever_defaulted BOOLEAN,
+  default_explanation TEXT,
+  current_litigation BOOLEAN,
+  litigation_explanation TEXT,
+  bankruptcy_last_7years BOOLEAN,
+  bankruptcy_explanation TEXT,
+  
+  -- Property Condition
+  property_condition VARCHAR(50),
+  deferred_maintenance_estimate DECIMAL(15,2),
+  deferred_maintenance_percent DECIMAL(5,2),
+  environmental_issues BOOLEAN,
+  environmental_description TEXT,
+  zoning VARCHAR(100),
+  zoning_compliant BOOLEAN,
+  
+  -- Existing Debt (if refi)
+  existing_lender VARCHAR(255),
+  existing_loan_balance DECIMAL(15,2),
+  existing_interest_rate DECIMAL(5,2),
+  existing_maturity_date DATE,
+  prepayment_penalty DECIMAL(15,2),
+  
+  -- Status & Tracking
+  status VARCHAR(50) DEFAULT 'draft',
+  -- 'draft', 'submitted', 'ai_reviewing', 'needs_docs', 'manual_review', 
+  -- 'approved', 'declined', 'in_underwriting', 'expired', 'funded'
+  
+  ai_decision VARCHAR(50),
+  ai_decision_reason TEXT,
+  
+  drive_folder_id VARCHAR(255),
+  drive_folder_url TEXT,
+  
+  submitted_at TIMESTAMP,
+  reviewed_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  assigned_to INTEGER, -- Admin user ID
+  
+  additional_notes TEXT,
+  
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (broker_id) REFERENCES users(id),
+  FOREIGN KEY (assigned_to) REFERENCES users(id)
+);
+
+-- Additional sponsors/partners
+CREATE TABLE submission_sponsors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  sponsor_name VARCHAR(255),
+  ownership_percent DECIMAL(5,2),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id)
+);
+
+-- Custom field responses (admin-configured questions)
+CREATE TABLE submission_field_responses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  field_id INTEGER NOT NULL,
+  response_value TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id),
+  FOREIGN KEY (field_id) REFERENCES submission_fields(id)
+);
+
+-- Admin-configurable intake fields
+CREATE TABLE submission_fields (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  field_label VARCHAR(255) NOT NULL,
+  field_type VARCHAR(50),
+  -- 'text', 'number', 'currency', 'yes_no', 'dropdown', 
+  -- 'date', 'textarea', 'email', 'phone', 'percentage'
+  field_options TEXT, -- JSON array for dropdown options
+  is_required BOOLEAN DEFAULT false,
+  field_order INTEGER,
+  applies_to_deal_types TEXT, -- JSON: ['acquisition','refinance','construction'] or 'all'
+  help_text TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Required documents per deal type
+CREATE TABLE submission_document_requirements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deal_type VARCHAR(100), -- 'acquisition', 'refinance', 'construction', or 'all'
+  document_name VARCHAR(255) NOT NULL,
+  is_required BOOLEAN DEFAULT true,
+  display_order INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Uploaded documents
+CREATE TABLE submission_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  document_name VARCHAR(255),
+  file_name VARCHAR(255),
+  drive_file_id VARCHAR(255),
+  drive_file_url TEXT,
+  uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id)
+);
+
+-- Pre-screener & general criteria
+CREATE TABLE submission_criteria (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  criteria_type VARCHAR(50),
+  -- 'min_loan_size', 'max_loan_size', 'approved_asset_classes', 
+  -- 'approved_states', 'excluded_msas', 'approved_deal_types'
+  criteria_value TEXT, -- JSON value
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI review rules
+CREATE TABLE submission_review_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rule_category VARCHAR(100), -- 'auto_decline', 'auto_approve', 'request_more_info'
+  rule_field VARCHAR(100), -- 'ltv', 'dscr', 'credit_score', 'occupancy', etc.
+  rule_operator VARCHAR(20), -- '>', '<', '>=', '<=', '==', '!=', 'contains'
+  rule_value VARCHAR(255),
+  rule_description TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI review results
+CREATE TABLE submission_ai_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  decision VARCHAR(50), -- 'approved', 'declined', 'needs_more_info', 'manual_review'
+  decision_reason TEXT,
+  rules_checked INTEGER,
+  rules_passed INTEGER,
+  rules_failed INTEGER,
+  requested_documents TEXT, -- JSON array if needs more docs
+  review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id)
+);
+
+-- Internal admin notes
+CREATE TABLE submission_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  admin_user_id INTEGER,
+  note_text TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id),
+  FOREIGN KEY (admin_user_id) REFERENCES users(id)
+);
+
+-- Email notification log
+CREATE TABLE submission_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  notification_type VARCHAR(100),
+  recipient_email VARCHAR(255),
+  sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES commercial_submissions(id)
+);
+```
+
+## ADMIN SIDEBAR UPDATES
+
+Add two new sections to the admin sidebar navigation:
+
+```javascript
+// In admin sidebar component
+<nav>
+  {/* Existing sections */}
+  <NavItem href="/admin/dashboard">Dashboard</NavItem>
+  <NavItem href="/admin/programs">Programs</NavItem>
+  <NavItem href="/admin/pipeline">Pipeline</NavItem>
+  <NavItem href="/admin/projects">Projects</NavItem>
+  <NavItem href="/admin/brokers">Brokers</NavItem>
+  
+  {/* NEW COMMERCIAL SECTION */}
+  <NavDivider>── COMMERCIAL ──</NavDivider>
+  <NavItem href="/admin/commercial/config" icon="⚙️">
+    Commercial Config
+  </NavItem>
+  <NavItem href="/admin/commercial/deals" icon="🏢">
+    Commercial Deals
+  </NavItem>
+  
+  {/* Existing sections */}
+  <NavItem href="/admin/settings">Settings</NavItem>
+  <NavItem href="/admin/users">Users</NavItem>
+</nav>
+```
+
+## FEATURE 1: PRE-SCREENER
+
+**Broker-facing page:** `/commercial/pre-screen`
+
+Create simple 5-question form:
+1. Loan Amount Needed (currency input, formatted with commas)
+2. Asset Class (dropdown: dynamically load from `submission_criteria` where type='approved_asset_classes')
+3. Property State (dropdown: all 50 US states)
+4. Deal Type (dropdown: Acquisition, Refinance, Cash-Out Refinance, Construction, Renovation)
+5. Sponsor Credit Score Range (dropdown: <600, 600-649, 650-699, 700-749, 750+)
+
+**On submit:**
+1. Check criteria from database:
+   ```javascript
+   const criteria = await db.query(`SELECT * FROM submission_criteria`);
+   
+   const minLoan = criteria.find(c => c.criteria_type === 'min_loan_size');
+   const maxLoan = criteria.find(c => c.criteria_type === 'max_loan_size');
+   const approvedClasses = JSON.parse(criteria.find(c => c.criteria_type === 'approved_asset_classes').criteria_value);
+   const approvedStates = JSON.parse(criteria.find(c => c.criteria_type === 'approved_states').criteria_value);
+   ```
+
+2. Call AI to analyze:
+   ```javascript
+   const aiPrompt = `Review this pre-screener data:
+   Loan Amount: ${loanAmount}
+   Asset Class: ${assetClass}
+   State: ${state}
+   Deal Type: ${dealType}
+   Credit Score: ${creditScore}
+   
+   Our criteria:
+   Min Loan: ${minLoan}
+   Max Loan: ${maxLoan}
+   Approved Asset Classes: ${approvedClasses.join(', ')}
+   Approved States: ${approvedStates.join(', ')}
+   
+   Return JSON:
+   {
+     "decision": "proceed" | "decline" | "borderline",
+     "reason": "brief explanation",
+     "encouragement": "optional message if borderline"
+   }`;
+   ```
+
+3. Display result with appropriate color:
+   - Green box (proceed): "Great fit! Proceed with full submission" + [Continue Button]
+   - Red box (decline): "We don't finance [reason]" + [Submit Different Deal]
+   - Yellow box (borderline): "Borderline - [reason] but submit anyway" + [Continue Button]
+
+## FEATURE 2: FULL SUBMISSION FORM
+
+**Broker-facing page:** `/commercial/submission/new`
+
+**Create comprehensive form with all fields from schema above**
+
+**Form sections:**
+
+### 1. PROPERTY INFORMATION
+- All property fields from schema
+- Auto-fill asset class, deal type from pre-screener
+
+### 2. FINANCIAL DETAILS
+- All financial fields
+- **Auto-calculate LTV** when property_value and loan_amount entered
+- **Auto-calculate DSCR** when noi and debt_service entered
+
+### 3. DEAL STRUCTURE
+- All deal structure fields
+- Conditional display: show construction fields only if deal_type includes 'construction'
+
+### 4. SPONSOR INFORMATION
+- Primary sponsor fields
+- [+ Add Additional Sponsor] button → creates new row in `submission_sponsors`
+
+### 5. TRACK RECORD
+- All track record fields
+- Conditional textareas if user selects "Yes" to defaults/litigation/bankruptcy
+
+### 6. PROPERTY CONDITION & OCCUPANCY
+- Property condition fields
+- **Auto-calculate deferred maintenance %** = deferred_maintenance / property_value * 100
+- Conditional fields based on asset class:
+  - If Multifamily → show unit mix inputs
+  - If Retail/Office → show tenant inputs
+
+### 7. EXISTING DEBT (if refinance)
+- Show only if deal_type includes 'refinance'
+
+### 8. CUSTOM QUESTIONS
+- Dynamically load from `submission_fields` table:
+  ```javascript
+  const customFields = await db.query(`
+    SELECT * FROM submission_fields
+    WHERE applies_to_deal_types LIKE '%${dealType}%' 
+    OR applies_to_deal_types = 'all'
+    ORDER BY field_order
+  `);
+  ```
+- Render each based on `field_type`
+- Save responses to `submission_field_responses`
+
+### 9. REQUIRED DOCUMENTS
+- Query: `SELECT * FROM submission_document_requirements WHERE deal_type = '${dealType}' OR deal_type = 'all' ORDER BY display_order`
+- Display checklist with drag-drop upload zone
+- On upload:
+  a. If deal doesn't have Google Drive folder yet, create one:
+     ```
+     Parent Folder/
+       └── Commercial Submissions/
+           └── {Broker Name}/
+               └── {Property Address} - #{Deal ID}/
+     ```
+  b. Upload file to deal's folder
+  c. Store `drive_file_id` and `drive_file_url` in `submission_documents`
+  d. Update checklist to show green checkmark
+
+### 10. ADDITIONAL NOTES
+- Large textarea for broker to add context
+
+**Action Buttons:**
+- **[Save as Draft]**
+  - status = 'draft'
+  - expires_at = NOW() + 7 days
+  - Redirect to broker dashboard
+  
+- **[Submit for Review]**
+  - Validate all required fields
+  - Check all required documents uploaded
+  - If missing → show error messages
+  - If complete:
+    - status = 'submitted'
+    - submitted_at = NOW()
+    - Trigger AI review (see Feature 3)
+    - Send confirmation email to broker
+
+## FEATURE 3: AI REVIEW ENGINE
+
+**Triggered automatically when:** Broker clicks "Submit for Review"
+
+**Process:**
+
+### Step 1: Update Status
+```sql
+UPDATE commercial_submissions 
+SET status = 'ai_reviewing', submitted_at = NOW()
+WHERE id = {submission_id}
+```
+
+### Step 2: Check Document Completeness
+```javascript
+const requiredDocs = await db.query(`
+  SELECT * FROM submission_document_requirements
+  WHERE (deal_type = ? OR deal_type = 'all') AND is_required = true
+`, [submission.deal_type]);
+
+const uploadedDocs = await db.query(`
+  SELECT * FROM submission_documents WHERE submission_id = ?
+`, [submission_id]);
+
+const missingDocs = requiredDocs.filter(req => 
+  !uploadedDocs.find(up => up.document_name.includes(req.document_name))
+);
+
+if (missingDocs.length > 0) {
+  // Status = needs_docs
+  // Create AI review record with decision = 'needs_more_info'
+  // List missing docs
+  // Send email
+  return;
+}
+```
+
+### Step 3: Load Review Rules
+```javascript
+const declineRules = await db.query(`
+  SELECT * FROM submission_review_rules 
+  WHERE rule_category = 'auto_decline' AND is_active = true
+`);
+
+const approveRules = await db.query(`
+  SELECT * FROM submission_review_rules 
+  WHERE rule_category = 'auto_approve' AND is_active = true
+`);
+
+const moreInfoRules = await db.query(`
+  SELECT * FROM submission_review_rules 
+  WHERE rule_category = 'request_more_info' AND is_active = true
+`);
+```
+
+### Step 4: Call Anthropic AI
+
+```javascript
+const aiPrompt = `You are a commercial real estate credit analyst reviewing deal submissions.
+
+LENDING CRITERIA:
+
+AUTO-DECLINE if ANY of these are true:
+${declineRules.map(r => `- ${r.rule_description}`).join('\n')}
+
+REQUEST MORE INFO if ANY of these are true:
+${moreInfoRules.map(r => `- ${r.rule_description}`).join('\n')}
+
+AUTO-APPROVE for underwriting if ALL of these are true:
+${approveRules.map(r => `- ${r.rule_description}`).join('\n')}
+
+DEAL SUBMISSION DATA:
+
+Property: ${submission.property_address}, ${submission.city}, ${submission.state}
+Asset Class: ${submission.asset_class}
+Deal Type: ${submission.deal_type}
+
+FINANCIALS:
+- Loan Amount: $${submission.loan_amount_requested.toLocaleString()}
+- Property Value: $${submission.property_value.toLocaleString()}
+- LTV: ${submission.ltv_calculated}%
+- Current Annual NOI: $${submission.current_annual_noi?.toLocaleString() || 'N/A'}
+- DSCR: ${submission.dscr_calculated || 'N/A'}
+- Occupancy: ${submission.current_occupancy}%
+
+SPONSOR:
+- Name: ${submission.sponsor_name}
+- Credit Score: ${submission.sponsor_credit_score}
+- RE Experience: ${submission.years_re_experience} years
+- Track Record: ${submission.similar_projects_completed} similar projects
+- Portfolio Value: $${submission.current_portfolio_value?.toLocaleString() || 'N/A'}
+- Personal Liquidity: $${submission.personal_liquidity?.toLocaleString() || 'N/A'}
+- Personal Net Worth: $${submission.personal_net_worth?.toLocaleString() || 'N/A'}
+
+RED FLAGS:
+${submission.ever_defaulted ? '- Has previous defaults' : ''}
+${submission.current_litigation ? '- Current litigation' : ''}
+${submission.bankruptcy_last_7years ? '- Bankruptcy in last 7 years' : ''}
+${submission.environmental_issues ? '- Environmental issues noted' : ''}
+
+PROPERTY CONDITION:
+- Condition: ${submission.property_condition}
+- Deferred Maintenance: $${submission.deferred_maintenance_estimate?.toLocaleString() || '0'} (${submission.deferred_maintenance_percent || 0}% of value)
+
+UPLOADED DOCUMENTS:
+${uploadedDocs.map(d => d.document_name).join(', ')}
+
+ADDITIONAL NOTES FROM BROKER:
+${submission.additional_notes || 'None'}
+
+Analyze this deal and return ONLY a JSON object:
+{
+  "decision": "approved" | "declined" | "needs_more_info" | "manual_review",
+  "reason": "detailed explanation for the decision",
+  "requested_documents": ["doc1", "doc2"] (only if needs_more_info),
+  "decline_reasons": ["specific reason 1", "reason 2"] (only if declined),
+  "manual_review_flags": ["flag1", "flag2"] (only if manual_review needed),
+  "strengths": ["strength1", "strength2"],
+  "concerns": ["concern1", "concern2"],
+  "rules_checked": [total number of rules evaluated],
+  "rules_passed": [number of rules that passed],
+  "rules_failed": [number of rules that failed],
+  "next_steps": "what should happen next"
+}
+
+DECISION LOGIC:
+- Use "declined" only if deal clearly fails auto-decline criteria
+- Use "approved" only if deal clearly meets all auto-approve criteria
+- Use "needs_more_info" if missing docs or clarification needed
+- Use "manual_review" if deal is borderline, complex, or has unusual circumstances`;
+
+const response = await fetch('https://api.anthropic.com/v1/messages', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': process.env.ANTHROPIC_API_KEY,
+    'anthropic-version': '2023-06-01'
+  },
+  body: JSON.stringify({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: aiPrompt
+    }]
+  })
+});
+
+const aiData = await response.json();
+const aiText = aiData.content[0].text;
+
+// Parse JSON from AI response
+const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+const aiResult = JSON.parse(jsonMatch[0]);
+```
+
+### Step 5: Save AI Review Results
+
+```javascript
+const reviewId = await db.insert('submission_ai_reviews', {
+  submission_id: submission_id,
+  decision: aiResult.decision,
+  decision_reason: aiResult.reason,
+  rules_checked: aiResult.rules_checked,
+  rules_passed: aiResult.rules_passed,
+  rules_failed: aiResult.rules_failed,
+  requested_documents: aiResult.requested_documents ? JSON.stringify(aiResult.requested_documents) : null
+});
+```
+
+### Step 6: Update Submission Status
+
+```javascript
+let newStatus;
+switch(aiResult.decision) {
+  case 'approved':
+    newStatus = 'approved';
+    break;
+  case 'declined':
+    newStatus = 'declined';
+    break;
+  case 'needs_more_info':
+    newStatus = 'needs_docs';
+    break;
+  case 'manual_review':
+    newStatus = 'manual_review';
+    break;
+}
+
+await db.query(`
+  UPDATE commercial_submissions
+  SET 
+    status = ?,
+    ai_decision = ?,
+    ai_decision_reason = ?,
+    reviewed_at = NOW()
+  WHERE id = ?
+`, [newStatus, aiResult.decision, aiResult.reason, submission_id]);
+```
+
+### Step 7: Send Email Notifications
+
+**To Broker:**
+```javascript
+await sendEmail({
+  to: broker.email,
+  subject: getEmailSubject(aiResult.decision),
+  template: getEmailTemplate(aiResult.decision),
+  data: {
+    broker_name: broker.name,
+    property_address: submission.property_address,
+    decision: aiResult.decision,
+    reason: aiResult.reason,
+    requested_docs: aiResult.requested_documents,
+    deal_id: submission.id,
+    next_steps: aiResult.next_steps
+  }
+});
+```
+
+**To Admin (if approved or manual_review):**
+```javascript
+if (aiResult.decision === 'approved' || aiResult.decision === 'manual_review') {
+  const adminEmails = await getAdminNotificationEmails();
+  
+  await sendEmail({
+    to: adminEmails,
+    subject: `New Commercial Deal: ${aiResult.decision === 'approved' ? 'Approved' : 'Needs Review'}`,
+    template: 'admin_new_deal',
+    data: {
+      deal_id: submission.id,
+      property: submission.property_address,
+      broker: broker.name,
+      loan_amount: submission.loan_amount_requested,
+      decision: aiResult.decision,
+      reason: aiResult.reason,
+      link: `${process.env.APP_URL}/admin/commercial/deals?id=${submission.id}`
+    }
+  });
+}
+```
+
+## FEATURE 4: BROKER DASHBOARD
+
+**Page:** `/broker/commercial-deals`
+
+**Layout:**
+
+```javascript
+// Tab navigation
+<Tabs>
+  <Tab id="active">Active Deals ({activeDealCount})</Tab>
+  <Tab id="past">Past Deals ({pastDealCount})</Tab>
+</Tabs>
+
+// Active deals query
+const activeDeals = await db.query(`
+  SELECT * FROM commercial_submissions
+  WHERE broker_id = ? 
+  AND status IN ('submitted', 'ai_reviewing', 'needs_docs', 'approved', 'manual_review')
+  ORDER BY updated_at DESC
+`, [brokerId]);
+
+// Past deals query
+const pastDeals = await db.query(`
+  SELECT * FROM commercial_submissions
+  WHERE broker_id = ?
+  AND status IN ('declined', 'funded', 'expired')
+  ORDER BY updated_at DESC
+`, [brokerId]);
+```
+
+**Deal card component:**
+```javascript
+function DealCard({ deal }) {
+  const statusConfig = {
+    'submitted': { icon: '🟡', label: 'Submitted', color: 'yellow' },
+    'ai_reviewing': { icon: '🟡', label: 'AI Reviewing', color: 'yellow' },
+    'needs_docs': { icon: '🔵', label: 'Needs Documents', color: 'blue' },
+    'approved': { icon: '🟢', label: 'Approved for Underwriting', color: 'green' },
+    'manual_review': { icon: '🟡', label: 'Under Review', color: 'yellow' },
+    'declined': { icon: '❌', label: 'Declined', color: 'red' },
+    'funded': { icon: '✅', label: 'Funded', color: 'green' },
+    'expired': { icon: '⚪', label: 'Expired', color: 'gray' }
+  };
+  
+  return (
+    <div className={`deal-card status-${statusConfig[deal.status].color}`}>
+      <div className="deal-header">
+        <div className="status-badge">
+          {statusConfig[deal.status].icon} {statusConfig[deal.status].label}
+        </div>
+        <div className="deal-id">#{deal.id}</div>
+      </div>
+      
+      <h3>{deal.property_address}</h3>
+      <div className="deal-details">
+        <span>{deal.asset_class} | ${deal.loan_amount_requested.toLocaleString()}</span>
+      </div>
+      
+      <div className="deal-meta">
+        <span>Submitted: {formatDate(deal.submitted_at)}</span>
+        {deal.expires_at && deal.status === 'needs_docs' && (
+          <span className="expiry-warning">
+            Expires in {getDaysUntil(deal.expires_at)} days
+          </span>
+        )}
+      </div>
+      
+      {/* Action button based on status */}
+      {deal.status === 'needs_docs' && (
+        <button onClick={() => uploadDocs(deal.id)}>Upload Documents</button>
+      )}
+      {deal.status === 'ai_reviewing' && (
+        <div className="spinner">Reviewing...</div>
+      )}
+      {deal.status === 'approved' && (
+        <button onClick={() => viewDetails(deal.id)}>View Details</button>
+      )}
+      {deal.status === 'declined' && (
+        <button onClick={() => viewReason(deal.id)}>View Reason</button>
+      )}
+      {deal.status === 'draft' && (
+        <button onClick={() => continueEdit(deal.id)}>Continue Editing</button>
+      )}
+    </div>
+  );
+}
+```
+
+## FEATURE 5: ADMIN CONFIGURATION PANEL
+
+**Page:** `/admin/commercial/config`
+
+Implement the complete tabbed interface shown in the detailed mockup above.
+
+**Key Implementation Notes:**
+
+### Tab 1: Pre-Screener
+- Form inputs that save to `submission_criteria` table
+- Asset class checkboxes save as JSON array
+- State checkboxes save as JSON array
+
+### Tab 2: Custom Fields
+- Drag-and-drop reordering (update `field_order`)
+- Modal for adding/editing fields
+- Conditional logic based on `applies_to_deal_types`
+
+### Tab 3: Required Documents
+- Three sub-tabs: Acquisition, Refinance, Construction
+- Each saves to `submission_document_requirements` with corresponding `deal_type`
+- Drag-and-drop reordering
+
+### Tab 4: AI Review Rules
+- Three sections (auto-decline, request more info, auto-approve)
+- Each rule saves to `submission_review_rules` with corresponding `rule_category`
+- Toggle active/inactive
+- Delete button
+
+### Tab 5: Notifications
+- Checkboxes save notification preferences
+- Email recipients saved to settings table or config file
+
+## FEATURE 6: ADMIN DEAL REVIEW QUEUE
+
+**Page:** `/admin/commercial/deals`
+
+Implement the complete deal queue interface shown in the detailed mockup above.
+
+**Key Features:**
+
+### Filters
+```javascript
+const filters = {
+  status: req.query.status || 'all',
+  broker_id: req.query.broker_id || 'all',
+  asset_class: req.query.asset_class || 'all',
+  date_range: req.query.date_range || 'last_30_days',
+  loan_size: req.query.loan_size || 'all'
+};
+
+let query = `SELECT cs.*, u.name as broker_name, u.email as broker_email
+             FROM commercial_submissions cs
+             JOIN users u ON cs.broker_id = u.id
+             WHERE 1=1`;
+
+if (filters.status !== 'all') {
+  query += ` AND cs.status = '${filters.status}'`;
+}
+// Add other filters...
+
+const deals = await db.query(query);
+```
+
+### Deal Expansion
+- Click deal → expand to show full details
+- Load AI review: `SELECT * FROM submission_ai_reviews WHERE submission_id = ?`
+- Load documents: `SELECT * FROM submission_documents WHERE submission_id = ?`
+- Load internal notes: `SELECT * FROM submission_notes WHERE submission_id = ? ORDER BY created_at DESC`
+
+### Actions
+**Approve for Underwriting:**
+```javascript
+await db.query(`UPDATE commercial_submissions SET status = 'in_underwriting', assigned_to = ? WHERE id = ?`, [adminUserId, dealId]);
+// Send email to broker
+```
+
+**Decline:**
+```javascript
+// Show modal for decline reason
+await db.query(`UPDATE commercial_submissions SET status = 'declined', ai_decision_reason = ? WHERE id = ?`, [reason, dealId]);
+// Send email to broker
+```
+
+**Request Docs:**
+```javascript
+// Show modal with checklist of docs to request
+await db.query(`UPDATE commercial_submissions SET status = 'needs_docs', expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY) WHERE id = ?`, [dealId]);
+// Send email to broker with list
+```
+
+**Add Note:**
+```javascript
+await db.insert('submission_notes', {
+  submission_id: dealId,
+  admin_user_id: adminUserId,
+  note_text: noteText
+});
+```
+
+### Analytics Dashboard
+- Calculate metrics from database
+- Use chart library (Chart.js) for visualizations
+- Filter by date range
+
+## FEATURE 7: EMAIL NOTIFICATIONS
+
+**Create Nodemailer transporter:**
+```javascript
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+});
+```
+
+**Email templates (use Handlebars or similar):**
+
+### Template 1: Deal Submitted
+```html
+<h2>Thank you for submitting your deal!</h2>
+<p>Hi {{broker_name}},</p>
+<p>We've received your commercial deal submission for <strong>{{property_address}}</strong>.</p>
+<p>Deal ID: <strong>#{{deal_id}}</strong></p>
+<p>Our AI is currently reviewing your submission against our credit criteria. You'll typically hear back within 10-15 minutes.</p>
+<p>You can track your deal status here: <a href="{{deal_link}}">View Deal</a></p>
+```
+
+### Template 2: More Docs Needed
+```html
+<h2>Additional Documents Needed</h2>
+<p>Hi {{broker_name}},</p>
+<p>We need a few more items to complete our review of <strong>{{property_address}}</strong> (Deal #{{deal_id}}).</p>
+<h3>Required Documents:</h3>
+<ul>
+{{#each requested_docs}}
+  <li>{{this}}</li>
+{{/each}}
+</ul>
+<p><strong>Please upload these within 7 days to keep your deal active.</strong></p>
+<p><a href="{{upload_link}}">Upload Documents Now</a></p>
+```
+
+### Template 3: Deal Approved
+```html
+<h2>Great News - Your Deal Was Approved!</h2>
+<p>Hi {{broker_name}},</p>
+<p>Your commercial deal submission for <strong>{{property_address}}</strong> meets our initial credit criteria and has been approved for full underwriting!</p>
+<p>Deal ID: <strong>#{{deal_id}}</strong></p>
+<h3>Next Steps:</h3>
+<ol>
+  <li>Our underwriting team will contact you within 48 business hours</li>
+  <li>We'll schedule a site visit of the property</li>
+  <li>Full underwriting process begins</li>
+  <li>You'll receive pricing and term sheet upon completion</li>
+</ol>
+<p>Your assigned underwriter: <strong>{{assigned_to}}</strong> ({{assigned_email}})</p>
+```
+
+### Template 4: Deal Declined
+```html
+<h2>Update on Your Submission</h2>
+<p>Hi {{broker_name}},</p>
+<p>Thank you for submitting your deal for <strong>{{property_address}}</strong>.</p>
+<p>Unfortunately, this deal doesn't meet our current lending criteria.</p>
+<h3>Reason:</h3>
+<p>{{decline_reason}}</p>
+<h3>What Would Make It Work?</h3>
+<p>We typically finance deals with these characteristics:</p>
+<ul>
+  <li>Loan amounts: $2M - $50M</li>
+  <li>Asset classes: Multifamily, Office, Retail, Industrial</li>
+  <li>Stabilized properties (85%+ occupied)</li>
+  <li>DSCR minimum 1.25x</li>
+  <li>Sponsor track record: 5+ similar deals</li>
+</ul>
+<p>If you have another deal that fits these criteria, we'd love to see it!</p>
+<p><a href="{{new_submission_link}}">Submit Another Deal</a></p>
+```
+
+### Template 5: Deal Expiring
+```html
+<h2>Complete Your Submission - Expires in 3 Days</h2>
+<p>Hi {{broker_name}},</p>
+<p>Your deal submission for <strong>{{property_address}}</strong> (Deal #{{deal_id}}) will expire in 3 days.</p>
+<p>We're still waiting for:</p>
+<ul>
+{{#each missing_docs}}
+  <li>{{this}}</li>
+{{/each}}
+</ul>
+<p><strong>Upload these documents now to keep your deal active:</strong></p>
+<p><a href="{{upload_link}}">Complete Submission</a></p>
+```
+
+**Email sending function:**
+```javascript
+async function sendEmail({ to, subject, template, data }) {
+  const html = renderTemplate(template, data);
+  
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to: to,
+    subject: subject,
+    html: html
+  });
+  
+  // Log to database
+  await db.insert('submission_notifications', {
+    submission_id: data.deal_id,
+    notification_type: template,
+    recipient_email: to
+  });
+}
+```
+
+## FEATURE 8: DEAL EXPIRATION & REMINDERS
+
+**Create background job (run daily via cron or similar):**
+
+```javascript
+// Run every day at 9am
+cron.schedule('0 9 * * *', async () => {
+  
+  // Find deals expiring today
+  const expiringToday = await db.query(`
+    SELECT cs.*, u.email as broker_email, u.name as broker_name
+    FROM commercial_submissions cs
+    JOIN users u ON cs.broker_id = u.id
+    WHERE cs.status IN ('draft', 'needs_docs')
+    AND DATE(cs.expires_at) = CURDATE()
+  `);
+  
+  for (const deal of expiringToday) {
+    // Mark as expired
+    await db.query(`UPDATE commercial_submissions SET status = 'expired' WHERE id = ?`, [deal.id]);
+    
+    // Send expiration email
+    await sendEmail({
+      to: deal.broker_email,
+      subject: 'Your deal submission has expired',
+      template: 'deal_expired',
+      data: {
+        broker_name: deal.broker_name,
+        property_address: deal.property_address,
+        deal_id: deal.id,
+        new_submission_link: `${process.env.APP_URL}/commercial/submission/new`
+      }
+    });
+  }
+  
+  // Find deals expiring in 3 days
+  const expiringIn3Days = await db.query(`
+    SELECT cs.*, u.email as broker_email, u.name as broker_name
+    FROM commercial_submissions cs
+    JOIN users u ON cs.broker_id = u.id
+    WHERE cs.status IN ('draft', 'needs_docs')
+    AND DATE(cs.expires_at) = DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+  `);
+  
+  for (const deal of expiringIn3Days) {
+    // Get missing docs
+    const requiredDocs = await db.query(`
+      SELECT document_name FROM submission_document_requirements
+      WHERE (deal_type = ? OR deal_type = 'all') AND is_required = true
+    `, [deal.deal_type]);
+    
+    const uploadedDocs = await db.query(`
+      SELECT document_name FROM submission_documents WHERE submission_id = ?
+    `, [deal.id]);
+    
+    const missingDocs = requiredDocs.filter(r => 
+      !uploadedDocs.find(u => u.document_name.includes(r.document_name))
+    ).map(d => d.document_name);
+    
+    // Send reminder email
+    await sendEmail({
+      to: deal.broker_email,
+      subject: 'Complete your submission - expires in 3 days',
+      template: 'deal_expiring_reminder',
+      data: {
+        broker_name: deal.broker_name,
+        property_address: deal.property_address,
+        deal_id: deal.id,
+        missing_docs: missingDocs,
+        upload_link: `${process.env.APP_URL}/broker/commercial-deals/${deal.id}/upload`
+      }
+    });
+  }
+});
+```
+
+## GOOGLE DRIVE INTEGRATION
+
+**Folder creation on first submission:**
+```javascript
+async function createCommercialDealFolder(submission, broker) {
+  const parentFolderId = '1e4BT2y1TTtnizDwrZl-V5jpeKthCWgYG'; // Your existing parent folder
+  
+  // 1. Check if "Commercial Submissions" folder exists
+  let commercialFolderId = await findOrCreateFolder('Commercial Submissions', parentFolderId, accessToken);
+  
+  // 2. Check if broker folder exists
+  let brokerFolderId = await findOrCreateFolder(broker.name, commercialFolderId, accessToken);
+  
+  // 3. Create deal-specific folder
+  const dealFolderName = `${submission.property_address} - #${submission.id}`;
+  const dealFolder = await createDriveFolder({
+    name: dealFolderName,
+    parentId: brokerFolderId,
+    accessToken: accessToken
+  });
+  
+  // 4. Create subfolders for organization
+  await createDriveFolder({ name: 'Financials', parentId: dealFolder.id, accessToken });
+  await createDriveFolder({ name: 'Photos', parentId: dealFolder.id, accessToken });
+  await createDriveFolder({ name: 'Legal Documents', parentId: dealFolder.id, accessToken });
+  await createDriveFolder({ name: 'Construction Docs', parentId: dealFolder.id, accessToken });
+  
+  // 5. Save to database
+  await db.query(`
+    UPDATE commercial_submissions
+    SET drive_folder_id = ?, drive_folder_url = ?
+    WHERE id = ?
+  `, [
+    dealFolder.id,
+    `https://drive.google.com/drive/folders/${dealFolder.id}`,
+    submission.id
+  ]);
+  
+  return dealFolder;
+}
+
+async function findOrCreateFolder(name, parentId, accessToken) {
+  // Try to find existing folder
+  const searchResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder'`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+  
+  const searchData = await searchResponse.json();
+  
+  if (searchData.files && searchData.files.length > 0) {
+    return searchData.files[0].id;
+  }
+  
+  // Create if doesn't exist
+  const folder = await createDriveFolder({ name, parentId, accessToken });
+  return folder.id;
+}
+```
+
+**Document upload with smart subfolder routing:**
+```javascript
+async function uploadDocument(file, submissionId, documentName) {
+  const submission = await db.query(`SELECT drive_folder_id FROM commercial_submissions WHERE id = ?`, [submissionId]);
+  
+  if (!submission.drive_folder_id) {
+    throw new Error('Deal does not have a Google Drive folder');
+  }
+  
+  // Determine which subfolder based on document type
+  const subfolderMap = {
+    'T12': 'Financials',
+    'Financial': 'Financials',
+    'Tax Return': 'Financials',
+    'Rent Roll': 'Financials',
+    'Photo': 'Photos',
+    'PSA': 'Legal Documents',
+    'Title': 'Legal Documents',
+    'Environmental': 'Legal Documents',
+    'Construction Budget': 'Construction Docs',
+    'Building Plan': 'Construction Docs',
+    'GC Contract': 'Construction Docs'
+  };
+  
+  let targetFolderId = submission.drive_folder_id;
+  
+  for (const [keyword, subfolder] of Object.entries(subfolderMap)) {
+    if (documentName.includes(keyword)) {
+      targetFolderId = await findSubfolder(submission.drive_folder_id, subfolder, accessToken);
+      break;
+    }
+  }
+  
+  // Upload to Drive
+  const driveFile = await uploadFileToDrive({
+    file: file,
+    fileName: file.originalname,
+    folderId: targetFolderId,
+    accessToken: accessToken
+  });
+  
+  // Save to database
+  await db.insert('submission_documents', {
+    submission_id: submissionId,
+    document_name: documentName,
+    file_name: file.originalname,
+    drive_file_id: driveFile.id,
+    drive_file_url: driveFile.webViewLink
+  });
+  
+  return driveFile;
+}
+```
+
+## UI/UX REQUIREMENTS
+
+**Design System:**
+- Use Tailwind CSS or existing app's styles
+- Status badges with colors:
+  - 🟢 Green: approved, funded
+  - 🔵 Blue: needs_docs
+  - 🟡 Yellow: submitted, ai_reviewing, manual_review
+  - ❌ Red: declined
+  - ⚪ Gray: draft, expired
+
+**Responsive:**
+- Mobile-first design
+- Form should work on tablets
+- Admin panel desktop-optimized
+
+**Loading States:**
+- Spinner during AI review
+- Progress bar for file uploads
+- Skeleton screens while loading deals
+
+**Validation:**
+- Client-side validation on all form fields
+- Show errors inline
+- Prevent submission if required fields empty
+- File size limits (25MB per file)
+- File type restrictions (PDF, Excel, Word, Images only)
+
+## TESTING CHECKLIST
+
+After implementation, test these scenarios:
+
+### Pre-Screener:
+- [ ] Approve valid deal (within criteria)
+- [ ] Decline invalid loan size
+- [ ] Decline unapproved asset class
+- [ ] Decline unapproved state
+- [ ] Show borderline message for edge cases
+
+### Full Submission:
+- [ ] All fields save to database
+- [ ] LTV auto-calculates correctly
+- [ ] DSCR auto-calculates correctly
+- [ ] Custom fields display based on deal type
+- [ ] Required doc checklist shows correct docs for deal type
+- [ ] Can add multiple sponsors
+- [ ] Conditional fields show/hide properly
+- [ ] Save as draft works
+- [ ] Submit triggers AI review
+
+### AI Review:
+- [ ] Detects missing required documents
+- [ ] Auto-declines based on rules (test each rule)
+- [ ] Auto-approves based on rules
+- [ ] Requests more info for borderline deals
+- [ ] Flags complex deals for manual review
+- [ ] Creates review record in database
+- [ ] Sends correct email based on decision
+
+### Google Drive:
+- [ ] Creates folder on first submission
+- [ ] Organizes into subfolders correctly
+- [ ] Files upload successfully
+- [ ] File links work
+- [ ] Multiple files per deal work
+
+### Broker Dashboard:
+- [ ] Shows all active deals
+- [ ] Shows all past deals
+- [ ] Status badges display correctly
+- [ ] Upload documents button works
+- [ ] Expiration countdown accurate
+- [ ] Can view declined reasons
+
+### Admin Config:
+- [ ] Can update pre-screener criteria
+- [ ] Can add/edit/delete custom fields
+- [ ] Can drag-reorder fields
+- [ ] Can add/edit/delete document requirements
+- [ ] Can add/edit/delete AI rules
+- [ ] Can toggle rule active/inactive
+- [ ] Changes save to database
+- [ ] Changes reflect immediately
+
+### Admin Deal Queue:
+- [ ] All filters work
+- [ ] Deal expansion shows full details
+- [ ] Can add internal notes
+- [ ] Can approve for underwriting
+- [ ] Can decline with reason
+- [ ] Can request more docs
+- [ ] Can assign to team member
+- [ ] Analytics calculate correctly
+- [ ] Charts display properly
+
+### Email Notifications:
+- [ ] Confirmation email sends on submit
+- [ ] Approved email sends
+- [ ] Declined email sends
+- [ ] More docs needed email sends
+- [ ] Expiration reminder sends (day 3)
+- [ ] Expiration email sends (day 7)
+- [ ] Admin notifications send
+- [ ] All email templates render correctly
+- [ ] Links in emails work
+
+### Deal Expiration:
+- [ ] Deals expire after 7 days
+- [ ] Reminder sends on day 3
+- [ ] Expired deals marked correctly
+- [ ] Can extend deadline (admin)
+
+## INSTALLATION REQUIREMENTS
+
+**NPM Packages:**
+```bash
+npm install nodemailer handlebars node-cron pdf-parse xlsx form-data
+```
+
+**Environment Variables:**
+```
+ANTHROPIC_API_KEY=your_key
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email
+SMTP_PASS=your_password
+SMTP_FROM=noreply@sphinxcap.com
+APP_URL=https://your-app-url.com
+```
+
+## DEPLOYMENT NOTES
+
+- Set up cron job for daily expiration checks
+- Configure SMTP for email sending
+- Ensure Google Drive API has sufficient quota
+- Set up database backups
+- Monitor AI API usage/costs
+- Consider rate limiting on submission endpoint
+
+---
+
+**This is a complete, production-ready commercial deal submission and review system. Build this entire feature following these specifications. The commercial pipeline should be completely separate from the existing residential/bridge pipeline, with its own admin sidebar sections for configuration and deal management. No pricing estimates should be shown to brokers - all pricing happens during underwriting after approval.**
