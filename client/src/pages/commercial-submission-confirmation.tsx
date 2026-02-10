@@ -1,6 +1,5 @@
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { getQueryFn } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,8 +55,7 @@ export default function CommercialSubmissionConfirmation() {
   const submissionId = params?.id;
 
   const { data: submission, isLoading, error } = useQuery<Submission>({
-    queryKey: [`/api/commercial-submissions/${submissionId}`],
-    queryFn: getQueryFn({ on401: "throw" }),
+    queryKey: ["/api/commercial-submissions", submissionId],
     enabled: !!submissionId,
   });
 
@@ -207,7 +205,7 @@ export default function CommercialSubmissionConfirmation() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             variant="outline"
-            onClick={() => navigate("/commercial-submissions")}
+            onClick={() => navigate("/commercial/dashboard")}
             data-testid="button-back-to-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />

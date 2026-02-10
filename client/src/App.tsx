@@ -44,8 +44,8 @@ import CommissionsPage from "@/pages/commissions";
 import BorrowerQuote from "@/pages/borrower-quote";
 import BorrowerQuotes from "@/pages/borrower-quotes";
 import AdminCommercialSubmissions from "@/pages/admin/commercial-submissions";
-import AdminCommercialSubmissionDetail from "@/pages/admin/commercial-submission-detail";
 import AdminCommercialDealDetail from "@/pages/admin/commercial-deal-detail";
+import CommercialSubmissionDetail from "@/pages/commercial-submission-detail";
 import AdminAIReview from "@/pages/admin/ai-review";
 import AdminCommercialConfig from "@/pages/admin/commercial-config";
 import { AppLayout } from "@/components/AppLayout";
@@ -138,6 +138,7 @@ function MainRoutes() {
         <Route path="/commercial/pre-screen" component={() => <ProtectedRoute component={CommercialPreScreenPage} />} />
         <Route path="/commercial-submission/new" component={() => <ProtectedRoute component={CommercialSubmissionPage} />} />
         <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
+        <Route path="/commercial-submission/:id" component={() => <ProtectedRoute component={CommercialSubmissionDetail} />} />
         
         {/* Admin Routes */}
         <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
@@ -157,7 +158,6 @@ function MainRoutes() {
         <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
         <Route path="/admin/ai-review" component={() => <AdminProtectedRoute component={AdminAIReview} />} />
         <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
-        <Route path="/admin/commercial-submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialSubmissionDetail} />} />
         <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
         <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />
         
