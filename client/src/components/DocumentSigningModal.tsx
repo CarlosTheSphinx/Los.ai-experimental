@@ -576,9 +576,12 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     const initEditor = async () => {
       try {
         const { Editor } = await import('pandadoc-editor');
+        const container = document.getElementById(containerId);
+        const containerWidth = container?.clientWidth || 1200;
+        const containerHeight = container?.clientHeight || 700;
         editorInstance = new Editor(containerId, {
-          width: '100%',
-          height: '100%',
+          width: containerWidth,
+          height: containerHeight,
           token: pandadocEditorToken,
           fieldPlacementOnly: false,
         });
@@ -1029,7 +1032,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className={`max-h-[90vh] overflow-hidden flex flex-col ${pandadocDraft && pandadocEditorToken ? 'max-w-[95vw] w-[95vw] h-[90vh]' : 'max-w-5xl'}`}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
@@ -1303,7 +1306,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                             </div>
                           </div>
                           
-                          <div className="flex-1 min-h-[500px] border rounded-lg overflow-hidden relative">
+                          <div className="flex-1 min-h-[600px] border rounded-lg overflow-hidden relative" style={{ height: 'calc(90vh - 180px)' }}>
                             {pandadocEditorLoading ? (
                               <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
                                 <div className="text-center space-y-2">
