@@ -12125,6 +12125,171 @@ Respond ONLY with valid JSON in this format:
     }
   });
 
+  // Admin: manually create project from a signed envelope (fallback if webhook didn't fire)
+  app.post('/api/admin/envelopes/:envelopeId/create-project', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const envelopeId = parseInt(req.params.envelopeId);
+      const [envelope] = await db.select().from(esignEnvelopes).where(eq(esignEnvelopes.id, envelopeId));
+      if (!envelope) {
+        res.status(404).json({ error: 'Envelope not found' });
+        return;
+      }
+      if (envelope.status !== 'completed') {
+        res.status(400).json({ error: 'Document must be fully signed (completed) before creating a project' });
+        return;
+      }
+      if (!envelope.quoteId) {
+        res.status(400).json({ error: 'This envelope is not linked to a quote' });
+        return;
+      }
+      const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, envelope.quoteId));
+      if (!quote) {
+        res.status(404).json({ error: 'Linked quote not found' });
+        return;
+      }
+      const existingProjects = await db.select().from(projects).where(eq(projects.quoteId, quote.id));
+      if (existingProjects.length > 0) {
+        res.status(409).json({ error: 'A project already exists for this quote', projectId: existingProjects[0].id });
+        return;
+      }
+
+      const projectNumber = await storage.generateProjectNumber();
+      const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+      const loanData = (quote.loanData || {}) as Record<string, any>;
+      const isRTLQuote = loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined;
+      const loanAmount = loanData?.loanAmount
+        ? Number(loanData.loanAmount)
+        : isRTLQuote
+          ? (Number(loanData?.asIsValue) || 0) + (Number(loanData?.rehabBudget) || 0)
+          : 0;
+      const rateStr = quote.interestRate || '';
+      const rateNum = parseFloat(rateStr.replace('%', ''));
+      const borrowerName = `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim();
+      const borrowerEmail = quote.customerEmail || null;
+
+      let borrowerPhone: string | null = null;
+      if (quote.customerPhone) {
+        borrowerPhone = quote.customerPhone;
+      } else if (quote.userId) {
+        const quoteUser = await storage.getUserById(quote.userId);
+        if (quoteUser?.phone) borrowerPhone = quoteUser.phone;
+      }
+
+      const project = await storage.createProject({
+        userId: quote.userId || envelope.createdBy!,
+        projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
+        projectNumber,
+        loanAmount: loanAmount || null,
+        interestRate: !isNaN(rateNum) ? rateNum : null,
+        loanTermMonths: loanData?.loanTermMonths ? parseInt(loanData.loanTermMonths) : (loanData?.loanTerm ? parseInt(String(loanData.loanTerm)) : null),
+        loanType: loanData?.loanType || loanData?.selectedLoanType || (isRTLQuote ? 'fix_and_flip' : 'dscr'),
+        programId: quote.programId || null,
+        propertyAddress: quote.propertyAddress || null,
+        propertyType: loanData?.propertyType || null,
+        borrowerName,
+        borrowerEmail,
+        borrowerPhone,
+        status: 'active',
+        currentStage: 'documentation',
+        progressPercentage: 0,
+        applicationDate: new Date(),
+        targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        borrowerPortalToken: borrowerToken,
+        borrowerPortalEnabled: true,
+        quoteId: quote.id,
+        notes: `Manually created from signed envelope #${envelope.id} (Quote #${quote.id})`,
+        metadata: {
+          pandadocEnvelopeId: envelope.id,
+          pandadocDocumentId: envelope.externalDocumentId,
+          manuallyCreatedBy: req.user!.id,
+          quoteData: {
+            interestRate: quote.interestRate,
+            pointsCharged: quote.pointsCharged,
+            pointsAmount: quote.pointsAmount,
+            tpoPremiumAmount: quote.tpoPremiumAmount,
+            totalRevenue: quote.totalRevenue,
+            commission: quote.commission,
+            partnerId: quote.partnerId,
+            partnerName: quote.partnerName,
+            customerFirstName: quote.customerFirstName,
+            customerLastName: quote.customerLastName,
+            customerCompanyName: quote.customerCompanyName,
+            customerEmail: quote.customerEmail,
+            customerPhone: quote.customerPhone,
+            loanData,
+          },
+        },
+      } as any);
+
+      if (quote.propertyAddress) {
+        await db.insert(dealProperties).values({
+          dealId: project.id,
+          address: quote.propertyAddress,
+          propertyType: loanData?.propertyType || null,
+          estimatedValue: loanData?.propertyValue || loanData?.asIsValue || null,
+          isPrimary: true,
+          sortOrder: 0,
+        });
+        const additionalProps = (loanData?.additionalProperties || []) as Array<Record<string, any>>;
+        for (let i = 0; i < additionalProps.length; i++) {
+          const ap = additionalProps[i];
+          if (ap.address) {
+            await db.insert(dealProperties).values({
+              dealId: project.id,
+              address: ap.address,
+              propertyType: ap.propertyType || null,
+              estimatedValue: ap.estimatedValue || null,
+              isPrimary: false,
+              sortOrder: i + 1,
+            });
+          }
+        }
+      }
+
+      const { buildProjectPipelineFromProgram } = await import('./services/projectPipeline');
+      const pipelineResult = await buildProjectPipelineFromProgram(project.id, quote.programId || null, quote.id);
+
+      await db.update(savedQuotes)
+        .set({ stage: 'term-sheet-signed' })
+        .where(eq(savedQuotes.id, quote.id));
+
+      await storage.createProjectActivity({
+        projectId: project.id,
+        userId: req.user!.id,
+        activityType: 'project_created',
+        activityDescription: `Loan project ${projectNumber} manually created by admin from signed envelope "${envelope.documentName}"`,
+        visibleToBorrower: true,
+      });
+
+      const { triggerWebhook } = await import('./utils/webhooks');
+      await triggerWebhook(project.id, 'project_created', {
+        project_number: projectNumber,
+        source: 'admin_manual_from_envelope',
+        envelope_id: envelope.id,
+        quote_id: quote.id,
+      });
+
+      try {
+        const { isDriveIntegrationEnabled, ensureProjectFolder } = await import('./services/googleDrive');
+        const driveEnabled = await isDriveIntegrationEnabled();
+        if (driveEnabled) {
+          ensureProjectFolder(project.id).catch((err: any) => {
+            console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+          });
+        }
+      } catch (_e) {}
+
+      res.json({
+        success: true,
+        project: { id: project.id, projectNumber, projectName: project.projectName },
+        pipeline: pipelineResult,
+      });
+    } catch (error: any) {
+      console.error('Error manually creating project from envelope:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // PandaDoc webhook endpoint
   app.post('/api/webhooks/pandadoc', async (req: Request, res: Response) => {
     try {
@@ -12181,7 +12346,6 @@ Respond ONLY with valid JSON in this format:
             try {
               const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, envelope.quoteId));
               if (quote) {
-                // Check if a project already exists for this quote (prevent duplicates)
                 const existingProjects = await db.select().from(projects)
                   .where(eq(projects.quoteId, quote.id));
                 
@@ -12193,19 +12357,40 @@ Respond ONLY with valid JSON in this format:
                     ? JSON.parse(envelope.recipients) 
                     : (envelope.recipients || []);
                   const firstRecipient = Array.isArray(recipientsData) ? recipientsData[0] : null;
+
+                  const isRTLQuote = loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined;
+                  const loanAmount = loanData?.loanAmount
+                    ? Number(loanData.loanAmount)
+                    : isRTLQuote
+                      ? (Number(loanData?.asIsValue) || 0) + (Number(loanData?.rehabBudget) || 0)
+                      : 0;
+                  const rateStr = quote.interestRate || '';
+                  const rateNum = parseFloat(rateStr.replace('%', ''));
+                  const borrowerName = `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim();
+                  const borrowerEmail = quote.customerEmail || firstRecipient?.email || null;
+
+                  let borrowerPhone: string | null = null;
+                  if (quote.customerPhone) {
+                    borrowerPhone = quote.customerPhone;
+                  } else if (quote.userId) {
+                    const quoteUser = await storage.getUserById(quote.userId);
+                    if (quoteUser?.phone) borrowerPhone = quoteUser.phone;
+                  }
                   
                   const project = await storage.createProject({
                     userId: quote.userId || envelope.createdBy!,
-                    projectName: `${quote.customerFirstName} ${quote.customerLastName} - ${envelope.documentName}`,
+                    projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
                     projectNumber,
-                    loanAmount: loanData.loanAmount ? Number(loanData.loanAmount) : null,
-                    interestRate: quote.interestRate ? Number(quote.interestRate) : null,
-                    loanTermMonths: loanData.loanTerm ? parseInt(String(loanData.loanTerm)) : 12,
-                    loanType: loanData.loanType || loanData.selectedLoanType || null,
+                    loanAmount: loanAmount || null,
+                    interestRate: !isNaN(rateNum) ? rateNum : null,
+                    loanTermMonths: loanData?.loanTermMonths ? parseInt(loanData.loanTermMonths) : (loanData?.loanTerm ? parseInt(String(loanData.loanTerm)) : null),
+                    loanType: loanData?.loanType || loanData?.selectedLoanType || (isRTLQuote ? 'fix_and_flip' : 'dscr'),
                     programId: quote.programId || null,
                     propertyAddress: quote.propertyAddress || null,
-                    borrowerName: `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim(),
-                    borrowerEmail: quote.customerEmail || firstRecipient?.email || null,
+                    propertyType: loanData?.propertyType || null,
+                    borrowerName,
+                    borrowerEmail,
+                    borrowerPhone,
                     status: 'active',
                     currentStage: 'documentation',
                     progressPercentage: 0,
@@ -12214,40 +12399,82 @@ Respond ONLY with valid JSON in this format:
                     borrowerPortalToken: borrowerToken,
                     borrowerPortalEnabled: true,
                     quoteId: quote.id,
-                    metadata: { pandadocEnvelopeId: envelope.id, pandadocDocumentId: documentId },
+                    notes: `Auto-created from signed PandaDoc term sheet (Quote #${quote.id})`,
+                    metadata: {
+                      pandadocEnvelopeId: envelope.id,
+                      pandadocDocumentId: documentId,
+                      quoteData: {
+                        interestRate: quote.interestRate,
+                        pointsCharged: quote.pointsCharged,
+                        pointsAmount: quote.pointsAmount,
+                        tpoPremiumAmount: quote.tpoPremiumAmount,
+                        totalRevenue: quote.totalRevenue,
+                        commission: quote.commission,
+                        partnerId: quote.partnerId,
+                        partnerName: quote.partnerName,
+                        customerFirstName: quote.customerFirstName,
+                        customerLastName: quote.customerLastName,
+                        customerCompanyName: quote.customerCompanyName,
+                        customerEmail: quote.customerEmail,
+                        customerPhone: quote.customerPhone,
+                        loanData,
+                      },
+                    },
                   } as any);
                   
-                  // Build pipeline from program template
+                  if (quote.propertyAddress) {
+                    await db.insert(dealProperties).values({
+                      dealId: project.id,
+                      address: quote.propertyAddress,
+                      propertyType: loanData?.propertyType || null,
+                      estimatedValue: loanData?.propertyValue || loanData?.asIsValue || null,
+                      isPrimary: true,
+                      sortOrder: 0,
+                    });
+                    const additionalProps = (loanData?.additionalProperties || []) as Array<Record<string, any>>;
+                    for (let i = 0; i < additionalProps.length; i++) {
+                      const ap = additionalProps[i];
+                      if (ap.address) {
+                        await db.insert(dealProperties).values({
+                          dealId: project.id,
+                          address: ap.address,
+                          propertyType: ap.propertyType || null,
+                          estimatedValue: ap.estimatedValue || null,
+                          isPrimary: false,
+                          sortOrder: i + 1,
+                        });
+                      }
+                    }
+                  }
+
                   const { buildProjectPipelineFromProgram } = await import('./services/projectPipeline');
                   const pipelineResult = await buildProjectPipelineFromProgram(project.id, quote.programId || null, quote.id);
                   console.log(`[PandaDoc Webhook] Pipeline created: ${pipelineResult.stagesCreated} stages, ${pipelineResult.tasksCreated} tasks, ${pipelineResult.documentsCreated} documents`);
                   
-                  // Update quote stage to term-sheet-signed
                   await db.update(savedQuotes)
                     .set({ stage: 'term-sheet-signed' })
                     .where(eq(savedQuotes.id, quote.id));
                   
-                  // Log activity
                   await storage.createProjectActivity({
                     projectId: project.id,
                     userId: quote.userId || envelope.createdBy!,
                     activityType: 'project_created',
-                    activityDescription: `Project ${projectNumber} auto-created from signed PandaDoc term sheet "${envelope.documentName}"`,
+                    activityDescription: `Loan project ${projectNumber} auto-created from signed term sheet "${envelope.documentName}"`,
                     visibleToBorrower: true,
                   });
                   
-                  // Trigger webhook
                   const { triggerWebhook } = await import('./utils/webhooks');
                   await triggerWebhook(project.id, 'project_created', {
                     project_number: projectNumber,
+                    source: 'pandadoc_signed',
                     created_from_pandadoc: true,
                     pandadoc_document_id: documentId,
                     envelope_id: envelope.id,
+                    quote_id: quote.id,
                   });
                   
-                  console.log(`[PandaDoc Webhook] Project ${projectNumber} auto-created from signed term sheet (envelope ${envelope.id})`);
+                  console.log(`[PandaDoc Webhook] Project ${projectNumber} auto-created from signed term sheet (envelope ${envelope.id}, quote ${quote.id})`);
                   
-                  // Google Drive folder creation (non-blocking)
                   try {
                     const { isDriveIntegrationEnabled, ensureProjectFolder } = await import('./services/googleDrive');
                     const driveEnabled = await isDriveIntegrationEnabled();
@@ -12260,7 +12487,7 @@ Respond ONLY with valid JSON in this format:
                     console.error('Drive integration check error:', driveErr.message);
                   }
                 } else {
-                  console.log(`[PandaDoc Webhook] Project already exists for envelope ${envelope.id}, skipping auto-creation`);
+                  console.log(`[PandaDoc Webhook] Project already exists for quote ${quote.id} (envelope ${envelope.id}), skipping auto-creation`);
                 }
               }
             } catch (projectError) {

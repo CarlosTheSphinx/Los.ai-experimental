@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   FileSignature,
   Clock,
@@ -13,6 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  FolderPlus,
+  Loader2,
 } from "lucide-react";
 
 interface Envelope {
@@ -100,11 +104,35 @@ const getStatusColor = (status: string) => {
   }
 };
 
-export function TermSheetStatus({ quoteId }: { quoteId: number }) {
+export function TermSheetStatus({ quoteId, isAdmin = false }: { quoteId: number; isAdmin?: boolean }) {
   const [expandedEnvelopes, setExpandedEnvelopes] = useState<number[]>([]);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<EnvelopesResponse>({
     queryKey: ["/api/esign/pandadoc/quote", quoteId, "envelopes"],
+  });
+
+  const createProjectMutation = useMutation({
+    mutationFn: async (envelopeId: number) => {
+      const res = await apiRequest("POST", `/api/admin/envelopes/${envelopeId}/create-project`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Project Created",
+        description: `Loan project ${data.project?.projectNumber || ''} has been created successfully.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/esign/pandadoc/quote", quoteId, "envelopes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create project from signed document",
+        variant: "destructive",
+      });
+    },
   });
 
   const envelopes = data?.envelopes || [];
@@ -224,6 +252,26 @@ export function TermSheetStatus({ quoteId }: { quoteId: number }) {
                   >
                     <ExternalLink className="w-4 h-4" />
                     Open Signing Link
+                  </Button>
+                </div>
+              )}
+
+              {isAdmin && envelope.status.toLowerCase() === "completed" && (
+                <div className="pt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createProjectMutation.mutate(envelope.id)}
+                    disabled={createProjectMutation.isPending}
+                    className="w-full gap-2"
+                    data-testid={`button-create-project-${envelope.id}`}
+                  >
+                    {createProjectMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <FolderPlus className="w-4 h-4" />
+                    )}
+                    Create Loan Project
                   </Button>
                 </div>
               )}

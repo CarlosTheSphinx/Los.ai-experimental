@@ -953,6 +953,38 @@ export default function AdminSettings() {
                       </div>
                     </div>
                   )}
+                  <div className="mt-6 border rounded-lg p-4 space-y-3" data-testid="integration-pandadoc-webhook">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-blue-500" />
+                      <span className="font-medium">PandaDoc Webhook URL</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Set this URL in your PandaDoc account (Settings &rarr; Integrations &rarr; Webhooks) to automatically create loan projects when documents are signed.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={`${window.location.origin}/api/webhooks/pandadoc`}
+                        className="font-mono text-xs"
+                        data-testid="input-pandadoc-webhook-url"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/pandadoc`);
+                          toast({ title: "Copied", description: "Webhook URL copied to clipboard" });
+                        }}
+                        data-testid="button-copy-webhook-url"
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Subscribe to events: <strong>document.completed</strong>, <strong>document.viewed</strong>, <strong>document.sent</strong>
+                    </p>
+                  </div>
+
                   <div className="mt-4 flex justify-end">
                     <Button
                       variant="outline"

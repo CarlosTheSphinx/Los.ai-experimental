@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { SavedQuote } from "@shared/schema";
 import { DocumentSigningModal } from "@/components/DocumentSigningModal";
 import { TermSheetStatus } from "@/components/TermSheetStatus";
@@ -271,8 +272,10 @@ function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
 
 export default function Quotes() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [signingQuote, setSigningQuote] = useState<SavedQuote | null>(null);
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const { data, isLoading } = useQuery<{ success: boolean; quotes: SavedQuote[] }>({
     queryKey: ['/api/quotes']
@@ -529,7 +532,7 @@ export default function Quotes() {
                           <MessageSquare className="w-4 h-4" />
                         </Button>
                       </div>
-                      <TermSheetStatus quoteId={quote.id} />
+                      <TermSheetStatus quoteId={quote.id} isAdmin={isAdmin} />
                       <Button
                         onClick={() => setSigningQuote(quote)}
                         className="w-full"
