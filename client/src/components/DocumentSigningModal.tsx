@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2, Copy, BookmarkPlus, PanelRightOpen, PanelRightClose, Save, AlertTriangle, Info } from "lucide-react";
+import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2, Copy, BookmarkPlus, PanelRightOpen, PanelRightClose, Save, AlertTriangle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedQuote } from "@shared/schema";
@@ -1539,44 +1539,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                   </p>
                 </div>
 
-                {pandadocDebugQuery.isLoading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-lg p-3" data-testid="pandadoc-debug-loading">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Checking PandaDoc connection...
-                  </div>
-                )}
-
-                {pandadocDebug?.debug && (
-                  <div className={`border rounded-lg p-4 space-y-2 text-sm ${pandadocDebug.debug.isSandbox ? 'border-destructive bg-destructive/5' : 'border-border'}`} data-testid="pandadoc-debug-info">
-                    <div className="flex items-center gap-2 font-medium">
-                      {pandadocDebug.debug.isSandbox ? (
-                        <AlertTriangle className="w-4 h-4 text-destructive" />
-                      ) : (
-                        <Info className="w-4 h-4 text-muted-foreground" />
-                      )}
-                      PandaDoc Connection
-                    </div>
-                    <div className="space-y-1 text-muted-foreground">
-                      {pandadocDebug.debug.connectedAccount && (
-                        <p data-testid="text-pandadoc-account">Connected account: <span className="font-medium text-foreground">{pandadocDebug.debug.connectedName || ''} ({pandadocDebug.debug.connectedAccount})</span></p>
-                      )}
-                      {pandadocDebug.debug.workspaceName && (
-                        <p data-testid="text-pandadoc-workspace">Workspace: <span className="font-medium text-foreground">{pandadocDebug.debug.workspaceName}</span> <span className="font-mono text-xs">({pandadocDebug.debug.workspaceId})</span></p>
-                      )}
-                      {pandadocDebug.debug.memberRole && (
-                        <p>Role: <span className="text-foreground">{pandadocDebug.debug.memberRole}</span> ({pandadocDebug.debug.userLicense})</p>
-                      )}
-                      <p>API: <span className="font-mono text-foreground">{pandadocDebug.debug.apiBase}</span></p>
-                      <p>Auth: <span className="text-foreground">{pandadocDebug.debug.authType} ({pandadocDebug.debug.apiKeyPrefix})</span></p>
-                    </div>
-                    {pandadocDebug.debug.currentMember?.error && (
-                      <p className="text-destructive" data-testid="text-pandadoc-error">Auth error: {pandadocDebug.debug.currentMember.error}</p>
-                    )}
-                    {pandadocDebug.diagnosis && !pandadocDebug.debug.isSandbox && (
-                      <p className="text-yellow-600 dark:text-yellow-400">{pandadocDebug.diagnosis}</p>
-                    )}
-                  </div>
-                )}
                 
                 <div className="space-y-2">
                   <Label>From (Sender Name)</Label>
@@ -1627,6 +1589,16 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                     </Button>
                     <Button
                       variant="outline"
+                      onClick={() => setShowSaveAsTemplate(true)}
+                      disabled={fields.length === 0}
+                      className="w-full"
+                      data-testid="button-fallback-save-template"
+                    >
+                      <BookmarkPlus className="w-4 h-4 mr-2" />
+                      Save as Template
+                    </Button>
+                    <Button
+                      variant="ghost"
                       className="w-full"
                       onClick={onClose}
                       data-testid="button-close-after-create"
@@ -1648,6 +1620,16 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                       ) : (
                         <>Send via PandaDoc<Send className="w-4 h-4 ml-2" /></>
                       )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowSaveAsTemplate(true)}
+                      disabled={fields.length === 0}
+                      className="w-full"
+                      data-testid="button-send-save-template"
+                    >
+                      <BookmarkPlus className="w-4 h-4 mr-2" />
+                      Save as Template
                     </Button>
                     <Button
                       variant="ghost"
@@ -1715,8 +1697,9 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
             <div className="bg-muted/50 rounded-lg p-3">
               <p className="text-sm font-medium">Template will include:</p>
               <p className="text-xs text-muted-foreground mt-1">
-                • {pageCount} page(s) from "{fileName}"<br />
-                • {fields.length} positioned field(s)
+                • PDF document: "{fileName}" ({pageCount} page{pageCount !== 1 ? 's' : ''})<br />
+                • {fields.length} field{fields.length !== 1 ? 's' : ''} with saved positions and types<br />
+                • Field coordinates preserved for reuse
               </p>
             </div>
           </div>
