@@ -520,11 +520,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
   const [pandadocRecipients, setPandadocRecipients] = useState<Array<{ name: string; email: string; role: string }>>([
     { name: `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim(), email: quote.customerEmail || '', role: 'Signer' }
   ]);
-  const [pandadocSendMethod, setPandadocSendMethod] = useState<"email" | "embedded">("email");
-  const [pandadocResult, setPandadocResult] = useState<{ success: boolean; signingUrl?: string; envelopeId?: number } | null>(null);
-  const [pandadocDraft, setPandadocDraft] = useState<{ envelopeId: number; externalDocumentId: string; editorUrl: string } | null>(null);
-  const [pandadocEditorToken, setPandadocEditorToken] = useState<string | null>(null);
-  const [pandadocEditorLoading, setPandadocEditorLoading] = useState(false);
   const [showVariablesSidebar, setShowVariablesSidebar] = useState(true);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [templateRoles, setTemplateRoles] = useState<Array<{ name: string }>>([]);
@@ -558,7 +553,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
 
   const { data: tokenPreviewData } = useQuery<{ tokens: Array<{ name: string; value: string }>; availableTokenNames: string[] }>({
     queryKey: ["/api/esign/pandadoc/quote", quote.id, "tokens"],
-    enabled: open && uploadMode === "pandadoc" && (showTokenPreview || !!pandadocDraft),
+    enabled: open && uploadMode === "pandadoc" && showTokenPreview,
   });
 
   const [existingDocLoaded, setExistingDocLoaded] = useState(false);
@@ -628,188 +623,10 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
     }
   }, [open]);
 
-  // PandaDoc create draft mutation (from template)
-  const createPandadocDraftMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest('POST', '/api/esign/pandadoc/documents/create', {
-        quoteId: quote.id,
-        pandadocTemplateId,
-        recipients: pandadocRecipients.map(r => ({
-          name: r.name,
-          firstName: r.name.split(' ')[0],
-          lastName: r.name.split(' ').slice(1).join(' '),
-          email: r.email,
-          role: r.role,
-        })),
-        sendMethod: pandadocSendMethod,
-        subject: `Document for Signature: ${quote.quoteName || 'Loan Agreement'}`,
-        message: `Please review and sign the attached document for your loan application.`,
-      });
-      return res.json();
-    },
-    onSuccess: async (data) => {
-      if (data.success) {
-        const draftInfo = {
-          envelopeId: data.envelope.id,
-          externalDocumentId: data.envelope.externalDocumentId,
-          editorUrl: data.envelope.editorUrl,
-        };
-        setPandadocDraft(draftInfo);
-        setPandadocEditorLoading(true);
-        try {
-          const sessionRes = await apiRequest('POST', `/api/esign/pandadoc/documents/${draftInfo.externalDocumentId}/editing-session`, {});
-          const sessionData = await sessionRes.json();
-          if (sessionData.success && sessionData.token) {
-            setPandadocEditorToken(sessionData.token);
-          } else {
-            console.warn('Editing session created but no token returned, falling back to external editor');
-          }
-        } catch (err: any) {
-          console.error('Failed to create editing session:', err);
-          toast({
-            title: "Embedded editor unavailable",
-            description: "You can still review the document by opening it in PandaDoc.",
-          });
-        } finally {
-          setPandadocEditorLoading(false);
-        }
-        toast({ 
-          title: "Draft Created", 
-          description: "Your term sheet is ready for review. Edit it below before sending." 
-        });
-      } else {
-        toast({ title: "Error", description: data.error || "Failed to create document", variant: "destructive" });
-      }
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to create PandaDoc document", variant: "destructive" });
-    },
-  });
-
-  // PandaDoc create document from uploaded PDF with positioned fields
-  const createPandadocFromPdfMutation = useMutation({
-    mutationFn: async () => {
-      if (!pdfData) throw new Error('No PDF uploaded');
-      if (pandadocRecipients.length === 0) throw new Error('No recipients added');
-
-      const fieldData = fields.map(f => {
-        const recipientIdx = signers.findIndex(s => s.id === f.signerId);
-        const recipient = pandadocRecipients[recipientIdx] || pandadocRecipients[0];
-        const allFieldTypes = [...SIGNATURE_FIELD_TYPES, ...ALL_PREPOPULATED_FIELD_TYPES, ...customVariables];
-        const fieldConfig = allFieldTypes.find(ft => ft.type === f.fieldType);
-        return {
-          fieldType: f.fieldType,
-          label: fieldConfig?.label || f.fieldType,
-          x: f.x,
-          y: f.y,
-          width: f.width,
-          height: f.height,
-          pageNumber: f.pageNumber,
-          value: f.value || '',
-          recipientRole: recipient?.role || 'Signer',
-        };
-      });
-
-      const res = await apiRequest('POST', '/api/esign/pandadoc/documents/create-from-pdf', {
-        quoteId: quote.id,
-        pdfBase64: pdfData,
-        recipients: pandadocRecipients.map(r => ({
-          name: r.name,
-          firstName: r.name.split(' ')[0],
-          lastName: r.name.split(' ').slice(1).join(' '),
-          email: r.email,
-          role: r.role,
-        })),
-        fields: fieldData,
-        sendMethod: pandadocSendMethod,
-      });
-      return res.json();
-    },
-    onSuccess: async (data) => {
-      if (data.success) {
-        const draftInfo = {
-          envelopeId: data.envelope.id,
-          externalDocumentId: data.envelope.externalDocumentId,
-          editorUrl: data.envelope.editorUrl,
-        };
-        setPandadocDraft(draftInfo);
-        toast({
-          title: "Draft Created",
-          description: "Your document has been uploaded to PandaDoc. Ready to send for signing.",
-        });
-      } else {
-        toast({ title: "Error", description: data.error || "Failed to create document", variant: "destructive" });
-      }
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to create PandaDoc document from PDF", variant: "destructive" });
-    },
-  });
-
-  // PandaDoc send draft mutation
-  const sendPandadocDraftMutation = useMutation({
-    mutationFn: async () => {
-      if (!pandadocDraft) throw new Error('No draft to send');
-      const res = await apiRequest('POST', `/api/esign/pandadoc/documents/${pandadocDraft.envelopeId}/send`, {
-        sendMethod: pandadocSendMethod,
-        subject: `Document for Signature: ${quote.quoteName || 'Loan Agreement'}`,
-        message: `Please review and sign the attached document for your loan application.`,
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        setPandadocResult({
-          success: true,
-          signingUrl: data.envelope?.signingUrl,
-          envelopeId: data.envelope?.id,
-        });
-        setPandadocDraft(null);
-        setPandadocEditorToken(null);
-        toast({ 
-          title: "Term Sheet Sent!", 
-          description: data.envelope?.signingUrl 
-            ? "Document ready for signing. A signing link has been generated." 
-            : "Document has been sent for signature."
-        });
-        if (data.envelope?.signingUrl) {
-          window.open(data.envelope.signingUrl, '_blank');
-        }
-      } else {
-        toast({ title: "Error", description: data.error || "Failed to send document", variant: "destructive" });
-      }
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to send document", variant: "destructive" });
-    },
-  });
 
   const [saveAsTemplateName, setSaveAsTemplateName] = useState('');
   const [showSaveTemplateInput, setShowSaveTemplateInput] = useState(false);
   
-  const saveAsTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!pandadocDraft) throw new Error('No draft document');
-      const templateName = saveAsTemplateName || `${quote.quoteName || 'Loan'} Template`;
-      const res = await apiRequest('POST', `/api/esign/pandadoc/documents/${pandadocDraft.externalDocumentId}/save-as-template`, {
-        name: templateName,
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        toast({ title: "Template Saved!", description: `Template "${data.template?.name || 'New Template'}" created in PandaDoc` });
-        setShowSaveTemplateInput(false);
-        setSaveAsTemplateName('');
-        queryClient.invalidateQueries({ queryKey: ["/api/esign/pandadoc/templates"] });
-      } else {
-        toast({ title: "Error", description: data.error || "Failed to save template", variant: "destructive" });
-      }
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to save template", variant: "destructive" });
-    },
-  });
 
   // Fetch template roles when template ID changes
   useEffect(() => {
@@ -854,44 +671,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
     return () => clearTimeout(debounceTimer);
   }, [pandadocTemplateId]);
 
-  useEffect(() => {
-    if (!pandadocEditorToken || !editorContainerRef.current) return;
-    
-    const containerId = 'pandadoc-editor-container';
-    editorContainerRef.current.id = containerId;
-    
-    let editorInstance: any = null;
-    
-    const initEditor = async () => {
-      try {
-        const { Editor } = await import('pandadoc-editor');
-        const container = document.getElementById(containerId);
-        const containerWidth = container?.clientWidth || 1200;
-        const containerHeight = container?.clientHeight || 700;
-        editorInstance = new Editor(containerId, {
-          width: containerWidth,
-          height: containerHeight,
-          token: pandadocEditorToken,
-          fieldPlacementOnly: false,
-        });
-        editorInstance.open();
-      } catch (err) {
-        console.error('Failed to initialize PandaDoc editor:', err);
-      }
-    };
-    
-    initEditor();
-    
-    return () => {
-      if (editorInstance) {
-        try {
-          editorInstance.close?.();
-        } catch (e) {
-          // ignore cleanup errors
-        }
-      }
-    };
-  }, [pandadocEditorToken]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setPageCount(numPages);
@@ -1165,28 +944,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
     }
   });
 
-  const sendDocumentMutation = useMutation({
-    mutationFn: async () => {
-      console.log('Sending document with ID:', documentId);
-      const res = await apiRequest('POST', `/api/documents/${documentId}/send`, { senderName });
-      const data = await res.json();
-      console.log('Send response:', data);
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to send document');
-      }
-      return data;
-    },
-    onSuccess: (data) => {
-      toast({ title: "Document Sent!", description: `Signing invitations sent to ${signers.length} signer(s)` });
-      queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
-      onClose();
-    },
-    onError: (error: Error) => {
-      console.error('Send error:', error);
-      toast({ title: "Error", description: error.message || "Failed to send document", variant: "destructive" });
-    }
-  });
 
   const sendViaPandadocMutation = useMutation({
     mutationFn: async () => {
@@ -1407,8 +1164,8 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className={`overflow-hidden flex flex-col ${pandadocDraft && pandadocEditorToken ? 'max-w-[95vw] w-[95vw] h-[95vh] max-h-[95vh] p-4' : 'max-w-5xl max-h-[90vh]'}`}>
-        <DialogHeader className={pandadocDraft && pandadocEditorToken ? 'hidden' : ''}>
+      <DialogContent className="overflow-hidden flex flex-col max-w-5xl max-h-[90vh]">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
             Send Quote for Signature
@@ -1416,7 +1173,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
         </DialogHeader>
 
         <Tabs value={step} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className={`grid ${uploadMode === "pandadoc" ? 'grid-cols-3' : 'grid-cols-4'} ${pandadocDraft && pandadocEditorToken ? 'hidden' : ''}`}>
+          <TabsList className={`grid ${uploadMode === "pandadoc" ? 'grid-cols-3' : 'grid-cols-4'}`}>
             <TabsTrigger value="upload" disabled={step !== "upload" && !documentId && !pandadocPdfUploaded}>
               <Upload className="w-4 h-4 mr-2" />
               {uploadMode === "pandadoc" ? "Upload & Recipients" : "Upload"}
@@ -1600,30 +1357,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                         </p>
                       </div>
 
-                      {pandadocResult?.success ? (
-                        <div className="text-center space-y-4 py-8">
-                          <div className="w-16 h-16 rounded-full bg-green-100 mx-auto flex items-center justify-center">
-                            <Check className="w-8 h-8 text-green-600" />
-                          </div>
-                          <h3 className="text-lg font-semibold text-green-600">Term Sheet Sent Successfully!</h3>
-                          <p className="text-muted-foreground">
-                            {pandadocSendMethod === 'email' 
-                              ? 'The recipient will receive an email with the signing link.' 
-                              : 'A signing session has been created.'}
-                          </p>
-                          {pandadocResult.signingUrl && (
-                            <Button 
-                              variant="outline" 
-                              onClick={() => window.open(pandadocResult.signingUrl, '_blank')}
-                              data-testid="button-open-signing-url"
-                            >
-                              <ExternalLink className="w-4 h-4 mr-2" />
-                              Open Signing Link
-                            </Button>
-                          )}
-                          <Button onClick={onClose} data-testid="button-close-success">Close</Button>
-                        </div>
-                      ) : (
                         <div className="max-w-lg mx-auto space-y-6">
                           <div className="text-center space-y-4">
                             <div 
@@ -1757,7 +1490,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                             </>
                           )}
                         </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -2039,148 +1771,51 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                   <Mail className="w-12 h-12 mx-auto text-primary" />
                   <h3 className="text-xl font-semibold">Ready to Send</h3>
                   <p className="text-muted-foreground">
-                    Your document will be sent to {(uploadMode === "pandadoc" && !documentId) ? pandadocRecipients.length : signers.length} signer(s) for signature
-                    {uploadMode === "pandadoc" && !documentId && " via PandaDoc"}
+                    Your document will be sent to {signers.length} signer(s) for signature via PandaDoc
                   </p>
                 </div>
                 
-                {uploadMode === "pandadoc" && !documentId ? (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Send Method</Label>
-                      <div className="flex gap-4">
-                        <Button
-                          type="button"
-                          variant={pandadocSendMethod === "email" ? "default" : "outline"}
-                          onClick={() => setPandadocSendMethod("email")}
-                          className="flex-1"
-                          data-testid="button-send-email"
-                        >
-                          <Mail className="w-4 h-4 mr-2" />
-                          Email
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={pandadocSendMethod === "embedded" ? "default" : "outline"}
-                          onClick={() => setPandadocSendMethod("embedded")}
-                          className="flex-1"
-                          data-testid="button-send-embedded"
-                        >
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Embedded Link
-                        </Button>
-                      </div>
+                <div className="space-y-2">
+                  <Label>From (Sender Name)</Label>
+                  <Input
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    placeholder="Your name or company"
+                    data-testid="input-sender-name"
+                  />
+                </div>
+                
+                <div className="border rounded-lg p-4 space-y-2">
+                  <h4 className="font-medium">Recipients:</h4>
+                  {signers.map((signer, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: signer.color }} />
+                      <span>{signer.name}</span>
+                      <span className="text-muted-foreground">({signer.email})</span>
                     </div>
-
-                    <div className="border rounded-lg p-4 space-y-2">
-                      <h4 className="font-medium">Recipients:</h4>
-                      {pandadocRecipients.map((r, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SIGNER_COLORS[i % SIGNER_COLORS.length] }} />
-                          <span>{r.name || 'No name'}</span>
-                          <span className="text-muted-foreground">({r.email})</span>
-                          <Badge variant="secondary">{r.role}</Badge>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="border rounded-lg p-4 space-y-2">
-                      <h4 className="font-medium">Document:</h4>
-                      <p className="text-sm text-muted-foreground">{fileName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {fields.length} field(s) across {pageCount} page(s)
-                      </p>
-                    </div>
-
-                    {pandadocDraft ? (
-                      <div className="text-center space-y-4 py-4">
-                        <div className="w-12 h-12 rounded-full bg-green-100 mx-auto flex items-center justify-center">
-                          <Check className="w-6 h-6 text-green-600" />
-                        </div>
-                        <p className="font-medium text-green-600">Draft created in PandaDoc</p>
-                        <div className="flex gap-2 justify-center flex-wrap">
-                          <Button
-                            variant="outline"
-                            onClick={() => window.open(pandadocDraft.editorUrl, '_blank')}
-                            data-testid="button-open-pandadoc-draft"
-                          >
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Open in PandaDoc
-                          </Button>
-                          <Button
-                            onClick={() => sendPandadocDraftMutation.mutate()}
-                            disabled={sendPandadocDraftMutation.isPending}
-                            data-testid="button-send-pandadoc-draft"
-                          >
-                            {sendPandadocDraftMutation.isPending ? (
-                              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</>
-                            ) : (
-                              <><Send className="w-4 h-4 mr-2" />Send for Signature</>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button 
-                        onClick={() => createPandadocFromPdfMutation.mutate()} 
-                        disabled={createPandadocFromPdfMutation.isPending}
-                        className="w-full"
-                        size="lg"
-                        data-testid="button-create-send-pandadoc"
-                      >
-                        {createPandadocFromPdfMutation.isPending ? (
-                          <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating PandaDoc Draft...</>
-                        ) : (
-                          <>Create & Send via PandaDoc<Send className="w-4 h-4 ml-2" /></>
-                        )}
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <Label>From (Sender Name)</Label>
-                      <Input
-                        value={senderName}
-                        onChange={(e) => setSenderName(e.target.value)}
-                        placeholder="Your name or company"
-                        data-testid="input-sender-name"
-                      />
-                    </div>
-                    
-                    <div className="border rounded-lg p-4 space-y-2">
-                      <h4 className="font-medium">Recipients:</h4>
-                      {signers.map((signer, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: signer.color }} />
-                          <span>{signer.name}</span>
-                          <span className="text-muted-foreground">({signer.email})</span>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <div className="border rounded-lg p-4 space-y-2">
-                      <h4 className="font-medium">Fields to Complete:</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {fields.length} field(s) across {pageCount} page(s)
-                      </p>
-                    </div>
-                    
-                    <Button 
-                      onClick={() => sendViaPandadocMutation.mutate()} 
-                      disabled={sendViaPandadocMutation.isPending}
-                      className="w-full"
-                      size="lg"
-                      data-testid="button-send-pandadoc"
-                    >
-                      {sendViaPandadocMutation.isPending ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending via PandaDoc...</>
-                      ) : (
-                        <>Send for Signature<Send className="w-4 h-4 ml-2" /></>
-                      )}
-                    </Button>
-                  </>
-                )}
+                  ))}
+                </div>
+                
+                <div className="border rounded-lg p-4 space-y-2">
+                  <h4 className="font-medium">Fields to Complete:</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {fields.length} field(s) across {pageCount} page(s)
+                  </p>
+                </div>
+                
+                <Button 
+                  onClick={() => sendViaPandadocMutation.mutate()} 
+                  disabled={sendViaPandadocMutation.isPending}
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-send-pandadoc"
+                >
+                  {sendViaPandadocMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending via PandaDoc...</>
+                  ) : (
+                    <>Send via PandaDoc<Send className="w-4 h-4 ml-2" /></>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

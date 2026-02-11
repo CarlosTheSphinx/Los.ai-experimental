@@ -14,7 +14,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { sendSigningInvitation, sendCompletedDocument, sendVoidNotification, sendSigningReminder, sendPasswordResetEmail } from './email';
+import { sendCompletedDocument, sendVoidNotification, sendPasswordResetEmail } from './email';
 import { sendCommercialNotification, checkExpiredSubmissions } from './services/commercialNotifications';
 import { 
   hashPassword, 
@@ -1882,104 +1882,11 @@ export async function registerRoutes(
   });
 
   // Send document for signing
-  app.post('/api/documents/:id/send', authenticateUser, async (req: AuthRequest, res) => {
-    try {
-      const documentId = parseInt(req.params.id);
-      const userId = req.user!.id;
-      const { senderName } = req.body;
-      
-      console.log(`📧 Send document request - ID: ${documentId}, Sender: ${senderName}`);
-      
-      if (!documentId || isNaN(documentId)) {
-        console.error('Invalid document ID:', req.params.id);
-        res.status(400).json({ success: false, error: 'Invalid document ID' });
-        return;
-      }
-      
-      // Verify user owns this document
-      const doc = await storage.getDocumentById(documentId, userId);
-      if (!doc) {
-        res.status(404).json({ success: false, error: 'Document not found' });
-        return;
-      }
-
-      const signers = await storage.getSignersByDocumentId(documentId);
-      console.log(`📧 Found ${signers.length} signers`);
-      if (signers.length === 0) {
-        res.status(400).json({ success: false, error: 'No signers added to document' });
-        return;
-      }
-
-      const fields = await storage.getFieldsByDocumentId(documentId);
-      console.log(`📧 Found ${fields.length} fields`);
-      if (fields.length === 0) {
-        res.status(400).json({ success: false, error: 'No signature fields added to document' });
-        return;
-      }
-
-      // Generate tokens for each signer and send emails
-      // Use the published production domain if available, otherwise fallback
-      let baseUrl: string;
-      if (process.env.REPLIT_DOMAINS) {
-        // REPLIT_DOMAINS contains the published production domain
-        const domains = process.env.REPLIT_DOMAINS.split(',');
-        baseUrl = `https://${domains[0]}`;
-      } else if (process.env.REPLIT_DEV_DOMAIN) {
-        baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-      } else if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
-        baseUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
-      } else {
-        baseUrl = `${req.protocol}://${req.get('host')}`;
-      }
-      console.log(`📧 Base URL for signing links: ${baseUrl}`);
-      const emailResults = [];
-
-      for (const signer of signers) {
-        const token = uuidv4();
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-        console.log(`📧 Processing signer: ${signer.name} (${signer.email})`);
-        
-        await storage.updateSigner(signer.id, {
-          token,
-          tokenExpiresAt: expiresAt,
-          status: 'sent'
-        });
-
-        const signingLink = `${baseUrl}/sign/${token}`;
-        console.log(`📧 Signing link: ${signingLink}`);
-        
-        console.log(`📧 Sending email to ${signer.email}...`);
-        const emailResult = await sendSigningInvitation(
-          signer.email,
-          signer.name,
-          doc.name,
-          senderName || 'Sphinx Capital',
-          signingLink
-        );
-        console.log(`📧 Email result:`, emailResult);
-
-        emailResults.push({ signerId: signer.id, email: signer.email, ...emailResult });
-      }
-
-      // Update document status and sentAt
-      await storage.updateDocument(documentId, {
-        status: 'sent',
-        sentAt: new Date()
-      });
-
-      await storage.createAuditLog({
-        documentId,
-        action: 'sent',
-        details: `Document sent to ${signers.length} signer(s)`,
-        ipAddress: req.ip
-      });
-
-      res.json({ success: true, emailResults });
-    } catch (error) {
-      console.error('Error sending document:', error);
-      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-    }
+  app.post('/api/documents/:id/send', authenticateUser, async (_req: AuthRequest, res) => {
+    res.status(410).json({ 
+      success: false, 
+      error: 'Deprecated: must send via PandaDoc. Use POST /api/documents/:id/pandadoc/send' 
+    });
   });
 
   // Send document via PandaDoc (create + send in one flow)
@@ -2825,11 +2732,10 @@ export async function registerRoutes(
     }
   });
 
-  // Resend to all pending signers
+  // Resend to all pending signers (via PandaDoc)
   app.post('/api/esignature/agreements/:id/resend-all', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      const { senderName } = req.body;
       
       const doc = await storage.getDocumentById(documentId, req.user!.id);
       if (!doc) {
@@ -2842,70 +2748,41 @@ export async function registerRoutes(
           error: 'Can only resend documents that are sent or in progress' 
         });
       }
-      
-      const docSigners = await storage.getSignersByDocumentId(documentId);
-      const pendingSigners = docSigners.filter(s => s.status !== 'signed');
-      
-      let resentCount = 0;
-      // Use the published production domain if available
-      let baseUrl: string;
-      if (process.env.REPLIT_DOMAINS) {
-        const domains = process.env.REPLIT_DOMAINS.split(',');
-        baseUrl = `https://${domains[0]}`;
-      } else if (process.env.REPLIT_DEV_DOMAIN) {
-        baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-      } else {
-        baseUrl = 'http://localhost:5000';
+
+      if (!doc.pandadocDocumentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Document must be sent via PandaDoc first. Use the PandaDoc send flow to send this document.'
+        });
       }
-      
-      for (const signer of pendingSigners) {
-        if (signer.token) {
-          const signingLink = `${baseUrl}/sign/${signer.token}`;
-          
-          try {
-            await sendSigningInvitation(
-              signer.email,
-              signer.name,
-              doc.name,
-              senderName || 'Sphinx Capital',
-              signingLink
-            );
-            
-            await storage.updateSigner(signer.id, { 
-              lastReminderSent: new Date(),
-              status: 'sent'
-            });
-            resentCount++;
-          } catch (emailError) {
-            console.error('Failed to resend to', signer.email, emailError);
-          }
-        }
-      }
-      
-      // Log action
+
+      const sendResult = await pandadoc.sendDocument(doc.pandadocDocumentId, {
+        subject: `Reminder: Please sign ${doc.name}`,
+        message: 'This is a reminder to review and sign the attached document.',
+        silent: false,
+      });
+
       await storage.createAuditLog({
         documentId,
         action: 'resent_all',
-        details: `Resent to ${resentCount} pending signers`
+        details: `Resent via PandaDoc (ID: ${doc.pandadocDocumentId})`
       });
       
       res.json({ 
         success: true, 
-        resentCount,
-        message: `Signing request resent to ${resentCount} signers` 
+        message: 'Document resent via PandaDoc to all pending signers' 
       });
     } catch (error) {
-      console.error('Error resending to all:', error);
+      console.error('Error resending via PandaDoc:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
-  // Resend to individual signer
+  // Resend to individual signer (via PandaDoc - resends entire document)
   app.post('/api/esignature/agreements/:id/resend-signer/:signerId', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
       const signerId = parseInt(req.params.signerId);
-      const { senderName } = req.body;
       
       const doc = await storage.getDocumentById(documentId, req.user!.id);
       if (!doc) {
@@ -2923,62 +2800,45 @@ export async function registerRoutes(
           error: 'Signer has already signed' 
         });
       }
-      
-      if (!signer.token) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'Signer has no valid signing token' 
+
+      if (!doc.pandadocDocumentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Document must be sent via PandaDoc first. Use the PandaDoc send flow.'
         });
       }
-      
-      // Use the published production domain if available
-      let baseUrl: string;
-      if (process.env.REPLIT_DOMAINS) {
-        const domains = process.env.REPLIT_DOMAINS.split(',');
-        baseUrl = `https://${domains[0]}`;
-      } else if (process.env.REPLIT_DEV_DOMAIN) {
-        baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-      } else {
-        baseUrl = 'http://localhost:5000';
-      }
-      const signingLink = `${baseUrl}/sign/${signer.token}`;
-      
-      await sendSigningInvitation(
-        signer.email,
-        signer.name,
-        doc.name,
-        senderName || 'Sphinx Capital',
-        signingLink
-      );
-      
+
+      const sendResult = await pandadoc.sendDocument(doc.pandadocDocumentId, {
+        subject: `Reminder: Please sign ${doc.name}`,
+        message: `This is a reminder for ${signer.name} to review and sign the attached document.`,
+        silent: false,
+      });
+
       await storage.updateSigner(signer.id, { 
         lastReminderSent: new Date(),
-        status: 'sent'
       });
       
-      // Log action
       await storage.createAuditLog({
         documentId,
         signerId: signer.id,
         action: 'resent',
-        details: `Resent to ${signer.name} (${signer.email})`
+        details: `Resent via PandaDoc to ${signer.name} (${signer.email})`
       });
       
       res.json({ 
         success: true, 
-        message: `Email resent to ${signer.name}` 
+        message: `Signing request resent via PandaDoc for ${signer.name}` 
       });
     } catch (error) {
-      console.error('Error resending to signer:', error);
+      console.error('Error resending via PandaDoc:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
-  // Send reminder to all pending signers
+  // Send reminder to all pending signers (via PandaDoc)
   app.post('/api/esignature/agreements/:id/remind', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      const { senderName } = req.body;
       
       const doc = await storage.getDocumentById(documentId, req.user!.id);
       if (!doc) {
@@ -2991,59 +2851,32 @@ export async function registerRoutes(
           error: 'Can only send reminders for documents that are sent or in progress' 
         });
       }
-      
-      const docSigners = await storage.getSignersByDocumentId(documentId);
-      const pendingSigners = docSigners.filter(s => s.status !== 'signed');
-      
-      let reminderCount = 0;
-      // Use the published production domain if available
-      let baseUrl: string;
-      if (process.env.REPLIT_DOMAINS) {
-        const domains = process.env.REPLIT_DOMAINS.split(',');
-        baseUrl = `https://${domains[0]}`;
-      } else if (process.env.REPLIT_DEV_DOMAIN) {
-        baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-      } else {
-        baseUrl = 'http://localhost:5000';
+
+      if (!doc.pandadocDocumentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Document must be sent via PandaDoc first. Use the PandaDoc send flow.'
+        });
       }
-      
-      for (const signer of pendingSigners) {
-        if (signer.token) {
-          const signingLink = `${baseUrl}/sign/${signer.token}`;
-          
-          try {
-            await sendSigningReminder(
-              signer.email,
-              signer.name,
-              doc.name,
-              senderName || 'Sphinx Capital',
-              signingLink
-            );
-            
-            await storage.updateSigner(signer.id, { 
-              lastReminderSent: new Date()
-            });
-            reminderCount++;
-          } catch (emailError) {
-            console.error('Failed to send reminder to', signer.email, emailError);
-          }
-        }
-      }
-      
-      // Log action
+
+      const sendResult = await pandadoc.sendDocument(doc.pandadocDocumentId, {
+        subject: `Reminder: Please sign ${doc.name}`,
+        message: 'This is a friendly reminder to review and sign the attached document.',
+        silent: false,
+      });
+
       await storage.createAuditLog({
         documentId,
         action: 'reminder_sent',
-        details: `Reminder sent to ${reminderCount} pending signers`
+        details: `Reminder sent via PandaDoc (ID: ${doc.pandadocDocumentId})`
       });
       
       res.json({ 
         success: true, 
-        reminderCount,
-        message: `Reminder sent to ${reminderCount} signers` 
+        message: 'Reminder sent via PandaDoc to all pending signers' 
       });
     } catch (error) {
-      console.error('Error sending reminders:', error);
+      console.error('Error sending PandaDoc reminder:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -11745,347 +11578,45 @@ Respond ONLY with valid JSON in this format:
   // PandaDoc E-Sign Integration Routes
   // ============================================
 
-  // Create and optionally send a PandaDoc document from a quote
-  app.post('/api/esign/pandadoc/documents/create', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const { quoteId, pandadocTemplateId, recipients, sendMethod, subject, message } = req.body;
-      
-      if (!quoteId || !pandadocTemplateId || !recipients?.length) {
-        return res.status(400).json({ error: 'quoteId, pandadocTemplateId, and recipients are required' });
-      }
-      
-      // Load quote
-      const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, quoteId));
-      if (!quote) {
-        return res.status(404).json({ error: 'Quote not found' });
-      }
-      
-      // Import PandaDoc service and field mapping
-      const pandadoc = await import('./esign/pandadoc');
-      const { mapQuoteToPandaTokens } = await import('./esign/field-mapping');
-      
-      // Validate recipient roles against template roles
-      try {
-        const templateDetails = await pandadoc.getTemplateDetails(pandadocTemplateId);
-        const validRoles = templateDetails.roles?.map((r: any) => r.name?.trim()) || [];
-        
-        if (validRoles.length === 0) {
-          return res.status(400).json({ 
-            error: 'Template has no roles defined. Please configure roles in your PandaDoc template.' 
-          });
-        }
-        
-        // Normalize recipient roles (trim whitespace) before validation
-        const normalizedRecipients = recipients.map((r: any) => ({
-          ...r,
-          role: r.role?.trim() || '',
-        }));
-        
-        const invalidRoles = normalizedRecipients.filter((r: any) => !validRoles.includes(r.role));
-        if (invalidRoles.length > 0) {
-          return res.status(400).json({ 
-            error: `Invalid recipient roles: ${invalidRoles.map((r: any) => r.role).join(', ')}. Valid roles are: ${validRoles.join(', ')}` 
-          });
-        }
-        
-        // Use normalized recipients for document creation
-        recipients.forEach((r: any, i: number) => {
-          r.role = normalizedRecipients[i].role;
-        });
-      } catch (err: any) {
-        console.error('Failed to validate template roles:', err);
-        return res.status(400).json({ 
-          error: `Failed to validate template: ${err.message}` 
-        });
-      }
-      
-      // Map quote data to PandaDoc tokens
-      const tokens = mapQuoteToPandaTokens(quote);
-      
-      // Format recipients for PandaDoc API
-      const pandaRecipients = recipients.map((r: any) => ({
-        email: r.email,
-        first_name: r.firstName || r.name?.split(' ')[0] || '',
-        last_name: r.lastName || r.name?.split(' ').slice(1).join(' ') || '',
-        role: r.role,
-      }));
-      
-      // Create document from template
-      const docName = `${quote.quoteName || 'Loan Agreement'} - ${quote.customerFullName || quote.customerFirstName || 'Customer'}`;
-      const pandaDoc = await pandadoc.createDocumentFromTemplate({
-        templateId: pandadocTemplateId,
-        name: docName,
-        recipients: pandaRecipients,
-        tokens,
-        metadata: { quoteId: quoteId.toString() },
-      });
-      
-      // Save envelope to database
-      const [envelope] = await db.insert(esignEnvelopes).values({
-        vendor: 'pandadoc',
-        quoteId,
-        externalDocumentId: pandaDoc.id,
-        externalTemplateId: pandadocTemplateId,
-        documentName: docName,
-        status: pandaDoc.status,
-        recipients: JSON.stringify(recipients.map((r: any) => ({
-          ...r,
-          status: 'pending',
-        }))),
-        sendMethod: sendMethod || 'email',
-        createdBy: req.user!.id,
-      }).returning();
-      
-      // Log event
-      await db.insert(esignEvents).values({
-        vendor: 'pandadoc',
-        envelopeId: envelope.id,
-        externalDocumentId: pandaDoc.id,
-        eventType: 'document.created',
-        eventData: JSON.stringify({ pandaDoc }),
-      });
-      
-      // Wait for PandaDoc to finish processing the document
-      console.log(`[PandaDoc] Waiting for document ${pandaDoc.id} to be ready...`);
-      await pandadoc.waitForDocumentReady(pandaDoc.id);
-      console.log(`[PandaDoc] Document ${pandaDoc.id} is ready (draft status)`);
-      
-      const editorUrl = `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`;
-      
-      await db.update(esignEnvelopes)
-        .set({ status: 'draft', signingUrl: editorUrl })
-        .where(eq(esignEnvelopes.id, envelope.id));
-      
-      res.json({
-        success: true,
-        envelope: {
-          id: envelope.id,
-          externalDocumentId: pandaDoc.id,
-          status: 'draft',
-          editorUrl,
-        },
-      });
-    } catch (error: any) {
-      console.error('PandaDoc create document error:', error);
-      res.status(500).json({ error: error.message });
-    }
+  app.post('/api/esign/pandadoc/documents/create', authenticateUser, requireAdmin, async (_req: AuthRequest, res: Response) => {
+    res.status(410).json({ 
+      error: 'Deprecated: must send via PandaDoc. Use POST /api/documents/:id/pandadoc/send' 
+    });
   });
 
-  // Create PandaDoc document from uploaded PDF with positioned fields
-  app.post('/api/esign/pandadoc/documents/create-from-pdf', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const { quoteId, pdfBase64, recipients, fields, sendMethod } = req.body;
-
-      if (!quoteId || !pdfBase64 || !recipients?.length) {
-        return res.status(400).json({ error: 'quoteId, pdfBase64, and recipients are required' });
-      }
-
-      const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, quoteId));
-      if (!quote) {
-        return res.status(404).json({ error: 'Quote not found' });
-      }
-
-      const pandadoc = await import('./esign/pandadoc');
-      const { mapQuoteToPandaTokens } = await import('./esign/field-mapping');
-
-      const tokens = mapQuoteToPandaTokens(quote);
-
-      const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
-      const pdfBuffer = Buffer.from(base64Data, 'base64');
-
-      const pandaRecipients = recipients.map((r: any) => ({
-        email: r.email,
-        first_name: r.firstName || r.name?.split(' ')[0] || '',
-        last_name: r.lastName || r.name?.split(' ').slice(1).join(' ') || '',
-        role: r.role || 'Signer',
-      }));
-
-      const pandaFields: Record<string, any[]> = {};
-      if (fields && fields.length > 0) {
-        for (const field of fields) {
-          const role = field.recipientRole || recipients[0]?.role || 'Signer';
-          if (!pandaFields[role]) {
-            pandaFields[role] = [];
-          }
-
-          let pandaType = 'text';
-          if (field.fieldType === 'signature') pandaType = 'signature';
-          else if (field.fieldType === 'initial') pandaType = 'initials';
-          else if (field.fieldType === 'date') pandaType = 'date';
-
-          const pandaField: any = {
-            name: field.label || field.fieldType || `field_${pandaFields[role].length + 1}`,
-            role: role,
-            type: pandaType,
-            required: true,
-            x: Math.round(field.x),
-            y: Math.round(field.y),
-            width: Math.round(field.width),
-            height: Math.round(field.height),
-            page: (field.pageNumber || 1) - 1,
-          };
-
-          if (field.value && pandaType === 'text') {
-            pandaField.value = field.value;
-          }
-
-          pandaFields[role].push(pandaField);
-        }
-      }
-
-      const docName = `${quote.quoteName || 'Term Sheet'} - ${quote.customerFullName || quote.customerFirstName || 'Customer'}`;
-      const pandaDoc = await pandadoc.createDocumentFromPdf(pdfBuffer, {
-        name: docName,
-        recipients: pandaRecipients,
-        fields: pandaFields,
-        tokens,
-        metadata: { quoteId: quoteId.toString() },
-      });
-
-      const [envelope] = await db.insert(esignEnvelopes).values({
-        vendor: 'pandadoc',
-        quoteId,
-        externalDocumentId: pandaDoc.id,
-        externalTemplateId: null,
-        documentName: docName,
-        status: pandaDoc.status,
-        recipients: JSON.stringify(recipients.map((r: any) => ({
-          ...r,
-          status: 'pending',
-        }))),
-        sendMethod: sendMethod || 'email',
-        createdBy: req.user!.id,
-      }).returning();
-
-      await db.insert(esignEvents).values({
-        vendor: 'pandadoc',
-        envelopeId: envelope.id,
-        externalDocumentId: pandaDoc.id,
-        eventType: 'document.created',
-        eventData: JSON.stringify({ pandaDoc, source: 'pdf-upload' }),
-      });
-
-      console.log(`[PandaDoc] Waiting for PDF document ${pandaDoc.id} to be ready...`);
-      await pandadoc.waitForDocumentReady(pandaDoc.id);
-      console.log(`[PandaDoc] PDF document ${pandaDoc.id} is ready (draft status)`);
-
-      const editorUrl = `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`;
-
-      await db.update(esignEnvelopes)
-        .set({ status: 'draft', signingUrl: editorUrl })
-        .where(eq(esignEnvelopes.id, envelope.id));
-
-      res.json({
-        success: true,
-        envelope: {
-          id: envelope.id,
-          externalDocumentId: pandaDoc.id,
-          status: 'draft',
-          editorUrl,
-        },
-      });
-    } catch (error: any) {
-      console.error('PandaDoc create document from PDF error:', error);
-      res.status(500).json({ error: error.message });
-    }
+  app.post('/api/esign/pandadoc/documents/create-from-pdf', authenticateUser, requireAdmin, async (_req: AuthRequest, res: Response) => {
+    res.status(410).json({ 
+      error: 'Deprecated: must send via PandaDoc. Use POST /api/documents/:id/pandadoc/send' 
+    });
   });
 
-  // Send an existing PandaDoc draft document
   app.post('/api/esign/pandadoc/documents/:envelopeId/send', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const envelopeId = parseInt(req.params.envelopeId);
-      const { sendMethod, subject, message } = req.body;
-      
-      const [envelope] = await db.select().from(esignEnvelopes).where(eq(esignEnvelopes.id, envelopeId));
-      if (!envelope) {
+      const envelope = await db.select().from(esignEnvelopes).where(eq(esignEnvelopes.id, envelopeId)).limit(1);
+      if (!envelope.length) {
         return res.status(404).json({ error: 'Envelope not found' });
       }
-      
-      if (envelope.status === 'sent' || envelope.status === 'completed') {
-        return res.status(400).json({ error: `Document is already ${envelope.status}` });
+      const env = envelope[0];
+      if (!env.externalDocumentId) {
+        return res.status(400).json({ error: 'Envelope has no PandaDoc document ID' });
       }
-      
-      const pandadoc = await import('./esign/pandadoc');
-      const documentId = envelope.externalDocumentId;
-      
-      if (!documentId) {
-        return res.status(400).json({ error: 'No external document ID found' });
-      }
-      
-      // Ensure document is in draft status before sending
-      await pandadoc.waitForDocumentReady(documentId);
-      
-      let signingUrl: string | null = null;
-      const method = sendMethod || envelope.sendMethod || 'email';
-      
-      if (method === 'embedded') {
-        const recipients = JSON.parse(envelope.recipients as string || '[]');
-        const recipientEmail = recipients[0]?.email;
-        if (!recipientEmail) {
-          return res.status(400).json({ error: 'No recipient email found' });
-        }
-        
-        try {
-          const session = await pandadoc.createEmbeddedSession(documentId, recipientEmail);
-          signingUrl = `https://app.pandadoc.com/s/${session.id}`;
-          
-          await db.update(esignEnvelopes)
-            .set({ signingUrl, status: 'sent', sentAt: new Date() })
-            .where(eq(esignEnvelopes.id, envelope.id));
-        } catch (sessionError: any) {
-          console.error('Failed to create embedded session, falling back to email:', sessionError);
-          await pandadoc.sendDocument(documentId, { 
-            subject: subject || `Document for Signature: ${envelope.documentName}`,
-            message: message || 'Please review and sign the attached document.',
-            silent: true
-          });
-          await db.update(esignEnvelopes)
-            .set({ status: 'sent', sentAt: new Date() })
-            .where(eq(esignEnvelopes.id, envelope.id));
-        }
-      } else {
-        await pandadoc.sendDocument(documentId, { 
-          subject: subject || `Document for Signature: ${envelope.documentName}`,
-          message: message || 'Please review and sign the attached document.',
-          silent: true
-        });
-        
-        const recipients = JSON.parse(envelope.recipients as string || '[]');
-        const recipientEmail = recipients[0]?.email;
-        if (recipientEmail) {
-          try {
-            const session = await pandadoc.createEmbeddedSession(documentId, recipientEmail);
-            signingUrl = `https://app.pandadoc.com/s/${session.id}`;
-          } catch (embeddedErr) {
-            console.log('Could not create embedded session after silent send, signing URL not available');
-          }
-        }
-        
-        await db.update(esignEnvelopes)
-          .set({ status: 'sent', sentAt: new Date(), ...(signingUrl ? { signingUrl } : {}) })
-          .where(eq(esignEnvelopes.id, envelope.id));
-      }
-      
-      await db.insert(esignEvents).values({
-        vendor: 'pandadoc',
-        envelopeId: envelope.id,
-        externalDocumentId: documentId,
-        eventType: 'document.sent',
-        eventData: JSON.stringify({ sendMethod: method, signingUrl }),
+
+      await pandadoc.waitForDocumentReady(env.externalDocumentId);
+      const sendResult = await pandadoc.sendDocument(env.externalDocumentId, {
+        subject: `Please sign: ${env.documentName}`,
+        message: 'Please review and sign the attached document.',
+        silent: false,
       });
-      
-      res.json({
-        success: true,
-        envelope: {
-          id: envelope.id,
-          externalDocumentId: documentId,
-          status: 'sent',
-          signingUrl,
-        },
-      });
-    } catch (error: any) {
-      console.error('PandaDoc send document error:', error);
-      res.status(500).json({ error: error.message });
+
+      await db.update(esignEnvelopes)
+        .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+        .where(eq(esignEnvelopes.id, envelopeId));
+
+      res.json({ success: true, status: 'sent' });
+    } catch (error) {
+      console.error('Error sending PandaDoc envelope:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 

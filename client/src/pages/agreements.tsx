@@ -189,16 +189,20 @@ export default function Agreements() {
     return agreements.filter(a => a.status === filter).length;
   };
 
-  const sendPandadocMutation = useMutation({
-    mutationFn: async ({ envelopeId, sendMethod }: { envelopeId: number; sendMethod?: string }) => {
-      return apiRequest('POST', `/api/esign/pandadoc/documents/${envelopeId}/send`, { sendMethod: sendMethod || 'email' });
+  const sendViaPandadocMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest('POST', `/api/documents/${id}/pandadoc/send`, {
+        subject: 'Please sign this document',
+        message: 'Please review and sign the attached document from Sphinx Capital.',
+      });
     },
     onSuccess: () => {
-      toast({ title: "Document Sent", description: "The PandaDoc document has been sent for signing." });
+      toast({ title: "Sent via PandaDoc", description: "Document sent for signing via PandaDoc." });
       queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to send PandaDoc document", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to send via PandaDoc", variant: "destructive" });
     }
   });
 
@@ -312,29 +316,13 @@ export default function Agreements() {
     }
   };
 
-  const handleSendDocument = async (agreement: Agreement) => {
-    if (agreement.vendor === 'pandadoc') {
-      sendPandadocMutation.mutate({ envelopeId: agreement.id });
-      return;
-    }
-    
-    try {
-      const res = await apiRequest('POST', `/api/documents/${agreement.id}/send`, { senderName: 'Sphinx Capital' });
-      const data = await res.json();
-      if (data.success) {
-        toast({ title: "Document Sent!", description: `Signing invitations sent to ${agreement.totalSigners} signer(s)` });
-        queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
-      } else {
-        toast({ title: "Error", description: data.error || "Failed to send", variant: "destructive" });
-      }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to send document", variant: "destructive" });
-    }
+  const handleSendDocument = (agreement: Agreement) => {
+    sendViaPandadocMutation.mutate(agreement.id);
   };
 
   const canVoid = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
-  const canResend = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
-  const canRemind = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
+  const canResend = (agreement: Agreement) => ['sent', 'pending', 'in_progress'].includes(agreement.status) && (agreement.vendor === 'pandadoc' || agreement.externalDocumentId);
+  const canRemind = (agreement: Agreement) => ['sent', 'pending', 'in_progress'].includes(agreement.status) && (agreement.vendor === 'pandadoc' || agreement.externalDocumentId);
   const canEdit = (status: string) => !['completed', 'voided', 'voided_edited'].includes(status);
   const canDelete = (status: string) => status === 'draft';
 
@@ -508,8 +496,14 @@ export default function Agreements() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {agreement.vendor === 'pandadoc' ? (
                           <>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/agreements/${agreement.id}`} className="flex items-center gap-2">
+                                <Eye className="w-4 h-4" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            
                             {agreement.editorUrl && (
                               <DropdownMenuItem 
                                 onClick={() => window.open(agreement.editorUrl, '_blank')}
@@ -519,43 +513,7 @@ export default function Agreements() {
                                 Open in PandaDoc
                               </DropdownMenuItem>
                             )}
-                            
-                            {agreement.status === 'draft' && (
-                              <DropdownMenuItem 
-                                onClick={() => sendPandadocMutation.mutate({ envelopeId: agreement.id })}
-                                disabled={sendPandadocMutation.isPending}
-                                data-testid={`action-send-pandadoc-${agreement.id}`}
-                              >
-                                <Send className="w-4 h-4 mr-2" />
-                                Send for Signature
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {agreement.quoteId && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem asChild>
-                                  <Link 
-                                    href={`/messages?dealId=${agreement.quoteId}&new=true`} 
-                                    className="flex items-center gap-2"
-                                    data-testid={`action-message-${agreement.id}`}
-                                  >
-                                    <MessageSquare className="w-4 h-4" />
-                                    Message about Deal
-                                  </Link>
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/agreements/${agreement.id}`} className="flex items-center gap-2">
-                                <Eye className="w-4 h-4" />
-                                View Details
-                              </Link>
-                            </DropdownMenuItem>
-                            
+
                             {agreement.status === 'draft' && (
                               <DropdownMenuItem 
                                 onClick={() => handleEditDocument(agreement)}
@@ -569,10 +527,11 @@ export default function Agreements() {
                             {agreement.status === 'draft' && (
                               <DropdownMenuItem 
                                 onClick={() => handleSendDocument(agreement)}
-                                data-testid={`action-send-${agreement.id}`}
+                                disabled={sendViaPandadocMutation.isPending}
+                                data-testid={`action-send-pandadoc-${agreement.id}`}
                               >
                                 <Send className="w-4 h-4 mr-2" />
-                                Send for Signature
+                                Send via PandaDoc
                               </DropdownMenuItem>
                             )}
                             
@@ -589,18 +548,18 @@ export default function Agreements() {
                               </DropdownMenuItem>
                             )}
                             
-                            {canResend(agreement.status) && (
+                            {canResend(agreement) && (
                               <DropdownMenuItem 
                                 onClick={() => resendAllMutation.mutate(agreement.id)}
                                 disabled={resendAllMutation.isPending}
                                 data-testid={`action-resend-${agreement.id}`}
                               >
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                                Resend to All
+                                Resend via PandaDoc
                               </DropdownMenuItem>
                             )}
                             
-                            {canRemind(agreement.status) && (
+                            {canRemind(agreement) && (
                               <DropdownMenuItem 
                                 onClick={() => remindMutation.mutate(agreement.id)}
                                 disabled={remindMutation.isPending}
@@ -652,7 +611,6 @@ export default function Agreements() {
                               </>
                             )}
                           </>
-                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

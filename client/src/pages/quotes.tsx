@@ -30,6 +30,8 @@ interface DocumentInfo {
   id: number;
   status: 'draft' | 'pending' | 'completed' | 'expired';
   createdAt: string;
+  vendor?: string;
+  pandadocDocumentId?: string;
   signers: Array<{
     id: number;
     name: string;
@@ -52,14 +54,15 @@ function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
 
   const resendMutation = useMutation({
     mutationFn: async (documentId: number) => {
-      return apiRequest('POST', `/api/documents/${documentId}/send`, {
-        senderName: "Sphinx Capital"
+      return apiRequest('POST', `/api/documents/${documentId}/pandadoc/send`, {
+        subject: 'Reminder: Please sign this document',
+        message: 'This is a reminder to review and sign the attached document from Sphinx Capital.',
       });
     },
     onSuccess: () => {
       toast({ 
-        title: "Email Resent", 
-        description: "The signing request has been resent." 
+        title: "Resent via PandaDoc", 
+        description: "The signing request has been resent via PandaDoc." 
       });
       queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId, 'documents'] });
     },
@@ -133,7 +136,7 @@ function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
             </span>
           )}
         </div>
-        {(effectiveStatus === 'pending' || effectiveStatus === 'expired') && (
+        {(effectiveStatus === 'pending' || effectiveStatus === 'expired') && (latestDoc.vendor === 'pandadoc' || latestDoc.pandadocDocumentId) && (
           <Button
             variant="outline"
             size="sm"
@@ -142,7 +145,7 @@ function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
             data-testid={`button-resend-${latestDoc.id}`}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${resendMutation.isPending ? 'animate-spin' : ''}`} />
-            Resend
+            Resend via PandaDoc
           </Button>
         )}
       </div>
