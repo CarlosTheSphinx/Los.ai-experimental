@@ -43,11 +43,73 @@ async function downloadDocumentBuffer(filePath: string): Promise<Buffer> {
   return buffer;
 }
 
+function isPdfFile(filePath: string, mimeType?: string | null): boolean {
+  if (mimeType?.includes('pdf')) return true;
+  return filePath.toLowerCase().endsWith('.pdf');
+}
+
+async function renderPdfPagesToImages(buffer: Buffer, maxPages: number = 10): Promise<Array<{ base64: string; pageNum: number }>> {
+  try {
+    const { createCanvas } = await import('canvas');
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+    class NodeCanvasFactory {
+      create(width: number, height: number) {
+        const canvas = createCanvas(width, height);
+        const context = canvas.getContext('2d');
+        return { canvas, context };
+      }
+      reset(canvasAndContext: any, width: number, height: number) {
+        canvasAndContext.canvas.width = width;
+        canvasAndContext.canvas.height = height;
+      }
+      destroy(canvasAndContext: any) {
+        canvasAndContext.canvas.width = 0;
+        canvasAndContext.canvas.height = 0;
+      }
+    }
+
+    const doc = await pdfjsLib.getDocument({
+      data: new Uint8Array(buffer),
+      canvasFactory: new NodeCanvasFactory() as any,
+    }).promise;
+
+    const pages: Array<{ base64: string; pageNum: number }> = [];
+    const numPages = Math.min(doc.numPages, maxPages);
+
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const scale = 2.0;
+      const viewport = page.getViewport({ scale });
+
+      const canvasFactory = new NodeCanvasFactory();
+      const { canvas, context } = canvasFactory.create(viewport.width, viewport.height);
+
+      await page.render({
+        canvasContext: context as any,
+        viewport: viewport,
+      }).promise;
+
+      const pngBuffer = canvas.toBuffer('image/png');
+      pages.push({
+        base64: pngBuffer.toString('base64'),
+        pageNum: i,
+      });
+    }
+
+    await doc.destroy();
+    return pages;
+  } catch (error: any) {
+    console.error('PDF to image rendering error:', error.message);
+    return [];
+  }
+}
+
 async function extractTextFromDocument(filePath: string, mimeType?: string | null): Promise<string> {
   try {
     const buffer = await downloadDocumentBuffer(filePath);
     
-    if (mimeType?.includes('pdf') || filePath.toLowerCase().endsWith('.pdf')) {
+    if (isPdfFile(filePath, mimeType)) {
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
       const textParts: string[] = [];
@@ -69,6 +131,11 @@ async function extractTextFromDocument(filePath: string, mimeType?: string | nul
     console.error('Document text extraction error:', error.message);
     throw new Error(`Failed to extract text from document: ${error.message}`);
   }
+}
+
+function hasSubstantialText(text: string): boolean {
+  const cleaned = text.replace(/\[Page \d+\]/g, '').replace(/\s+/g, ' ').trim();
+  return cleaned.length > 100;
 }
 
 interface ReviewFinding {
@@ -214,6 +281,35 @@ export async function reviewDocument(
           });
         } catch (err: any) {
           console.error(`Could not read image file ${fn}:`, err.message);
+        }
+      } else if (isPdfFile(fp, mt)) {
+        try {
+          const text = await extractTextFromDocument(fp, mt);
+          const textIsSubstantial = hasSubstantialText(text);
+          
+          if (textIsSubstantial) {
+            textParts.push(`--- File: ${fn} ---\n${text}`);
+          }
+          
+          if (!textIsSubstantial) {
+            console.log(`PDF "${fn}" has sparse text (${text.replace(/\[Page \d+\]/g, '').trim().length} chars), rendering pages as images for vision analysis`);
+            const buffer = await downloadDocumentBuffer(fp);
+            const pdfImages = await renderPdfPagesToImages(buffer);
+            if (pdfImages.length > 0) {
+              hasImages = true;
+              for (const pdfImg of pdfImages) {
+                imageContents.push({
+                  base64: pdfImg.base64,
+                  mediaType: 'image/png',
+                  fileName: `${fn} - Page ${pdfImg.pageNum}`,
+                });
+              }
+            } else if (text && text.trim().length > 5) {
+              textParts.push(`--- File: ${fn} ---\n${text}`);
+            }
+          }
+        } catch (err: any) {
+          console.error(`Could not read PDF file ${fn}:`, err.message);
         }
       } else {
         try {
