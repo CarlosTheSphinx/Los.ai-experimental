@@ -428,30 +428,23 @@ interface PandaDocFieldInjection {
 
 const WIDGET_FIELD_TYPES = new Set(['signature', 'initials', 'date']);
 
-const PANDADOC_MIN_WIDGET_HEIGHT: Record<string, number> = {
+const PANDADOC_WIDGET_EFFECTIVE_HEIGHT: Record<string, number> = {
   signature: 50,
-  date: 50,
-  initials: 50,
+  date: 100,
+  initials: 80,
 };
 
-function getWidgetYOffset(fieldType: string, declaredHeight: number): number {
-  const ratio = fieldType === 'signature' ? parseFloat(process.env.SIGNATURE_Y_OFFSET_RATIO || '1')
-    : fieldType === 'date' ? parseFloat(process.env.DATE_Y_OFFSET_RATIO || '1')
-    : fieldType === 'initials' ? parseFloat(process.env.INITIALS_Y_OFFSET_RATIO || '1')
-    : 0;
-  if (ratio === 0) return 0;
-  const minHeight = PANDADOC_MIN_WIDGET_HEIGHT[fieldType] || 50;
-  const effectiveHeight = Math.max(declaredHeight, minHeight);
-  return ratio * effectiveHeight;
-}
+const PANDADOC_WIDGET_X_OFFSET = 5;
 
 function buildFieldPayload(f: PandaDocFieldInjection) {
+  let finalOffsetX = f.offsetX;
   let finalOffsetY = f.offsetY;
   const isWidget = WIDGET_FIELD_TYPES.has(f.type);
 
   if (isWidget) {
-    const yOffset = getWidgetYOffset(f.type, f.height);
-    finalOffsetY = f.offsetY + yOffset;
+    const effectiveHeight = PANDADOC_WIDGET_EFFECTIVE_HEIGHT[f.type] || 50;
+    finalOffsetY = f.offsetY + effectiveHeight;
+    finalOffsetX = f.offsetX + PANDADOC_WIDGET_X_OFFSET;
   }
 
   return {
@@ -465,7 +458,7 @@ function buildFieldPayload(f: PandaDocFieldInjection) {
     layout: {
       page: f.page,
       position: {
-        offset_x: String(Math.round(f.offsetX)),
+        offset_x: String(Math.round(finalOffsetX)),
         offset_y: String(Math.round(finalOffsetY)),
         anchor_point: 'topleft',
       },
