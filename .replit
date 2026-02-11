@@ -46,6 +46,3 @@ integrations = ["resend:1.0.0", "javascript_object_storage:2.0.0", "javascript_o
 
 [userenv.shared]
 APP_URL = "https://code-paste.replit.app"
-SIGNATURE_Y_OFFSET_RATIO = "1.0"
-DATE_Y_OFFSET_RATIO = "1.0"
-INITIALS_Y_OFFSET_RATIO = "1.0"

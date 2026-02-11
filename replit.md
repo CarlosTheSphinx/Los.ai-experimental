@@ -96,7 +96,7 @@ When a loan program's workflow is edited (documents moved between stages, tasks 
 
 - **Apify**: Cloud-based web scraping platform for integrating with external pricing providers.
 - **PostgreSQL**: The primary relational database for all application data.
-- **PandaDoc**: Optional e-signing service for agreement management.
+- **PandaDoc**: E-signing service for agreement management. All document sending goes through PandaDoc exclusively. **Critical: PandaDoc uses 96 DPI coordinates internally while PDFs use 72 DPI, so all field coordinates (x, y, width, height) must be multiplied by 4/3 (96/72) when injecting via the API.** Prefilled text values are burned directly into the PDF using pdf-lib (permanent, non-editable), while interactive signer fields (signature, date, initials) are injected as PandaDoc fields. Calibration endpoint at `/api/pandadoc/debug-field-placement` available for testing.
 - **Resend**: Used for sending emails (e.g., loan digests, partner broadcasts).
 - **Twilio**: Used for sending SMS messages (e.g., loan digests, partner broadcasts).
 - **Google OAuth 2.0**: For user authentication and Google Drive integration.
