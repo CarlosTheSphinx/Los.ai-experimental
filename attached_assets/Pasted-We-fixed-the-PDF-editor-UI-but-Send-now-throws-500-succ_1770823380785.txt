@@ -1,0 +1,99 @@
+We fixed the PDF editor UI, but “Send” now throws:
+
+500: {"success":false,"error":"invalid input syntax for type integer: \"NaN\""}
+
+Task A: Fix the NaN → integer backend error
+
+1) Identify exactly which field is NaN:
+- Add structured logging on the server endpoint that handles “Send for signature”.
+- Log the full request payload (sanitize PII), and log each numeric field after parsing:
+  - documentId / termSheetId
+  - templateId
+  - pageNumber
+  - x, y, w, h (if stored as ints)
+  - recipientId / signerId
+  - any “status” id or step index
+- If using an ORM, also log the model create/update payload right before writing to DB.
+
+2) Fix parsing + validation:
+- Anywhere we convert values from the client, do NOT pass NaN into DB.
+- Implement a validation layer before DB write:
+  - If a required numeric field is missing/NaN, return 400 with a clear message identifying the field.
+  - Use zod/yup/valibot (or simple manual checks) to validate:
+    - Number.isFinite(value)
+    - parseInt/parseFloat with fallback
+- On the client, ensure we never send "NaN":
+  - When serializing overlay fields, guard all numbers:
+    - const n = Number(value); if (!Number.isFinite(n)) { set default or block send }
+  - Ensure pageNumber is always set for each field.
+  - Ensure termSheetId/documentId is present from route params/state.
+
+3) Correct the root cause:
+- Find the specific input producing NaN (likely from:
+  - pageNumber not set
+  - field coordinates computed from DOMRect when element not mounted
+  - templateId undefined
+  - termSheetId parsed from URL incorrectly)
+- Fix it at the source, not just by fallback defaults.
+
+Deliverable:
+- Show me which field was NaN and the exact code change that prevents it.
+- Add one integration test or simple runtime assertion to prevent regression.
+
+---
+
+Task B: Add Term Sheets “Edit / Void / Resend” lifecycle
+
+Current need:
+In my Term Sheets tab (list of documents with statuses: draft/sent/signed/etc):
+- I should be able to click “Edit” and return to the full edit screen for that term sheet.
+- Even if I already sent a document, I should be able to:
+  1) Void/Cancel it
+  2) Re-open edit mode
+  3) Re-send a new version
+
+Implement as a simple state machine + versioning:
+
+1) Data model changes (choose the simplest approach):
+Option 1 (preferred): versioned records
+- TermSheet: { id, status, currentVersionId, ... }
+- TermSheetVersion: { id, termSheetId, versionNumber, pdfUrl, fieldsJson, createdAt }
+- SignatureEnvelope: { id, termSheetVersionId, provider, providerEnvelopeId, status, createdAt }
+
+Option 2: single record + history
+- TermSheet has fieldsJson/pdfUrl updated over time
+- SignatureEnvelopes reference TermSheet + snapshot fieldsJson at send time
+
+2) Status transitions:
+- draft → sent → signed (normal)
+- sent → voided (user action “Void”)
+- voided → draft (when user clicks “Edit” after voiding, create a new version or reopen draft)
+- sent (old envelope) stays voided; resend creates a new envelope tied to the newest version
+
+3) UI behavior in Term Sheets list:
+- Actions shown based on status:
+  - Draft: Edit, Send, Delete
+  - Sent: View, Void, (Edit should first void then open edit), Resend (creates new envelope after void+edit optional)
+  - Signed: View (and optionally “Create Amendment” that clones into new draft version)
+- Clicking Edit routes to /term-sheets/:id/edit and loads:
+  - the latest editable version fields + pdf
+- Clicking Void:
+  - calls backend: POST /term-sheets/:id/void (or /envelopes/:envelopeId/void)
+  - voids in provider (PandaDoc/DocuSign) if integrated
+  - updates internal status to voided
+- Clicking Resend:
+  - creates a new version snapshot if needed
+  - creates a new envelope and sets status to sent
+
+4) Back-end endpoints:
+- GET /term-sheets/:id (include status + latest version + envelopes)
+- POST /term-sheets/:id/versions (clone latest → new draft version)
+- POST /term-sheets/:id/send (send latest draft version; validate payload to prevent NaN)
+- POST /term-sheets/:id/void (void latest active envelope)
+- POST /term-sheets/:id/resend (void active envelope if exists, then send latest version)
+
+Deliverables:
+- Implement minimal schema and endpoints
+- Update Term Sheets table UI with action buttons and correct routing
+- Ensure “Edit” always returns to the full editor screen with fields intact
+- Ensure “Void + Edit + Resend” works end-to-end

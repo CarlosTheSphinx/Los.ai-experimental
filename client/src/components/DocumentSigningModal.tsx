@@ -49,6 +49,7 @@ interface DocumentSigningModalProps {
   open: boolean;
   onClose: () => void;
   quote: SavedQuote;
+  existingDocumentId?: number | null;
 }
 
 const SIGNER_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
@@ -484,7 +485,7 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
   );
 }
 
-export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningModalProps) {
+export function DocumentSigningModal({ open, onClose, quote, existingDocumentId }: DocumentSigningModalProps) {
   const { toast } = useToast();
   const [step, setStep] = useState<"upload" | "signers" | "fields" | "send">("upload");
   const [documentId, setDocumentId] = useState<number | null>(null);
@@ -559,6 +560,73 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     queryKey: ["/api/esign/pandadoc/quote", quote.id, "tokens"],
     enabled: open && uploadMode === "pandadoc" && (showTokenPreview || !!pandadocDraft),
   });
+
+  const [existingDocLoaded, setExistingDocLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open || !existingDocumentId || existingDocLoaded) return;
+    
+    const loadExistingDocument = async () => {
+      try {
+        const res = await fetch(`/api/esignature/agreements/${existingDocumentId}`, { credentials: 'include' });
+        const data = await res.json();
+        if (!data.success || !data.agreement) {
+          toast({ title: "Error", description: "Failed to load document for editing", variant: "destructive" });
+          return;
+        }
+        const agreement = data.agreement;
+        setDocumentId(agreement.id);
+        setFileName(agreement.fileName || 'document.pdf');
+        setPdfData(agreement.fileData);
+        setPageCount(agreement.pageCount || 1);
+        
+        if (agreement.signers && agreement.signers.length > 0) {
+          setSigners(agreement.signers.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            email: s.email,
+            color: s.color || SIGNER_COLORS[0],
+          })));
+        }
+        
+        if (agreement.fields && agreement.fields.length > 0) {
+          setFields(agreement.fields.map((f: any) => ({
+            id: f.id,
+            signerId: f.signerId,
+            pageNumber: f.pageNumber || 1,
+            fieldType: f.fieldType,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            value: f.value || '',
+          })));
+        }
+        
+        setUploadMode("manual");
+        setExistingDocLoaded(true);
+        
+        if (agreement.signers && agreement.signers.length > 0 && agreement.fields && agreement.fields.length > 0) {
+          setStep("fields");
+        } else if (agreement.signers && agreement.signers.length > 0) {
+          setStep("signers");
+        } else {
+          setStep("signers");
+        }
+      } catch (err) {
+        console.error('Failed to load existing document:', err);
+        toast({ title: "Error", description: "Failed to load document", variant: "destructive" });
+      }
+    };
+    
+    loadExistingDocument();
+  }, [open, existingDocumentId, existingDocLoaded]);
+
+  useEffect(() => {
+    if (!open) {
+      setExistingDocLoaded(false);
+    }
+  }, [open]);
 
   // PandaDoc create draft mutation (from template)
   const createPandadocDraftMutation = useMutation({
@@ -1020,11 +1088,20 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
 
   const saveFieldsMutation = useMutation({
     mutationFn: async () => {
-      console.log('Saving fields:', fields);
-      console.log('Document ID:', documentId);
-      const res = await apiRequest('POST', `/api/documents/${documentId}/fields/bulk`, { fields });
+      if (!documentId || !Number.isFinite(documentId)) {
+        throw new Error('Invalid document ID. Please re-upload the PDF.');
+      }
+      const sanitizedFields = fields.map(f => ({
+        ...f,
+        signerId: Number.isFinite(f.signerId) ? f.signerId : null,
+        pageNumber: Number.isFinite(f.pageNumber) ? Math.max(1, f.pageNumber) : 1,
+        x: Number.isFinite(f.x) ? f.x : 0,
+        y: Number.isFinite(f.y) ? f.y : 0,
+        width: Number.isFinite(f.width) ? Math.max(10, f.width) : 100,
+        height: Number.isFinite(f.height) ? Math.max(10, f.height) : 30,
+      }));
+      const res = await apiRequest('POST', `/api/documents/${documentId}/fields/bulk`, { fields: sanitizedFields });
       const data = await res.json();
-      console.log('Save fields response:', data);
       if (!data.success) {
         throw new Error(data.error || 'Failed to save fields');
       }

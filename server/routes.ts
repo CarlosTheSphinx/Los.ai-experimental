@@ -1785,27 +1785,56 @@ export async function registerRoutes(
       }
       
       console.log(`📝 Saving ${fields?.length || 0} fields for document ${documentId}`);
-      console.log('Fields data:', JSON.stringify(fields, null, 2));
+
+      if (!Array.isArray(fields)) {
+        return res.status(400).json({ success: false, error: 'Fields must be an array' });
+      }
+
+      const safeNum = (val: any, fallback: number): number => {
+        const n = Number(val);
+        return Number.isFinite(n) ? n : fallback;
+      };
+
+      const safeInt = (val: any): number | null => {
+        if (val === null || val === undefined) return null;
+        const n = parseInt(val, 10);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const validatedFields = fields.map((field: any, idx: number) => {
+        const signerId = safeInt(field.signerId);
+        const pageNumber = safeNum(field.pageNumber, 1);
+        const x = safeNum(field.x, 0);
+        const y = safeNum(field.y, 0);
+        const width = safeNum(field.width, 100);
+        const height = safeNum(field.height, 30);
+
+        if (!field.fieldType || typeof field.fieldType !== 'string') {
+          throw new Error(`Field ${idx}: missing or invalid fieldType`);
+        }
+
+        return {
+          documentId,
+          signerId,
+          pageNumber: Math.max(1, Math.round(pageNumber)),
+          fieldType: field.fieldType,
+          x,
+          y,
+          width: Math.max(10, width),
+          height: Math.max(10, height),
+          required: field.required !== false,
+          label: field.label || null,
+          value: field.value || null
+        };
+      });
 
       // Delete existing fields
       await storage.deleteFieldsByDocumentId(documentId);
 
       // Create new fields
       const createdFields = [];
-      for (const field of fields) {
-        const created = await storage.createField({
-          documentId,
-          signerId: field.signerId || null,
-          pageNumber: field.pageNumber || 1,
-          fieldType: field.fieldType,
-          x: field.x,
-          y: field.y,
-          width: field.width,
-          height: field.height,
-          required: field.required !== false,
-          label: field.label,
-          value: field.value || null // Save pre-populated field values from quote data
-        });
+      for (const fieldData of validatedFields) {
+        const created = await storage.createField(fieldData);
         createdFields.push(created);
       }
 

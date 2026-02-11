@@ -54,6 +54,8 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DocumentSigningModal } from "@/components/DocumentSigningModal";
+import type { SavedQuote } from "@shared/schema";
 
 interface Signer {
   id: number;
@@ -101,6 +103,9 @@ export default function Agreements() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editDocumentId, setEditDocumentId] = useState<number | null>(null);
+  const [editQuoteData, setEditQuoteData] = useState<SavedQuote | null>(null);
 
   const { data, isLoading } = useQuery<{ success: boolean; agreements: Agreement[] }>({
     queryKey: ['/api/esignature/agreements']
@@ -161,23 +166,6 @@ export default function Agreements() {
     }
   });
 
-  const editMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return apiRequest('POST', `/api/esignature/agreements/${id}/edit`);
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
-      if (data.newDocumentId) {
-        toast({ title: "Document Copied", description: "Opening the new draft for editing." });
-        setLocation(`/agreements/${data.newDocumentId}`);
-      } else {
-        toast({ title: "Document Copied", description: "You can now edit and resend the document." });
-      }
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to create editable copy", variant: "destructive" });
-    }
-  });
 
   const agreements = data?.agreements || [];
   
@@ -281,10 +269,73 @@ export default function Agreements() {
     setDeleteDialogOpen(true);
   };
 
+  const handleEditDocument = async (agreement: Agreement) => {
+    if (agreement.vendor === 'pandadoc') {
+      if (agreement.editorUrl) {
+        window.open(agreement.editorUrl, '_blank');
+      }
+      return;
+    }
+    
+    try {
+      let targetDocId = agreement.id;
+      
+      if (agreement.status === 'sent' || agreement.status === 'pending' || agreement.status === 'in_progress') {
+        const editRes = await apiRequest('POST', `/api/esignature/agreements/${agreement.id}/edit`);
+        const editData = await editRes.json();
+        if (editData.success && editData.newDocumentId) {
+          targetDocId = editData.newDocumentId;
+          queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+        } else {
+          toast({ title: "Error", description: editData.error || "Failed to create editable copy", variant: "destructive" });
+          return;
+        }
+      }
+      
+      if (agreement.quoteId) {
+        const quoteRes = await fetch(`/api/quotes/${agreement.quoteId}`, { credentials: 'include' });
+        const quoteData = await quoteRes.json();
+        if (quoteData) {
+          setEditQuoteData(quoteData);
+        } else {
+          setEditQuoteData({ id: agreement.quoteId, quoteName: agreement.title } as any);
+        }
+      } else {
+        setEditQuoteData({ id: 0, quoteName: agreement.title } as any);
+      }
+      
+      setEditDocumentId(targetDocId);
+      setEditModalOpen(true);
+    } catch (err) {
+      console.error('Failed to open editor:', err);
+      toast({ title: "Error", description: "Failed to open editor", variant: "destructive" });
+    }
+  };
+
+  const handleSendDocument = async (agreement: Agreement) => {
+    if (agreement.vendor === 'pandadoc') {
+      sendPandadocMutation.mutate({ envelopeId: agreement.id });
+      return;
+    }
+    
+    try {
+      const res = await apiRequest('POST', `/api/documents/${agreement.id}/send`, { senderName: 'Sphinx Capital' });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Document Sent!", description: `Signing invitations sent to ${agreement.totalSigners} signer(s)` });
+        queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to send", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to send document", variant: "destructive" });
+    }
+  };
+
   const canVoid = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
   const canResend = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
   const canRemind = (status: string) => ['sent', 'pending', 'in_progress'].includes(status);
-  const canEdit = (status: string) => status !== 'completed';
+  const canEdit = (status: string) => !['completed', 'voided', 'voided_edited'].includes(status);
   const canDelete = (status: string) => status === 'draft';
 
   return (
@@ -505,6 +556,26 @@ export default function Agreements() {
                               </Link>
                             </DropdownMenuItem>
                             
+                            {agreement.status === 'draft' && (
+                              <DropdownMenuItem 
+                                onClick={() => handleEditDocument(agreement)}
+                                data-testid={`action-edit-draft-${agreement.id}`}
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {agreement.status === 'draft' && (
+                              <DropdownMenuItem 
+                                onClick={() => handleSendDocument(agreement)}
+                                data-testid={`action-send-${agreement.id}`}
+                              >
+                                <Send className="w-4 h-4 mr-2" />
+                                Send for Signature
+                              </DropdownMenuItem>
+                            )}
+                            
                             {agreement.quoteId && (
                               <DropdownMenuItem asChild>
                                 <Link 
@@ -544,8 +615,7 @@ export default function Agreements() {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
-                                  onClick={() => editMutation.mutate(agreement.id)}
-                                  disabled={editMutation.isPending}
+                                  onClick={() => handleEditDocument(agreement)}
                                   data-testid={`action-edit-${agreement.id}`}
                                 >
                                   <Edit className="w-4 h-4 mr-2" />
@@ -647,6 +717,20 @@ export default function Agreements() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {editQuoteData && (
+        <DocumentSigningModal
+          open={editModalOpen}
+          onClose={() => {
+            setEditModalOpen(false);
+            setEditDocumentId(null);
+            setEditQuoteData(null);
+            queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+          }}
+          quote={editQuoteData as any}
+          existingDocumentId={editDocumentId || undefined}
+        />
+      )}
     </div>
   );
 }
