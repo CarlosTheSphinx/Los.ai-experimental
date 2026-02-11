@@ -170,6 +170,28 @@ export async function createEmbeddedSession(
   return response.json();
 }
 
+export async function createEditingSession(
+  documentId: string,
+  email: string,
+  options: { lifetime?: number } = {}
+): Promise<{ id: string; token: string; expires_at: string; email: string; document_id: string }> {
+  const response = await pandaDocRequest(`/documents/${documentId}/editing-sessions`, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      lifetime: options.lifetime || 3600,
+    }),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("PandaDoc create editing session error:", errorText);
+    throw new Error(`Failed to create PandaDoc editing session: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
+}
+
 export async function getDocumentStatus(documentId: string): Promise<PandaDocDocument> {
   const response = await pandaDocRequest(`/documents/${documentId}`);
   

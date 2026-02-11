@@ -397,9 +397,11 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     { name: `${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim(), email: quote.customerEmail || '', role: '' }
   ]);
   const [pandadocSendMethod, setPandadocSendMethod] = useState<"email" | "embedded">("email");
-  const [pandadocSending, setPandadocSending] = useState(false);
   const [pandadocResult, setPandadocResult] = useState<{ success: boolean; signingUrl?: string; envelopeId?: number } | null>(null);
   const [pandadocDraft, setPandadocDraft] = useState<{ envelopeId: number; externalDocumentId: string; editorUrl: string } | null>(null);
+  const [pandadocEditorToken, setPandadocEditorToken] = useState<string | null>(null);
+  const [pandadocEditorLoading, setPandadocEditorLoading] = useState(false);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
   const [templateRoles, setTemplateRoles] = useState<Array<{ name: string }>>([]);
   const [templateRolesLoading, setTemplateRolesLoading] = useState(false);
   const [templateRolesError, setTemplateRolesError] = useState<string | null>(null);
@@ -443,16 +445,35 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
       });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.success) {
-        setPandadocDraft({
+        const draftInfo = {
           envelopeId: data.envelope.id,
           externalDocumentId: data.envelope.externalDocumentId,
           editorUrl: data.envelope.editorUrl,
-        });
+        };
+        setPandadocDraft(draftInfo);
+        setPandadocEditorLoading(true);
+        try {
+          const sessionRes = await apiRequest('POST', `/api/esign/pandadoc/documents/${draftInfo.externalDocumentId}/editing-session`, {});
+          const sessionData = await sessionRes.json();
+          if (sessionData.success && sessionData.token) {
+            setPandadocEditorToken(sessionData.token);
+          } else {
+            console.warn('Editing session created but no token returned, falling back to external editor');
+          }
+        } catch (err: any) {
+          console.error('Failed to create editing session:', err);
+          toast({
+            title: "Embedded editor unavailable",
+            description: "You can still review the document by opening it in PandaDoc.",
+          });
+        } finally {
+          setPandadocEditorLoading(false);
+        }
         toast({ 
           title: "Draft Created", 
-          description: "Your term sheet has been created. Review it in PandaDoc before sending." 
+          description: "Your term sheet is ready for review. Edit it below before sending." 
         });
       } else {
         toast({ title: "Error", description: data.error || "Failed to create document", variant: "destructive" });
@@ -482,6 +503,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
           envelopeId: data.envelope?.id,
         });
         setPandadocDraft(null);
+        setPandadocEditorToken(null);
         toast({ 
           title: "Term Sheet Sent!", 
           description: pandadocSendMethod === 'email' 
@@ -542,6 +564,42 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
     const debounceTimer = setTimeout(fetchTemplateDetails, 500);
     return () => clearTimeout(debounceTimer);
   }, [pandadocTemplateId]);
+
+  useEffect(() => {
+    if (!pandadocEditorToken || !editorContainerRef.current) return;
+    
+    const containerId = 'pandadoc-editor-container';
+    editorContainerRef.current.id = containerId;
+    
+    let editorInstance: any = null;
+    
+    const initEditor = async () => {
+      try {
+        const { Editor } = await import('pandadoc-editor');
+        editorInstance = new Editor(containerId, {
+          width: '100%',
+          height: '100%',
+          token: pandadocEditorToken,
+          fieldPlacementOnly: false,
+        });
+        editorInstance.open();
+      } catch (err) {
+        console.error('Failed to initialize PandaDoc editor:', err);
+      }
+    };
+    
+    initEditor();
+    
+    return () => {
+      if (editorInstance) {
+        try {
+          editorInstance.close?.();
+        } catch (e) {
+          // ignore cleanup errors
+        }
+      }
+    };
+  }, [pandadocEditorToken]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setPageCount(numPages);
@@ -1186,75 +1244,93 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                           <Button onClick={onClose} data-testid="button-close-success">Close</Button>
                         </div>
                       ) : pandadocDraft ? (
-                        <div className="max-w-lg mx-auto space-y-6">
-                          <div className="text-center space-y-3">
-                            <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 mx-auto flex items-center justify-center">
-                              <FileText className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                        <div className="flex flex-col h-full gap-4">
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-5 h-5 text-primary" />
+                              <h3 className="font-semibold">Review & Edit Draft</h3>
                             </div>
-                            <h3 className="text-lg font-semibold">Draft Created</h3>
-                            <p className="text-sm text-muted-foreground">
-                              Your term sheet has been created as a draft in PandaDoc. Review and edit it before sending to the borrower.
-                            </p>
-                          </div>
-
-                          <Card>
-                            <CardContent className="pt-6 space-y-4">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <Button
                                 variant="outline"
-                                className="w-full"
+                                size="sm"
                                 onClick={() => window.open(pandadocDraft.editorUrl, '_blank')}
-                                data-testid="button-review-pandadoc"
+                                data-testid="button-open-pandadoc-external"
                               >
-                                <ExternalLink className="w-4 h-4 mr-2" />
-                                Open in PandaDoc to Review & Edit
+                                <ExternalLink className="w-4 h-4 mr-1" />
+                                Open in PandaDoc
                               </Button>
-                              
-                              <div className="border-t pt-4 space-y-3">
-                                <Label>Send Method</Label>
-                                <div className="flex gap-4">
-                                  <Button
-                                    type="button"
-                                    variant={pandadocSendMethod === "email" ? "default" : "outline"}
-                                    onClick={() => setPandadocSendMethod("email")}
-                                    className="flex-1"
-                                    data-testid="button-draft-send-email"
-                                  >
-                                    <Mail className="w-4 h-4 mr-2" />
-                                    Email
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant={pandadocSendMethod === "embedded" ? "default" : "outline"}
-                                    onClick={() => setPandadocSendMethod("embedded")}
-                                    className="flex-1"
-                                    data-testid="button-draft-send-embedded"
-                                  >
-                                    <ExternalLink className="w-4 h-4 mr-2" />
-                                    Embedded
-                                  </Button>
-                                </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={pandadocSendMethod === "email" ? "default" : "outline"}
+                                  onClick={() => setPandadocSendMethod("email")}
+                                  data-testid="button-draft-send-email"
+                                >
+                                  <Mail className="w-4 h-4 mr-1" />
+                                  Email
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={pandadocSendMethod === "embedded" ? "default" : "outline"}
+                                  onClick={() => setPandadocSendMethod("embedded")}
+                                  data-testid="button-draft-send-embedded"
+                                >
+                                  <ExternalLink className="w-4 h-4 mr-1" />
+                                  Embedded
+                                </Button>
                               </div>
-
                               <Button
                                 onClick={() => sendPandadocDraftMutation.mutate()}
                                 disabled={sendPandadocDraftMutation.isPending}
-                                className="w-full"
+                                size="sm"
                                 data-testid="button-send-draft"
                               >
                                 {sendPandadocDraftMutation.isPending ? (
                                   <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Sending Term Sheet...
+                                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                    Sending...
                                   </>
                                 ) : (
                                   <>
-                                    <Send className="w-4 h-4 mr-2" />
-                                    Send Term Sheet for Signature
+                                    <Send className="w-4 h-4 mr-1" />
+                                    Send for Signature
                                   </>
                                 )}
                               </Button>
-                            </CardContent>
-                          </Card>
+                            </div>
+                          </div>
+                          
+                          <div className="flex-1 min-h-[500px] border rounded-lg overflow-hidden relative">
+                            {pandadocEditorLoading ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+                                <div className="text-center space-y-2">
+                                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+                                  <p className="text-sm text-muted-foreground">Loading editor...</p>
+                                </div>
+                              </div>
+                            ) : !pandadocEditorToken ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+                                <div className="text-center space-y-3 max-w-sm">
+                                  <FileText className="w-10 h-10 mx-auto text-muted-foreground" />
+                                  <p className="text-sm text-muted-foreground">
+                                    Embedded editor not available. You can still review and edit in PandaDoc directly.
+                                  </p>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => window.open(pandadocDraft.editorUrl, '_blank')}
+                                    data-testid="button-review-pandadoc-fallback"
+                                  >
+                                    <ExternalLink className="w-4 h-4 mr-2" />
+                                    Open in PandaDoc
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                            <div ref={editorContainerRef} className="w-full h-full min-h-[500px]" />
+                          </div>
                         </div>
                       ) : (
                         <div className="max-w-lg mx-auto space-y-6">

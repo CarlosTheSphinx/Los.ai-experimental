@@ -11641,6 +11641,26 @@ Respond ONLY with valid JSON in this format:
     }
   });
 
+  app.post('/api/esign/pandadoc/documents/:documentId/editing-session', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { documentId } = req.params;
+      const userEmail = req.user!.email;
+      
+      const pandadoc = await import('./esign/pandadoc');
+      const session = await pandadoc.createEditingSession(documentId, userEmail, { lifetime: 3600 });
+      
+      res.json({
+        success: true,
+        token: session.token,
+        sessionId: session.id,
+        expiresAt: session.expires_at,
+      });
+    } catch (error: any) {
+      console.error('PandaDoc create editing session error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get envelopes for a quote (signing status tracking)
   app.get('/api/esign/pandadoc/quote/:quoteId/envelopes', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
