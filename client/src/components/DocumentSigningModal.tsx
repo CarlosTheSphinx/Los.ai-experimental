@@ -1329,103 +1329,99 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
 
           <TabsContent value="fields" className="flex-1 min-h-0 overflow-hidden p-4">
             <div className="flex gap-4 h-full">
-              <div className="w-64 space-y-4 flex-shrink-0 overflow-y-auto max-h-full">
-                <div>
-                  <Label className="text-sm font-medium">Select Signer</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {signers.map((signer, i) => (
-                      <Badge
-                        key={i}
-                        variant={selectedSignerIndex === i ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => setSelectedSignerIndex(i)}
-                        style={selectedSignerIndex === i ? { backgroundColor: signer.color } : { borderColor: signer.color, color: signer.color }}
-                        data-testid={`select-signer-${i}`}
-                      >
-                        {signer.name}
-                      </Badge>
-                    ))}
+              <div className="w-64 flex-shrink-0 flex flex-col max-h-full">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+                  <div>
+                    <Label className="text-sm font-medium">Select Signer</Label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {signers.map((signer, i) => (
+                        <Badge
+                          key={i}
+                          variant={selectedSignerIndex === i ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => setSelectedSignerIndex(i)}
+                          style={selectedSignerIndex === i ? { backgroundColor: signer.color } : { borderColor: signer.color, color: signer.color }}
+                          data-testid={`select-signer-${i}`}
+                        >
+                          {signer.name}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                
-                <div>
-                  <Label className="text-sm font-medium">Signature Fields</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {SIGNATURE_FIELD_TYPES.map(ft => (
-                      <Button
-                        key={ft.type}
-                        variant={selectedFieldType === ft.type ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSelectedFieldType(selectedFieldType === ft.type ? null : ft.type)}
-                        className="text-xs"
-                        data-testid={`field-type-${ft.type}`}
-                      >
-                        {ft.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <Label className="text-sm font-medium">
-                    Data Fields {isRTLQuote(quote.loanData as Record<string, unknown> || {}) ? '(RTL)' : '(DSCR)'}
-                  </Label>
-                  <div className="grid grid-cols-1 gap-1 mt-2 max-h-[200px] overflow-auto">
-                    {getPrepopulatedFieldTypes(quote.loanData as Record<string, unknown> || {}).map(ft => {
-                      const value = getFieldValue(ft.type, quote);
-                      return (
+                  
+                  <div>
+                    <Label className="text-sm font-medium">Signature Fields</Label>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {SIGNATURE_FIELD_TYPES.map(ft => (
                         <Button
                           key={ft.type}
                           variant={selectedFieldType === ft.type ? "default" : "outline"}
                           size="sm"
                           onClick={() => setSelectedFieldType(selectedFieldType === ft.type ? null : ft.type)}
-                          className="text-xs justify-start h-auto py-1"
+                          className="text-xs"
                           data-testid={`field-type-${ft.type}`}
                         >
-                          <span className="truncate">{ft.label}: {value || '—'}</span>
+                          {ft.label}
                         </Button>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium">
+                      Data Fields {isRTLQuote(quote.loanData as Record<string, unknown> || {}) ? '(RTL)' : '(DSCR)'}
+                    </Label>
+                    <div className="grid grid-cols-1 gap-1 mt-1 max-h-[150px] overflow-auto">
+                      {getPrepopulatedFieldTypes(quote.loanData as Record<string, unknown> || {}).map(ft => {
+                        const value = getFieldValue(ft.type, quote);
+                        return (
+                          <Button
+                            key={ft.type}
+                            variant={selectedFieldType === ft.type ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedFieldType(selectedFieldType === ft.type ? null : ft.type)}
+                            className="text-xs justify-start h-auto py-1"
+                            data-testid={`field-type-${ft.type}`}
+                          >
+                            <span className="truncate">{ft.label}: {value || '—'}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  <div className="pt-1 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      {selectedFieldType 
+                        ? `Click on the PDF to place a ${selectedFieldType} field`
+                        : "Select a field type, then click on the PDF to place it"
+                      }
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
+                      data-testid="zoom-out"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm">{Math.round(pdfScale * 100)}%</span>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => setPdfScale(s => Math.min(2, s + 0.1))}
+                      data-testid="zoom-in"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </Button>
+                    <Badge variant="secondary" className="ml-auto">{fields.length} field(s)</Badge>
                   </div>
                 </div>
                 
-                <div className="pt-2 border-t">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    {selectedFieldType 
-                      ? `Click on the PDF to place a ${selectedFieldType} field`
-                      : "Select a field type, then click on the PDF to place it"
-                    }
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Drag fields to move. Use corner handle to resize.
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    onClick={() => setPdfScale(s => Math.max(0.5, s - 0.1))}
-                    data-testid="zoom-out"
-                  >
-                    <ZoomOut className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm">{Math.round(pdfScale * 100)}%</span>
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    onClick={() => setPdfScale(s => Math.min(2, s + 0.1))}
-                    data-testid="zoom-in"
-                  >
-                    <ZoomIn className="w-4 h-4" />
-                  </Button>
-                </div>
-                
-                <div className="pt-2">
-                  <Badge variant="secondary">{fields.length} field(s) placed</Badge>
-                </div>
-                
-                <div className="space-y-2">
+                <div className="flex-shrink-0 space-y-2 pt-3 border-t mt-2">
                   <Button 
                     onClick={() => saveFieldsMutation.mutate()} 
                     disabled={fields.length === 0 || saveFieldsMutation.isPending}
@@ -1454,7 +1450,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                     data-testid="button-fields-back"
                   >
                     <ChevronLeft className="w-4 h-4 mr-2" />
-                    Back to Upload & Recipients
+                    Back
                   </Button>
                 </div>
               </div>

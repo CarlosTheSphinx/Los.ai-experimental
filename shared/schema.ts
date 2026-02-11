@@ -504,7 +504,7 @@ export type InsertProjectWebhook = z.infer<typeof insertProjectWebhookSchema>;
 // Deal documents - required documents checklist per deal based on loan type
 export const dealDocuments = pgTable("deal_documents", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id").notNull(),
   stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'set null' }),
   programDocumentTemplateId: integer("program_document_template_id"),
   dealPropertyId: integer("deal_property_id").references(() => dealProperties.id, { onDelete: 'set null' }),
@@ -563,7 +563,7 @@ export type DealDocumentFile = typeof dealDocumentFiles.$inferSelect;
 
 export const dealProperties = pgTable("deal_properties", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id").notNull(),
   address: text("address").notNull(),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 50 }),
@@ -583,7 +583,7 @@ export type InsertDealProperty = z.infer<typeof insertDealPropertySchema>;
 // Deal tasks - tasks assigned to team members for a deal
 export const dealTasks = pgTable("deal_tasks", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id").notNull(),
   
   taskName: varchar("task_name", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
@@ -998,7 +998,7 @@ export type PricingRules = z.infer<typeof pricingRulesSchema>;
 // Message threads - a conversation room tied to a specific deal
 export const messageThreads = pgTable("message_threads", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id").notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   subject: varchar("subject", { length: 255 }),
@@ -1097,7 +1097,7 @@ export type DigestContentType = z.infer<typeof digestContentTypeEnum>;
 export const loanDigestConfigs = pgTable("loan_digest_configs", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
-  dealId: integer("deal_id").references(() => savedQuotes.id, { onDelete: 'cascade' }),
+  dealId: integer("deal_id"),
   
   // WHEN - frequency and timing
   frequency: varchar("frequency", { length: 50 }).default("daily").notNull(), // daily, every_3_days, weekly, custom

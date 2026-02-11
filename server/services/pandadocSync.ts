@@ -113,15 +113,33 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               },
             } as any);
 
-            if (quote.propertyAddress) {
-              await db.insert(dealProperties).values({
-                dealId: project.id,
-                address: quote.propertyAddress,
-                propertyType: loanData?.propertyType || null,
-                estimatedValue: loanData?.propertyValue || loanData?.asIsValue || null,
-                isPrimary: true,
-                sortOrder: 0,
-              });
+            try {
+              if (quote.propertyAddress) {
+                await db.insert(dealProperties).values({
+                  dealId: project.id,
+                  address: quote.propertyAddress,
+                  propertyType: loanData?.propertyType || null,
+                  estimatedValue: loanData?.propertyValue ? Number(loanData.propertyValue) : (loanData?.asIsValue ? Number(loanData.asIsValue) : null),
+                  isPrimary: true,
+                  sortOrder: 0,
+                });
+                const additionalProps = (loanData?.additionalProperties || []) as Array<Record<string, any>>;
+                for (let i = 0; i < additionalProps.length; i++) {
+                  const ap = additionalProps[i];
+                  if (ap.address) {
+                    await db.insert(dealProperties).values({
+                      dealId: project.id,
+                      address: ap.address,
+                      propertyType: ap.propertyType || null,
+                      estimatedValue: ap.estimatedValue ? Number(ap.estimatedValue) : null,
+                      isPrimary: false,
+                      sortOrder: i + 1,
+                    });
+                  }
+                }
+              }
+            } catch (propErr: any) {
+              console.error(`[PandaDoc Poll] Deal properties error for project ${project.id}:`, propErr.message);
             }
 
             try {

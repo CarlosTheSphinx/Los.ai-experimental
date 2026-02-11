@@ -18,7 +18,7 @@ interface PipelineResult {
 export async function buildProjectPipelineFromProgram(
   projectId: number,
   programId: number | null | undefined,
-  dealId?: number
+  _quoteId?: number
 ): Promise<PipelineResult> {
   if (!programId) {
     return buildProjectPipelineFromLegacyTemplate(projectId);
@@ -104,7 +104,6 @@ export async function buildProjectPipelineFromProgram(
     }
   }
 
-  const docTargetId = dealId || projectId;
   const docTemplates = await db.select()
     .from(programDocumentTemplates)
     .where(eq(programDocumentTemplates.programId, programId))
@@ -112,7 +111,7 @@ export async function buildProjectPipelineFromProgram(
 
   if (docTemplates.length > 0) {
     const newDocuments = docTemplates.map((doc, index) => ({
-      dealId: docTargetId,
+      dealId: projectId,
       programDocumentTemplateId: doc.id,
       documentName: doc.documentName,
       documentCategory: doc.documentCategory,
