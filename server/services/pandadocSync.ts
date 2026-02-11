@@ -124,8 +124,13 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               });
             }
 
-            const { buildProjectPipelineFromProgram } = await import('./projectPipeline');
-            await buildProjectPipelineFromProgram(project.id, quote.programId || null, quote.id);
+            try {
+              const { buildProjectPipelineFromProgram } = await import('./projectPipeline');
+              const pipelineResult = await buildProjectPipelineFromProgram(project.id, quote.programId || null, quote.id);
+              console.log(`[PandaDoc Poll] Pipeline created: ${pipelineResult.stagesCreated} stages, ${pipelineResult.tasksCreated} tasks, ${pipelineResult.documentsCreated} documents`);
+            } catch (pipelineErr: any) {
+              console.error(`[PandaDoc Poll] Pipeline creation error for project ${project.id}:`, pipelineErr);
+            }
 
             await db.update(savedQuotes)
               .set({ stage: 'term-sheet-signed' })
@@ -138,6 +143,23 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               activityDescription: `Loan project ${projectNumber} auto-created from PandaDoc status poll`,
               visibleToBorrower: true,
             });
+
+            try {
+              const { triggerWebhook } = await import('../utils/webhooks');
+              await triggerWebhook(project.id, 'project_created', {
+                project_number: projectNumber,
+                source: 'pandadoc_poll',
+                quote_id: quote.id,
+              });
+            } catch {}
+
+            try {
+              const { isDriveIntegrationEnabled, ensureProjectFolder } = await import('./googleDrive');
+              const driveEnabled = await isDriveIntegrationEnabled();
+              if (driveEnabled) {
+                ensureProjectFolder(project.id).catch(() => {});
+              }
+            } catch {}
 
             projectCreated = true;
             console.log(`[PandaDoc Poll] Project ${projectNumber} created from envelope ${envelope.id}`);
