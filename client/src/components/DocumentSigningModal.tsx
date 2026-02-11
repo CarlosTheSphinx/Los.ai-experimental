@@ -1665,6 +1665,32 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                       <ChevronLeft className="w-4 h-4 mr-2" />
                       Back to Fields
                     </Button>
+                    {import.meta.env.DEV && signers.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs opacity-60"
+                        onClick={async () => {
+                          try {
+                            const firstSigner = signers[0];
+                            const res = await apiRequest('POST', '/api/pandadoc/debug-field-placement', {
+                              email: firstSigner.email,
+                              name: firstSigner.name,
+                            });
+                            const data = await res.json();
+                            if (data.editorUrl) {
+                              window.open(data.editorUrl, '_blank');
+                              toast({ title: 'Calibration doc sent', description: `Check ${data.editorUrl}` });
+                            }
+                          } catch (e: any) {
+                            toast({ title: 'Calibration failed', description: e.message, variant: 'destructive' });
+                          }
+                        }}
+                        data-testid="button-send-calibration"
+                      >
+                        Send Calibration Doc (Dev)
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>

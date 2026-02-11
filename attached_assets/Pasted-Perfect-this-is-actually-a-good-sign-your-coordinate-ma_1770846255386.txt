@@ -1,0 +1,107 @@
+Perfect, this is actually a good sign: your coordinate mapping is correct for text/data fields, but signature/date fields are being interpreted differently by PandaDoc (different anchoring, baseline, or required “field rect” format). So we don’t need to redo everything, we need to fix the mapping for only the fillable types.
+
+In PandaDoc, “signature” and “date” fields often behave differently because:
+	•	they can be rendered with an internal widget height
+	•	some APIs treat their rect as an anchor point (top-left) while others treat it as center/bottom-left
+	•	some require a specific type string (e.g., signature vs signature_field)
+	•	assignment to a recipient role can change placement rules in weird ways if role/page mapping is off
+
+Here’s the best Replit prompt to fix it cleanly.
+
+⸻
+
+Copy/paste prompt for Replit
+
+We now have a partial coordinate success:
+
+- Prefilled text/data fields are placed EXACTLY where expected in PandaDoc.
+- BUT fillable fields (signature + date) are offset and land in the wrong place.
+
+This means our coordinate normalization/conversion is correct overall, but the PandaDoc field payload for signature/date has a different anchor/rect interpretation.
+
+Fix ONLY signature/date (and initials if needed) without breaking text/data.
+
+REQUIREMENTS:
+
+1) Split PandaDoc field mapping by fieldType:
+- For "text" and "data" fields: keep current mapping unchanged (it’s correct).
+- For "signature", "initials", and "date": implement a separate mapping function because PandaDoc renders these with different anchoring.
+
+2) Identify correct PandaDoc field schema for signature/date:
+- Confirm the correct `type` strings PandaDoc expects for:
+  - signature
+  - initials
+  - date
+- Confirm whether rect is:
+  - {x, y, width, height} top-left origin
+  - OR {x1, y1, x2, y2}
+  - OR uses bottom-left origin
+We already know text/data are right, so do NOT change the global origin math. Only adjust signature/date payload format.
+
+3) Anchor correction logic (apply only to signature/date/initials):
+- Use the same x conversion as text.
+- For y:
+  - If the signature/date field is consistently offset (e.g. too high), apply a deterministic per-type offset:
+    y_fixed = y + (OFFSET * h)
+  - Start with OFFSET = +0.25 (move down by 25% of field height) and adjust based on observation.
+- Alternatively, if PandaDoc is anchoring these fields by center instead of top-left:
+  - Convert to center-anchor:
+    x_fixed = x + w/2
+    y_fixed = y + h/2
+  - If PandaDoc expects bottom-left:
+    y_fixed = pageHeight - (y + h)  (but ONLY for signature/date if needed)
+
+Implement this as a configurable calibration:
+- env vars:
+  SIGNATURE_Y_OFFSET_RATIO=0.25
+  DATE_Y_OFFSET_RATIO=0.15
+  INITIALS_Y_OFFSET_RATIO=0.20
+- Default to 0 if not set.
+
+4) Fix recipient assignment (common hidden cause):
+- Ensure signature/date fields are assigned to the correct recipient using the same identifier PandaDoc expects:
+  - If PandaDoc expects role, use role.
+  - If PandaDoc expects recipient email, use email consistently.
+- Confirm page_number is correct and 1-indexed.
+
+5) Add a debug tool so we can dial it in fast:
+- Add /api/pandadoc/debug-field-placement that:
+  - creates a test doc,
+  - places 1 signature + 1 date field at known coordinates,
+  - returns the exact PandaDoc payload used.
+- In the UI, add a “Send Calibration Doc” button (dev only) so we can iterate offsets quickly.
+
+DELIVERABLE:
+- Signature and date fields appear exactly where they were placed in our editor,
+  while text/data fields remain unchanged and correct.
+
+
+⸻
+
+Why this prompt works
+
+It forces Replit to:
+	•	not break what’s already correct (text/data)
+	•	treat signature/date as a separate coordinate/anchor problem
+	•	add calibration knobs so you can solve the last 5% without guessing for hours
+
+⸻
+
+Extra: the most likely one-line fix (if you want to hint it)
+
+If your signature/date are “slightly above”, it’s often because PandaDoc anchors those fields by bottom-left while you’re feeding top-left.
+
+So a very common correction is:
+	•	text fields: use y_top_left
+	•	signature/date: use y_bottom_left = pageHeight - (y_top_left + height)
+
+If you want Replit to try that first, add:
+
+Try a per-type y flip ONLY for signature/date:
+y_pd = pageHeight - (y + h)
+Do not apply this to text/data fields.
+
+
+⸻
+
+If you tell me one detail: are signature/date landing above or below the intended spot, and by roughly how much (small, medium, huge)? I can tell you whether it’s a y-flip issue or an anchor/offset issue.

@@ -423,6 +423,56 @@ interface PandaDocFieldInjection {
   height: number;
   required?: boolean;
   value?: string;
+  pageHeight?: number;
+}
+
+const WIDGET_FIELD_TYPES = new Set(['signature', 'initials', 'date']);
+
+function getFieldOffsetRatio(fieldType: string): number {
+  if (fieldType === 'signature') {
+    return parseFloat(process.env.SIGNATURE_Y_OFFSET_RATIO || '0');
+  }
+  if (fieldType === 'date') {
+    return parseFloat(process.env.DATE_Y_OFFSET_RATIO || '0');
+  }
+  if (fieldType === 'initials') {
+    return parseFloat(process.env.INITIALS_Y_OFFSET_RATIO || '0');
+  }
+  return 0;
+}
+
+function buildFieldPayload(f: PandaDocFieldInjection) {
+  let finalOffsetY = f.offsetY;
+  const isWidget = WIDGET_FIELD_TYPES.has(f.type);
+
+  if (isWidget) {
+    const offsetRatio = getFieldOffsetRatio(f.type);
+    if (offsetRatio !== 0) {
+      finalOffsetY = f.offsetY + (offsetRatio * f.height);
+    }
+  }
+
+  return {
+    name: f.name,
+    type: f.type,
+    assigned_to: f.assignedToRecipientUuid,
+    settings: {
+      required: f.required !== false,
+      ...(f.value ? { placeholder: f.value } : {}),
+    },
+    layout: {
+      page: f.page,
+      position: {
+        offset_x: String(Math.round(f.offsetX)),
+        offset_y: String(Math.round(finalOffsetY)),
+        anchor_point: 'topleft',
+      },
+      style: {
+        width: f.width,
+        height: f.height,
+      },
+    },
+  };
 }
 
 export async function injectDocumentFields(
@@ -435,27 +485,14 @@ export async function injectDocumentFields(
   }
 
   const payload = {
-    fields: fields.map(f => ({
-      name: f.name,
-      type: f.type,
-      assigned_to: f.assignedToRecipientUuid,
-      settings: {
-        required: f.required !== false,
-        ...(f.value ? { placeholder: f.value } : {}),
-      },
-      layout: {
-        page: f.page,
-        position: {
-          offset_x: String(f.offsetX),
-          offset_y: String(f.offsetY),
-          anchor_point: 'topleft',
-        },
-        style: {
-          width: f.width,
-          height: f.height,
-        },
-      },
-    })),
+    fields: fields.map(f => {
+      const built = buildFieldPayload(f);
+      const isWidget = WIDGET_FIELD_TYPES.has(f.type);
+      console.log(`[PandaDoc] Field "${f.name}" type=${f.type} isWidget=${isWidget} ` +
+        `raw=(${f.offsetX}, ${f.offsetY}) final=(${built.layout.position.offset_x}, ${built.layout.position.offset_y}) ` +
+        `size=${f.width}x${f.height} page=${f.page}`);
+      return built;
+    }),
   };
 
   console.log(`[PandaDoc] POST /documents/${documentId}/fields (injecting ${fields.length} fields)`);
@@ -472,6 +509,78 @@ export async function injectDocumentFields(
   }
 
   return response.json();
+}
+
+export async function createCalibrationDocument(recipientEmail: string, recipientName: string): Promise<{
+  documentId: string;
+  editorUrl: string;
+  payload: any;
+}> {
+  const { PDFDocument: PDFLib, StandardFonts, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFLib.create();
+  const page = pdfDoc.addPage([612, 792]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pageHeight = page.getHeight();
+  const pageWidth = page.getWidth();
+
+  page.drawText('PandaDoc Field Calibration Test', { x: 150, y: pageHeight - 40, size: 16, font, color: rgb(0, 0, 0) });
+  page.drawText('Fields should align with reference marks below', { x: 150, y: pageHeight - 60, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
+
+  const testPositions = [
+    { label: 'Y=150', y: 150, fieldType: 'signature' },
+    { label: 'Y=300', y: 300, fieldType: 'date' },
+    { label: 'Y=450', y: 450, fieldType: 'initials' },
+    { label: 'Y=600', y: 600, fieldType: 'text' },
+  ];
+
+  for (const pos of testPositions) {
+    page.drawLine({ start: { x: 0, y: pageHeight - pos.y }, end: { x: pageWidth, y: pageHeight - pos.y }, color: rgb(0.85, 0.85, 0.85), thickness: 0.5 });
+    page.drawText(`${pos.label} — ${pos.fieldType} field target`, { x: 10, y: pageHeight - pos.y + 3, size: 8, font, color: rgb(0.5, 0.5, 0.5) });
+    page.drawRectangle({ x: 100, y: pageHeight - pos.y - 30, width: 200, height: 30, borderColor: rgb(0.7, 0.85, 1.0), borderWidth: 1, opacity: 0 });
+    page.drawText(`x=100, y=${pos.y}`, { x: 102, y: pageHeight - pos.y - 12, size: 7, font, color: rgb(0.6, 0.6, 0.6) });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const pdfBuffer = Buffer.from(pdfBytes);
+
+  const [firstName, ...lastParts] = recipientName.split(' ');
+  const lastName = lastParts.join(' ') || 'Signer';
+
+  const pandaDoc = await createDocumentFromPdf(pdfBuffer, {
+    name: `[CALIBRATION] Field Placement Test - ${new Date().toISOString().slice(0, 16)}`,
+    recipients: [{ email: recipientEmail, first_name: firstName, last_name: lastName, role: 'Signer 1' }],
+  });
+
+  await waitForDocumentReady(pandaDoc.id);
+
+  const details = await getDocumentDetails(pandaDoc.id);
+  const recipientUuid = details.recipients[0]?.id;
+  if (!recipientUuid) throw new Error('No recipient UUID found in calibration doc');
+
+  const sigYOffsetRatio = parseFloat(process.env.SIGNATURE_Y_OFFSET_RATIO || '0');
+  const dateYOffsetRatio = parseFloat(process.env.DATE_Y_OFFSET_RATIO || '0');
+  const initYOffsetRatio = parseFloat(process.env.INITIALS_Y_OFFSET_RATIO || '0');
+
+  const fieldsToInject: PandaDocFieldInjection[] = [
+    { name: 'sig_y150', type: 'signature', assignedToRecipientUuid: recipientUuid, page: 1, offsetX: 100, offsetY: 150, width: 200, height: 50, required: true, pageHeight: 792 },
+    { name: 'date_y300', type: 'date', assignedToRecipientUuid: recipientUuid, page: 1, offsetX: 100, offsetY: 300, width: 150, height: 25, required: true, pageHeight: 792 },
+    { name: 'init_y450', type: 'initials', assignedToRecipientUuid: recipientUuid, page: 1, offsetX: 100, offsetY: 450, width: 100, height: 40, required: true, pageHeight: 792 },
+    { name: 'text_y600', type: 'text', assignedToRecipientUuid: recipientUuid, page: 1, offsetX: 100, offsetY: 600, width: 200, height: 25, required: false, pageHeight: 792 },
+  ];
+
+  const injectionResult = await injectDocumentFields(pandaDoc.id, fieldsToInject);
+
+  await sendDocument(pandaDoc.id, { message: 'Calibration test', silent: true });
+
+  return {
+    documentId: pandaDoc.id,
+    editorUrl: `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`,
+    payload: {
+      fields: fieldsToInject.map(f => buildFieldPayload(f)),
+      currentOffsets: { sigYOffsetRatio, dateYOffsetRatio, initYOffsetRatio },
+      injectionResult,
+    },
+  };
 }
 
 export function mapStatusToPandaDoc(pandaStatus: string): string {

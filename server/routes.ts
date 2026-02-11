@@ -1889,6 +1889,30 @@ export async function registerRoutes(
     });
   });
 
+  app.post('/api/pandadoc/debug-field-placement', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const { email, name } = req.body;
+      if (!email || !name) {
+        return res.status(400).json({ error: 'email and name are required' });
+      }
+      const pandadoc = await import('./esign/pandadoc');
+      const result = await pandadoc.createCalibrationDocument(email, name);
+      res.json({
+        success: true,
+        ...result,
+        instructions: 'Open the editor URL and check if signature (y=150), date (y=300), initials (y=450), and text (y=600) align with their reference lines.',
+        currentEnvOffsets: {
+          SIGNATURE_Y_OFFSET_RATIO: process.env.SIGNATURE_Y_OFFSET_RATIO || '0 (default)',
+          DATE_Y_OFFSET_RATIO: process.env.DATE_Y_OFFSET_RATIO || '0 (default)',
+          INITIALS_Y_OFFSET_RATIO: process.env.INITIALS_Y_OFFSET_RATIO || '0 (default)',
+        },
+      });
+    } catch (e: any) {
+      console.error('[PandaDoc Calibration] Error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/documents/:id/pandadoc/preview-mapping', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
@@ -2126,6 +2150,7 @@ export async function registerRoutes(
             width: Math.round(field.width * scaleX),
             height: Math.round(field.height * scaleY),
             required: field.required ?? true,
+            pageHeight: pageDims.height,
           };
         });
 
