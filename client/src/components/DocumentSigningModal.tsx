@@ -1088,9 +1088,27 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
 
   const saveFieldsMutation = useMutation({
     mutationFn: async () => {
-      if (!documentId || !Number.isFinite(documentId)) {
-        throw new Error('Invalid document ID. Please re-upload the PDF.');
+      let activeDocId = documentId;
+      
+      if (!activeDocId || !Number.isFinite(activeDocId)) {
+        if (!pdfData || !fileName) {
+          throw new Error('Please upload a PDF document first.');
+        }
+        const docRes = await apiRequest('POST', '/api/documents', {
+          quoteId: quote.id,
+          name: `${quote.quoteName || 'Document'} - ${quote.customerFirstName || ''} ${quote.customerLastName || ''}`.trim(),
+          fileName,
+          fileData: pdfData,
+          pageCount: pageCount || 1,
+        });
+        const docData = await docRes.json();
+        if (!docData.success || !docData.document) {
+          throw new Error(docData.error || 'Failed to create document');
+        }
+        activeDocId = docData.document.id;
+        setDocumentId(activeDocId);
       }
+      
       const sanitizedFields = fields.map(f => ({
         ...f,
         signerId: Number.isFinite(f.signerId) ? f.signerId : null,
@@ -1100,7 +1118,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
         width: Number.isFinite(f.width) ? Math.max(10, f.width) : 100,
         height: Number.isFinite(f.height) ? Math.max(10, f.height) : 30,
       }));
-      const res = await apiRequest('POST', `/api/documents/${documentId}/fields/bulk`, { fields: sanitizedFields });
+      const res = await apiRequest('POST', `/api/documents/${activeDocId}/fields/bulk`, { fields: sanitizedFields });
       const data = await res.json();
       if (!data.success) {
         throw new Error(data.error || 'Failed to save fields');
