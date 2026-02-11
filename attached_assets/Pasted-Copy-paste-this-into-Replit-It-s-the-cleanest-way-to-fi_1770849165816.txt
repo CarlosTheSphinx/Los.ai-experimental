@@ -1,0 +1,88 @@
+Copy/paste this into Replit. It’s the cleanest way to fix “signed in PandaDoc but my app doesn’t auto-create a loan”.
+
+Problem:
+We can successfully send and sign a term sheet/LOI in PandaDoc, but our app is not detecting the signature completion and therefore is NOT auto-creating a Loan record.
+
+Fix: Implement reliable PandaDoc status sync using WEBHOOKS + a backstop POLLING job.
+
+A) Identify what event should trigger loan creation
+- Loan should be created when PandaDoc document status becomes:
+  - "completed" / "document.completed" / "signed" (whatever PandaDoc uses)
+- Map PandaDoc status strings to our internal statuses:
+  draft -> sent -> viewed -> completed -> voided/declined/expired
+
+B) Implement PandaDoc webhook receiver (primary mechanism)
+1) Create an endpoint:
+  POST /api/webhooks/pandadoc
+- MUST verify authenticity:
+  - Validate PandaDoc webhook signature/header if available
+  - If signature verification isn’t possible, use a shared secret token in URL or header:
+    X-WEBHOOK-SECRET must match env PANDADOC_WEBHOOK_SECRET
+- Log event type + doc id + new status (no PII)
+
+2) Persist webhook events for debugging (this is critical)
+Create table:
+  pandadoc_webhook_events(
+    id uuid pk,
+    received_at timestamptz,
+    event_type text,
+    doc_id text,
+    payload jsonb,
+    processed boolean default false,
+    error text
+  )
+
+3) On webhook receipt:
+- Extract PandaDoc document ID and status from payload.
+- Find our term sheet record by provider_document_id = PandaDoc doc id.
+- Update term sheet status in DB.
+- If status indicates completed/signed:
+   - Create Loan record if not already created.
+   - Link loan.term_sheet_id = term sheet id and loan.provider_document_id = PandaDoc doc id.
+   - Make this idempotent: NEVER create duplicate loans.
+     - Use a unique constraint on loans(term_sheet_id) OR loans(provider_document_id)
+
+4) Implement idempotency:
+- If webhook fires multiple times, ignore duplicates:
+  - Check if loan exists for term_sheet_id before creating.
+  - Mark webhook event as processed.
+
+C) Implement backstop polling (secondary mechanism)
+Webhooks sometimes fail due to tunneling/dev URLs or downtime.
+Add a scheduled job:
+- Every 5 minutes, fetch PandaDoc status for all term sheets with status="sent" or "viewed" and provider="pandadoc"
+- Call PandaDoc GET document endpoint for each (rate-limit)
+- If status is completed and loan not created, create loan
+
+D) Ensure PandaDoc webhooks are registered correctly
+1) Add an admin tool route to register webhook:
+  POST /api/pandadoc/webhooks/register
+- Registers events we need: document.completed (and viewed/sent if useful)
+- Saves webhook ID in DB/config
+
+2) Add a route to list active webhooks for debugging:
+  GET /api/pandadoc/webhooks
+
+E) Update UI + logs for visibility
+- In Term Sheets table, show:
+  - PandaDoc status
+  - “Loan created” badge with loan id link when created
+- Add a “Sync status” button per term sheet (manual poll for debugging)
+
+Deliverables:
+- Webhook receiver endpoint implemented + deployed
+- Webhook events stored for debugging
+- Term sheet status updates correctly
+- Loan auto-created immediately on completed signature (webhook) and also via polling backstop
+- Idempotent loan creation (no duplicates)
+
+Quick “why it’s not picking up activity” (so you can sanity-check)
+
+Most common reasons:
+	•	No webhook configured in PandaDoc at all
+	•	Webhook URL points to a dev/tunnel URL that changed
+	•	Webhook endpoint returns 401/500 so PandaDoc stops retrying
+	•	You’re not saving provider_document_id properly, so you can’t match the signed doc back to the term sheet
+	•	Your app expects “signed” but PandaDoc calls it “completed”
+
+If you tell me whether you’re deployed on a stable domain (not a temporary Replit URL), I can add one extra line to the prompt that forces Replit to make webhook URLs stable and environment-based.

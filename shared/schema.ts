@@ -1513,8 +1513,10 @@ export const esignEvents = pgTable("esign_events", {
   envelopeId: integer("envelope_id").references(() => esignEnvelopes.id, { onDelete: 'cascade' }),
   externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
   
-  eventType: varchar("event_type", { length: 100 }).notNull(), // document.created, document.sent, document.viewed, document.completed, etc.
-  eventData: jsonb("event_data").default('{}'), // Full webhook payload
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  eventData: jsonb("event_data").default('{}'),
+  processed: boolean("processed").default(false),
+  error: text("error"),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
