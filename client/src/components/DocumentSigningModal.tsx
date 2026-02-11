@@ -1120,12 +1120,15 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                     </p>
                   </div>
 
-                  {templatesData?.templates && templatesData.templates.length > 0 && !pdfUploaded && (
+                  {templatesData?.templates && templatesData.templates.length > 0 && (
                     <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-blue-500" />
-                        <Label className="text-sm font-medium">Or use a saved template</Label>
+                        <FileStack className="w-4 h-4 text-primary" />
+                        <Label className="text-sm font-medium">Use a Saved Template</Label>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Select a previously saved template with pre-positioned fields
+                      </p>
                       <div className="flex gap-2 items-end flex-wrap">
                         <Select
                           value={selectedTemplateId}
@@ -1138,7 +1141,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                             {templatesData.templates.map((template) => (
                               <SelectItem key={template.id} value={template.id.toString()}>
                                 <div className="flex items-center gap-2">
-                                  <FileStack className="w-4 h-4 text-blue-500" />
+                                  <FileStack className="w-4 h-4 text-primary" />
                                   <span>{template.name}</span>
                                   {template.category && (
                                     <Badge variant="outline" className="ml-2 text-xs">
@@ -1159,15 +1162,29 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                             {useTemplateMutation.isPending ? (
                               <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Loading...</>
                             ) : (
-                              <><Sparkles className="w-4 h-4 mr-2" />Use Template</>
+                              <>Use Template</>
                             )}
                           </Button>
                         )}
                       </div>
+                      {templateFieldsLoaded && (
+                        <p className="text-xs text-green-600 flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          Template loaded with pre-positioned fields
+                        </p>
+                      )}
                     </div>
                   )}
 
                   <div className="max-w-lg mx-auto space-y-6">
+                    {templatesData?.templates && templatesData.templates.length > 0 && (
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 border-t" />
+                        <span className="text-xs text-muted-foreground uppercase">or upload a new PDF</span>
+                        <div className="flex-1 border-t" />
+                      </div>
+                    )}
+
                     <div className="text-center space-y-4">
                       <div 
                         className="border-2 border-dashed rounded-lg p-8 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -1193,6 +1210,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                               setPdfData(ev.target?.result as string);
                               setFileName(file.name);
                               setPdfUploaded(true);
+                              setTemplateFieldsLoaded(false);
                             };
                             reader.readAsDataURL(file);
                           }}
