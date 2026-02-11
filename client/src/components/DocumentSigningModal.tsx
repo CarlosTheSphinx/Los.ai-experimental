@@ -1052,8 +1052,10 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
     const isPrepopulated = prepopulatedFields.some(f => f.type === selectedFieldType);
     const value = isPrepopulated ? getFieldValue(selectedFieldType, quote) : undefined;
     
-    const clampedX = Math.max(0, Math.min(x, pdfDimensions.width - fieldConfig.width));
-    const clampedY = Math.max(0, Math.min(y, pdfDimensions.height - fieldConfig.height));
+    const centeredX = x - fieldConfig.width / 2;
+    const centeredY = y - fieldConfig.height / 2;
+    const clampedX = Math.max(0, Math.min(centeredX, pdfDimensions.width - fieldConfig.width));
+    const clampedY = Math.max(0, Math.min(centeredY, pdfDimensions.height - fieldConfig.height));
     
     const newField: FieldData = {
       signerId: signers[selectedSignerIndex].id!,

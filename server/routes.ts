@@ -2042,7 +2042,7 @@ export async function registerRoutes(
             width: Math.round(field.width),
             height: Math.round(field.height),
             required: field.required ?? true,
-            ...(field.value && pandadocType === 'text' ? { value: field.value } : {}),
+            ...(field.value ? { value: field.value } : {}),
           };
         });
 

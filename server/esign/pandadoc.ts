@@ -441,7 +441,7 @@ export async function injectDocumentFields(
       assigned_to: f.assignedToRecipientUuid,
       settings: {
         required: f.required !== false,
-        ...(f.value && f.type === 'text' ? { default_value: f.value } : {}),
+        ...(f.value ? { placeholder: f.value } : {}),
       },
       layout: {
         page: f.page,
