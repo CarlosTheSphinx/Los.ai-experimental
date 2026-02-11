@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2, Copy, BookmarkPlus, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2, Copy, BookmarkPlus, PanelRightOpen, PanelRightClose, Save } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedQuote } from "@shared/schema";
@@ -1343,38 +1343,9 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                             </div>
                           </div>
                           
-                          <div className="flex flex-1 gap-2 min-h-0" style={{ height: 'calc(95vh - 120px)' }}>
-                            <div className="flex-1 border rounded-lg overflow-hidden relative min-w-0">
-                              {pandadocEditorLoading ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-                                  <div className="text-center space-y-2">
-                                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-                                    <p className="text-sm text-muted-foreground">Loading editor...</p>
-                                  </div>
-                                </div>
-                              ) : !pandadocEditorToken ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-                                  <div className="text-center space-y-3 max-w-sm">
-                                    <FileText className="w-10 h-10 mx-auto text-muted-foreground" />
-                                    <p className="text-sm text-muted-foreground">
-                                      Embedded editor not available. You can still review and edit in PandaDoc directly.
-                                    </p>
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => window.open(pandadocDraft.editorUrl, '_blank')}
-                                      data-testid="button-review-pandadoc-fallback"
-                                    >
-                                      <ExternalLink className="w-4 h-4 mr-2" />
-                                      Open in PandaDoc
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : null}
-                              <div ref={editorContainerRef} className="w-full h-full" />
-                            </div>
-                            
+                          <div className="flex flex-1 min-h-0" style={{ height: 'calc(95vh - 120px)' }}>
                             {showVariablesSidebar && (
-                              <div className="w-72 border rounded-lg flex flex-col overflow-hidden shrink-0" data-testid="variables-sidebar">
+                              <div className="w-64 border-r flex flex-col overflow-hidden shrink-0" data-testid="variables-sidebar">
                                 <div className="p-3 border-b bg-muted/30">
                                   <h4 className="font-semibold text-sm">Quote Variables</h4>
                                   <p className="text-xs text-muted-foreground mt-1">Copy token names to paste into your document as PandaDoc tokens</p>
@@ -1419,40 +1390,8 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                                     <Copy className="w-3 h-3 mr-1" />
                                     Copy All Tokens
                                   </Button>
-                                  {showSaveTemplateInput ? (
-                                    <div className="space-y-1.5">
-                                      <Input
-                                        placeholder="Template name..."
-                                        value={saveAsTemplateName}
-                                        onChange={(e) => setSaveAsTemplateName(e.target.value)}
-                                        className="text-xs"
-                                        data-testid="input-template-name"
-                                      />
-                                      <div className="flex gap-1">
-                                        <Button
-                                          size="sm"
-                                          className="flex-1"
-                                          onClick={() => saveAsTemplateMutation.mutate()}
-                                          disabled={saveAsTemplateMutation.isPending}
-                                          data-testid="button-confirm-save-template"
-                                        >
-                                          {saveAsTemplateMutation.isPending ? (
-                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                          ) : (
-                                            "Save"
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => { setShowSaveTemplateInput(false); setSaveAsTemplateName(''); }}
-                                          data-testid="button-cancel-save-template"
-                                        >
-                                          Cancel
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
+                                  
+                                  {!showSaveTemplateInput ? (
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1461,15 +1400,75 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
                                         setSaveAsTemplateName(`${quote.quoteName || 'Loan'} Template`);
                                         setShowSaveTemplateInput(true);
                                       }}
-                                      data-testid="button-save-as-template"
+                                      data-testid="button-show-save-template"
                                     >
-                                      <BookmarkPlus className="w-3 h-3 mr-1" />
+                                      <Save className="w-3 h-3 mr-1" />
                                       Save as Template
                                     </Button>
+                                  ) : (
+                                    <div className="space-y-1.5">
+                                      <Input
+                                        placeholder="Template name..."
+                                        value={saveAsTemplateName}
+                                        onChange={(e) => setSaveAsTemplateName(e.target.value)}
+                                        className="text-xs h-8"
+                                        data-testid="input-template-name"
+                                      />
+                                      <div className="flex gap-1">
+                                        <Button
+                                          variant="default"
+                                          size="sm"
+                                          className="flex-1 text-xs"
+                                          disabled={!saveAsTemplateName.trim() || saveAsTemplateMutation.isPending}
+                                          onClick={() => saveAsTemplateMutation.mutate()}
+                                          data-testid="button-save-template-confirm"
+                                        >
+                                          {saveAsTemplateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+                                          Save
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-xs"
+                                          onClick={() => { setShowSaveTemplateInput(false); setSaveAsTemplateName(''); }}
+                                          data-testid="button-cancel-save-template"
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
                               </div>
                             )}
+                            <div className="flex-1 border rounded-lg overflow-hidden relative min-w-0">
+                              {pandadocEditorLoading ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+                                  <div className="text-center space-y-2">
+                                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+                                    <p className="text-sm text-muted-foreground">Loading editor...</p>
+                                  </div>
+                                </div>
+                              ) : !pandadocEditorToken ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+                                  <div className="text-center space-y-3 max-w-sm">
+                                    <FileText className="w-10 h-10 mx-auto text-muted-foreground" />
+                                    <p className="text-sm text-muted-foreground">
+                                      Embedded editor not available. You can still review and edit in PandaDoc directly.
+                                    </p>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => window.open(pandadocDraft.editorUrl, '_blank')}
+                                      data-testid="button-review-pandadoc-fallback"
+                                    >
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      Open in PandaDoc
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : null}
+                              <div ref={editorContainerRef} className="w-full h-full" />
+                            </div>
                           </div>
                         </div>
                       ) : (
