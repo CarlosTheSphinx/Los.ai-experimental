@@ -1982,6 +1982,220 @@ export async function registerRoutes(
     }
   });
 
+  // Send document via PandaDoc (create + send in one flow)
+  app.post('/api/documents/:id/pandadoc/send', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const { subject, message } = req.body;
+
+      console.log(`[PandaDoc Send] Starting for document ${documentId}`);
+
+      if (!documentId || isNaN(documentId)) {
+        return res.status(400).json({ success: false, error: 'Invalid document ID' });
+      }
+
+      const doc = await storage.getDocumentById(documentId, userId);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+
+      const docSigners = await storage.getSignersByDocumentId(documentId);
+      if (docSigners.length === 0) {
+        return res.status(400).json({ success: false, error: 'No signers added to document' });
+      }
+
+      const docFields = await storage.getFieldsByDocumentId(documentId);
+
+      // Validate all field coordinates are valid numbers
+      for (const field of docFields) {
+        if (!Number.isFinite(field.x) || !Number.isFinite(field.y) ||
+            !Number.isFinite(field.width) || !Number.isFinite(field.height)) {
+          return res.status(400).json({ 
+            success: false, 
+            error: `Invalid coordinates on field "${field.fieldType}" (page ${field.pageNumber})`,
+            fieldName: field.fieldType,
+            value: { x: field.x, y: field.y, width: field.width, height: field.height }
+          });
+        }
+        if (!Number.isInteger(field.pageNumber) || field.pageNumber < 1) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid page number on field "${field.fieldType}"`,
+            fieldName: field.fieldType,
+            value: field.pageNumber
+          });
+        }
+      }
+
+      // Convert base64 PDF to buffer
+      let pdfBuffer: Buffer;
+      try {
+        const base64Data = doc.fileData.replace(/^data:application\/pdf;base64,/, '');
+        pdfBuffer = Buffer.from(base64Data, 'base64');
+      } catch (e) {
+        return res.status(400).json({ success: false, error: 'Invalid PDF data stored for this document' });
+      }
+
+      // Build PandaDoc recipients from signers
+      const recipients = docSigners.map((signer, idx) => {
+        const nameParts = signer.name.trim().split(/\s+/);
+        return {
+          email: signer.email,
+          first_name: nameParts[0] || 'Signer',
+          last_name: nameParts.slice(1).join(' ') || `${idx + 1}`,
+          role: `Signer ${idx + 1}`,
+        };
+      });
+
+      // Build a signer-to-role map for field assignment
+      const signerRoleMap = new Map<number, string>();
+      docSigners.forEach((signer, idx) => {
+        signerRoleMap.set(signer.id, `Signer ${idx + 1}`);
+      });
+
+      // Map our fields to PandaDoc field format
+      // PandaDoc fields are keyed by role
+      const pandadocFields: Record<string, Array<{
+        name: string;
+        role: string;
+        type: string;
+        required?: boolean;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        page: number;
+        value?: string;
+      }>> = {};
+
+      const fieldTypeMap: Record<string, string> = {
+        'signature': 'signature',
+        'initial': 'initials',
+        'initials': 'initials',
+        'date': 'date',
+        'text': 'text',
+        'name': 'text',
+        'email': 'text',
+        'company': 'text',
+        'title': 'text',
+        'loanAmount': 'text',
+        'interestRate': 'text',
+        'propertyType': 'text',
+        'loanPurpose': 'text',
+        'fico': 'text',
+        'propertyValue': 'text',
+        'ltv': 'text',
+        'loanTerm': 'text',
+        'dscr': 'text',
+        'monthlyPayment': 'text',
+        'closingCosts': 'text',
+        'totalFees': 'text',
+      };
+
+      docFields.forEach((field, idx) => {
+        const role = field.signerId ? (signerRoleMap.get(field.signerId) || 'Signer 1') : 'Signer 1';
+        const pandadocType = fieldTypeMap[field.fieldType] || 'text';
+
+        if (!pandadocFields[role]) {
+          pandadocFields[role] = [];
+        }
+
+        pandadocFields[role].push({
+          name: `${field.fieldType}_${idx}`,
+          role,
+          type: pandadocType,
+          required: field.required ?? true,
+          x: Math.round(field.x),
+          y: Math.round(field.y),
+          width: Math.round(field.width),
+          height: Math.round(field.height),
+          page: field.pageNumber - 1, // PandaDoc uses 0-based pages
+          ...(field.value && pandadocType === 'text' ? { value: field.value } : {}),
+        });
+      });
+
+      console.log(`[PandaDoc Send] Creating document with ${recipients.length} recipients, ${docFields.length} fields`);
+
+      // Import PandaDoc module
+      const pandadoc = await import('./esign/pandadoc');
+
+      // Create document from PDF
+      const pandaDoc = await pandadoc.createDocumentFromPdf(pdfBuffer, {
+        name: doc.name || `Term Sheet - ${doc.fileName}`,
+        recipients,
+        fields: pandadocFields,
+      });
+
+      console.log(`[PandaDoc Send] Document created: ${pandaDoc.id}, status: ${pandaDoc.status}`);
+
+      // Wait for document to be ready (draft status)
+      await pandadoc.waitForDocumentReady(pandaDoc.id);
+      console.log(`[PandaDoc Send] Document ready, sending...`);
+
+      // Send the document
+      const sendResult = await pandadoc.sendDocument(pandaDoc.id, {
+        subject: subject || `Please sign: ${doc.name}`,
+        message: message || 'Please review and sign the attached document.',
+        silent: false,
+      });
+
+      console.log(`[PandaDoc Send] Document sent successfully: ${sendResult.id}, status: ${sendResult.status}`);
+
+      // Update local document with PandaDoc metadata
+      await storage.updateDocument(documentId, {
+        status: 'sent',
+        vendor: 'pandadoc',
+        pandadocDocumentId: pandaDoc.id,
+        sentAt: new Date(),
+      });
+
+      // Update signer statuses
+      for (const signer of docSigners) {
+        await storage.updateSigner(signer.id, { status: 'sent' });
+      }
+
+      // Create audit log
+      await storage.createAuditLog({
+        documentId,
+        action: 'sent_via_pandadoc',
+        details: `Document sent via PandaDoc (ID: ${pandaDoc.id}) to ${docSigners.length} signer(s)`,
+        ipAddress: req.ip,
+      });
+
+      // Also create an esign envelope record for tracking
+      const editorUrl = `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`;
+      await db.insert(esignEnvelopes).values({
+        vendor: 'pandadoc',
+        quoteId: doc.quoteId,
+        externalDocumentId: pandaDoc.id,
+        documentName: doc.name,
+        status: 'sent',
+        recipients: JSON.stringify(recipients.map(r => ({
+          name: `${r.first_name} ${r.last_name}`.trim(),
+          email: r.email,
+          role: r.role,
+          status: 'sent',
+        }))),
+        sendMethod: 'email',
+        sentAt: new Date(),
+        createdBy: userId,
+      });
+
+      res.json({
+        success: true,
+        providerDocumentId: pandaDoc.id,
+        status: 'sent',
+        editorUrl,
+        recipients: recipients.map(r => ({ email: r.email, name: `${r.first_name} ${r.last_name}`.trim() })),
+      });
+    } catch (error) {
+      console.error('[PandaDoc Send] Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ success: false, error: errorMessage });
+    }
+  });
+
   // Get signing page data by token
   app.get('/api/sign/:token', async (req, res) => {
     try {

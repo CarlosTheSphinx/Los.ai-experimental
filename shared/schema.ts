@@ -243,6 +243,8 @@ export const documents = pgTable("documents", {
   fileData: text("file_data").notNull(), // Base64 encoded PDF
   pageCount: integer("page_count").notNull().default(1),
   status: text("status").notNull().default("draft"), // draft, sent, in_progress, completed, voided, voided_edited
+  vendor: text("vendor").default("local"), // local, pandadoc
+  pandadocDocumentId: text("pandadoc_document_id"),
   createdAt: timestamp("created_at").defaultNow(),
   sentAt: timestamp("sent_at"),
   completedAt: timestamp("completed_at"),

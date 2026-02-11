@@ -1,0 +1,82 @@
+Goal: When I click “Send for Signature”, it must SEND the document via PandaDoc (email to recipients) and return the PandaDoc document ID + status. Right now we are only creating a draft or doing an internal “send” that doesn’t hit PandaDoc.
+
+Implement PandaDoc “create document + send” end-to-end.
+
+A) Confirm PandaDoc API prerequisites
+1) Ensure we have PandaDoc API key / OAuth token configured in env:
+- PANDADOC_API_KEY (or OAuth client creds if we use OAuth)
+2) If the workspace requires it, confirm External Automations / API access is enabled.
+
+B) Backend: Build a real PandaDoc send pipeline
+Create/Update a server endpoint used by the UI “Send for Signature” button:
+POST /api/term-sheets/:id/pandadoc/send
+
+This endpoint must:
+1) Load the term sheet record + PDF URL/file + recipients from DB.
+2) Transform our overlay fields into PandaDoc fields:
+- Signature -> "signature"
+- Initials -> "initials"
+- Date -> "date"
+- Text -> "text"
+Each field must include:
+- assigned_to (recipient role or email)
+- page number
+- bounding box (x,y,w,h) mapped to PandaDoc’s expected coordinate system
+- for text fields include value (if prefilled) and/or allow recipient to type
+
+3) Create a PandaDoc document (NOT just a draft we never send):
+- Call PandaDoc “create document” endpoint with:
+  - name/title
+  - recipients (email + first/last + role)
+  - document content:
+    Option 1: use our PDF as an upload/import source if supported
+    Option 2: create from template if you have a PandaDoc template ID
+- Include fields placement in the create call if PandaDoc supports it OR create doc first then add fields via the appropriate endpoint.
+
+4) Immediately SEND the PandaDoc document:
+- After create returns document_id, call PandaDoc “send document” endpoint:
+  - include subject, message, silent=false (so it emails)
+  - ensure send is not blocked by draft status
+- If PandaDoc uses a single “create and send” flow, implement that.
+
+5) Save provider metadata to our DB:
+- provider = "pandadoc"
+- provider_document_id = returned document_id
+- status = "sent"
+- sent_at timestamp
+- store the payload snapshot + field json for auditing/debugging
+
+6) Return to client:
+{ success: true, providerDocumentId, status, recipients }
+
+C) Fix the NaN/integer error guardrails (must be present)
+Before writing any numeric values to DB, validate and reject invalid numbers:
+- page must be a valid integer >= 1
+- x,y,w,h must be finite numbers
+If any are invalid:
+- return 400 with { fieldName, value } (do not throw 500)
+
+Also add server logs for the outgoing PandaDoc requests:
+- log request path + relevant params (no API key)
+- log PandaDoc response status + error body on failure
+
+D) Frontend: Make “Send for Signature” call the PandaDoc endpoint
+1) Wire the button to call:
+POST /api/term-sheets/:id/pandadoc/send
+2) On success:
+- show toast “Sent via PandaDoc”
+- update the term sheet row in the Term Sheets table to status “sent”
+- store and display provider_document_id
+3) On error:
+- show a helpful message. If 400, show which field is invalid. If PandaDoc error, show PandaDoc error message.
+
+E) Term Sheets table actions
+For rows with provider="pandadoc":
+- View: open PandaDoc document link (if we can construct it) OR open our internal viewer
+- Void: call PandaDoc “cancel/void” endpoint and mark our internal status voided
+- Resend: create a new version and call the send endpoint again
+
+Deliverables:
+- Exact files changed and code diff
+- Confirm the app now emails the recipient via PandaDoc when “Send for Signature” is clicked
+- Include a small test or a dev route that sends to a test email address

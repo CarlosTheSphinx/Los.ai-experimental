@@ -1,0 +1,47 @@
+Goal: Remove any “Send” paths that do NOT send via PandaDoc. There must be exactly ONE send action in the UI, and it must call PandaDoc send.
+
+Changes required:
+
+1) Frontend UI cleanup
+- In the “Send Quote for Signature” modal:
+  - Remove/hide any send buttons, dropdown options, toggles, or menu items that trigger:
+    - internal send
+    - email send without PandaDoc
+    - “create draft only”
+    - any legacy provider send
+  - The only visible action should be ONE primary button:
+    “Send via PandaDoc” (or “Send for Signature” but it must be PandaDoc)
+  - If there is a stepper that includes “Send” with multiple options, remove the options and keep one path.
+
+2) Frontend behavior (single source of truth)
+- Wire the final send button to ONLY call:
+  POST /api/term-sheets/:id/pandadoc/send
+- Delete or stop calling any other endpoints like:
+  /send
+  /send-email
+  /create-draft
+  /envelope/send
+  etc. (whatever exists in our codebase)
+- Remove unused UI state associated with old send modes (provider selection, sendMethod, sendType).
+
+3) Backend cleanup / guardrails
+- If legacy endpoints still exist, they must either:
+  a) be deleted, OR
+  b) return 410 Gone / 400 with message:
+     “Deprecated: must send via PandaDoc. Use /api/term-sheets/:id/pandadoc/send”
+- Ensure no code path can mark a term sheet as “sent” unless:
+  - provider = "pandadoc"
+  - provider_document_id is present
+
+4) Term Sheets list consistency
+- Anywhere we show status transitions (“sent”, “delivered”, etc.), ensure they come only from the PandaDoc send result.
+- Remove any “Send” action in the Term Sheets table that doesn’t route through PandaDoc.
+- Update labels so users understand the single flow:
+  - “Send via PandaDoc”
+  - “Void in PandaDoc”
+  - “Resend via PandaDoc”
+
+Deliverables:
+- Identify every UI entry point that can send a document and remove all non-PandaDoc ones.
+- Show me the files changed and the final list of remaining send-related endpoints.
+- Confirm by walking through the UI that the only send action sends via PandaDoc and creates a provider_document_id.

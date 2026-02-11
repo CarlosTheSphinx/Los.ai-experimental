@@ -1179,11 +1179,40 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
     onSuccess: (data) => {
       toast({ title: "Document Sent!", description: `Signing invitations sent to ${signers.length} signer(s)` });
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
       onClose();
     },
     onError: (error: Error) => {
       console.error('Send error:', error);
       toast({ title: "Error", description: error.message || "Failed to send document", variant: "destructive" });
+    }
+  });
+
+  const sendViaPandadocMutation = useMutation({
+    mutationFn: async () => {
+      if (!documentId) throw new Error('No document to send');
+      const res = await apiRequest('POST', `/api/documents/${documentId}/pandadoc/send`, {
+        subject: `Please sign: ${quote.quoteName || 'Document'}`,
+        message: `Please review and sign this document from ${senderName || 'Sphinx Capital'}.`,
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send via PandaDoc');
+      }
+      return data;
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: "Sent via PandaDoc", 
+        description: `Document sent to ${data.recipients?.length || signers.length} signer(s) for signature` 
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+      onClose();
+    },
+    onError: (error: Error) => {
+      console.error('PandaDoc send error:', error);
+      toast({ title: "Error", description: error.message || "Failed to send via PandaDoc", variant: "destructive" });
     }
   });
 
@@ -2138,14 +2167,17 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                     </div>
                     
                     <Button 
-                      onClick={() => sendDocumentMutation.mutate()} 
-                      disabled={sendDocumentMutation.isPending}
+                      onClick={() => sendViaPandadocMutation.mutate()} 
+                      disabled={sendViaPandadocMutation.isPending}
                       className="w-full"
                       size="lg"
-                      data-testid="button-send-document"
+                      data-testid="button-send-pandadoc"
                     >
-                      {sendDocumentMutation.isPending ? "Sending..." : "Send for Signature"}
-                      <Send className="w-4 h-4 ml-2" />
+                      {sendViaPandadocMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending via PandaDoc...</>
+                      ) : (
+                        <>Send for Signature<Send className="w-4 h-4 ml-2" /></>
+                      )}
                     </Button>
                   </>
                 )}
