@@ -1,0 +1,49 @@
+You are working on my “Send Quote for Signature” modal PDF field placer.
+
+I need 3 UX fixes:
+
+1) TEXT FIELD MUST BE EDITABLE
+- When I drag a “Text” field onto the PDF, it currently renders but I cannot type into it.
+- Make text fields editable in-place:
+  - On click (or double click), it should enter edit mode and show a caret.
+  - User can type, select, delete, paste.
+  - Click outside commits the value.
+  - Persist the value in state for that field and keep it when switching pages or steps.
+  - Provide placeholder “Type here…” until user types.
+  - Support multi-line optional (at least single-line is required).
+
+Implementation guidance:
+- Use an actual <input> or <textarea> (or contentEditable div) overlayed on top of the PDF canvas/page layer.
+- Ensure pointer events work: text inputs should receive focus and keystrokes.
+- Store value per field: { id, type, page, x, y, w, h, value, fontSize }
+
+2) FONT SHOULD SCALE DOWN WHEN RESIZING
+- Currently when I resize a placed Text field, the box changes size but the font stays too big.
+- I want the font size to automatically adjust down (and up) so the typed text fits inside the box.
+Rules:
+- Compute fontSize based on the field’s height (and optionally width).
+- Add min/max font size limits (ex: min 8px, max 24px).
+- If the user types more than fits, either:
+  a) shrink font slightly to fit (preferred), OR
+  b) allow overflow with scrolling inside the input (acceptable).
+- Make font size update live while resizing.
+
+3) PDF VIEW MUST SCROLL (NO FORCED ZOOM OUT)
+- Right now I can’t scroll the page inside the modal, so I have to zoom out to see everything.
+- Fix the layout so the PDF page area is inside a scrollable container:
+  - The PDF viewer area should have vertical scroll (and horizontal if needed).
+  - Mouse wheel/trackpad should scroll the PDF container.
+  - Keep the left sidebar fixed.
+  - Don’t scroll the entire modal off-screen; only scroll the PDF area.
+- Put the PDF page inside a container with a set max height based on modal height (e.g. calc(100vh - header/footer)).
+- Ensure the PDF rendering library (react-pdf/pdf.js/iframe) doesn’t block scrolling.
+
+Deliverables:
+- Update the component(s) responsible for rendering and placing fields over the PDF.
+- If there is a “field overlay layer” on top of the PDF, ensure it uses position: absolute and matches the PDF page dimensions and scale.
+- Ensure scrolling does not break coordinate mapping: fields should stay aligned with the PDF content while scrolling, and page navigation should still work.
+- Provide the exact files changed and code diff.
+
+Before coding:
+- Locate the PDF rendering approach (react-pdf, pdf.js, or an iframe) and identify where overlay fields are rendered.
+Then implement the fixes above.

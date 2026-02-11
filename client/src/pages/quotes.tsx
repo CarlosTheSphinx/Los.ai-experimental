@@ -17,7 +17,8 @@ import {
   Clock,
   CheckCircle,
   Edit,
-  MessageSquare
+  MessageSquare,
+  ExternalLink
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -158,14 +159,29 @@ interface EsignEnvelope {
   completedAt: string | null;
   signedPdfUrl: string | null;
   externalDocumentId: string;
+  signingUrl: string | null;
 }
 
 function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<{ envelopes: EsignEnvelope[] }>({
     queryKey: ['/api/esign/envelopes/quote', quoteId],
     queryFn: async () => {
       const res = await fetch(`/api/esign/envelopes/quote/${quoteId}`);
       return res.json();
+    }
+  });
+
+  const sendPandadocMutation = useMutation({
+    mutationFn: async ({ envelopeId }: { envelopeId: number }) => {
+      return apiRequest('POST', `/api/esign/pandadoc/documents/${envelopeId}/send`, { sendMethod: 'email' });
+    },
+    onSuccess: () => {
+      toast({ title: "Document Sent", description: "The PandaDoc document has been sent for signing." });
+      queryClient.invalidateQueries({ queryKey: ['/api/esign/envelopes/quote', quoteId] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send PandaDoc document", variant: "destructive" });
     }
   });
 
@@ -175,6 +191,8 @@ function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'draft':
+        return <Badge variant="secondary"><Edit className="w-3 h-3 mr-1" />Draft</Badge>;
       case 'sent':
         return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1" />Sent</Badge>;
       case 'viewed':
@@ -203,6 +221,29 @@ function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
                 <span className="text-xs text-muted-foreground">
                   Sent: {new Date(envelope.sentAt).toLocaleDateString()}
                 </span>
+              )}
+              {envelope.status === 'draft' && envelope.signingUrl && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(envelope.signingUrl!, '_blank')}
+                    data-testid={`button-open-pandadoc-draft-${envelope.id}`}
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Open in PandaDoc
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => sendPandadocMutation.mutate({ envelopeId: envelope.id })}
+                    disabled={sendPandadocMutation.isPending}
+                    data-testid={`button-send-pandadoc-${envelope.id}`}
+                  >
+                    <Send className="w-3 h-3 mr-1" />
+                    Send
+                  </Button>
+                </>
               )}
               {envelope.status === 'completed' && (
                 <Button

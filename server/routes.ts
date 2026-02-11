@@ -2269,6 +2269,7 @@ export async function registerRoutes(
           quoteId: doc.quoteId,
           totalSigners: docSigners.length,
           signedCount,
+          vendor: 'local' as const,
           signers: docSigners.map(s => ({
             id: s.id,
             name: s.name,
@@ -2280,7 +2281,42 @@ export async function registerRoutes(
         };
       }));
       
-      res.json({ success: true, agreements });
+      const pandadocEnvelopes = await db.select().from(esignEnvelopes)
+        .where(eq(esignEnvelopes.createdBy, req.user!.id))
+        .orderBy(desc(esignEnvelopes.createdAt));
+      
+      const pandadocAgreements = pandadocEnvelopes.map(env => {
+        const recipients = (typeof env.recipients === 'string' ? JSON.parse(env.recipients) : env.recipients) as any[] || [];
+        const signedCount = recipients.filter((r: any) => r.status === 'signed').length;
+        return {
+          id: env.id,
+          title: env.documentName,
+          status: env.status,
+          createdAt: env.createdAt,
+          sentAt: env.sentAt,
+          completedAt: env.completedAt,
+          voidedAt: null,
+          quoteId: env.quoteId,
+          totalSigners: recipients.length,
+          signedCount,
+          vendor: 'pandadoc' as const,
+          externalDocumentId: env.externalDocumentId,
+          editorUrl: env.signingUrl,
+          signers: recipients.map((r: any, i: number) => ({
+            id: i + 1,
+            name: r.name || `${r.firstName || ''} ${r.lastName || ''}`.trim(),
+            email: r.email,
+            status: r.status || 'pending',
+            signedAt: r.signedAt,
+            tokenExpiresAt: null
+          }))
+        };
+      });
+      
+      const allAgreements = [...agreements, ...pandadocAgreements]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      res.json({ success: true, agreements: allAgreements });
     } catch (error) {
       console.error('Error fetching agreements:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
@@ -11535,11 +11571,11 @@ Respond ONLY with valid JSON in this format:
       await pandadoc.waitForDocumentReady(pandaDoc.id);
       console.log(`[PandaDoc] Document ${pandaDoc.id} is ready (draft status)`);
       
-      await db.update(esignEnvelopes)
-        .set({ status: 'draft' })
-        .where(eq(esignEnvelopes.id, envelope.id));
-      
       const editorUrl = `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`;
+      
+      await db.update(esignEnvelopes)
+        .set({ status: 'draft', signingUrl: editorUrl })
+        .where(eq(esignEnvelopes.id, envelope.id));
       
       res.json({
         success: true,
@@ -11654,11 +11690,11 @@ Respond ONLY with valid JSON in this format:
       await pandadoc.waitForDocumentReady(pandaDoc.id);
       console.log(`[PandaDoc] PDF document ${pandaDoc.id} is ready (draft status)`);
 
-      await db.update(esignEnvelopes)
-        .set({ status: 'draft' })
-        .where(eq(esignEnvelopes.id, envelope.id));
-
       const editorUrl = `https://app.pandadoc.com/a/#/documents/${pandaDoc.id}`;
+
+      await db.update(esignEnvelopes)
+        .set({ status: 'draft', signingUrl: editorUrl })
+        .where(eq(esignEnvelopes.id, envelope.id));
 
       res.json({
         success: true,

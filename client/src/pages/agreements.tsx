@@ -49,7 +49,8 @@ import {
   Users,
   Calendar,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  ExternalLink
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +75,9 @@ interface Agreement {
   quoteId?: number;
   totalSigners: number;
   signedCount: number;
+  vendor?: 'local' | 'pandadoc';
+  externalDocumentId?: string;
+  editorUrl?: string;
   signers: Signer[];
 }
 
@@ -197,24 +201,55 @@ export default function Agreements() {
     return agreements.filter(a => a.status === filter).length;
   };
 
+  const sendPandadocMutation = useMutation({
+    mutationFn: async ({ envelopeId, sendMethod }: { envelopeId: number; sendMethod?: string }) => {
+      return apiRequest('POST', `/api/esign/pandadoc/documents/${envelopeId}/send`, { sendMethod: sendMethod || 'email' });
+    },
+    onSuccess: () => {
+      toast({ title: "Document Sent", description: "The PandaDoc document has been sent for signing." });
+      queryClient.invalidateQueries({ queryKey: ['/api/esignature/agreements'] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send PandaDoc document", variant: "destructive" });
+    }
+  });
+
   const getStatusBadge = (agreement: Agreement) => {
     const status = agreement.status;
+    const isPandadoc = agreement.vendor === 'pandadoc';
+    const badges = [];
+    
+    if (isPandadoc) {
+      badges.push(
+        <Badge key="vendor" className="bg-purple-100 text-purple-700 border-purple-200" data-testid={`badge-vendor-${agreement.id}`}>
+          PandaDoc
+        </Badge>
+      );
+    }
+    
     switch (status) {
       case 'draft':
-        return <Badge variant="secondary" data-testid={`badge-status-${agreement.id}`}>Draft</Badge>;
+        badges.push(<Badge key="status" variant="secondary" data-testid={`badge-status-${agreement.id}`}>Draft</Badge>);
+        break;
       case 'pending':
       case 'sent':
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200" data-testid={`badge-status-${agreement.id}`}>Sent</Badge>;
+        badges.push(<Badge key="status" className="bg-amber-100 text-amber-700 border-amber-200" data-testid={`badge-status-${agreement.id}`}>Sent</Badge>);
+        break;
       case 'in_progress':
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200" data-testid={`badge-status-${agreement.id}`}>In Progress</Badge>;
+        badges.push(<Badge key="status" className="bg-blue-100 text-blue-700 border-blue-200" data-testid={`badge-status-${agreement.id}`}>In Progress</Badge>);
+        break;
       case 'completed':
-        return <Badge className="bg-green-100 text-green-700 border-green-200" data-testid={`badge-status-${agreement.id}`}>Completed</Badge>;
+        badges.push(<Badge key="status" className="bg-green-100 text-green-700 border-green-200" data-testid={`badge-status-${agreement.id}`}>Completed</Badge>);
+        break;
       case 'voided':
       case 'voided_edited':
-        return <Badge variant="destructive" data-testid={`badge-status-${agreement.id}`}>Voided</Badge>;
+        badges.push(<Badge key="status" variant="destructive" data-testid={`badge-status-${agreement.id}`}>Voided</Badge>);
+        break;
       default:
-        return <Badge variant="secondary" data-testid={`badge-status-${agreement.id}`}>{status}</Badge>;
+        badges.push(<Badge key="status" variant="secondary" data-testid={`badge-status-${agreement.id}`}>{status}</Badge>);
     }
+    
+    return <>{badges}</>;
   };
 
   const getSignerProgress = (agreement: Agreement) => {
@@ -334,38 +369,81 @@ export default function Agreements() {
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-4">
-                    <Link href={`/agreements/${agreement.id}`} className="flex-1 min-w-0">
-                      <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-                          <FileText className="w-5 h-5 text-primary" />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1 flex-wrap">
-                            <h3 className="font-semibold text-slate-800 truncate" data-testid={`text-agreement-title-${agreement.id}`}>
-                              {agreement.title}
-                            </h3>
-                            {getStatusBadge(agreement)}
+                    {agreement.vendor === 'pandadoc' ? (
+                      <div 
+                        className="flex-1 min-w-0 cursor-pointer"
+                        data-testid={`link-pandadoc-${agreement.id}`}
+                        onClick={() => {
+                          if (agreement.editorUrl) {
+                            window.open(agreement.editorUrl, '_blank');
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-full bg-purple-100">
+                            <ExternalLink className="w-5 h-5 text-purple-600" />
                           </div>
                           
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
-                            <span className="flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5" />
-                              {agreement.sentAt ? `Sent ${formatDate(agreement.sentAt)}` : `Created ${formatDate(agreement.createdAt)}`}
-                            </span>
-                            {getSignerProgress(agreement)}
-                            {agreement.completedAt && (
-                              <span className="flex items-center gap-1.5 text-green-600">
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Completed {formatDate(agreement.completedAt)}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <h3 className="font-semibold text-slate-800 truncate" data-testid={`text-agreement-title-${agreement.id}`}>
+                                {agreement.title}
+                              </h3>
+                              {getStatusBadge(agreement)}
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                              <span className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5" />
+                                {agreement.sentAt ? `Sent ${formatDate(agreement.sentAt)}` : `Created ${formatDate(agreement.createdAt)}`}
                               </span>
-                            )}
+                              {getSignerProgress(agreement)}
+                              {agreement.completedAt && (
+                                <span className="flex items-center gap-1.5 text-green-600">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Completed {formatDate(agreement.completedAt)}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          
+                          <ExternalLink className="w-5 h-5 text-slate-400 hidden sm:block" />
                         </div>
-                        
-                        <ChevronRight className="w-5 h-5 text-slate-400 hidden sm:block" />
                       </div>
-                    </Link>
+                    ) : (
+                      <Link href={`/agreements/${agreement.id}`} className="flex-1 min-w-0">
+                        <div className="flex items-center gap-4">
+                          <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+                            <FileText className="w-5 h-5 text-primary" />
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <h3 className="font-semibold text-slate-800 truncate" data-testid={`text-agreement-title-${agreement.id}`}>
+                                {agreement.title}
+                              </h3>
+                              {getStatusBadge(agreement)}
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                              <span className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5" />
+                                {agreement.sentAt ? `Sent ${formatDate(agreement.sentAt)}` : `Created ${formatDate(agreement.createdAt)}`}
+                              </span>
+                              {getSignerProgress(agreement)}
+                              {agreement.completedAt && (
+                                <span className="flex items-center gap-1.5 text-green-600">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Completed {formatDate(agreement.completedAt)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <ChevronRight className="w-5 h-5 text-slate-400 hidden sm:block" />
+                        </div>
+                      </Link>
+                    )}
                     
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -379,87 +457,130 @@ export default function Agreements() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/agreements/${agreement.id}`} className="flex items-center gap-2">
-                            <Eye className="w-4 h-4" />
-                            View Details
-                          </Link>
-                        </DropdownMenuItem>
-                        
-                        {agreement.quoteId && (
-                          <DropdownMenuItem asChild>
-                            <Link 
-                              href={`/messages?dealId=${agreement.quoteId}&new=true`} 
-                              className="flex items-center gap-2"
-                              data-testid={`action-message-${agreement.id}`}
-                            >
-                              <MessageSquare className="w-4 h-4" />
-                              Message about Deal
-                            </Link>
-                          </DropdownMenuItem>
-                        )}
-                        
-                        {canResend(agreement.status) && (
-                          <DropdownMenuItem 
-                            onClick={() => resendAllMutation.mutate(agreement.id)}
-                            disabled={resendAllMutation.isPending}
-                            data-testid={`action-resend-${agreement.id}`}
-                          >
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Resend to All
-                          </DropdownMenuItem>
-                        )}
-                        
-                        {canRemind(agreement.status) && (
-                          <DropdownMenuItem 
-                            onClick={() => remindMutation.mutate(agreement.id)}
-                            disabled={remindMutation.isPending}
-                            data-testid={`action-remind-${agreement.id}`}
-                          >
-                            <Bell className="w-4 h-4 mr-2" />
-                            Send Reminder
-                          </DropdownMenuItem>
-                        )}
-                        
-                        {canEdit(agreement.status) && agreement.status !== 'draft' && (
+                        {agreement.vendor === 'pandadoc' ? (
                           <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => editMutation.mutate(agreement.id)}
-                              disabled={editMutation.isPending}
-                              data-testid={`action-edit-${agreement.id}`}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit & Resend
-                            </DropdownMenuItem>
+                            {agreement.editorUrl && (
+                              <DropdownMenuItem 
+                                onClick={() => window.open(agreement.editorUrl, '_blank')}
+                                data-testid={`action-open-pandadoc-${agreement.id}`}
+                              >
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Open in PandaDoc
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {agreement.status === 'draft' && (
+                              <DropdownMenuItem 
+                                onClick={() => sendPandadocMutation.mutate({ envelopeId: agreement.id })}
+                                disabled={sendPandadocMutation.isPending}
+                                data-testid={`action-send-pandadoc-${agreement.id}`}
+                              >
+                                <Send className="w-4 h-4 mr-2" />
+                                Send for Signature
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {agreement.quoteId && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                  <Link 
+                                    href={`/messages?dealId=${agreement.quoteId}&new=true`} 
+                                    className="flex items-center gap-2"
+                                    data-testid={`action-message-${agreement.id}`}
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                    Message about Deal
+                                  </Link>
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </>
-                        )}
-                        
-                        {canVoid(agreement.status) && (
+                        ) : (
                           <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleVoid(agreement)}
-                              className="text-red-600"
-                              data-testid={`action-void-${agreement.id}`}
-                            >
-                              <Ban className="w-4 h-4 mr-2" />
-                              Void Document
+                            <DropdownMenuItem asChild>
+                              <Link href={`/agreements/${agreement.id}`} className="flex items-center gap-2">
+                                <Eye className="w-4 h-4" />
+                                View Details
+                              </Link>
                             </DropdownMenuItem>
-                          </>
-                        )}
-                        
-                        {canDelete(agreement.status) && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(agreement)}
-                              className="text-red-600"
-                              data-testid={`action-delete-${agreement.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete Draft
-                            </DropdownMenuItem>
+                            
+                            {agreement.quoteId && (
+                              <DropdownMenuItem asChild>
+                                <Link 
+                                  href={`/messages?dealId=${agreement.quoteId}&new=true`} 
+                                  className="flex items-center gap-2"
+                                  data-testid={`action-message-${agreement.id}`}
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                  Message about Deal
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {canResend(agreement.status) && (
+                              <DropdownMenuItem 
+                                onClick={() => resendAllMutation.mutate(agreement.id)}
+                                disabled={resendAllMutation.isPending}
+                                data-testid={`action-resend-${agreement.id}`}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Resend to All
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {canRemind(agreement.status) && (
+                              <DropdownMenuItem 
+                                onClick={() => remindMutation.mutate(agreement.id)}
+                                disabled={remindMutation.isPending}
+                                data-testid={`action-remind-${agreement.id}`}
+                              >
+                                <Bell className="w-4 h-4 mr-2" />
+                                Send Reminder
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {canEdit(agreement.status) && agreement.status !== 'draft' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => editMutation.mutate(agreement.id)}
+                                  disabled={editMutation.isPending}
+                                  data-testid={`action-edit-${agreement.id}`}
+                                >
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Edit & Resend
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            
+                            {canVoid(agreement.status) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleVoid(agreement)}
+                                  className="text-red-600"
+                                  data-testid={`action-void-${agreement.id}`}
+                                >
+                                  <Ban className="w-4 h-4 mr-2" />
+                                  Void Document
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            
+                            {canDelete(agreement.status) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleDelete(agreement)}
+                                  className="text-red-600"
+                                  data-testid={`action-delete-${agreement.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Draft
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </>
                         )}
                       </DropdownMenuContent>
