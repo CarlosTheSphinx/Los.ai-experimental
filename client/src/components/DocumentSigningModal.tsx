@@ -1032,8 +1032,8 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className={`max-h-[90vh] overflow-hidden flex flex-col ${pandadocDraft && pandadocEditorToken ? 'max-w-[95vw] w-[95vw] h-[90vh]' : 'max-w-5xl'}`}>
-        <DialogHeader>
+      <DialogContent className={`overflow-hidden flex flex-col ${pandadocDraft && pandadocEditorToken ? 'max-w-[95vw] w-[95vw] h-[95vh] max-h-[95vh] p-4' : 'max-w-5xl max-h-[90vh]'}`}>
+        <DialogHeader className={pandadocDraft && pandadocEditorToken ? 'hidden' : ''}>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
             Send Quote for Signature
@@ -1041,7 +1041,7 @@ export function DocumentSigningModal({ open, onClose, quote }: DocumentSigningMo
         </DialogHeader>
 
         <Tabs value={step} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid grid-cols-4">
+          <TabsList className={`grid grid-cols-4 ${pandadocDraft && pandadocEditorToken ? 'hidden' : ''}`}>
             <TabsTrigger value="upload" disabled={step !== "upload" && !documentId}>
               <Upload className="w-4 h-4 mr-2" />
               Upload
