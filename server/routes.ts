@@ -11532,12 +11532,13 @@ Respond ONLY with valid JSON in this format:
       
       let signingUrl: string | null = null;
       
+      // Wait for PandaDoc to finish processing the document before sending
+      console.log(`[PandaDoc] Waiting for document ${pandaDoc.id} to be ready...`);
+      await pandadoc.waitForDocumentReady(pandaDoc.id);
+      console.log(`[PandaDoc] Document ${pandaDoc.id} is ready (draft status)`);
+      
       // Send document based on method
       if (sendMethod === 'embedded') {
-        // Wait for document to be ready, then create embedded session
-        // PandaDoc requires document to be in 'document.draft' status
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
         try {
           const session = await pandadoc.createEmbeddedSession(
             pandaDoc.id,
@@ -11550,7 +11551,6 @@ Respond ONLY with valid JSON in this format:
             .where(eq(esignEnvelopes.id, envelope.id));
         } catch (sessionError: any) {
           console.error('Failed to create embedded session, falling back to email:', sessionError);
-          // Fall back to email send
           await pandadoc.sendDocument(pandaDoc.id, { subject, message });
           await db.update(esignEnvelopes)
             .set({ status: 'sent', sentAt: new Date() })

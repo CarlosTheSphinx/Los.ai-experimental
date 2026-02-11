@@ -101,6 +101,31 @@ export async function createDocumentFromTemplate(
   return response.json();
 }
 
+export async function waitForDocumentReady(
+  documentId: string,
+  maxAttempts: number = 15,
+  intervalMs: number = 2000
+): Promise<PandaDocDocument> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const doc = await getDocumentStatus(documentId);
+    console.log(`[PandaDoc] Poll attempt ${attempt}/${maxAttempts} - Document ${documentId} status: ${doc.status}`);
+    
+    if (doc.status === "document.draft") {
+      return doc;
+    }
+    
+    if (doc.status === "document.error") {
+      throw new Error(`PandaDoc document ${documentId} entered error state during processing`);
+    }
+    
+    if (attempt < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+  
+  throw new Error(`PandaDoc document ${documentId} did not reach draft status after ${maxAttempts} attempts (${(maxAttempts * intervalMs) / 1000}s). Current status may still be processing — try sending manually.`);
+}
+
 export async function sendDocument(
   documentId: string,
   options: { subject?: string; message?: string; silent?: boolean } = {}
