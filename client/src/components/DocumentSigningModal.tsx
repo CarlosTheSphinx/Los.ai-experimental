@@ -2010,12 +2010,12 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                   <Mail className="w-12 h-12 mx-auto text-primary" />
                   <h3 className="text-xl font-semibold">Ready to Send</h3>
                   <p className="text-muted-foreground">
-                    Your document will be sent to {uploadMode === "pandadoc" ? pandadocRecipients.length : signers.length} signer(s) for signature
-                    {uploadMode === "pandadoc" && " via PandaDoc"}
+                    Your document will be sent to {(uploadMode === "pandadoc" && !documentId) ? pandadocRecipients.length : signers.length} signer(s) for signature
+                    {uploadMode === "pandadoc" && !documentId && " via PandaDoc"}
                   </p>
                 </div>
                 
-                {uploadMode === "pandadoc" ? (
+                {uploadMode === "pandadoc" && !documentId ? (
                   <>
                     <div className="space-y-2">
                       <Label>Send Method</Label>
