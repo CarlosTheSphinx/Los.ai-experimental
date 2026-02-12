@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Shield, Zap, FileCheck } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
+import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -69,25 +70,88 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl tracking-tight">Sphinx Capital</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="min-h-screen flex bg-background">
+      {/* Left Panel — Brand + Trust Signals (hidden on mobile) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-foreground text-background flex-col justify-between p-12">
+        <div>
+          <img
+            src={sphinxLogo}
+            alt="Sphinx Capital"
+            className="h-14 w-auto object-contain mb-12 brightness-0 invert"
+          />
+          <h1 className="text-4xl font-bold tracking-tight mb-4">
+            Intelligent Lending, Simplified
+          </h1>
+          <p className="text-lg opacity-80 max-w-md">
+            AI-powered loan origination for private lenders. Close DSCR, RTL, and non-QM deals faster.
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex items-start gap-4">
+            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
+              <Zap className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-base">AI-Powered Pricing</p>
+              <p className="text-sm opacity-70">Get instant, data-driven loan pricing in seconds</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-4">
+            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
+              <FileCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-base">Smart Document Review</p>
+              <p className="text-sm opacity-70">AI reads and validates documents automatically</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-4">
+            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
+              <Shield className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-base">Bank-Level Security</p>
+              <p className="text-sm opacity-70">256-bit encryption and SOC 2 compliance</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs opacity-50">
+          &copy; {new Date().getFullYear()} Sphinx Capital. All rights reserved.
+        </p>
+      </div>
+
+      {/* Right Panel — Login Form */}
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+        <div className="w-full max-w-md space-y-8">
+          {/* Mobile logo */}
+          <div className="lg:hidden text-center">
+            <img
+              src={sphinxLogo}
+              alt="Sphinx Capital"
+              className="h-12 w-auto object-contain mx-auto mb-4"
+            />
+          </div>
+
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Welcome back</h2>
+            <p className="text-muted-foreground mt-2">Sign in to your account to continue</p>
+          </div>
+
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
                 control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email address</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
-                        placeholder=""
+                        placeholder="you@company.com"
+                        className="h-11"
                         data-testid="input-email"
                         {...field}
                       />
@@ -101,11 +165,17 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Password</FormLabel>
+                      <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+                        Forgot password?
+                      </Link>
+                    </div>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder=""
+                        placeholder="Enter your password"
+                        className="h-11"
                         data-testid="input-password"
                         {...field}
                       />
@@ -116,7 +186,7 @@ export default function LoginPage() {
               />
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full h-11 text-base"
                 disabled={isLoading}
                 data-testid="button-login"
               >
@@ -131,34 +201,46 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-          <div className="relative my-6">
+
+          <div className="relative">
             <Separator />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-              or
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-xs text-muted-foreground">
+              or continue with
             </span>
           </div>
+
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full h-11"
             onClick={() => { window.location.href = '/api/auth/google'; }}
             data-testid="button-google-login"
           >
             <SiGoogle className="mr-2 h-4 w-4" />
             Sign in with Google
           </Button>
-          <div className="mt-4 text-center text-sm">
-            <Link href="/forgot-password" className="text-primary hover:underline">
-              Forgot your password?
-            </Link>
-          </div>
-          <div className="mt-4 text-center text-sm text-muted-foreground">
+
+          <p className="text-center text-sm text-muted-foreground">
             Don't have an account?{' '}
-            <Link href="/register" className="text-primary hover:underline">
-              Sign up
+            <Link href="/register" className="text-primary font-medium hover:underline">
+              Create an account
             </Link>
+          </p>
+
+          {/* Trust signals for mobile */}
+          <div className="lg:hidden pt-4 border-t border-border">
+            <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5" />
+                <span>256-bit encryption</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5" />
+                <span>AI-powered</span>
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

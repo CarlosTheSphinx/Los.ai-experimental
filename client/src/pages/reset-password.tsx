@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, CheckCircle } from 'lucide-react';
+import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -67,116 +68,130 @@ export default function ResetPasswordPage() {
 
   if (resetComplete) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <CheckCircle className="h-12 w-12 text-success" />
-            </div>
-            <CardTitle className="text-2xl tracking-tight">Password Reset Complete</CardTitle>
-            <CardDescription>
-              Your password has been successfully reset.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/login">
-              <Button className="w-full" data-testid="button-go-to-login">
-                Sign In
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex bg-background">
+        <div className="flex items-center justify-center w-full p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <div className="flex justify-center mb-4">
+                <CheckCircle className="h-12 w-12 text-success" />
+              </div>
+              <CardTitle className="text-2xl font-bold tracking-tight">Password Reset Complete</CardTitle>
+              <CardDescription>
+                Your password has been successfully reset.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/login">
+                <Button className="w-full h-11" data-testid="button-go-to-login">
+                  Sign In
+                </Button>
+              </Link>
+              <div className="mt-6 text-center text-xs text-muted-foreground">Secured with 256-bit encryption</div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl tracking-tight">Invalid Link</CardTitle>
-            <CardDescription>
-              This password reset link is invalid or has expired.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/forgot-password">
-              <Button className="w-full">
-                Request New Reset Link
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex bg-background">
+        <div className="flex items-center justify-center w-full p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <CardTitle className="text-2xl font-bold tracking-tight">Invalid Link</CardTitle>
+              <CardDescription>
+                This password reset link is invalid or has expired.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/forgot-password">
+                <Button className="w-full h-11">
+                  Request New Reset Link
+                </Button>
+              </Link>
+              <div className="mt-6 text-center text-xs text-muted-foreground">Secured with 256-bit encryption</div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl tracking-tight">Reset Password</CardTitle>
-          <CardDescription>Enter your new password</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>New Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder=""
-                        data-testid="input-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm New Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder=""
-                        data-testid="input-confirm-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-                data-testid="button-reset-password"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Resetting...
-                  </>
-                ) : (
-                  'Reset Password'
-                )}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen flex bg-background">
+      <div className="flex items-center justify-center w-full p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+            <CardTitle className="text-2xl font-bold tracking-tight">Reset Password</CardTitle>
+            <CardDescription>Enter your new password</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>New Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder=""
+                          data-testid="input-password"
+                          className="h-11"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Confirm New Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder=""
+                          data-testid="input-confirm-password"
+                          className="h-11"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full h-11"
+                  disabled={isLoading}
+                  data-testid="button-reset-password"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    'Reset Password'
+                  )}
+                </Button>
+              </form>
+            </Form>
+            <div className="mt-6 text-center text-xs text-muted-foreground">Secured with 256-bit encryption</div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

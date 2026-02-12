@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
+import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -47,85 +48,94 @@ export default function ForgotPasswordPage() {
 
   if (emailSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <CheckCircle className="h-12 w-12 text-success" />
-            </div>
-            <CardTitle className="text-2xl tracking-tight">Check Your Email</CardTitle>
-            <CardDescription>
-              If an account exists with that email, we've sent you a password reset link.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/login">
-              <Button variant="outline" className="w-full">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Sign In
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex bg-background">
+        <div className="flex items-center justify-center w-full p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <div className="flex justify-center mb-4">
+                <CheckCircle className="h-12 w-12 text-success" />
+              </div>
+              <CardTitle className="text-2xl font-bold tracking-tight">Check Your Email</CardTitle>
+              <CardDescription>
+                If an account exists with that email, we've sent you a password reset link.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/login">
+                <Button variant="outline" className="w-full h-11">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Sign In
+                </Button>
+              </Link>
+              <div className="mt-6 text-center text-xs text-muted-foreground">Secured with 256-bit encryption</div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl tracking-tight">Forgot Password</CardTitle>
-          <CardDescription>
-            Enter your email and we'll send you a reset link
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder=""
-                        data-testid="input-email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-                data-testid="button-send-reset"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  'Send Reset Link'
-                )}
-              </Button>
-            </form>
-          </Form>
-          <div className="mt-4 text-center">
-            <Link href="/login" className="text-sm text-muted-foreground hover:text-primary">
-              <ArrowLeft className="inline mr-1 h-4 w-4" />
-              Back to Sign In
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen flex bg-background">
+      <div className="flex items-center justify-center w-full p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+            <CardTitle className="text-2xl font-bold tracking-tight">Forgot Password</CardTitle>
+            <CardDescription>
+              Enter your email and we'll send you a reset link
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder=""
+                          data-testid="input-email"
+                          className="h-11"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full h-11"
+                  disabled={isLoading}
+                  data-testid="button-send-reset"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    'Send Reset Link'
+                  )}
+                </Button>
+              </form>
+            </Form>
+            <div className="mt-4 text-center">
+              <Link href="/login" className="text-sm text-muted-foreground hover:text-primary">
+                <ArrowLeft className="inline mr-1 h-4 w-4" />
+                Back to Sign In
+              </Link>
+            </div>
+            <div className="mt-6 text-center text-xs text-muted-foreground">Secured with 256-bit encryption</div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

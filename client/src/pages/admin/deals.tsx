@@ -61,6 +61,9 @@ import {
   Loader2,
   AlertCircle,
   ArrowUpDown,
+  Filter,
+  AlertTriangle,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -284,6 +287,29 @@ function getLoanTypeLabel(loanType: string): string {
   return labels[loanType?.toLowerCase()] || loanType || "N/A";
 }
 
+function getDaysInStage(createdAt: string): number {
+  const created = new Date(createdAt);
+  const now = new Date();
+  return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getSemanticStageColor(stage: string): { className: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' } {
+  const stageKey = stage?.toLowerCase() || '';
+  if (stageKey.includes('complete') || stageKey.includes('funded') || stageKey.includes('closed')) {
+    return { className: 'bg-green-50 text-green-700 border-green-200', variant: 'outline' };
+  }
+  if (stageKey.includes('initial') || stageKey.includes('quote') || stageKey.includes('appraisal')) {
+    return { className: 'bg-blue-50 text-blue-700 border-blue-200', variant: 'outline' };
+  }
+  if (stageKey.includes('at-risk') || stageKey.includes('overdue') || stageKey.includes('stalled')) {
+    return { className: 'bg-red-50 text-red-700 border-red-200', variant: 'destructive' };
+  }
+  if (stageKey.includes('underwriting') || stageKey.includes('review') || stageKey.includes('processing')) {
+    return { className: 'bg-amber-50 text-amber-700 border-amber-200', variant: 'outline' };
+  }
+  return { className: '', variant: 'default' };
+}
+
 function DrivePushButton({ deal }: { deal: Deal }) {
   const { toast } = useToast();
   const [pushing, setPushing] = useState(false);
@@ -369,6 +395,8 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
   const progress = deal.progressPercentage || 0;
   const loanTitle = `${deal.customerFirstName} ${deal.customerLastName} - ${getLoanTypeLabel(deal.loanData?.loanType)}`;
   const targetDate = deal.targetCloseDate ? new Date(deal.targetCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  const daysInStage = getDaysInStage(deal.createdAt);
+  const stageColorInfo = getSemanticStageColor(deal.stage);
 
   return (
     <Card data-testid={`card-deal-${deal.id}`} className="overflow-hidden hover-elevate">
@@ -387,6 +415,10 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
               </Badge>
               <Badge variant="outline" className="text-xs" data-testid={`badge-loantype-${deal.id}`}>
                 {getLoanTypeLabel(deal.loanData?.loanType)}
+              </Badge>
+              <Badge variant="secondary" className="text-xs gap-1">
+                <Clock className="h-3 w-3" />
+                {daysInStage}d
               </Badge>
             </div>
             <Activity className="h-4 w-4 text-muted-foreground" />
@@ -567,8 +599,8 @@ export default function AdminDeals() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Pipeline</h1>
-          <p className="text-muted-foreground">Overview of all deals submitted by users</p>
+          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Loan Pipeline</h1>
+          <p className="text-muted-foreground text-sm">Manage your active loan pipeline</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -799,6 +831,21 @@ export default function AdminDeals() {
         <PipelineByStage stageStats={stats.stageStats} />
       )}
 
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline" className="gap-1.5 cursor-pointer hover:bg-accent">
+          <Filter className="h-3.5 w-3.5" />
+          All Deals
+        </Badge>
+        <Badge variant="outline" className="gap-1.5 cursor-pointer hover:bg-accent">
+          <Zap className="h-3.5 w-3.5" />
+          High Priority
+        </Badge>
+        <Badge variant="outline" className="gap-1.5 cursor-pointer hover:bg-accent">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          At Risk
+        </Badge>
+      </div>
+
       <div className="space-y-4">
         <div className="flex flex-row flex-wrap items-center justify-between gap-4">
           <div>
@@ -858,12 +905,24 @@ export default function AdminDeals() {
           </div>
         ) : deals.length === 0 ? (
           <Card className="text-center py-12">
-            <CardContent>
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No deals found</h3>
-              <p className="text-muted-foreground">
-                {searchTerm ? "Try adjusting your search" : "No quotes have been submitted yet"}
-              </p>
+            <CardContent className="space-y-4">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
+              <div>
+                <h3 className="text-lg font-medium">No deals found</h3>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {searchTerm ? "Try adjusting your search criteria" : "Get started by adding your first deal to the pipeline"}
+                </p>
+              </div>
+              {!searchTerm && (
+                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add Your First Deal
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+              )}
             </CardContent>
           </Card>
         ) : viewMode === "kanban" ? (
@@ -892,6 +951,7 @@ export default function AdminDeals() {
                   <TableHead>Loan Type</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Stage Time</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Drive</TableHead>
                 </TableRow>
@@ -934,6 +994,12 @@ export default function AdminDeals() {
                       <Badge className="text-xs" style={getStageStyle(deal.stage, data?.stats?.stageStats)}>
                         {getStageLabel(deal.stage, data?.stats?.stageStats)}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        <span>{getDaysInStage(deal.createdAt)} days</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 min-w-[100px]">

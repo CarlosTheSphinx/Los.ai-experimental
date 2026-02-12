@@ -16,6 +16,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -266,21 +267,32 @@ export function LoanChecklist({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          {docItems.length > 0 && (
-            <span data-testid="text-doc-progress">
-              Documents: {approvedDocs}/{totalDocs} approved
+    <div className="space-y-6">
+      {docItems.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">Documents</span>
+            <span className="text-sm font-semibold text-foreground" data-testid="text-doc-progress">
+              {approvedDocs} of {totalDocs} complete
             </span>
-          )}
-          {showTasks && taskItems.length > 0 && (
-            <span data-testid="text-task-progress">
-              Tasks: {completedTasks}/{totalTasks} complete
-            </span>
-          )}
+          </div>
+          <Progress value={(approvedDocs / totalDocs) * 100} className="h-2" />
+          <p className="text-xs text-muted-foreground">{Math.round((approvedDocs / totalDocs) * 100)}% complete</p>
         </div>
-      </div>
+      )}
+
+      {showTasks && taskItems.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">Tasks</span>
+            <span className="text-sm font-semibold text-foreground" data-testid="text-task-progress">
+              {completedTasks} of {totalTasks} complete
+            </span>
+          </div>
+          <Progress value={(completedTasks / totalTasks) * 100} className="h-2" />
+          <p className="text-xs text-muted-foreground">{Math.round((completedTasks / totalTasks) * 100)}% complete</p>
+        </div>
+      )}
 
       {itemsByStage.map(({ stage, items: stageItems }) => (
         <Card key={stage.id} data-testid={`card-checklist-stage-${stage.id}`}>
@@ -382,15 +394,22 @@ function ChecklistItemRow({
 
   return (
     <div
-      className={`flex items-center gap-3 p-3 rounded-md border ${
-        item.status === "rejected" ? "border-destructive/50 bg-destructive/5" : ""
-      }`}
+      className={`flex items-center gap-3 p-3 rounded-md border transition-colors ${
+        item.status === "rejected" ? "border-destructive/50 bg-destructive/5" : "border-border"
+      } ${item.status === "approved" ? "border-success/30 bg-success/5" : ""}`}
       data-testid={`checklist-item-${item.id}`}
     >
       {getStatusIcon(item.status, item.type)}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">{item.title}</span>
+          <span className={`text-sm font-medium ${
+            item.status === "approved" ? "text-success" :
+            item.status === "rejected" ? "text-destructive" :
+            (item.status === "uploaded" || item.status === "submitted") ? "text-info" :
+            "text-foreground"
+          }`}>
+            {item.title}
+          </span>
           {isDocument && item.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
           {!isDocument && <Badge variant="outline" className="text-xs">Task</Badge>}
           {item.assignedTo && item.assignedTo !== "borrower" && mode === "admin" && (

@@ -121,12 +121,15 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     <div className="flex h-screen w-full bg-background">
       <Sidebar collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <img 
-              src={sphinxLogo} 
-              alt="Sphinx Capital" 
+          <div className="flex flex-col items-start gap-1">
+            <img
+              src={sphinxLogo}
+              alt="Sphinx Capital"
               className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
             />
+            <span className="text-[10px] text-muted-foreground font-medium group-data-[collapsible=icon]:hidden">
+              Intelligent Lending
+            </span>
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -140,12 +143,13 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                   
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton 
-                        asChild 
+                      <SidebarMenuButton
+                        asChild
                         isActive={isActive}
                         tooltip={item.label}
+                        className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
                       >
-                        <Link 
+                        <Link
                           href={item.href}
                           data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                           onClick={handleNavClick}
@@ -165,8 +169,8 @@ function AppLayoutContent({ children }: AppLayoutProps) {
           </SidebarGroup>
           
           {isAdmin && (
-            <SidebarGroup>
-              <SidebarGroupLabel className="flex items-center gap-2">
+            <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
+              <SidebarGroupLabel className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
                 <Shield className="h-3 w-3" />
                 Admin
               </SidebarGroupLabel>
@@ -179,12 +183,13 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                     
                     return (
                       <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton 
-                          asChild 
+                        <SidebarMenuButton
+                          asChild
                           isActive={isActive}
                           tooltip={item.label}
+                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
                         >
-                          <Link 
+                          <Link
                             href={item.href}
                             data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                             onClick={handleNavClick}
@@ -207,16 +212,21 @@ function AppLayoutContent({ children }: AppLayoutProps) {
         <SidebarFooter className="border-t border-sidebar-border p-2">
           <div className="flex flex-col gap-2">
             {user && (
-              <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
-                <div className="text-sm text-muted-foreground truncate">
-                  {user.firstName} {user.lastName}
+              <div className="px-2 py-2 flex items-center gap-2 group-data-[collapsible=icon]:hidden">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                  {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
                 </div>
-                {isAdmin && (
-                  <Badge variant="secondary" className="mt-1 text-xs">
-                    <Shield className="h-3 w-3 mr-1" />
-                    {user.role?.replace('_', ' ')}
-                  </Badge>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {user.firstName} {user.lastName}
+                  </div>
+                  {isAdmin && (
+                    <Badge variant="default" className="mt-1 text-xs px-2 py-0.5 h-auto">
+                      <Shield className="h-3 w-3 mr-1" />
+                      {user.role?.replace('_', ' ')}
+                    </Badge>
+                  )}
+                </div>
               </div>
             )}
             <Button

@@ -12,8 +12,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Briefcase, Home } from 'lucide-react';
+import { Loader2, Briefcase, Home, Zap, Shield, Clock } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
+import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const registerSchema = z.object({
   userType: z.enum(['broker', 'borrower'], { required_error: 'Please select your account type' }),
@@ -75,13 +76,65 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create an Account</CardTitle>
-          <CardDescription>Sign up for Sphinx Capital</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="min-h-screen flex bg-background">
+      {/* Left Panel - Brand Messaging */}
+      <div className="hidden lg:flex lg:w-1/2 bg-foreground text-background flex-col justify-between p-12">
+        <div>
+          <img src={sphinxLogo} alt="Sphinx Capital" className="h-12 mb-12" />
+          <h1 className="text-4xl font-bold tracking-tight mb-4">Start originating smarter</h1>
+          <p className="text-lg text-background/80 mb-8">
+            AI-powered lending that transforms how you originate, manage, and grow your business.
+          </p>
+
+          {/* Benefit Bullets */}
+          <div className="space-y-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <Zap className="h-6 w-6 text-background" />
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Originate Faster</h3>
+                <p className="text-sm text-background/80">Automated processing speeds up loan origination by 10x</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <Shield className="h-6 w-6 text-background" />
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Better Decisions</h3>
+                <p className="text-sm text-background/80">AI-powered insights reduce risk and improve approval rates</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <Clock className="h-6 w-6 text-background" />
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Real-time Monitoring</h3>
+                <p className="text-sm text-background/80">Track performance and detect issues instantly</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Copyright Footer */}
+        <div className="text-sm text-background/60">
+          &copy; 2024 Sphinx Capital. All rights reserved.
+        </div>
+      </div>
+
+      {/* Right Panel - Form */}
+      <div className="flex-1 flex flex-col justify-center p-4 lg:p-8">
+        <div className="w-full max-w-md mx-auto">
+          {/* Mobile Logo */}
+          <div className="lg:hidden mb-8 flex justify-center">
+            <img src={sphinxLogo} alt="Sphinx Capital" className="h-10" />
+          </div>
+
+          <h2 className="text-3xl font-bold tracking-tight mb-2">Create your account</h2>
+          <p className="text-muted-foreground mb-8">Sign up for Sphinx Capital</p>
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -143,6 +196,7 @@ export default function RegisterPage() {
                         <Input
                           placeholder=""
                           data-testid="input-first-name"
+                          className="h-11"
                           {...field}
                         />
                       </FormControl>
@@ -160,6 +214,7 @@ export default function RegisterPage() {
                         <Input
                           placeholder=""
                           data-testid="input-last-name"
+                          className="h-11"
                           {...field}
                         />
                       </FormControl>
@@ -179,6 +234,7 @@ export default function RegisterPage() {
                         type="email"
                         placeholder=""
                         data-testid="input-email"
+                        className="h-11"
                         {...field}
                       />
                     </FormControl>
@@ -197,6 +253,7 @@ export default function RegisterPage() {
                         type="password"
                         placeholder=""
                         data-testid="input-password"
+                        className="h-11"
                         {...field}
                       />
                     </FormControl>
@@ -215,6 +272,7 @@ export default function RegisterPage() {
                         type="password"
                         placeholder=""
                         data-testid="input-confirm-password"
+                        className="h-11"
                         {...field}
                       />
                     </FormControl>
@@ -224,7 +282,7 @@ export default function RegisterPage() {
               />
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full h-11"
                 disabled={isLoading}
                 data-testid="button-register"
               >
@@ -241,27 +299,41 @@ export default function RegisterPage() {
           </Form>
           <div className="relative my-6">
             <Separator />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
               or
             </span>
           </div>
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full h-11"
             onClick={() => { window.location.href = '/api/auth/google'; }}
             data-testid="button-google-register"
           >
             <SiGoogle className="mr-2 h-4 w-4" />
             Sign up with Google
           </Button>
-          <div className="mt-4 text-center text-sm text-muted-foreground">
+
+          {/* Trust Signals - Mobile Only */}
+          <div className="lg:hidden mt-8 pt-8 border-t border-border space-y-4">
+            <div className="flex gap-3">
+              <Shield className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-muted-foreground">Bank-level security for your data</div>
+            </div>
+            <div className="flex gap-3">
+              <Zap className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-muted-foreground">Instant verification and decisions</div>
+            </div>
+          </div>
+
+          {/* Sign In Link */}
+          <div className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{' '}
-            <Link href="/login" className="text-primary hover:underline">
+            <Link href="/login" className="text-primary hover:underline font-medium">
               Sign in
             </Link>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
