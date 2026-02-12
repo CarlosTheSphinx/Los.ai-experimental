@@ -10,9 +10,9 @@ import Quotes from "@/pages/quotes";
 import SignPage from "@/pages/sign";
 import Agreements from "@/pages/agreements";
 import AgreementDetail from "@/pages/agreement-detail";
-import Projects from "@/pages/projects";
-import ProjectDetail from "@/pages/project-detail";
-import NewProject from "@/pages/new-project";
+import Deals from "@/pages/projects";
+import DealDetail from "@/pages/project-detail";
+import NewDeal from "@/pages/new-project";
 import BorrowerPortal from "@/pages/borrower-portal";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -20,8 +20,8 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
-import AdminProjects from "@/pages/admin/projects";
-import AdminProjectDetail from "@/pages/admin/project-detail";
+import AdminDealsLegacy from "@/pages/admin/projects";
+import AdminDealDetailLegacy from "@/pages/admin/project-detail";
 import AdminSettings from "@/pages/admin/settings";
 import AdminDeals from "@/pages/admin/deals";
 import AdminDealDetail from "@/pages/admin/deal-detail";
@@ -127,9 +127,12 @@ function MainRoutes() {
         <Route path="/agreements" component={() => <ProtectedRoute component={Agreements} />} />
         <Route path="/agreements/:id" component={() => <ProtectedRoute component={AgreementDetail} />} />
         <Route path="/commissions" component={() => <ProtectedRoute component={CommissionsPage} />} />
-        <Route path="/projects" component={() => <ProtectedRoute component={Projects} />} />
-        <Route path="/projects/new" component={() => <ProtectedRoute component={NewProject} />} />
-        <Route path="/projects/:id" component={() => <ProtectedRoute component={ProjectDetail} />} />
+        <Route path="/deals" component={() => <ProtectedRoute component={Deals} />} />
+        <Route path="/deals/new" component={() => <ProtectedRoute component={NewDeal} />} />
+        <Route path="/deals/:id" component={() => <ProtectedRoute component={DealDetail} />} />
+        <Route path="/projects" component={() => <Redirect to="/deals" />} />
+        <Route path="/projects/new" component={() => <Redirect to="/deals/new" />} />
+        <Route path="/projects/:id">{(params) => <Redirect to={`/deals/${params.id}`} />}</Route>
         <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
         <Route path="/resources" component={() => <ProtectedRoute component={ResourcesPage} />} />
         <Route path="/borrower-quote" component={() => <ProtectedRoute component={BorrowerQuote} />} />
@@ -149,8 +152,8 @@ function MainRoutes() {
         <Route path="/admin/credit-policies" component={() => <AdminProtectedRoute component={AdminCreditPolicies} />} />
         <Route path="/admin/programs" component={() => <AdminProtectedRoute component={AdminPrograms} />} />
         <Route path="/admin/users" component={() => <AdminProtectedRoute component={AdminUsers} />} />
-        <Route path="/admin/projects" component={() => <AdminProtectedRoute component={AdminProjects} />} />
-        <Route path="/admin/projects/:id" component={() => <AdminProtectedRoute component={AdminProjectDetail} />} />
+        <Route path="/admin/projects" component={() => <Redirect to="/admin/deals" />} />
+        <Route path="/admin/projects/:id">{(params) => <Redirect to={`/admin/deals/${params.id}`} />}</Route>
         <Route path="/admin/settings" component={() => <AdminProtectedRoute component={AdminSettings} />} />
         <Route path="/admin/onboarding" component={() => <AdminProtectedRoute component={AdminOnboarding} />} />
         <Route path="/admin/digests" component={() => <AdminProtectedRoute component={AdminDigests} />} />

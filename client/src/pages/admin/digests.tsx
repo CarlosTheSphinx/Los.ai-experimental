@@ -641,7 +641,7 @@ export default function AdminDigests() {
               <div className="text-center py-12 text-muted-foreground">
                 <CalendarDays className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No digests scheduled for this day</p>
-                <p className="text-sm mt-2">Digests are configured on individual project pages</p>
+                <p className="text-sm mt-2">Digests are configured on individual deal pages</p>
               </div>
             ) : (
               <ScrollArea className="h-[500px] md:h-[600px] pr-2 md:pr-4">

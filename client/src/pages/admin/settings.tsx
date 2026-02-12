@@ -217,7 +217,7 @@ const settingLabels: Record<string, { label: string; description: string; type: 
   },
   google_drive_parent_folder_id: {
     label: "Google Drive Parent Folder ID",
-    description: "The ID of the parent Google Drive folder where all project folders will be created. Find this in your Google Drive folder's URL after /folders/",
+    description: "The ID of the parent Google Drive folder where all deal folders will be created. Find this in your Google Drive folder's URL after /folders/",
     type: "text",
     category: "google_drive",
   },
@@ -649,7 +649,7 @@ export default function AdminSettings() {
                       <li>Enter the Google Drive Parent Folder ID above</li>
                     </ol>
                     <p className="text-sm text-muted-foreground">
-                      When a project is created, a folder will be automatically created inside the parent folder. Uploaded documents will sync to Google Drive.
+                      When a deal is created, a folder will be automatically created inside the parent folder. Uploaded documents will sync to Google Drive.
                     </p>
                   </div>
                 </CardContent>
@@ -959,7 +959,7 @@ export default function AdminSettings() {
                       <span className="font-medium">PandaDoc Webhook URL</span>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Set this URL in your PandaDoc account (Settings &rarr; Integrations &rarr; Webhooks) to automatically create loan projects when documents are signed.
+                      Set this URL in your PandaDoc account (Settings &rarr; Integrations &rarr; Webhooks) to automatically create loan deals when documents are signed.
                     </p>
                     <div className="flex items-center gap-2">
                       <Input

@@ -165,7 +165,7 @@ function ProgramPipeline({ program }: { program: PipelineProgram }) {
         {selectedStage && selectedStage.projects.length > 0 && (
           <div
             className="space-y-1 border-t pt-3"
-            data-testid={`stage-projects-${selectedStage.step.stepKey}`}
+            data-testid={`stage-deals-${selectedStage.step.stepKey}`}
           >
             <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
               <div className="flex items-center gap-2">
@@ -190,7 +190,7 @@ function ProgramPipeline({ program }: { program: PipelineProgram }) {
                 <Link
                   key={project.id}
                   href={`/admin/deals/${project.id}`}
-                  data-testid={`link-pipeline-project-${project.id}`}
+                  data-testid={`link-pipeline-deal-${project.id}`}
                 >
                   <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md hover-elevate flex-wrap">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -224,7 +224,7 @@ function ProgramPipeline({ program }: { program: PipelineProgram }) {
 
         {selectedStage && selectedStage.projects.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No projects in this stage
+            No deals in this stage
           </p>
         )}
       </CardContent>
@@ -243,14 +243,14 @@ export default function PipelineView({ data }: PipelineViewProps) {
         <Card data-testid="pipeline-unassigned">
           <CardContent className="p-4 space-y-3">
             <h3 className="text-lg font-semibold text-muted-foreground">
-              Unassigned Projects
+              Unassigned Deals
             </h3>
             <div className="space-y-1">
               {data.unassigned.map((project) => (
                 <Link
                   key={project.id}
                   href={`/admin/deals/${project.id}`}
-                  data-testid={`link-unassigned-pipeline-project-${project.id}`}
+                  data-testid={`link-unassigned-pipeline-deal-${project.id}`}
                 >
                   <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md hover-elevate flex-wrap">
                     <div className="flex items-center gap-3 min-w-0 flex-1">

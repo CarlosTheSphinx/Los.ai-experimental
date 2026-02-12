@@ -106,7 +106,7 @@ export default function CommissionsPage() {
       <div>
         <h1 className="text-2xl font-semibold" data-testid="text-page-title">My Commissions</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Commission summary across your active loan projects
+          Commission summary across your active loan deals
         </p>
       </div>
 
@@ -118,7 +118,7 @@ export default function CommissionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-commission">{formatCurrency(totalCommission)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{commissions.length} project{commissions.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-muted-foreground mt-1">{commissions.length} deal{commissions.length !== 1 ? "s" : ""}</p>
           </CardContent>
         </Card>
 
@@ -151,7 +151,7 @@ export default function CommissionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-loan-volume">{formatCurrency(totalLoanVolume)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total across all projects</p>
+            <p className="text-xs text-muted-foreground mt-1">Total across all deals</p>
           </CardContent>
         </Card>
       </div>
@@ -165,14 +165,14 @@ export default function CommissionsPage() {
             <div className="text-center py-12 text-muted-foreground" data-testid="text-no-commissions">
               <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="font-medium">No commissions yet</p>
-              <p className="text-sm mt-1">Commissions will appear here once your deals convert to projects.</p>
+              <p className="text-sm mt-1">Commissions will appear here once your deals are funded.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Project</TableHead>
+                    <TableHead>Deal</TableHead>
                     <TableHead>Borrower</TableHead>
                     <TableHead>Property</TableHead>
                     <TableHead className="text-right">Loan Amount</TableHead>
@@ -223,8 +223,8 @@ export default function CommissionsPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => navigate(`/projects/${c.projectId}`)}
-                          data-testid={`button-view-project-${c.projectId}`}
+                          onClick={() => navigate(`/deals/${c.projectId}`)}
+                          data-testid={`button-view-deal-${c.projectId}`}
                         >
                           <ArrowRight className="h-4 w-4" />
                         </Button>

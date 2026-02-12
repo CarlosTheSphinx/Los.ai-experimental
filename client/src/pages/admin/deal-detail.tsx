@@ -887,7 +887,7 @@ export default function AdminDealDetail() {
 
   const copyBorrowerPortalLink = async () => {
     if (!linkedProjectId) {
-      toast({ title: "No project linked", description: "Create a loan project first to generate a borrower portal link.", variant: "destructive" });
+      toast({ title: "No deal linked", description: "Create a loan deal first to generate a borrower portal link.", variant: "destructive" });
       return;
     }
     try {

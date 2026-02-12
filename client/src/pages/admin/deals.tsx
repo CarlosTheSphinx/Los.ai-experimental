@@ -520,14 +520,14 @@ export default function AdminDeals() {
       });
       setPartnerInputMode("select");
       toast({
-        title: "Project created",
-        description: "The project has been added to the pipeline.",
+        title: "Deal created",
+        description: "The deal has been added to the pipeline.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to create project. Please try again.",
+        description: "Failed to create deal. Please try again.",
         variant: "destructive",
       });
     },
@@ -572,16 +572,16 @@ export default function AdminDeals() {
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-project">
+            <Button data-testid="button-add-deal">
               <Plus className="h-4 w-4 mr-2" />
-              Add Project
+              Add Deal
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Project</DialogTitle>
+              <DialogTitle>Add New Deal</DialogTitle>
               <DialogDescription>
-                Manually add a new project to the pipeline
+                Manually add a new deal to the pipeline
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -751,9 +751,9 @@ export default function AdminDeals() {
               <Button
                 onClick={handleCreateDeal}
                 disabled={createDealMutation.isPending}
-                data-testid="button-create-project"
+                data-testid="button-create-deal"
               >
-                {createDealMutation.isPending ? "Creating..." : "Create Project"}
+                {createDealMutation.isPending ? "Creating..." : "Create Deal"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -886,7 +886,7 @@ export default function AdminDeals() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Project</TableHead>
+                  <TableHead>Deal</TableHead>
                   <TableHead>Borrower</TableHead>
                   <TableHead>Property</TableHead>
                   <TableHead>Loan Type</TableHead>

@@ -49,6 +49,23 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // ==================== URL REWRITE: deals → projects ====================
+  // The frontend uses "deals" terminology but the backend routes are registered as "projects"
+  // This middleware transparently rewrites deal-based paths to project-based paths
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (req.url.startsWith('/api/deals/') || req.url === '/api/deals') {
+      req.url = req.url.replace('/api/deals', '/api/projects');
+    }
+    if (req.url.includes('/create-deal')) {
+      req.url = req.url.replace('/create-deal', '/create-project');
+    }
+    next();
+  });
+
+  // Also handle /api/admin/deals → already has its own routes, but some sub-paths
+  // like /api/admin/deals/:id/project need to keep working as-is (they are already
+  // registered as /api/admin/deals routes, not /api/admin/projects)
+
   // ==================== OBJECT STORAGE ROUTES ====================
   registerObjectStorageRoutes(app);
   const objectStorageService = new ObjectStorageService();
@@ -1502,7 +1519,7 @@ export async function registerRoutes(
         const driveEnabled = await isDriveIntegrationEnabled();
         if (driveEnabled) {
           ensureProjectFolder(project.id).catch((err: any) => {
-            console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+            console.error(`Drive folder creation failed for deal ${project.id}:`, err.message);
           });
         }
       } catch (e) {
@@ -2457,7 +2474,7 @@ export async function registerRoutes(
             const driveEnabled = await isDriveIntegrationEnabled();
             if (driveEnabled) {
               ensureProjectFolder(project.id).catch((err: any) => {
-                console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+                console.error(`Drive folder creation failed for deal ${project.id}:`, err.message);
               });
             }
           } catch (driveErr: any) {
@@ -3206,7 +3223,7 @@ export async function registerRoutes(
         const driveEnabled = await isDriveIntegrationEnabled();
         if (driveEnabled) {
           ensureProjectFolder(project.id).catch((err: any) => {
-            console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+            console.error(`Drive folder creation failed for deal ${project.id}:`, err.message);
           });
         }
       } catch (driveErr: any) {
@@ -12325,7 +12342,7 @@ Respond ONLY with valid JSON in this format:
         return;
       }
       if (envelope.status !== 'completed') {
-        res.status(400).json({ error: 'Document must be fully signed (completed) before creating a project' });
+        res.status(400).json({ error: 'Document must be fully signed (completed) before creating a deal' });
         return;
       }
       if (!envelope.quoteId) {
@@ -12339,12 +12356,12 @@ Respond ONLY with valid JSON in this format:
       }
       const isAdmin = userRole === 'admin' || userRole === 'super_admin';
       if (!isAdmin && quote.userId !== userId) {
-        res.status(403).json({ error: 'You do not have permission to create a project from this quote' });
+        res.status(403).json({ error: 'You do not have permission to create a deal from this quote' });
         return;
       }
       const existingProjects = await db.select().from(projects).where(eq(projects.quoteId, quote.id));
       if (existingProjects.length > 0) {
-        res.status(409).json({ error: 'A project already exists for this quote', projectId: existingProjects[0].id });
+        res.status(409).json({ error: 'A deal already exists for this quote', projectId: existingProjects[0].id });
         return;
       }
 
@@ -12452,7 +12469,7 @@ Respond ONLY with valid JSON in this format:
         projectId: project.id,
         userId: req.user!.id,
         activityType: 'project_created',
-        activityDescription: `Loan project ${projectNumber} created from signed term sheet "${envelope.documentName}"`,
+        activityDescription: `Loan deal ${projectNumber} created from signed term sheet "${envelope.documentName}"`,
         visibleToBorrower: true,
       });
 
@@ -12469,7 +12486,7 @@ Respond ONLY with valid JSON in this format:
         const driveEnabled = await isDriveIntegrationEnabled();
         if (driveEnabled) {
           ensureProjectFolder(project.id).catch((err: any) => {
-            console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+            console.error(`Drive folder creation failed for deal ${project.id}:`, err.message);
           });
         }
       } catch (_e) {}
@@ -12676,7 +12693,7 @@ Respond ONLY with valid JSON in this format:
                     const driveEnabled = await isDriveIntegrationEnabled();
                     if (driveEnabled) {
                       ensureProjectFolder(project.id).catch((err: any) => {
-                        console.error(`Drive folder creation failed for project ${project.id}:`, err.message);
+                        console.error(`Drive folder creation failed for deal ${project.id}:`, err.message);
                       });
                     }
                   } catch (driveErr: any) {

@@ -175,7 +175,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ProjectDetail() {
-  const [, params] = useRoute("/projects/:id");
+  const [, params] = useRoute("/deals/:id");
   const projectId = params?.id;
   const { toast } = useToast();
   const { user } = useAuth();
@@ -193,19 +193,19 @@ export default function ProjectDetail() {
     stages: Stage[]; 
     activity: ActivityItem[];
   }>({
-    queryKey: ['/api/projects', projectId],
+    queryKey: ['/api/deals', projectId],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch project');
+      const res = await fetch(`/api/deals/${projectId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch deal');
       return res.json();
     },
     enabled: !!projectId,
   });
 
   const { data: docsData, refetch: refetchDocs } = useQuery<{ documents: ProjectDocument[] }>({
-    queryKey: ['/api/projects', projectId, 'documents'],
+    queryKey: ['/api/deals', projectId, 'documents'],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/documents`, { credentials: 'include' });
+      const res = await fetch(`/api/deals/${projectId}/documents`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch documents');
       return res.json();
     },
@@ -213,9 +213,9 @@ export default function ProjectDetail() {
   });
 
   const { data: dealDocsData, refetch: refetchDealDocs } = useQuery<DealDocument[]>({
-    queryKey: ['/api/projects', projectId, 'deal-documents'],
+    queryKey: ['/api/deals', projectId, 'deal-documents'],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/deal-documents`, { credentials: 'include' });
+      const res = await fetch(`/api/deals/${projectId}/deal-documents`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch deal documents');
       return res.json();
     },
@@ -246,20 +246,20 @@ export default function ProjectDetail() {
 
   const updateTaskMutation = useMutation({
     mutationFn: async ({ taskId, status }: { taskId: number; status: string }) => {
-      return apiRequest('PATCH', `/api/projects/${projectId}/tasks/${taskId}`, { status });
+      return apiRequest('PATCH', `/api/deals/${projectId}/tasks/${taskId}`, { status });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/deals', projectId] });
       toast({ title: "Task updated" });
     },
   });
 
   const retryDriveFolderMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('POST', `/api/projects/${projectId}/drive/retry`, {});
+      return apiRequest('POST', `/api/deals/${projectId}/drive/retry`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/deals', projectId] });
       toast({ title: "Drive folder sync retried" });
     },
     onError: () => {
@@ -324,7 +324,7 @@ export default function ProjectDetail() {
       const fileName = file.name;
       setUploadingFiles(prev => [...prev, fileName]);
       try {
-        const urlRes = await apiRequest('POST', `/api/projects/${projectId}/documents/upload-url`, {
+        const urlRes = await apiRequest('POST', `/api/deals/${projectId}/documents/upload-url`, {
           name: file.name,
           size: file.size,
           contentType: file.type,
@@ -337,7 +337,7 @@ export default function ProjectDetail() {
           headers: { 'Content-Type': file.type || 'application/octet-stream' },
         });
 
-        await apiRequest('POST', `/api/projects/${projectId}/documents/upload-complete`, {
+        await apiRequest('POST', `/api/deals/${projectId}/documents/upload-complete`, {
           objectPath: urlData.objectPath,
           fileName: file.name,
           fileSize: file.size,
@@ -358,7 +358,7 @@ export default function ProjectDetail() {
   const handleDealDocUpload = useCallback(async (docId: number, file: File) => {
     setUploadingDealDocId(docId);
     try {
-      const urlRes = await apiRequest('POST', `/api/projects/${projectId}/documents/upload-url`, {
+      const urlRes = await apiRequest('POST', `/api/deals/${projectId}/documents/upload-url`, {
         name: file.name,
         size: file.size,
         contentType: file.type,
@@ -371,7 +371,7 @@ export default function ProjectDetail() {
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
       });
 
-      await apiRequest('POST', `/api/projects/${projectId}/deal-documents/${docId}/upload-complete`, {
+      await apiRequest('POST', `/api/deals/${projectId}/deal-documents/${docId}/upload-complete`, {
         objectPath: urlData.objectPath,
         fileName: file.name,
         fileSize: file.size,
@@ -389,7 +389,7 @@ export default function ProjectDetail() {
 
   const copyBorrowerLink = async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/borrower-link`, { credentials: 'include' });
+      const res = await fetch(`/api/deals/${projectId}/borrower-link`, { credentials: 'include' });
       const { borrowerLink } = await res.json();
       await navigator.clipboard.writeText(borrowerLink);
       toast({ title: "Borrower portal link copied" });
@@ -400,8 +400,8 @@ export default function ProjectDetail() {
 
   const pushToLOS = async () => {
     try {
-      await apiRequest('POST', `/api/projects/${projectId}/push-to-los`, {});
-      toast({ title: "Project pushed to LOS" });
+      await apiRequest('POST', `/api/deals/${projectId}/push-to-los`, {});
+      toast({ title: "Deal pushed to LOS" });
       refetch();
     } catch (e) {
       toast({ title: "Failed to push to LOS", variant: "destructive" });
@@ -478,7 +478,7 @@ export default function ProjectDetail() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/projects">
+        <Link href="/deals">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -490,7 +490,7 @@ export default function ProjectDetail() {
               {project.status}
             </Badge>
           </div>
-          <h1 className="text-xl font-semibold" data-testid="text-project-name">{project.projectName}</h1>
+          <h1 className="text-xl font-semibold" data-testid="text-deal-name">{project.projectName}</h1>
           {!isBorrower && project.driveSyncStatus === 'OK' && project.googleDriveFolderId && (
             <a 
               href={`https://drive.google.com/drive/folders/${project.googleDriveFolderId}`} 
@@ -1242,7 +1242,7 @@ export default function ProjectDetail() {
             <TabsContent value="documents">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-                  <CardTitle className="text-base">Project Documents</CardTitle>
+                  <CardTitle className="text-base">Deal Documents</CardTitle>
                   <div className="flex items-center gap-2">
                     {project.googleDriveFolderId && (
                       <Button

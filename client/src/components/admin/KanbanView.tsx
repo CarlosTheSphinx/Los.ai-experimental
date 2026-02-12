@@ -84,18 +84,18 @@ function ProjectCard({
   const content = (
     <Card
       className={`hover-elevate ${isDragOverlay ? "shadow-lg opacity-90" : ""}`}
-      data-testid={`card-project-${project.id}`}
+      data-testid={`card-deal-${project.id}`}
     >
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-xs font-mono text-muted-foreground" data-testid={`text-project-number-${project.id}`}>
+          <span className="text-xs font-mono text-muted-foreground" data-testid={`text-deal-number-${project.id}`}>
             {project.projectNumber}
           </span>
           <Badge variant="outline" className="text-[10px]">
             {project.status.replace("_", " ")}
           </Badge>
         </div>
-        <p className="text-sm font-medium truncate" data-testid={`text-project-name-${project.id}`}>
+        <p className="text-sm font-medium truncate" data-testid={`text-deal-name-${project.id}`}>
           {project.projectName}
         </p>
         {project.borrowerName && (
@@ -121,7 +121,7 @@ function ProjectCard({
   if (isDragOverlay) return content;
 
   return (
-    <Link href={`/admin/deals/${project.id}`} data-testid={`link-project-${project.id}`}>
+    <Link href={`/admin/deals/${project.id}`} data-testid={`link-deal-${project.id}`}>
       {content}
     </Link>
   );
@@ -139,7 +139,7 @@ function DraggableCard({ project, programId }: { project: PipelineProject; progr
       {...listeners}
       {...attributes}
       style={{ opacity: isDragging ? 0.4 : 1 }}
-      data-testid={`draggable-project-${project.id}`}
+      data-testid={`draggable-deal-${project.id}`}
     >
       <ProjectCard project={project} />
     </div>
@@ -265,8 +265,8 @@ export default function KanbanView({ data }: KanbanViewProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pipeline"] });
     } catch (error: any) {
       toast({
-        title: "Failed to move project",
-        description: error?.message || "An error occurred while moving the project.",
+        title: "Failed to move deal",
+        description: error?.message || "An error occurred while moving the deal.",
         variant: "destructive",
       });
     }
@@ -286,14 +286,14 @@ export default function KanbanView({ data }: KanbanViewProps) {
         {data.unassigned && data.unassigned.length > 0 && (
           <div className="space-y-3" data-testid="kanban-unassigned">
             <h3 className="text-lg font-semibold text-muted-foreground">
-              Unassigned Projects
+              Unassigned Deals
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {data.unassigned.map((project) => (
                 <Link
                   key={project.id}
                   href={`/admin/deals/${project.id}`}
-                  data-testid={`link-unassigned-project-${project.id}`}
+                  data-testid={`link-unassigned-deal-${project.id}`}
                 >
                   <ProjectCard project={project} />
                 </Link>

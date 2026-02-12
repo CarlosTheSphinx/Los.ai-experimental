@@ -145,22 +145,22 @@ export function TermSheetStatus({ quoteId }: { quoteId: number }) {
 
   const createProjectMutation = useMutation({
     mutationFn: async (envelopeId: number) => {
-      const res = await apiRequest("POST", `/api/envelopes/${envelopeId}/create-project`);
+      const res = await apiRequest("POST", `/api/envelopes/${envelopeId}/create-deal`);
       return res.json();
     },
     onSuccess: (data) => {
       toast({
-        title: "Project Created",
-        description: `Loan project ${data.project?.projectNumber || ''} has been created successfully.`,
+        title: "Deal Created",
+        description: `Loan deal ${data.project?.projectNumber || ''} has been created successfully.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/esign/pandadoc/quote", quoteId, "envelopes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create project from signed document",
+        description: error.message || "Failed to create deal from signed document",
         variant: "destructive",
       });
     },
@@ -314,14 +314,14 @@ export function TermSheetStatus({ quoteId }: { quoteId: number }) {
                     onClick={() => createProjectMutation.mutate(envelope.id)}
                     disabled={createProjectMutation.isPending}
                     className="w-full gap-2"
-                    data-testid={`button-create-project-${envelope.id}`}
+                    data-testid={`button-create-deal-${envelope.id}`}
                   >
                     {createProjectMutation.isPending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <FolderPlus className="w-4 h-4" />
                     )}
-                    Create Loan Project
+                    Create Loan Deal
                   </Button>
                 )}
               </div>

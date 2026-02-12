@@ -139,7 +139,7 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
                 }
               }
             } catch (propErr: any) {
-              console.error(`[PandaDoc Poll] Deal properties error for project ${project.id}:`, propErr.message);
+              console.error(`[PandaDoc Poll] Deal properties error for deal ${project.id}:`, propErr.message);
             }
 
             try {
@@ -147,7 +147,7 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               const pipelineResult = await buildProjectPipelineFromProgram(project.id, quote.programId || null, quote.id);
               console.log(`[PandaDoc Poll] Pipeline created: ${pipelineResult.stagesCreated} stages, ${pipelineResult.tasksCreated} tasks, ${pipelineResult.documentsCreated} documents`);
             } catch (pipelineErr: any) {
-              console.error(`[PandaDoc Poll] Pipeline creation error for project ${project.id}:`, pipelineErr);
+              console.error(`[PandaDoc Poll] Pipeline creation error for deal ${project.id}:`, pipelineErr);
             }
 
             await db.update(savedQuotes)
@@ -158,7 +158,7 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               projectId: project.id,
               userId: quote.userId || envelope.createdBy!,
               activityType: 'project_created',
-              activityDescription: `Loan project ${projectNumber} auto-created from PandaDoc status poll`,
+              activityDescription: `Loan deal ${projectNumber} auto-created from signed term sheet`,
               visibleToBorrower: true,
             });
 
@@ -180,11 +180,11 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
             } catch {}
 
             projectCreated = true;
-            console.log(`[PandaDoc Poll] Project ${projectNumber} created from envelope ${envelope.id}`);
+            console.log(`[PandaDoc Poll] Deal ${projectNumber} created from envelope ${envelope.id}`);
           }
         }
       } catch (projErr: any) {
-        console.error(`[PandaDoc Poll] Error creating project from envelope ${envelope.id}:`, projErr);
+        console.error(`[PandaDoc Poll] Error creating deal from envelope ${envelope.id}:`, projErr);
       }
     }
 

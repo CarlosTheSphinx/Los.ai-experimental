@@ -190,10 +190,10 @@ export default function Projects() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const { data, isLoading } = useQuery<{ projects: Project[] }>({
-    queryKey: ['/api/projects'],
+    queryKey: ['/api/deals'],
     queryFn: async () => {
-      const res = await fetch('/api/projects', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch projects');
+      const res = await fetch('/api/deals', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch deals');
       return res.json();
     }
   });
@@ -247,8 +247,8 @@ export default function Projects() {
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Loans Dashboard</h1>
           <p className="text-muted-foreground">Overview of all your loans</p>
         </div>
-        <Link href="/projects/new">
-          <Button data-testid="button-new-project">
+        <Link href="/deals/new">
+          <Button data-testid="button-new-deal">
             <Plus className="h-4 w-4 mr-2" />
             New Loan
           </Button>
@@ -297,7 +297,7 @@ export default function Projects() {
             <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by borrower, address, or project..."
+                placeholder="Search by borrower, address, or deal..."
                 className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -355,7 +355,7 @@ export default function Projects() {
                     {searchQuery ? 'Try a different search term' : 'Loans are auto-created when term sheets are signed'}
                   </p>
                 </div>
-                <Link href="/projects/new">
+                <Link href="/deals/new">
                   <Button variant="outline" data-testid="button-create-first">
                     <Plus className="h-4 w-4 mr-2" />
                     Create Loan Manually
@@ -370,14 +370,14 @@ export default function Projects() {
               <Card 
                 key={project.id} 
                 className="hover-elevate overflow-hidden" 
-                data-testid={`card-project-${project.id}`}
+                data-testid={`card-deal-${project.id}`}
               >
-                <Link href={`/projects/${project.id}`}>
+                <Link href={`/deals/${project.id}`}>
                   <div className="p-5">
                     {/* Top row: Project number, status badge, arrow */}
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground font-mono" data-testid={`text-project-number-${project.id}`}>
+                        <span className="text-xs text-muted-foreground font-mono" data-testid={`text-deal-number-${project.id}`}>
                           {project.projectNumber}
                         </span>
                         {getStatusBadge(project.status)}
@@ -394,7 +394,7 @@ export default function Projects() {
                               setLocation(`/messages?dealId=${project.quoteId}&new=true`);
                             }}
                             title="Message about this loan"
-                            data-testid={`button-message-project-${project.id}`}
+                            data-testid={`button-message-deal-${project.id}`}
                           >
                             <MessageSquare className="h-3 w-3" />
                           </Button>
@@ -404,7 +404,7 @@ export default function Projects() {
                     </div>
                     
                     {/* Loan title */}
-                    <h3 className="text-base font-semibold mb-3 truncate" data-testid={`text-project-name-${project.id}`}>
+                    <h3 className="text-base font-semibold mb-3 truncate" data-testid={`text-deal-name-${project.id}`}>
                       {project.projectName}
                     </h3>
                     
@@ -462,7 +462,7 @@ export default function Projects() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Project</TableHead>
+                  <TableHead>Deal</TableHead>
                   <TableHead>Borrower</TableHead>
                   <TableHead>Property</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -475,11 +475,11 @@ export default function Projects() {
                   <TableRow 
                     key={project.id} 
                     className="cursor-pointer hover-elevate"
-                    data-testid={`row-project-${project.id}`}
+                    data-testid={`row-deal-${project.id}`}
                   >
                     <TableCell>
-                      <Link href={`/projects/${project.id}`}>
-                        <span className="font-mono text-sm text-primary hover:underline" data-testid={`link-project-row-${project.id}`}>
+                      <Link href={`/deals/${project.id}`}>
+                        <span className="font-mono text-sm text-primary hover:underline" data-testid={`link-deal-row-${project.id}`}>
                           {project.projectNumber}
                         </span>
                       </Link>

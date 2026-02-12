@@ -45,7 +45,7 @@ export default function BorrowerQuotes() {
     onSuccess: () => {
       toast({ title: "Quote Accepted!", description: "Your loan application has been submitted. You can track its progress from My Loans." });
       queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
       navigate('/');
     },
     onError: (error) => {

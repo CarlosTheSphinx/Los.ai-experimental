@@ -38,16 +38,16 @@ export default function NewProject() {
         interestRate: data.interestRate ? parseFloat(data.interestRate) : null,
         loanTermMonths: data.loanTermMonths ? parseInt(data.loanTermMonths) : null,
       };
-      return apiRequest('POST', '/api/projects', payload);
+      return apiRequest('POST', '/api/deals', payload);
     },
     onSuccess: async (res) => {
       const { project } = await res.json();
-      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
-      toast({ title: "Project created successfully" });
-      setLocation(`/projects/${project.id}`);
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      toast({ title: "Deal created successfully" });
+      setLocation(`/deals/${project.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create project", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create deal", description: error.message, variant: "destructive" });
     },
   });
 
@@ -67,14 +67,14 @@ export default function NewProject() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/projects">
+        <Link href="/deals">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div>
-          <h1 className="text-xl font-semibold" data-testid="text-page-title">New Project</h1>
-          <p className="text-sm text-muted-foreground">Create a new loan project manually</p>
+          <h1 className="text-xl font-semibold" data-testid="text-page-title">New Deal</h1>
+          <p className="text-sm text-muted-foreground">Create a new loan deal manually</p>
         </div>
       </div>
 
@@ -83,18 +83,18 @@ export default function NewProject() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Project Details
+              Deal Details
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="projectName">Project Name *</Label>
+              <Label htmlFor="projectName">Deal Name *</Label>
               <Input
                 id="projectName"
                 value={formData.projectName}
                 onChange={(e) => updateField("projectName", e.target.value)}
                 placeholder="e.g., Smith Refinance"
-                data-testid="input-project-name"
+                data-testid="input-deal-name"
               />
             </div>
           </CardContent>
@@ -261,7 +261,7 @@ export default function NewProject() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Notes</CardTitle>
-            <CardDescription>Any additional notes about this project (visible to borrower)</CardDescription>
+            <CardDescription>Any additional notes about this deal (visible to borrower)</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
@@ -275,7 +275,7 @@ export default function NewProject() {
         </Card>
 
         <div className="flex justify-end gap-3">
-          <Link href="/projects">
+          <Link href="/deals">
             <Button type="button" variant="outline" data-testid="button-cancel">
               Cancel
             </Button>
@@ -286,7 +286,7 @@ export default function NewProject() {
             ) : (
               <>
                 <Plus className="h-4 w-4 mr-2" />
-                Create Project
+                Create Deal
               </>
             )}
           </Button>

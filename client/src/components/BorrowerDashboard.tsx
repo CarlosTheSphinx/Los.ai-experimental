@@ -54,7 +54,7 @@ export function BorrowerDashboard() {
   const [, setLocation] = useLocation();
 
   const { data: projectsData, isLoading } = useQuery<{ projects: Project[] }>({
-    queryKey: ['/api/projects'],
+    queryKey: ['/api/deals'],
   });
 
   const { data: onboardingStatus } = useQuery({
@@ -208,8 +208,8 @@ export function BorrowerDashboard() {
                     <Button
                       variant="outline"
                       className="flex-1"
-                      onClick={() => setLocation(`/projects/${project.id}`)}
-                      data-testid={`button-view-project-${project.id}`}
+                      onClick={() => setLocation(`/deals/${project.id}`)}
+                      data-testid={`button-view-deal-${project.id}`}
                     >
                       View Details
                       <ChevronRight className="h-4 w-4 ml-1" />
@@ -220,7 +220,7 @@ export function BorrowerDashboard() {
                         size="icon"
                         onClick={() => setLocation(`/messages?dealId=${project.quoteId}&new=true`)}
                         title="Send a message"
-                        data-testid={`button-message-project-${project.id}`}
+                        data-testid={`button-message-deal-${project.id}`}
                       >
                         <MessageSquare className="h-4 w-4" />
                       </Button>

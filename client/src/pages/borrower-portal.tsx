@@ -302,7 +302,7 @@ export default function BorrowerPortal() {
               <div className="text-xs md:text-sm text-muted-foreground font-mono truncate">{project.projectNumber}</div>
               <h1 className="text-lg md:text-xl font-semibold truncate">{project.projectName}</h1>
             </div>
-            <Badge variant={project.status === 'active' ? 'default' : 'secondary'} className="shrink-0" data-testid="badge-project-status">
+            <Badge variant={project.status === 'active' ? 'default' : 'secondary'} className="shrink-0" data-testid="badge-deal-status">
               {project.status}
             </Badge>
           </div>
