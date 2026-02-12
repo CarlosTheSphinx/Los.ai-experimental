@@ -3650,7 +3650,7 @@ export async function registerRoutes(
     }
   });
 
-  // Mark deal document upload complete (borrower accessible)
+  // Mark deal document upload complete (broker accessible)
   app.post('/api/projects/:id/deal-documents/:docId/upload-complete', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -3662,7 +3662,24 @@ export async function registerRoutes(
 
       const { objectPath, fileName, fileSize, mimeType } = req.body;
 
-      await db.update(dealDocuments)
+      if (!objectPath) return res.status(400).json({ error: 'Object path is required' });
+
+      const existingFiles = await db.select().from(dealDocumentFiles)
+        .where(eq(dealDocumentFiles.documentId, docId));
+      const nextSortOrder = existingFiles.length;
+
+      const [newFile] = await db.insert(dealDocumentFiles).values({
+        documentId: docId,
+        filePath: objectPath,
+        fileName: fileName || null,
+        fileSize: fileSize || null,
+        mimeType: mimeType || null,
+        uploadedAt: new Date(),
+        uploadedBy: userId,
+        sortOrder: nextSortOrder,
+      }).returning();
+
+      const [updated] = await db.update(dealDocuments)
         .set({
           filePath: objectPath,
           fileName: fileName,
@@ -3672,9 +3689,30 @@ export async function registerRoutes(
           uploadedAt: new Date(),
           uploadedBy: userId,
         })
-        .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)));
+        .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)))
+        .returning();
 
-      res.json({ success: true });
+      await db.insert(projectActivity).values({
+        projectId,
+        userId,
+        activityType: 'document_uploaded',
+        activityDescription: `Broker uploaded: ${updated?.documentName || fileName || 'Document'}`,
+        visibleToBorrower: true,
+      });
+
+      try {
+        const { isDriveIntegrationEnabled, syncDealDocumentToDrive } = await import('./services/googleDrive');
+        const driveEnabled = await isDriveIntegrationEnabled();
+        if (driveEnabled && updated && newFile) {
+          syncDealDocumentToDrive(updated.id, newFile.id).catch((err: any) => {
+            console.error(`Drive sync failed for broker doc ${updated.id}:`, err.message);
+          });
+        }
+      } catch (driveErr: any) {
+        console.error('Drive sync check error:', driveErr.message);
+      }
+
+      res.json({ document: updated, file: newFile });
     } catch (error) {
       console.error('Deal doc upload error:', error);
       res.status(500).json({ error: 'Failed to complete upload' });
@@ -6536,6 +6574,20 @@ export async function registerRoutes(
           }
         } catch (digestError) {
           console.error('Failed to log document update for digest:', digestError);
+        }
+
+        if (status === 'approved') {
+          try {
+            const { isDriveIntegrationEnabled, syncDealDocumentToDrive } = await import('./services/googleDrive');
+            const driveEnabled = await isDriveIntegrationEnabled();
+            if (driveEnabled) {
+              syncDealDocumentToDrive(docId).catch((err: any) => {
+                console.error(`Drive sync failed for approved doc ${docId}:`, err.message);
+              });
+            }
+          } catch (driveErr: any) {
+            console.error('Drive sync check error on approval:', driveErr.message);
+          }
         }
       }
       
