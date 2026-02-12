@@ -87,6 +87,8 @@ export async function buildProjectPipelineFromProgram(
       .orderBy(asc(programTaskTemplates.sortOrder));
 
     for (const task of tasks) {
+      const taskVisibility = task.visibility || 'all';
+      const isBorrowerVisible = taskVisibility === 'all' || taskVisibility === 'borrower';
       await storage.createProjectTask({
         projectId,
         stageId: stage.id,
@@ -96,7 +98,7 @@ export async function buildProjectPipelineFromProgram(
         taskType: task.taskCategory || 'general',
         priority: task.priority || 'medium',
         requiresDocument: false,
-        visibleToBorrower: true,
+        visibleToBorrower: isBorrowerVisible,
         borrowerActionRequired: false,
         status: 'pending',
       });
@@ -117,6 +119,8 @@ export async function buildProjectPipelineFromProgram(
       documentCategory: doc.documentCategory,
       documentDescription: doc.documentDescription,
       isRequired: doc.isRequired ?? true,
+      assignedTo: doc.assignedTo || 'borrower',
+      visibility: doc.visibility || 'all',
       sortOrder: doc.sortOrder || index,
       status: 'pending' as const,
       stageId: doc.stepId ? (stageIdByStepId.get(doc.stepId) || stageIdByOrder.get(doc.stepId) || null) : null,
@@ -342,6 +346,8 @@ async function syncSingleProject(
           .where(eq(projectTasks.id, existingTask.id));
       }
     } else {
+      const taskVis = template.visibility || 'all';
+      const borrowerVis = taskVis === 'all' || taskVis === 'borrower';
       await storage.createProjectTask({
         projectId,
         stageId,
@@ -351,7 +357,7 @@ async function syncSingleProject(
         taskType: template.taskCategory || 'general',
         priority: template.priority || 'medium',
         requiresDocument: false,
-        visibleToBorrower: true,
+        visibleToBorrower: borrowerVis,
         borrowerActionRequired: false,
         status: 'pending',
       });
@@ -408,6 +414,8 @@ async function syncSingleProject(
       if (existingDoc.documentCategory !== template.documentCategory) updates.documentCategory = template.documentCategory;
       if (existingDoc.documentDescription !== template.documentDescription) updates.documentDescription = template.documentDescription;
       if (existingDoc.isRequired !== (template.isRequired ?? true)) updates.isRequired = template.isRequired ?? true;
+      if (existingDoc.assignedTo !== (template.assignedTo || 'borrower')) updates.assignedTo = template.assignedTo || 'borrower';
+      if (existingDoc.visibility !== (template.visibility || 'all')) updates.visibility = template.visibility || 'all';
       if (existingDoc.sortOrder !== template.sortOrder) updates.sortOrder = template.sortOrder;
       if (existingDoc.stageId !== stageId) updates.stageId = stageId;
 
@@ -424,6 +432,8 @@ async function syncSingleProject(
         documentCategory: template.documentCategory,
         documentDescription: template.documentDescription,
         isRequired: template.isRequired ?? true,
+        assignedTo: template.assignedTo || 'borrower',
+        visibility: template.visibility || 'all',
         sortOrder: template.sortOrder || 0,
         status: 'pending',
         stageId,

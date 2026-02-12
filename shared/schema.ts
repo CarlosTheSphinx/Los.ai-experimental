@@ -513,8 +513,11 @@ export const dealDocuments = pgTable("deal_documents", {
   documentCategory: varchar("document_category", { length: 100 }), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
   documentDescription: text("document_description"),
   
-  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, uploaded, approved, rejected, not_applicable
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, uploaded, approved, rejected, not_applicable, waived
   isRequired: boolean("is_required").default(true),
+  
+  assignedTo: varchar("assigned_to", { length: 50 }).default("borrower"), // borrower, broker, admin
+  visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
   
   filePath: text("file_path"),
   fileName: text("file_name"),
@@ -734,6 +737,8 @@ export const programDocumentTemplates = pgTable("program_document_templates", {
   documentDescription: text("document_description"),
   
   isRequired: boolean("is_required").default(true),
+  assignedTo: varchar("assigned_to", { length: 50 }).default("borrower"), // borrower, broker, admin
+  visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
   sortOrder: integer("sort_order").default(0),
   
   createdAt: timestamp("created_at").defaultNow(),
@@ -754,6 +759,7 @@ export const programTaskTemplates = pgTable("program_task_templates", {
   taskCategory: varchar("task_category", { length: 100 }), // application_review, credit_check, appraisal, title_search, underwriting, closing
   
   assignToRole: varchar("assign_to_role", { length: 50 }).default("admin"), // user, admin, processor
+  visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
   
   priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
   sortOrder: integer("sort_order").default(0),

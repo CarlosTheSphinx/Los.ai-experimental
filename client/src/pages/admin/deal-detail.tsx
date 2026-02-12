@@ -81,6 +81,7 @@ import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DigestConfigPanel } from "@/components/DigestConfigPanel";
+import { LoanChecklist } from "@/components/LoanChecklist";
 
 interface Deal {
   id: number;
@@ -544,7 +545,7 @@ export default function AdminDealDetail() {
   );
   const project = projectDetailData?.project;
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests' | 'checklist'>('all');
   const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
   const [stageExpandInitialized, setStageExpandInitialized] = useState(false);
 
@@ -1572,6 +1573,7 @@ export default function AdminDealDetail() {
             <div className="flex items-center gap-2 flex-wrap">
               {([
                 { key: 'all' as const, label: 'All Items', icon: ListChecks },
+                { key: 'checklist' as const, label: 'Checklist', icon: CheckSquare },
                 { key: 'tasks' as const, label: 'Tasks', icon: CheckSquare },
                 { key: 'documents' as const, label: 'Documents', icon: FileText },
                 { key: 'activity' as const, label: 'Activity', icon: Activity },
@@ -2286,6 +2288,51 @@ export default function AdminDealDetail() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Unified Checklist View */}
+      {activeFilter === 'checklist' && linkedProjectId && (
+        <LoanChecklist
+          dealId={linkedProjectId}
+          mode="admin"
+          onUploadDoc={(docId) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = async (e) => {
+              const file = (e.target as HTMLInputElement).files?.[0];
+              if (file) {
+                try {
+                  const urlRes = await apiRequest('POST', `/api/admin/deals/${dealId}/documents/upload-url`, {
+                    name: file.name, size: file.size, contentType: file.type
+                  });
+                  const { uploadURL, objectPath } = urlRes as any;
+                  await fetch(uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+                  await apiRequest('POST', `/api/admin/deals/${dealId}/documents/${docId}/upload-complete`, {
+                    objectPath, fileName: file.name, fileSize: file.size, mimeType: file.type
+                  });
+                  queryClient.invalidateQueries({ queryKey: ['/api/checklist', linkedProjectId, 'admin'] });
+                  toast({ title: "Document uploaded" });
+                } catch (err: any) {
+                  toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+                }
+              }
+            };
+            input.click();
+          }}
+          onReviewDoc={async (docId, decision, notes) => {
+            try {
+              await apiRequest('PATCH', `/api/admin/deals/${dealId}/documents/${docId}`, {
+                status: decision, reviewNotes: notes || ''
+              });
+              queryClient.invalidateQueries({ queryKey: ['/api/checklist', linkedProjectId, 'admin'] });
+              toast({ title: `Document ${decision}` });
+            } catch (err: any) {
+              toast({ title: "Review failed", description: err.message, variant: "destructive" });
+            }
+          }}
+          pollingInterval={10000}
+          showTasks={true}
+        />
       )}
 
       {/* Activity view */}

@@ -1,0 +1,556 @@
+Absolutely. Here’s a source-of-truth architecture (DB + API + UI wiring) where admin pipeline and borrower/broker portal are literally reading and writing the same checklist rows. Two panes of the same glass.
+
+Below is the code you can give Replit to implement this in Node/TypeScript + Postgres + React.
+
+⸻
+
+0) The core rule
+
+Loan Program → Requirements Template → Loan Checklist Instances
+	•	A Loan Program defines required docs + tasks (template).
+	•	When a Quote becomes a Loan, we instantiate those requirements into loan_checklist_items.
+	•	Admin + Borrower views show the same loan_checklist_items filtered by audience/assignee.
+	•	When a doc is uploaded / approved / denied, it updates the same item and is visible on both sides immediately.
+
+⸻
+
+1) Database schema (Postgres migrations)
+
+1.1 Loan programs + requirement templates
+
+-- Loan programs
+CREATE TABLE IF NOT EXISTS loan_programs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  code text UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Requirement template rows (the “checklist definition” per program)
+CREATE TABLE IF NOT EXISTS program_requirements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id uuid NOT NULL REFERENCES loan_programs(id) ON DELETE CASCADE,
+
+  type text NOT NULL CHECK (type IN ('document','task')),
+  title text NOT NULL,
+  description text,
+
+  -- docs: "bank_statement", "insurance", "purchase_contract" etc
+  doc_key text,
+  -- tasks: "schedule_call", "verify_entity", etc
+  task_key text,
+
+  required boolean NOT NULL DEFAULT true,
+  sort_order int NOT NULL DEFAULT 0,
+
+  -- who needs to act
+  assigned_to text NOT NULL DEFAULT 'borrower' CHECK (assigned_to IN ('borrower','broker','admin')),
+  visibility text NOT NULL DEFAULT 'borrower' CHECK (visibility IN ('borrower','broker','admin','all')),
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_program_requirements_program ON program_requirements(program_id);
+
+1.2 Quote carries program through to Loan
+
+ALTER TABLE quotes
+ADD COLUMN IF NOT EXISTS program_id uuid REFERENCES loan_programs(id);
+
+ALTER TABLE loans
+ADD COLUMN IF NOT EXISTS program_id uuid REFERENCES loan_programs(id);
+
+1.3 The shared checklist items (single source of truth)
+
+CREATE TABLE IF NOT EXISTS loan_checklist_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_id uuid NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+  program_requirement_id uuid REFERENCES program_requirements(id) ON DELETE SET NULL,
+
+  type text NOT NULL CHECK (type IN ('document','task')),
+  title text NOT NULL,
+  description text,
+
+  doc_key text,
+  task_key text,
+
+  required boolean NOT NULL DEFAULT true,
+  sort_order int NOT NULL DEFAULT 0,
+
+  assigned_to text NOT NULL DEFAULT 'borrower' CHECK (assigned_to IN ('borrower','broker','admin')),
+  visibility text NOT NULL DEFAULT 'borrower' CHECK (visibility IN ('borrower','broker','admin','all')),
+
+  status text NOT NULL DEFAULT 'not_started'
+    CHECK (status IN ('not_started','requested','submitted','in_review','approved','rejected','waived')),
+
+  due_date date,
+  notes text,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_loan_checklist_items_loan ON loan_checklist_items(loan_id);
+
+1.4 Document submissions linked to checklist items
+
+CREATE TABLE IF NOT EXISTS loan_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_id uuid NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+  checklist_item_id uuid REFERENCES loan_checklist_items(id) ON DELETE SET NULL,
+
+  doc_key text NOT NULL,
+  file_url text NOT NULL,
+  file_name text,
+  mime_type text,
+
+  status text NOT NULL DEFAULT 'submitted'
+    CHECK (status IN ('submitted','in_review','approved','rejected')),
+
+  reviewer_notes text,
+  uploaded_by text NOT NULL CHECK (uploaded_by IN ('borrower','broker','admin')),
+  uploaded_by_user_id uuid,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_loan_documents_loan ON loan_documents(loan_id);
+CREATE INDEX IF NOT EXISTS idx_loan_documents_checklist_item ON loan_documents(checklist_item_id);
+
+1.5 Auto-update timestamps (optional but recommended)
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS trg_checklist_updated ON loan_checklist_items;
+CREATE TRIGGER trg_checklist_updated BEFORE UPDATE ON loan_checklist_items
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_docs_updated ON loan_documents;
+CREATE TRIGGER trg_docs_updated BEFORE UPDATE ON loan_documents
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+⸻
+
+2) Backend (Node/TS): instantiate checklist when Quote becomes Loan
+
+2.1 Create Loan from Quote and carry program
+
+server/services/loanCreateFromQuote.ts
+
+import { db } from "../db";
+
+export async function createLoanFromQuote(quoteId: string) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const q = await client.query(
+      `SELECT id, borrower_id, broker_id, program_id
+       FROM quotes WHERE id = $1`,
+      [quoteId]
+    );
+    if (q.rowCount === 0) throw new Error("Quote not found");
+
+    const { borrower_id, broker_id, program_id } = q.rows[0];
+    if (!program_id) throw new Error("Quote missing program_id");
+
+    // Create loan
+    const loanRes = await client.query(
+      `INSERT INTO loans (quote_id, borrower_id, broker_id, program_id, status)
+       VALUES ($1,$2,$3,$4,'new')
+       RETURNING id`,
+      [quoteId, borrower_id, broker_id, program_id]
+    );
+    const loanId = loanRes.rows[0].id as string;
+
+    // Instantiate checklist from program_requirements
+    const reqs = await client.query(
+      `SELECT id, type, title, description, doc_key, task_key, required, sort_order, assigned_to, visibility
+       FROM program_requirements
+       WHERE program_id = $1
+       ORDER BY sort_order ASC, created_at ASC`,
+      [program_id]
+    );
+
+    for (const r of reqs.rows) {
+      await client.query(
+        `INSERT INTO loan_checklist_items
+          (loan_id, program_requirement_id, type, title, description, doc_key, task_key, required, sort_order, assigned_to, visibility, status)
+         VALUES
+          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'requested')`,
+        [
+          loanId,
+          r.id,
+          r.type,
+          r.title,
+          r.description ?? null,
+          r.doc_key ?? null,
+          r.task_key ?? null,
+          r.required,
+          r.sort_order,
+          r.assigned_to,
+          r.visibility
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+    return { loanId };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+
+⸻
+
+3) Backend API: one checklist endpoint, filtered by viewer role
+
+3.1 Get checklist (admin vs borrower/broker)
+
+server/routes/loansChecklist.ts
+
+import { Router } from "express";
+import { db } from "../db";
+import { z } from "zod";
+
+export const loansChecklistRouter = Router();
+
+// assume req.user has role: 'admin' | 'borrower' | 'broker'
+function viewerFilter(role: string) {
+  if (role === "admin") return `('admin','all')`;
+  if (role === "broker") return `('broker','all')`;
+  return `('borrower','all')`;
+}
+
+loansChecklistRouter.get("/api/loans/:loanId/checklist", async (req, res) => {
+  const loanId = req.params.loanId;
+  const role = (req as any).user?.role ?? "borrower";
+
+  // OPTIONAL: enforce borrower/broker can only access their loan
+  // TODO: verify ownership.
+
+  const vis = viewerFilter(role);
+
+  const items = await db.query(
+    `
+    SELECT
+      i.*,
+      (
+        SELECT json_agg(d ORDER BY d.created_at DESC)
+        FROM loan_documents d
+        WHERE d.checklist_item_id = i.id
+      ) AS documents
+    FROM loan_checklist_items i
+    WHERE i.loan_id = $1
+      AND i.visibility IN ${vis}
+    ORDER BY i.sort_order ASC, i.created_at ASC
+    `,
+    [loanId]
+  );
+
+  res.json({ success: true, items: items.rows });
+});
+
+3.2 Upload document against a checklist item (borrower/broker)
+
+const UploadSchema = z.object({
+  checklistItemId: z.string().uuid(),
+  docKey: z.string().min(1),
+  fileUrl: z.string().url(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+});
+
+loansChecklistRouter.post("/api/loans/:loanId/documents", async (req, res) => {
+  const loanId = req.params.loanId;
+  const role = (req as any).user?.role ?? "borrower";
+  const parsed = UploadSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.message });
+
+  const { checklistItemId, docKey, fileUrl, fileName, mimeType } = parsed.data;
+
+  // Create doc record
+  const doc = await db.query(
+    `
+    INSERT INTO loan_documents
+      (loan_id, checklist_item_id, doc_key, file_url, file_name, mime_type, status, uploaded_by)
+    VALUES
+      ($1,$2,$3,$4,$5,$6,'submitted',$7)
+    RETURNING id
+    `,
+    [loanId, checklistItemId, docKey, fileUrl, fileName ?? null, mimeType ?? null, role]
+  );
+
+  // Update checklist status (shared truth)
+  await db.query(
+    `UPDATE loan_checklist_items
+     SET status = 'submitted'
+     WHERE id = $1 AND loan_id = $2`,
+    [checklistItemId, loanId]
+  );
+
+  res.json({ success: true, documentId: doc.rows[0].id });
+});
+
+3.3 Admin approves/denies and it reflects in borrower portal
+
+const ReviewSchema = z.object({
+  checklistItemId: z.string().uuid(),
+  documentId: z.string().uuid(),
+  decision: z.enum(["approved", "rejected"]),
+  reviewerNotes: z.string().optional(),
+});
+
+loansChecklistRouter.post("/api/loans/:loanId/documents/review", async (req, res) => {
+  const loanId = req.params.loanId;
+  const role = (req as any).user?.role;
+  if (role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+
+  const parsed = ReviewSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.message });
+
+  const { checklistItemId, documentId, decision, reviewerNotes } = parsed.data;
+
+  await db.query(
+    `UPDATE loan_documents
+     SET status = $1, reviewer_notes = $2
+     WHERE id = $3 AND loan_id = $4`,
+    [decision, reviewerNotes ?? null, documentId, loanId]
+  );
+
+  await db.query(
+    `UPDATE loan_checklist_items
+     SET status = $1, notes = $2
+     WHERE id = $3 AND loan_id = $4`,
+    [decision, reviewerNotes ?? null, checklistItemId, loanId]
+  );
+
+  res.json({ success: true });
+});
+
+
+⸻
+
+4) Frontend: Borrower/Broker checklist page and Admin uses same endpoint
+
+4.1 Shared component for checklist rendering
+
+src/components/LoanChecklist.tsx
+
+import React, { useEffect, useState } from "react";
+
+type ChecklistItem = {
+  id: string;
+  type: "document" | "task";
+  title: string;
+  description?: string;
+  doc_key?: string;
+  task_key?: string;
+  status: string;
+  assigned_to: "borrower" | "broker" | "admin";
+  documents?: any[];
+};
+
+export function LoanChecklist({ loanId, mode }: { loanId: string; mode: "borrower" | "admin" }) {
+  const [items, setItems] = useState<ChecklistItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/loans/${loanId}/checklist`);
+    const data = await res.json();
+    setItems(data.items || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+  }, [loanId]);
+
+  if (loading) return <div>Loading checklist...</div>;
+
+  return (
+    <div>
+      <h3>Checklist</h3>
+
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="border rounded p-3">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">{item.title}</div>
+              <span className="text-xs px-2 py-1 border rounded">{item.status}</span>
+            </div>
+
+            {item.description ? <div className="text-sm opacity-80">{item.description}</div> : null}
+
+            {item.type === "document" ? (
+              <DocumentRow loanId={loanId} item={item} onChanged={load} mode={mode} />
+            ) : (
+              <TaskRow item={item} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DocumentRow({
+  loanId, item, onChanged, mode
+}: {
+  loanId: string; item: ChecklistItem; onChanged: () => void; mode: "borrower" | "admin";
+}) {
+  // Borrower uploads; Admin reviews
+  return (
+    <div className="mt-2">
+      {mode !== "admin" ? (
+        <button
+          className="border rounded px-3 py-1"
+          onClick={async () => {
+            // replace with your upload flow (S3, upload service)
+            const fileUrl = prompt("Paste uploaded file URL:");
+            if (!fileUrl) return;
+
+            await fetch(`/api/loans/${loanId}/documents`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                checklistItemId: item.id,
+                docKey: item.doc_key,
+                fileUrl
+              })
+            });
+
+            onChanged();
+          }}
+        >
+          Upload Document
+        </button>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            className="border rounded px-3 py-1"
+            onClick={async () => {
+              const doc = (item.documents?.[0]);
+              if (!doc) return alert("No submission yet");
+              await fetch(`/api/loans/${loanId}/documents/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  checklistItemId: item.id,
+                  documentId: doc.id,
+                  decision: "approved",
+                })
+              });
+              onChanged();
+            }}
+          >
+            Approve
+          </button>
+          <button
+            className="border rounded px-3 py-1"
+            onClick={async () => {
+              const doc = (item.documents?.[0]);
+              if (!doc) return alert("No submission yet");
+              const notes = prompt("Reason for rejection?");
+              await fetch(`/api/loans/${loanId}/documents/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  checklistItemId: item.id,
+                  documentId: doc.id,
+                  decision: "rejected",
+                  reviewerNotes: notes || ""
+                })
+              });
+              onChanged();
+            }}
+          >
+            Reject
+          </button>
+        </div>
+      )}
+
+      {item.documents?.length ? (
+        <div className="mt-2 text-sm">
+          Latest: <a href={item.documents[0].file_url} target="_blank" rel="noreferrer">View</a>
+          {" "}({item.documents[0].status})
+        </div>
+      ) : (
+        <div className="mt-2 text-sm opacity-70">No submission yet</div>
+      )}
+    </div>
+  );
+}
+
+function TaskRow({ item }: { item: ChecklistItem }) {
+  return <div className="mt-2 text-sm opacity-80">Assigned to: {item.assigned_to}</div>;
+}
+
+Now:
+	•	Borrower uploads a doc → checklist item becomes submitted → admin sees it immediately.
+	•	Admin approves/denies → borrower sees approved / rejected immediately.
+
+⸻
+
+5) Replit prompt to implement all of this without you babysitting
+
+If you want to tell Replit “build this exact structure”, paste this:
+
+Implement a single-source-of-truth checklist that is shared between Admin Pipeline and Borrower/Broker Portal.
+
+Requirements:
+1) Loan Program selected during Quote must carry through:
+- quotes.program_id
+- loans.program_id
+
+2) Create a “requirements template” per loan program:
+- loan_programs
+- program_requirements (type=document/task, assigned_to, visibility, required, sort_order, doc_key/task_key)
+
+3) When quote converts to loan:
+- instantiate ALL program_requirements into loan_checklist_items for that loan
+- this is the shared checklist source of truth
+
+4) Borrower/Broker “Loans” view and Admin “Pipeline” view must both read from:
+GET /api/loans/:loanId/checklist
+Filtering is only by visibility/role, not by separate data.
+
+5) Document submissions:
+- POST /api/loans/:loanId/documents creates loan_documents row and updates matching loan_checklist_items.status=submitted
+- Admin review endpoint approves/rejects and updates both loan_documents + loan_checklist_items so borrower sees same status.
+
+6) Ensure there is no second checklist in the app.
+- Remove any duplicated front-end arrays or hardcoded checklist items.
+- Both portals must rely on loan_checklist_items.
+
+Deliverables:
+- DB migrations
+- Service that creates loan from quote + instantiates checklist
+- API endpoints for checklist, doc submission, admin review
+- UI uses shared LoanChecklist component and shows the same statuses across admin and borrower.
+
+
+⸻
+
+If you want this to feel “glass-like” in real time
+
+Add polling or websockets:
+	•	borrower uploads → admin view updates without refresh
+	•	admin approves → borrower sees instantly
+
+Easiest: poll /checklist every 10 seconds.
+Best: websocket event “loan_checklist_updated”.
+
+⸻
+
+If you paste your current tables for quotes, loans, and where you currently store “required docs”, I’ll adapt the migrations and endpoints to your exact schema so Replit can apply it without conflicts.

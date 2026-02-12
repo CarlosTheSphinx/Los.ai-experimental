@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { LoanChecklist } from "@/components/LoanChecklist";
 
 interface Task {
   id: number;
@@ -128,19 +129,6 @@ export default function BorrowerPortal() {
     enabled: !!token,
   });
 
-  const { data: docsData } = useQuery<{ 
-    documents: DealDocument[]; 
-    stages: PortalStage[];
-  }>({
-    queryKey: ['/api/portal', token, 'documents'],
-    queryFn: async () => {
-      const res = await fetch(`/api/portal/${token}/documents`);
-      if (!res.ok) throw new Error('Failed to load documents');
-      return res.json();
-    },
-    enabled: !!token,
-  });
-
   const uploadMutation = useMutation({
     mutationFn: async ({ docId, file }: { docId: number; file: File }) => {
       setUploadingDocId(docId);
@@ -173,7 +161,7 @@ export default function BorrowerPortal() {
       return completeRes.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'documents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/portal/checklist', token] });
       queryClient.invalidateQueries({ queryKey: ['/api/portal', token] });
       toast({ title: "Document uploaded successfully" });
       setUploadingDocId(null);
@@ -223,8 +211,6 @@ export default function BorrowerPortal() {
   }
 
   const { project, stages, activity } = data;
-  const documents = docsData?.documents || [];
-  const docStages = docsData?.stages || [];
 
   const formatCurrency = (amount: number | null) => {
     if (!amount) return '—';
@@ -242,13 +228,6 @@ export default function BorrowerPortal() {
     });
   };
 
-  const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   const getStageIcon = (status: string) => {
     switch (status) {
       case 'completed': return <CheckCircle2 className="h-5 w-5 text-green-500" />;
@@ -256,33 +235,6 @@ export default function BorrowerPortal() {
       default: return <Circle className="h-5 w-5 text-muted-foreground" />;
     }
   };
-
-  const getDocStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge variant="default" className="bg-green-600" data-testid="badge-doc-approved">Approved</Badge>;
-      case 'uploaded':
-        return <Badge variant="secondary" data-testid="badge-doc-uploaded">Under Review</Badge>;
-      case 'rejected':
-        return <Badge variant="destructive" data-testid="badge-doc-rejected">Needs Revision</Badge>;
-      case 'not_applicable':
-        return <Badge variant="outline" data-testid="badge-doc-na">Not Required</Badge>;
-      default:
-        return <Badge variant="outline" data-testid="badge-doc-pending">Needed</Badge>;
-    }
-  };
-
-  const totalTasks = stages.reduce((sum, s) => sum + s.tasks.length, 0);
-  const completedTasks = stages.reduce((sum, s) => sum + s.tasks.filter(t => t.status === 'completed').length, 0);
-
-  const totalDocs = documents.filter(d => d.isRequired && d.status !== 'not_applicable').length;
-  const uploadedDocs = documents.filter(d => d.status === 'uploaded' || d.status === 'approved').length;
-
-  const docsByStage = docStages.map(stage => ({
-    ...stage,
-    docs: documents.filter(d => d.stageId === stage.id),
-  }));
-  const unstagedDocs = documents.filter(d => !d.stageId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -388,15 +340,11 @@ export default function BorrowerPortal() {
           </Card>
         )}
 
-        <Tabs defaultValue="documents" className="space-y-4">
+        <Tabs defaultValue="checklist" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="documents" data-testid="tab-documents">
-              <FolderOpen className="h-4 w-4 mr-2" />
-              Documents ({uploadedDocs}/{totalDocs})
-            </TabsTrigger>
             <TabsTrigger value="checklist" data-testid="tab-checklist">
               <CheckSquare className="h-4 w-4 mr-2" />
-              Tasks ({completedTasks}/{totalTasks})
+              Checklist
             </TabsTrigger>
             <TabsTrigger value="updates" data-testid="tab-updates">
               <Activity className="h-4 w-4 mr-2" />
@@ -404,110 +352,15 @@ export default function BorrowerPortal() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="documents" className="space-y-4">
-            {documents.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                    <p>No documents required yet</p>
-                    <p className="text-xs mt-1">Documents will appear here once your loan program is set up</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                {docsByStage.filter(s => s.docs.length > 0).map((stageGroup) => (
-                  <Card key={stageGroup.id} data-testid={`card-doc-stage-${stageGroup.id}`}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center gap-3">
-                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <CardTitle className="text-base">{stageGroup.stageName}</CardTitle>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {stageGroup.docs.map((doc) => (
-                          <DocumentRow
-                            key={doc.id}
-                            doc={doc}
-                            uploadingDocId={uploadingDocId}
-                            onUpload={handleUploadClick}
-                            formatFileSize={formatFileSize}
-                            formatDateTime={formatDateTime}
-                          />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {unstagedDocs.length > 0 && (
-                  <Card data-testid="card-doc-stage-other">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center gap-3">
-                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                        <CardTitle className="text-base">Other Documents</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {unstagedDocs.map((doc) => (
-                          <DocumentRow
-                            key={doc.id}
-                            doc={doc}
-                            uploadingDocId={uploadingDocId}
-                            onUpload={handleUploadClick}
-                            formatFileSize={formatFileSize}
-                            formatDateTime={formatDateTime}
-                          />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </>
-            )}
-          </TabsContent>
-
           <TabsContent value="checklist" className="space-y-4">
-            {stages.map((stage) => (
-              <Card key={stage.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-3">
-                    {getStageIcon(stage.status)}
-                    <div>
-                      <CardTitle className="text-base">{stage.stageName}</CardTitle>
-                      <CardDescription>{stage.stageDescription}</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                {stage.tasks.length > 0 && (
-                  <CardContent>
-                    <div className="space-y-3">
-                      {stage.tasks.map((task) => (
-                        <div key={task.id} className="flex items-start gap-3">
-                          {task.status === 'completed' ? (
-                            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-                          ) : (
-                            <Circle className="h-5 w-5 text-muted-foreground mt-0.5" />
-                          )}
-                          <div className="flex-1">
-                            <div className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                              {task.taskTitle}
-                            </div>
-                            {task.borrowerActionRequired && task.status !== 'completed' && (
-                              <Badge variant="outline" className="text-xs mt-1">Action Required</Badge>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-            ))}
+            <LoanChecklist
+              dealId={project.id}
+              mode="borrower"
+              portalToken={token}
+              onUploadDoc={handleUploadClick}
+              pollingInterval={15000}
+              showTasks={true}
+            />
           </TabsContent>
 
           <TabsContent value="updates">
@@ -564,117 +417,3 @@ export default function BorrowerPortal() {
   );
 }
 
-function DocumentRow({ 
-  doc, 
-  uploadingDocId, 
-  onUpload, 
-  formatFileSize,
-  formatDateTime
-}: { 
-  doc: DealDocument; 
-  uploadingDocId: number | null;
-  onUpload: (docId: number) => void;
-  formatFileSize: (bytes: number | null) => string;
-  formatDateTime: (dateStr: string) => string;
-}) {
-  const isUploading = uploadingDocId === doc.id;
-  const canUpload = doc.status === 'pending' || doc.status === 'rejected';
-  const getDocStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge variant="default" className="bg-green-600" data-testid={`badge-doc-approved-${doc.id}`}>Approved</Badge>;
-      case 'uploaded':
-        return <Badge variant="secondary" data-testid={`badge-doc-uploaded-${doc.id}`}>Under Review</Badge>;
-      case 'rejected':
-        return <Badge variant="destructive" data-testid={`badge-doc-rejected-${doc.id}`}>Needs Revision</Badge>;
-      case 'not_applicable':
-        return <Badge variant="outline" data-testid={`badge-doc-na-${doc.id}`}>Not Required</Badge>;
-      default:
-        return <Badge variant="outline" data-testid={`badge-doc-pending-${doc.id}`}>Needed</Badge>;
-    }
-  };
-
-  return (
-    <div
-      className={`flex items-start gap-3 p-3 rounded-md border ${
-        doc.status === 'rejected' ? 'border-destructive/30 bg-destructive/5' :
-        doc.status === 'approved' ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10' :
-        'border-border'
-      }`}
-      data-testid={`row-document-${doc.id}`}
-    >
-      <div className="mt-0.5">
-        {doc.status === 'approved' ? (
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
-        ) : doc.status === 'rejected' ? (
-          <XCircle className="h-5 w-5 text-destructive" />
-        ) : doc.status === 'uploaded' ? (
-          <Clock className="h-5 w-5 text-blue-500" />
-        ) : (
-          <FileIcon className="h-5 w-5 text-muted-foreground" />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium" data-testid={`text-doc-name-${doc.id}`}>{doc.documentName}</span>
-          {doc.isRequired && doc.status === 'pending' && (
-            <span className="text-[10px] text-destructive font-medium">Required</span>
-          )}
-          {getDocStatusBadge(doc.status)}
-        </div>
-
-        {doc.documentDescription && (
-          <p className="text-xs text-muted-foreground mt-0.5">{doc.documentDescription}</p>
-        )}
-
-        {doc.status === 'rejected' && doc.reviewNotes && (
-          <div className="mt-2 p-2 rounded bg-destructive/10 text-xs text-destructive dark:text-red-400">
-            <span className="font-medium">Revision needed:</span> {doc.reviewNotes}
-          </div>
-        )}
-
-        {doc.files && doc.files.length > 0 && (
-          <div className="mt-2 space-y-1">
-            {doc.files.map((file) => (
-              <div key={file.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FileText className="h-3 w-3" />
-                <span className="truncate">{file.fileName || 'Uploaded file'}</span>
-                {file.fileSize && <span className="shrink-0">({formatFileSize(file.fileSize)})</span>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {doc.uploadedAt && !doc.files?.length && (
-          <div className="text-xs text-muted-foreground mt-1">
-            Uploaded {formatDateTime(doc.uploadedAt)}
-            {doc.fileName && <> - {doc.fileName}</>}
-            {doc.fileSize && <> ({formatFileSize(doc.fileSize)})</>}
-          </div>
-        )}
-      </div>
-
-      <div className="shrink-0">
-        {canUpload && (
-          <Button
-            size="sm"
-            variant={doc.status === 'rejected' ? 'destructive' : 'outline'}
-            onClick={() => onUpload(doc.id)}
-            disabled={isUploading}
-            data-testid={`button-upload-doc-${doc.id}`}
-          >
-            {isUploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Upload className="h-4 w-4 mr-1" />
-                {doc.status === 'rejected' ? 'Resubmit' : 'Upload'}
-              </>
-            )}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}

@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -1325,6 +1325,8 @@ export async function registerRoutes(
               documentCategory: doc.documentCategory,
               documentDescription: doc.documentDescription,
               isRequired: doc.isRequired,
+              assignedTo: doc.assignedTo || 'borrower',
+              visibility: doc.visibility || 'all',
               sortOrder: doc.sortOrder || index,
               status: 'pending',
             }));
@@ -6097,6 +6099,318 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete deal property error:', error);
       res.status(500).json({ error: 'Failed to delete property' });
+    }
+  });
+
+  // Unified Checklist - single source of truth combining docs + tasks, filtered by viewer role
+  app.get('/api/projects/:id/checklist', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const projectId = parseInt(req.params.id);
+      const viewerRole = req.user!.role === 'super_admin' || req.user!.role === 'admin' ? 'admin' : 
+                         req.user!.userType === 'borrower' ? 'borrower' : 'broker';
+
+      const project = await storage.getProjectById(projectId, userId);
+      if (!project) return res.status(404).json({ error: 'Deal not found' });
+
+      const docs = await db.select().from(dealDocuments)
+        .where(eq(dealDocuments.dealId, projectId))
+        .orderBy(asc(dealDocuments.sortOrder));
+
+      const docsWithFiles = await Promise.all(docs.map(async (doc) => {
+        const files = await db.select().from(dealDocumentFiles)
+          .where(eq(dealDocumentFiles.documentId, doc.id))
+          .orderBy(asc(dealDocumentFiles.sortOrder));
+        return { ...doc, files };
+      }));
+
+      const tasks = await db.select().from(projectTasks)
+        .where(eq(projectTasks.projectId, projectId))
+        .orderBy(asc(projectTasks.createdAt));
+
+      const stages = await db.select().from(projectStages)
+        .where(eq(projectStages.projectId, projectId))
+        .orderBy(asc(projectStages.stageOrder));
+
+      const visibleDocs = docsWithFiles.filter(doc => {
+        const vis = doc.visibility || 'all';
+        if (vis === 'all') return true;
+        return vis === viewerRole;
+      });
+
+      const visibleTasks = tasks.filter(task => {
+        if (viewerRole === 'admin') return true;
+        return task.visibleToBorrower !== false;
+      });
+
+      const checklistItems: any[] = [];
+
+      for (const doc of visibleDocs) {
+        checklistItems.push({
+          id: `doc-${doc.id}`,
+          type: 'document' as const,
+          itemId: doc.id,
+          stageId: doc.stageId,
+          title: doc.documentName,
+          description: doc.documentDescription,
+          category: doc.documentCategory,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          assignedTo: doc.assignedTo || 'borrower',
+          visibility: doc.visibility || 'all',
+          sortOrder: doc.sortOrder || 0,
+          filePath: doc.filePath,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.uploadedAt,
+          uploadedBy: doc.uploadedBy,
+          reviewedAt: doc.reviewedAt,
+          reviewedBy: doc.reviewedBy,
+          reviewNotes: doc.reviewNotes,
+          files: doc.files,
+          createdAt: doc.createdAt,
+        });
+      }
+
+      for (const task of visibleTasks) {
+        checklistItems.push({
+          id: `task-${task.id}`,
+          type: 'task' as const,
+          itemId: task.id,
+          stageId: task.stageId,
+          title: task.taskTitle,
+          description: task.taskDescription,
+          category: task.taskType,
+          status: task.status,
+          isRequired: true,
+          assignedTo: task.assignedTo || 'admin',
+          visibility: task.visibleToBorrower ? 'all' : 'admin',
+          sortOrder: 0,
+          priority: task.priority,
+          borrowerActionRequired: task.borrowerActionRequired,
+          completedAt: task.completedAt,
+          completedBy: task.completedBy,
+          createdAt: task.createdAt,
+        });
+      }
+
+      res.json({
+        success: true,
+        viewerRole,
+        items: checklistItems,
+        stages: stages.map(s => ({
+          id: s.id,
+          name: s.stageName,
+          key: s.stageKey,
+          order: s.stageOrder,
+          status: s.status,
+          description: s.stageDescription,
+        })),
+      });
+    } catch (error) {
+      console.error('Unified checklist error:', error);
+      res.status(500).json({ error: 'Failed to load checklist' });
+    }
+  });
+
+  // Unified Checklist - borrower portal (token-based)
+  app.get('/api/portal/:token/checklist', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Deal not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+
+      const docs = await db.select().from(dealDocuments)
+        .where(eq(dealDocuments.dealId, project.id))
+        .orderBy(asc(dealDocuments.sortOrder));
+
+      const docsWithFiles = await Promise.all(docs.map(async (doc) => {
+        const files = await db.select().from(dealDocumentFiles)
+          .where(eq(dealDocumentFiles.documentId, doc.id))
+          .orderBy(asc(dealDocumentFiles.sortOrder));
+        return { ...doc, files };
+      }));
+
+      const tasks = await db.select().from(projectTasks)
+        .where(eq(projectTasks.projectId, project.id))
+        .orderBy(asc(projectTasks.createdAt));
+
+      const stages = await db.select().from(projectStages)
+        .where(eq(projectStages.projectId, project.id))
+        .orderBy(asc(projectStages.stageOrder));
+
+      const visibleDocs = docsWithFiles.filter(doc => {
+        const vis = doc.visibility || 'all';
+        return vis === 'all' || vis === 'borrower';
+      });
+
+      const visibleTasks = tasks.filter(task => task.visibleToBorrower !== false);
+
+      const checklistItems: any[] = [];
+
+      for (const doc of visibleDocs) {
+        checklistItems.push({
+          id: `doc-${doc.id}`,
+          type: 'document' as const,
+          itemId: doc.id,
+          stageId: doc.stageId,
+          title: doc.documentName,
+          description: doc.documentDescription,
+          category: doc.documentCategory,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          assignedTo: doc.assignedTo || 'borrower',
+          visibility: doc.visibility || 'all',
+          sortOrder: doc.sortOrder || 0,
+          filePath: doc.filePath,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.uploadedAt,
+          uploadedBy: doc.uploadedBy,
+          reviewedAt: doc.reviewedAt,
+          reviewedBy: doc.reviewedBy,
+          reviewNotes: doc.reviewNotes,
+          files: doc.files,
+          createdAt: doc.createdAt,
+        });
+      }
+
+      for (const task of visibleTasks) {
+        checklistItems.push({
+          id: `task-${task.id}`,
+          type: 'task' as const,
+          itemId: task.id,
+          stageId: task.stageId,
+          title: task.taskTitle,
+          description: task.taskDescription,
+          category: task.taskType,
+          status: task.status,
+          isRequired: true,
+          assignedTo: task.assignedTo || 'admin',
+          visibility: 'all',
+          sortOrder: 0,
+          priority: task.priority,
+          borrowerActionRequired: task.borrowerActionRequired,
+          completedAt: task.completedAt,
+          completedBy: task.completedBy,
+          createdAt: task.createdAt,
+        });
+      }
+
+      res.json({
+        success: true,
+        viewerRole: 'borrower',
+        items: checklistItems,
+        stages: stages.map(s => ({
+          id: s.id,
+          name: s.stageName,
+          key: s.stageKey,
+          order: s.stageOrder,
+          status: s.status,
+          description: s.stageDescription,
+        })),
+      });
+    } catch (error) {
+      console.error('Portal checklist error:', error);
+      res.status(500).json({ error: 'Failed to load checklist' });
+    }
+  });
+
+  // Admin Unified Checklist (same data, admin role)
+  app.get('/api/admin/deals/:dealId/checklist', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+
+      const docs = await db.select().from(dealDocuments)
+        .where(eq(dealDocuments.dealId, dealId))
+        .orderBy(asc(dealDocuments.sortOrder));
+
+      const docsWithFiles = await Promise.all(docs.map(async (doc) => {
+        const files = await db.select().from(dealDocumentFiles)
+          .where(eq(dealDocumentFiles.documentId, doc.id))
+          .orderBy(asc(dealDocumentFiles.sortOrder));
+        return { ...doc, files };
+      }));
+
+      const tasks = await db.select().from(projectTasks)
+        .where(eq(projectTasks.projectId, dealId))
+        .orderBy(asc(projectTasks.createdAt));
+
+      const stages = await db.select().from(projectStages)
+        .where(eq(projectStages.projectId, dealId))
+        .orderBy(asc(projectStages.stageOrder));
+
+      const checklistItems: any[] = [];
+
+      for (const doc of docsWithFiles) {
+        checklistItems.push({
+          id: `doc-${doc.id}`,
+          type: 'document' as const,
+          itemId: doc.id,
+          stageId: doc.stageId,
+          title: doc.documentName,
+          description: doc.documentDescription,
+          category: doc.documentCategory,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          assignedTo: doc.assignedTo || 'borrower',
+          visibility: doc.visibility || 'all',
+          sortOrder: doc.sortOrder || 0,
+          filePath: doc.filePath,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.uploadedAt,
+          uploadedBy: doc.uploadedBy,
+          reviewedAt: doc.reviewedAt,
+          reviewedBy: doc.reviewedBy,
+          reviewNotes: doc.reviewNotes,
+          files: doc.files,
+          createdAt: doc.createdAt,
+        });
+      }
+
+      for (const task of tasks) {
+        checklistItems.push({
+          id: `task-${task.id}`,
+          type: 'task' as const,
+          itemId: task.id,
+          stageId: task.stageId,
+          title: task.taskTitle,
+          description: task.taskDescription,
+          category: task.taskType,
+          status: task.status,
+          isRequired: true,
+          assignedTo: task.assignedTo || 'admin',
+          visibility: task.visibleToBorrower ? 'all' : 'admin',
+          sortOrder: 0,
+          priority: task.priority,
+          borrowerActionRequired: task.borrowerActionRequired,
+          completedAt: task.completedAt,
+          completedBy: task.completedBy,
+          createdAt: task.createdAt,
+        });
+      }
+
+      res.json({
+        success: true,
+        viewerRole: 'admin',
+        items: checklistItems,
+        stages: stages.map(s => ({
+          id: s.id,
+          name: s.stageName,
+          key: s.stageKey,
+          order: s.stageOrder,
+          status: s.status,
+          description: s.stageDescription,
+        })),
+      });
+    } catch (error) {
+      console.error('Admin checklist error:', error);
+      res.status(500).json({ error: 'Failed to load checklist' });
     }
   });
 

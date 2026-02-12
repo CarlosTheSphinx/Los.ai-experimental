@@ -47,6 +47,14 @@ Enables handling of multiple properties per loan (portfolio/blanket loans) with 
 **Program-to-Deal Sync**:
 Automatically propagates changes from loan program templates (workflow, documents, tasks) to all associated existing deals non-destructively, maintaining template references and remapping IDs as needed.
 
+**Unified Checklist System**:
+A "single source of truth" checklist system where admin, broker, and borrower views display the same underlying data with role-based filtering. Key architectural decisions:
+-   Extended existing `deal_documents` and `project_tasks` tables with `assignedTo` and `visibility` fields rather than creating a separate unified table, to minimize migration risk and preserve PandaDoc/Google Drive integrations.
+-   Three checklist API endpoints (`/api/projects/:id/checklist`, `/api/portal/:token/checklist`, `/api/admin/deals/:dealId/checklist`) all query the same underlying tables with role-appropriate visibility filtering.
+-   Shared `LoanChecklist.tsx` component used across borrower portal, broker deal page, and admin deal detail with configurable mode (`admin`/`broker`/`borrower`), upload/review callbacks, and automatic polling (15s borrower/broker, 10s admin).
+-   Documents use `assignedTo` (borrower/broker/admin) and `visibility` (all/borrower/broker/admin) for role-based filtering. Tasks use existing `visibleToBorrower` field mapped from program template `visibility` settings.
+-   When a borrower uploads a document, admin sees it immediately via polling; when admin approves/rejects, borrower/broker see it immediately.
+
 **Terminology Note**:
 The database still uses `projects` as the table name, but the entire UI refers to these entities as "Deals" or "Loans" (used interchangeably). Frontend routes use `/deals/*` and `/api/deals/*` with URL rewriting middleware on the backend mapping to the underlying `/api/projects/*` handlers. Internal TypeScript variable names may still reference `project` but all user-facing text says "Deal" or "Loan".
 

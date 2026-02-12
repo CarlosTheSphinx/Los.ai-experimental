@@ -48,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { LoanChecklist } from "@/components/LoanChecklist";
 
 interface Task {
   id: number;
@@ -655,15 +656,11 @@ export default function ProjectDetail() {
             </Card>
           )}
 
-          <Tabs defaultValue="documents" className="space-y-4">
+          <Tabs defaultValue="checklist" className="space-y-4">
             <TabsList>
-              <TabsTrigger value="documents" data-testid="tab-documents">
-                <FileText className="h-4 w-4 mr-2" />
-                Required Documents
-              </TabsTrigger>
-              <TabsTrigger value="tasks" data-testid="tab-tasks">
+              <TabsTrigger value="checklist" data-testid="tab-checklist">
                 <CheckSquare className="h-4 w-4 mr-2" />
-                Your Tasks
+                Checklist
               </TabsTrigger>
               <TabsTrigger value="messages" data-testid="tab-messages">
                 <MessageSquare className="h-4 w-4 mr-2" />
@@ -675,263 +672,29 @@ export default function ProjectDetail() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="documents" className="space-y-4">
-              {(!dealDocsData || dealDocsData.length === 0) ? (
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center py-8 text-muted-foreground">
-                      <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No document requirements have been set up yet.</p>
-                      <p className="text-xs mt-1">Your loan team will set these up shortly.</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground">
-                      Please upload all required documents for your loan.
-                    </p>
-                    <div className="text-sm text-muted-foreground whitespace-nowrap">
-                      {(dealDocsData || []).filter(d => d.status === 'approved').length}/{(dealDocsData || []).filter(d => d.isRequired).length} approved
-                    </div>
-                  </div>
-                  <input
-                    ref={dealDocFileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0 && uploadingDealDocId) {
-                        handleDealDocUpload(uploadingDealDocId, e.target.files[0]);
-                        e.target.value = '';
-                      }
-                    }}
-                    data-testid="input-deal-doc-upload"
-                  />
-                  {dealDocsByStage.filter(s => s.docs.length > 0).map((stageGroup) => (
-                    <Card key={stageGroup.stageId} data-testid={`card-doc-stage-${stageGroup.stageId}`}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center gap-3">
-                          <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                          <div>
-                            <CardTitle className="text-base">{stageGroup.stageName}</CardTitle>
-                            <CardDescription>
-                              {stageGroup.docs.filter(d => d.status === 'approved').length}/{stageGroup.docs.filter(d => d.isRequired).length} approved
-                            </CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {stageGroup.docs.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className={`flex items-center gap-3 p-3 rounded-md border ${
-                                doc.status === 'rejected' ? 'border-destructive/50 bg-destructive/5' : ''
-                              }`}
-                              data-testid={`deal-doc-row-${doc.id}`}
-                            >
-                              {doc.status === 'approved' ? (
-                                <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                              ) : doc.status === 'uploaded' ? (
-                                <Clock className="h-5 w-5 text-blue-500 shrink-0" />
-                              ) : doc.status === 'rejected' ? (
-                                <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-                              ) : (
-                                <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium">{doc.documentName}</span>
-                                  {doc.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
-                                </div>
-                                {doc.documentDescription && (
-                                  <div className="text-xs text-muted-foreground mt-0.5">{doc.documentDescription}</div>
-                                )}
-                                {doc.status === 'rejected' && doc.reviewNotes && (
-                                  <div className="text-xs text-destructive mt-1 font-medium">
-                                    Rejected: {doc.reviewNotes}
-                                  </div>
-                                )}
-                                {doc.status === 'approved' && doc.reviewNotes && (
-                                  <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                    Note: {doc.reviewNotes}
-                                  </div>
-                                )}
-                                {doc.fileName && (
-                                  <div className="text-xs text-muted-foreground mt-0.5">
-                                    {doc.fileName}
-                                    {doc.fileSize ? ` · ${(doc.fileSize / 1024).toFixed(1)} KB` : ''}
-                                    {doc.uploadedAt && ` · ${formatDateTime(doc.uploadedAt)}`}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {getDealDocStatusBadge(doc.status)}
-                                {(doc.status === 'pending' || doc.status === 'rejected') && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={uploadingDealDocId === doc.id}
-                                    onClick={() => {
-                                      setUploadingDealDocId(doc.id);
-                                      dealDocFileInputRef.current?.click();
-                                    }}
-                                    data-testid={`button-upload-deal-doc-${doc.id}`}
-                                  >
-                                    {uploadingDealDocId === doc.id ? (
-                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    ) : (
-                                      <Upload className="h-4 w-4 mr-2" />
-                                    )}
-                                    Upload
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {unstagedDealDocs.length > 0 && (
-                    <Card data-testid="card-doc-stage-other">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center gap-3">
-                          <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                          <CardTitle className="text-base">Other Documents</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {unstagedDealDocs.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className={`flex items-center gap-3 p-3 rounded-md border ${
-                                doc.status === 'rejected' ? 'border-destructive/50 bg-destructive/5' : ''
-                              }`}
-                              data-testid={`deal-doc-row-${doc.id}`}
-                            >
-                              {doc.status === 'approved' ? (
-                                <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                              ) : doc.status === 'uploaded' ? (
-                                <Clock className="h-5 w-5 text-blue-500 shrink-0" />
-                              ) : doc.status === 'rejected' ? (
-                                <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-                              ) : (
-                                <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium">{doc.documentName}</span>
-                                  {doc.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
-                                </div>
-                                {doc.documentDescription && (
-                                  <div className="text-xs text-muted-foreground mt-0.5">{doc.documentDescription}</div>
-                                )}
-                                {doc.fileName && (
-                                  <div className="text-xs text-muted-foreground mt-0.5">
-                                    {doc.fileName}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {getDealDocStatusBadge(doc.status)}
-                                {(doc.status === 'pending' || doc.status === 'rejected') && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={uploadingDealDocId === doc.id}
-                                    onClick={() => {
-                                      setUploadingDealDocId(doc.id);
-                                      dealDocFileInputRef.current?.click();
-                                    }}
-                                    data-testid={`button-upload-deal-doc-${doc.id}`}
-                                  >
-                                    {uploadingDealDocId === doc.id ? (
-                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    ) : (
-                                      <Upload className="h-4 w-4 mr-2" />
-                                    )}
-                                    Upload
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
-              )}
-            </TabsContent>
-
-            <TabsContent value="tasks">
-              <div className="space-y-4">
-                {stages.map((stage) => {
-                  const borrowerTasks = stage.tasks.filter(t => t.visibleToBorrower);
-                  if (borrowerTasks.length === 0) return null;
-
-                  return (
-                    <Card key={stage.id}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {getStageIcon(stage.status)}
-                            <div>
-                              <CardTitle className="text-base">{stage.stageName} Tasks</CardTitle>
-                              <CardDescription>Tasks for you to complete in this stage</CardDescription>
-                            </div>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {borrowerTasks.filter(t => t.status === 'completed').length}/{borrowerTasks.length} complete
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {borrowerTasks.map((task) => (
-                            <div 
-                              key={task.id} 
-                              className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
-                            >
-                              {task.status === 'completed' 
-                                ? <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                                : <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
-                              }
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`text-sm ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                                    {task.taskTitle}
-                                  </span>
-                                  {getPriorityBadge(task.priority)}
-                                  {task.borrowerActionRequired && (
-                                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">Action Required</Badge>
-                                  )}
-                                </div>
-                                {task.completedAt && (
-                                  <div className="text-xs text-muted-foreground mt-0.5">
-                                    Completed {formatDateTime(task.completedAt)}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-                {stages.every(s => s.tasks.filter(t => t.visibleToBorrower).length === 0) && (
-                  <Card>
-                    <CardContent className="pt-6 text-center text-muted-foreground">
-                      <CheckSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No tasks assigned to you at this time.</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
+            <TabsContent value="checklist" className="space-y-4">
+              <input
+                ref={dealDocFileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0 && uploadingDealDocId) {
+                    handleDealDocUpload(uploadingDealDocId, e.target.files[0]);
+                    e.target.value = '';
+                  }
+                }}
+                data-testid="input-deal-doc-upload"
+              />
+              <LoanChecklist
+                dealId={parseInt(projectId!)}
+                mode="broker"
+                onUploadDoc={(docId) => {
+                  setUploadingDealDocId(docId);
+                  dealDocFileInputRef.current?.click();
+                }}
+                pollingInterval={15000}
+                showTasks={true}
+              />
             </TabsContent>
 
             <TabsContent value="messages">
