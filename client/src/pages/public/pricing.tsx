@@ -24,51 +24,44 @@ export default function PublicPricingPage() {
   const tiers = [
     {
       name: "Starter",
-      price: "$499",
-      period: "/month",
-      description: "Perfect for growing lenders",
-      badge: null,
+      price: "$199",
+      period: "/mo",
+      description: "Ideal for individual brokers and small teams",
       features: [
-        "Up to 50 loans/month",
-        "3 users",
-        "Basic AI pricing",
+        "Up to 10 active deals",
+        "Standard automation rules",
+        "Document collection",
         "Email support",
-        "Borrower portal",
       ],
       cta: "Get Started",
       highlighted: false,
     },
     {
       name: "Professional",
-      price: "$999",
-      period: "/month",
-      description: "Most powerful for scaling",
-      badge: "Most Popular",
+      price: "$499",
+      period: "/mo",
+      description: "Built for high-volume processing teams",
       features: [
-        "Up to 200 loans/month",
-        "15 users",
-        "Advanced AI pricing + document AI",
+        "Unlimited active deals",
+        "Custom automation workflows",
+        "Advanced condition tracking",
         "Priority support",
-        "Custom branding",
-        "API access",
+        "Team collaboration tools",
       ],
-      cta: "Request Demo",
+      cta: "Get Started",
       highlighted: true,
     },
     {
       name: "Enterprise",
       price: "Custom",
       period: "pricing",
-      description: "For large lenders",
-      badge: null,
+      description: "Scale your lending operations with full control",
       features: [
-        "Unlimited loans/month",
-        "Unlimited users",
-        "Full AI suite",
+        "White-label options",
+        "API access",
+        "SSO & Security suite",
         "Dedicated account manager",
         "Custom integrations",
-        "SLA guarantee",
-        "On-premise option",
       ],
       cta: "Contact Sales",
       highlighted: false,
@@ -111,7 +104,7 @@ export default function PublicPricingPage() {
   return (
     <PublicLayout>
       {/* Hero Section */}
-      <section className="py-24 lg:py-32 bg-gradient-to-b from-background to-card">
+      <section className="py-24 lg:py-32 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -120,11 +113,10 @@ export default function PublicPricingPage() {
             className="space-y-4 mb-12"
           >
             <h1 className="text-4xl lg:text-5xl font-bold tracking-tight">
-              Simple, Transparent Pricing
+              Transparent Pricing
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Choose the plan that fits your lending business. All plans include
-              core features and AI-powered insights.
+              Choose the plan that fits your volume.
             </p>
           </motion.div>
         </div>
@@ -149,27 +141,17 @@ export default function PublicPricingPage() {
             {tiers.map((tier, idx) => (
               <motion.div key={idx} variants={itemVariants}>
                 <Card
-                  className={`p-8 h-full flex flex-col relative ${
-                    tier.highlighted
-                      ? "ring-2 ring-primary shadow-xl scale-105 md:scale-100"
-                      : ""
+                  className={`p-8 h-full flex flex-col relative bg-white ${
+                    tier.highlighted ? "ring-2 ring-blue-500 shadow-lg" : ""
                   }`}
                 >
-                  {tier.badge && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <div className="bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
-                        {tier.badge}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="mb-8">
                     <h3 className="text-2xl font-bold mb-2">{tier.name}</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
+                    <p className="text-sm text-muted-foreground mb-6">
                       {tier.description}
                     </p>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold">{tier.price}</span>
+                      <span className="text-5xl font-bold">{tier.price}</span>
                       <span className="text-sm text-muted-foreground">
                         {tier.period}
                       </span>
@@ -179,20 +161,15 @@ export default function PublicPricingPage() {
                   <ul className="space-y-3 mb-8 flex-1">
                     {tier.features.map((feature, featureIdx) => (
                       <li key={featureIdx} className="flex items-start gap-3">
-                        <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span className="text-sm">{feature}</span>
                       </li>
                     ))}
                   </ul>
 
                   <Link href="/contact">
-                    <Button
-                      className="w-full"
-                      variant={tier.highlighted ? "default" : "outline"}
-                      size="lg"
-                    >
+                    <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white" size="lg">
                       {tier.cta}
-                      <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </Link>
                 </Card>

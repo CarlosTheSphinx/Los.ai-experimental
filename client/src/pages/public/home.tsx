@@ -3,13 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PublicLayout } from "@/components/PublicLayout";
 import {
-  Zap,
-  FileCheck,
-  Users,
-  BarChart3,
+  Database,
+  Target,
   Building2,
-  Shield,
-  ArrowRight,
+  Plus,
   Check,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -37,137 +34,253 @@ const itemVariants = {
 export default function PublicHomePage() {
   const features = [
     {
-      icon: Zap,
-      title: "AI-Powered Pricing",
-      description:
-        "Get instant, competitive rate quotes powered by machine learning. Our AI analyzes market conditions, borrower profiles, and your pricing rules in real-time.",
+      icon: Database,
+      title: "One system of record",
+      description: "Everything related to a deal, from intake to funding, lives in Lendry.AI. No more chasing updates across email, spreadsheets, and shared drives.",
     },
     {
-      icon: FileCheck,
-      title: "Smart Document Management",
-      description:
-        "AI-powered document classification, extraction, and validation. Borrowers upload once, and our system handles the rest.",
-    },
-    {
-      icon: Users,
-      title: "Borrower Portal",
-      description:
-        "Give borrowers a premium, white-labeled experience. Real-time status tracking, secure document upload, and instant communication.",
-    },
-    {
-      icon: BarChart3,
-      title: "Deal Pipeline",
-      description:
-        "Visual pipeline management with Kanban boards, smart filters, and stage-based workflows. Never lose track of a deal.",
+      icon: Target,
+      title: "Clear next steps",
+      description: "Instantly see what's blocked, what's moving, and what needs attention. Every deal has a clear status and a clear path forward.",
     },
     {
       icon: Building2,
-      title: "Multi-Lender Platform",
-      description:
-        "One platform, unlimited lenders. Each lender gets their own branded experience with isolated data and custom workflows.",
-    },
-    {
-      icon: Shield,
-      title: "Bank-Level Security",
-      description:
-        "256-bit encryption, SOC 2 compliance, FCRA & TILA compliant. Your borrowers' data is our top priority.",
+      title: "Built for lending teams",
+      description: "Designed specifically for brokers, processors, and lenders — not retrofitted from a generic CRM.",
     },
   ];
 
-  const steps = [
+  const howItWorks = [
     {
-      number: 1,
-      title: "Configure Your Platform",
-      description:
-        "Set up your lending programs, pricing rules, and brand identity",
+      number: "01",
+      title: "Capture deals once. Use them everywhere.",
+      description: "Enter deal information once, and it automatically flows through your documents, pricing calculations, and task management.",
+      position: "left",
     },
     {
-      number: 2,
-      title: "Onboard Your Team",
-      description:
-        "Invite loan officers, processors, and underwriters with role-based access",
+      number: "02",
+      title: "One Click Processing",
+      description: "Trigger document checklists, borrower requests, and condition tracking with a single click from your dashboard.",
+      position: "right",
     },
     {
-      number: 3,
-      title: "Start Closing Loans",
-      description:
-        "Your borrowers apply through your branded portal, AI handles the rest",
+      number: "03",
+      title: "Clarity at every stage of the deal",
+      description: "See your entire deal pipeline at a glance. Know exactly where each deal stands and what needs attention.",
+      position: "left",
+    },
+    {
+      number: "04",
+      title: "Everything in one place. Always current.",
+      description: "Documents, notes, communications, and deal history all live in Lendry.AI. No more scattered information.",
+      position: "right",
+    },
+    {
+      number: "05",
+      title: "Built to scale with your team",
+      description: "Multi-user collaboration with role-based access controls. Your entire team works better together.",
+      position: "left",
     },
   ];
 
-  const stats = [
-    { value: "$2.4B+", label: "Loans Originated" },
-    { value: "50+", label: "Lender Partners" },
-    { value: "90%", label: "Borrower Completion Rate" },
-    { value: "7hrs", label: "Saved Per Loan" },
+  const pricingPlans = [
+    {
+      name: "Starter",
+      price: "$199",
+      period: "/mo",
+      description: "Ideal for individual brokers and small teams",
+      features: [
+        "Up to 10 active deals",
+        "Standard automation rules",
+        "Document collection",
+        "Email support",
+      ],
+      highlighted: false,
+    },
+    {
+      name: "Professional",
+      price: "$499",
+      period: "/mo",
+      description: "Built for high-volume processing teams",
+      features: [
+        "Unlimited active deals",
+        "Custom automation workflows",
+        "Advanced condition tracking",
+        "Priority support",
+        "Team collaboration tools",
+      ],
+      highlighted: true,
+    },
+    {
+      name: "Enterprise",
+      price: "Custom",
+      period: "",
+      description: "Scale your lending operations with full control",
+      features: [
+        "White-label options",
+        "API access",
+        "SSO & Security suite",
+        "Dedicated account manager",
+        "Custom integrations",
+      ],
+      highlighted: false,
+    },
   ];
 
   return (
     <PublicLayout>
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-background to-card pt-20">
-        {/* Background gradient mesh */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0F1729] pt-20">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 w-full">
           <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
             className="space-y-8"
           >
-            <motion.h1 variants={itemVariants} className="text-5xl lg:text-7xl font-bold tracking-tight">
-              Intelligent Lending,
-              <br />
-              <span className="text-primary">Simplified</span>
-            </motion.h1>
+            {/* Hero Headline */}
+            <motion.div variants={itemVariants}>
+              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-tight">
+                The world's first Loan
+                <br />
+                <span className="relative inline-block">
+                  Origination
+                  <span className="absolute bottom-2 left-0 right-0 h-1 bg-blue-500"></span>
+                </span>
+                <br />
+                Automation System
+              </h1>
+            </motion.div>
 
-            <motion.p variants={itemVariants} className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The AI-powered loan origination platform that helps lenders close
-              faster, price smarter, and delight borrowers.
+            {/* Subtitle */}
+            <motion.p
+              variants={itemVariants}
+              className="text-lg lg:text-xl text-gray-300 max-w-2xl"
+            >
+              Lendry.AI automates origination and processing so lending teams can move deals forward with clarity, speed, and control.
             </motion.p>
 
-            <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Link href="/contact">
-                <Button size="lg" className="bg-primary hover:bg-primary/90">
-                  Request a Demo
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
+            {/* CTA Buttons */}
+            <motion.div
+              variants={itemVariants}
+              className="flex flex-col sm:flex-row gap-4 pt-4"
+            >
               <Button
                 size="lg"
                 variant="outline"
-                className="border-border hover:bg-secondary"
+                className="border-white text-white hover:bg-white/10 px-8"
               >
-                Watch Overview
+                See how Lendry.AI works &gt;
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-white text-white hover:bg-white/10 px-8"
+              >
+                Request access
               </Button>
             </motion.div>
 
-            {/* Trust bar */}
-            <motion.div variants={itemVariants} className="pt-8">
-              <p className="text-sm text-muted-foreground mb-4">
-                Trusted by 50+ lenders nationwide
-              </p>
-              <div className="flex justify-center gap-4 flex-wrap">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="h-10 w-32 bg-secondary rounded-lg flex items-center justify-center text-xs text-muted-foreground font-medium"
-                  >
-                    Logo {i}
+            {/* Trust Line */}
+            <motion.p
+              variants={itemVariants}
+              className="text-sm text-gray-500 tracking-widest uppercase pt-4"
+            >
+              Built specifically for brokers, processors, and lenders.
+            </motion.p>
+
+            {/* Deal Pipeline Mockup */}
+            <motion.div
+              variants={itemVariants}
+              className="mt-12 rounded-lg bg-[#1E293B] p-8 border border-gray-700"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-white font-semibold text-sm">Deal Pipeline</h3>
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Deal
+                </Button>
+              </div>
+
+              {/* Kanban Board Mockup */}
+              <div className="grid grid-cols-4 gap-4">
+                {/* INTAKE Column */}
+                <div>
+                  <div className="text-gray-400 text-xs font-semibold mb-3 tracking-wide">
+                    INTAKE <span className="text-gray-600">(4)</span>
                   </div>
-                ))}
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={`intake-${i}`}
+                        className="bg-gray-700/50 rounded p-3 text-gray-300 text-xs"
+                      >
+                        <div className="font-medium mb-1">Deal #{i}</div>
+                        <div className="text-gray-500">Client Name</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* DOCS Column */}
+                <div>
+                  <div className="text-gray-400 text-xs font-semibold mb-3 tracking-wide">
+                    DOCS <span className="text-gray-600">(3)</span>
+                  </div>
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={`docs-${i}`}
+                        className="bg-gray-700/50 rounded p-3 text-gray-300 text-xs"
+                      >
+                        <div className="font-medium mb-1">Deal #{i + 10}</div>
+                        <div className="text-gray-500">Client Name</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CONDITIONS Column */}
+                <div>
+                  <div className="text-gray-400 text-xs font-semibold mb-3 tracking-wide">
+                    CONDITIONS <span className="text-gray-600">(2)</span>
+                  </div>
+                  <div className="space-y-3">
+                    {[1, 2].map((i) => (
+                      <div
+                        key={`conditions-${i}`}
+                        className="bg-gray-700/50 rounded p-3 text-gray-300 text-xs"
+                      >
+                        <div className="font-medium mb-1">Deal #{i + 20}</div>
+                        <div className="text-gray-500">Client Name</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CLEAR TO CLOSE Column */}
+                <div>
+                  <div className="text-gray-400 text-xs font-semibold mb-3 tracking-wide">
+                    CLEAR TO CLOSE <span className="text-gray-600">(1)</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="bg-gray-700/50 rounded p-3 text-gray-300 text-xs">
+                      <div className="font-medium mb-1">Deal #30</div>
+                      <div className="text-gray-500">Client Name</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-24 lg:py-32 bg-background">
+      {/* Built for the way lending works Section */}
+      <section className="py-24 lg:py-32 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -176,11 +289,11 @@ export default function PublicHomePage() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-4">
-              Why Lendry.AI?
+            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-gray-900 mb-4">
+              Built for the way lending actually works
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Everything you need to modernize your lending operations
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+              Most lending teams don't need more software — they need software that actually fits. Lendry.AI replaces the spreadsheets, shared drives, and scattered tools slowing your team down.
             </p>
           </motion.div>
 
@@ -189,27 +302,25 @@ export default function PublicHomePage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {features.map((feature, idx) => {
               const Icon = feature.icon;
               return (
                 <motion.div key={idx} variants={itemVariants}>
-                  <Card className="p-8 h-full hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 rounded-lg bg-primary/10">
-                        <Icon className="w-6 h-6 text-primary" />
+                  <div className="h-full">
+                    <div className="flex flex-col h-full">
+                      <div className="w-14 h-14 rounded-lg bg-[#1E293B] flex items-center justify-center mb-4">
+                        <Icon className="w-7 h-7 text-white" />
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg mb-2">
-                          {feature.title}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          {feature.description}
-                        </p>
-                      </div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                        {feature.title}
+                      </h3>
+                      <p className="text-gray-600">
+                        {feature.description}
+                      </p>
                     </div>
-                  </Card>
+                  </div>
                 </motion.div>
               );
             })}
@@ -217,8 +328,8 @@ export default function PublicHomePage() {
         </div>
       </section>
 
-      {/* How It Works Section */}
-      <section className="py-24 lg:py-32 bg-card">
+      {/* How Lendry.AI Works Section */}
+      <section className="py-24 lg:py-32 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -227,11 +338,157 @@ export default function PublicHomePage() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-4">
-              How It Works
+            <p className="text-sm font-semibold text-blue-600 tracking-wide uppercase mb-2">
+              How Lendry.AI Works
+            </p>
+            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-gray-900">
+              From intake to close, automated.
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Get up and running in minutes
+          </motion.div>
+
+          <div className="space-y-16">
+            {howItWorks.map((step, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                viewport={{ once: true }}
+              >
+                <div
+                  className={`grid grid-cols-1 lg:grid-cols-2 gap-12 items-center ${
+                    step.position === "right" ? "lg:grid-flow-col-dense" : ""
+                  }`}
+                >
+                  {/* Text Content */}
+                  <div
+                    className={
+                      step.position === "right" ? "lg:col-start-2" : ""
+                    }
+                  >
+                    <div className="text-6xl lg:text-7xl font-bold text-gray-400 mb-4">
+                      {step.number}
+                    </div>
+                    <h3 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
+                      {step.title}
+                    </h3>
+                    <p className="text-lg text-gray-600 leading-relaxed">
+                      {step.description}
+                    </p>
+                  </div>
+
+                  {/* Mockup */}
+                  <div
+                    className={
+                      step.position === "right" ? "lg:col-start-1 lg:row-start-1" : ""
+                    }
+                  >
+                    <div className="bg-[#1E293B] rounded-lg p-8 min-h-96 flex items-center justify-center">
+                      {idx === 0 && (
+                        <div className="w-full space-y-4">
+                          <div className="text-white text-sm font-semibold mb-4">Form: Borrower Information</div>
+                          <div className="space-y-3">
+                            <div className="bg-gray-700/50 rounded p-3 text-gray-400 text-sm">
+                              Name: John Smith
+                            </div>
+                            <div className="bg-gray-700/50 rounded p-3 text-gray-400 text-sm">
+                              Loan Amount: $500,000
+                            </div>
+                            <div className="bg-gray-700/50 rounded p-3 text-gray-400 text-sm">
+                              Property Type: Single Family
+                            </div>
+                          </div>
+                          <div className="mt-6 bg-green-900/30 border border-green-700 rounded p-4 text-green-400 text-sm">
+                            ✓ Deal card created
+                          </div>
+                        </div>
+                      )}
+                      {idx === 1 && (
+                        <div className="w-full space-y-4">
+                          <div className="text-white text-sm font-semibold mb-4">Processing Checklist</div>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3 text-green-400 text-sm">
+                              <Check className="w-4 h-4" />
+                              <span>Verify Income</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-yellow-400 text-sm">
+                              <div className="w-4 h-4 rounded-full border-2 border-yellow-400 flex items-center justify-center text-xs">⟳</div>
+                              <span>Property Appraisal</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-gray-400 text-sm">
+                              <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                              <span>Title Report</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {idx === 2 && (
+                        <div className="w-full">
+                          <div className="text-white text-sm font-semibold mb-4">Deal Pipeline Status</div>
+                          <div className="flex gap-3 overflow-x-auto">
+                            {["INTAKE", "DOCS", "CONDITIONS", "CLEAR"].map((col) => (
+                              <div key={col} className="min-w-24">
+                                <div className="text-gray-400 text-xs font-semibold mb-2">{col}</div>
+                                <div className="bg-gray-700/50 rounded p-2 text-gray-500 text-xs">Deal</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {idx === 3 && (
+                        <div className="w-full space-y-4">
+                          <div className="text-white text-sm font-semibold mb-4">Document & Activity View</div>
+                          <div className="space-y-3">
+                            <div className="bg-gray-700/50 rounded p-3">
+                              <div className="text-gray-300 text-xs font-medium mb-1">Documents</div>
+                              <div className="text-gray-500 text-xs">Income Verification.pdf</div>
+                            </div>
+                            <div className="bg-gray-700/50 rounded p-3">
+                              <div className="text-gray-300 text-xs font-medium mb-1">Notes</div>
+                              <div className="text-gray-500 text-xs">Awaiting appraisal update</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {idx === 4 && (
+                        <div className="w-full space-y-4">
+                          <div className="text-white text-sm font-semibold mb-4">Team Access</div>
+                          <div className="space-y-2">
+                            <div className="bg-gray-700/50 rounded p-3 flex items-center justify-between">
+                              <div className="text-gray-300 text-sm">Sarah - Loan Officer</div>
+                              <div className="text-gray-500 text-xs bg-gray-700 rounded px-2 py-1">Full Access</div>
+                            </div>
+                            <div className="bg-gray-700/50 rounded p-3 flex items-center justify-between">
+                              <div className="text-gray-300 text-sm">Mike - Processor</div>
+                              <div className="text-gray-500 text-xs bg-gray-700 rounded px-2 py-1">Processing</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="py-24 lg:py-32 bg-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-gray-900 mb-4">
+              Transparent Pricing
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Choose the plan that fits your volume.
             </p>
           </motion.div>
 
@@ -240,42 +497,53 @@ export default function PublicHomePage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8 relative"
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
-            {/* Connection line (hidden on mobile) */}
-            <div className="hidden md:block absolute top-12 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent z-0"></div>
-
-            {steps.map((step, idx) => (
-              <motion.div key={idx} variants={itemVariants} className="relative">
-                <div className="flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg mb-6 relative z-10 shadow-lg">
-                    {step.number}
+            {pricingPlans.map((plan, idx) => (
+              <motion.div key={idx} variants={itemVariants}>
+                <Card
+                  className={`p-8 h-full flex flex-col ${
+                    plan.highlighted
+                      ? "bg-white border-2 border-blue-500 shadow-lg"
+                      : "bg-white"
+                  }`}
+                >
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    {plan.name}
+                  </h3>
+                  <div className="mb-4">
+                    <span className="text-5xl font-bold text-gray-900">
+                      {plan.price}
+                    </span>
+                    <span className="text-gray-600 text-lg">{plan.period}</span>
                   </div>
-                  <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
-                  <p className="text-muted-foreground">{step.description}</p>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
+                  <p className="text-gray-600 mb-8">
+                    {plan.description}
+                  </p>
 
-      {/* Metrics Section */}
-      <section className="py-24 lg:py-32 bg-foreground text-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
-          >
-            {stats.map((stat, idx) => (
-              <motion.div key={idx} variants={itemVariants} className="text-center">
-                <div className="text-4xl lg:text-5xl font-bold mb-2">
-                  {stat.value}
-                </div>
-                <div className="text-background/80">{stat.label}</div>
+                  <div className="space-y-4 mb-8 flex-grow">
+                    {plan.features.map((feature, featureIdx) => (
+                      <div
+                        key={featureIdx}
+                        className="flex items-start gap-3"
+                      >
+                        <Check className="w-5 h-5 text-gray-900 flex-shrink-0 mt-0.5" />
+                        <span className="text-gray-700">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    size="lg"
+                    className={`w-full ${
+                      plan.name === "Enterprise"
+                        ? "bg-gray-900 hover:bg-gray-800 text-white"
+                        : "bg-gray-900 hover:bg-gray-800 text-white"
+                    }`}
+                  >
+                    {plan.name === "Enterprise" ? "Contact Sales" : "Get Started"}
+                  </Button>
+                </Card>
               </motion.div>
             ))}
           </motion.div>
@@ -283,7 +551,7 @@ export default function PublicHomePage() {
       </section>
 
       {/* Final CTA Section */}
-      <section className="py-24 lg:py-32 bg-background">
+      <section className="py-24 lg:py-32 bg-[#0F1729]">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -293,23 +561,21 @@ export default function PublicHomePage() {
             className="space-y-8"
           >
             <div>
-              <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-4">
-                Ready to Transform Your Lending?
+              <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4">
+                Ready to automate your lending?
               </h2>
-              <p className="text-xl text-muted-foreground">
-                Join the lenders who are already closing faster with AI.
+              <p className="text-lg text-gray-300">
+                Join leading brokers, processors, and lenders who are moving deals faster with Lendry.AI.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link href="/contact">
-                <Button size="lg" className="bg-primary hover:bg-primary/90">
-                  Request a Demo
-                </Button>
-              </Link>
-              <p className="text-muted-foreground">
-                Or call <span className="font-semibold text-foreground">(555) 123-4567</span>
-              </p>
+              <Button
+                size="lg"
+                className="bg-white text-gray-900 hover:bg-gray-100 px-8"
+              >
+                Start your free trial
+              </Button>
             </div>
           </motion.div>
         </div>
