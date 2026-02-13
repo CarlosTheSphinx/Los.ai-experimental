@@ -137,19 +137,17 @@ export default function PublicHomePage() {
             initial="hidden"
             animate="visible"
             transition={{ staggerChildren: 0.15, delayChildren: 0.3 }}
-            className="space-y-8"
+            className="space-y-8 text-center items-center flex flex-col"
           >
             {/* Hero Headline */}
             <motion.div variants={itemVariants}>
               <h1 className="text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-tight">
-                The world's first Loan
+                The World's First Loan
                 <br />
-                <span className="relative inline-block">
+                <span className="line-through decoration-blue-500 decoration-4">
                   Origination
-                  <span className="absolute bottom-2 left-0 right-0 h-1 bg-blue-500"></span>
                 </span>
-                <br />
-                Automation System
+                {" "}Automation System
               </h1>
             </motion.div>
 
