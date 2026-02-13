@@ -281,7 +281,7 @@ export async function registerRoutes(
       // We construct the pageFunction exactly as in the reference code
       const run = await client.actor('apify/puppeteer-scraper').call({
         startUrls: [{
-          url: 'https://www.b-diya.nqxpricer.com/695e8559bfa826654b8fd62f'
+          url: 'https://www.b-diya.nqxpricer.com/698e56b8d1a8ab83b327b498'
         }],
         pageFunction: `async function pageFunction(context) {
           const { page, request, log } = context;
