@@ -2075,7 +2075,7 @@ export default function CommercialSubmissionPage() {
             name="totalProjectCost"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Total Project Cost ($)</FormLabel>
+                <FormLabel>Total Deal Cost ($)</FormLabel>
                 <FormControl>
                   <Input
                     type="number"

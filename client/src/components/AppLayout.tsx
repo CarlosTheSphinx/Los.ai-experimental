@@ -69,7 +69,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/", label: "New Quote", icon: Calculator, shortcut: undefined },
   { href: "/quotes", label: "Saved Quotes", icon: FileText, shortcut: undefined },
   { href: "/agreements", label: "Term Sheets", icon: ClipboardList, shortcut: undefined },
-  { href: "/deals", label: "Loans", icon: FolderKanban, shortcut: undefined },
+  { href: "/deals", label: "Deals", icon: FolderKanban, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
@@ -79,7 +79,7 @@ const brokerNavItems: NavItem[] = [
 ];
 
 const borrowerNavItems: NavItem[] = [
-  { href: "/", label: "My Loans", icon: FolderKanban },
+  { href: "/", label: "My Deals", icon: FolderKanban },
   { href: "/borrower-quote", label: "Get a Quote", icon: Calculator },
   { href: "/borrower-quotes", label: "My Quotes", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },

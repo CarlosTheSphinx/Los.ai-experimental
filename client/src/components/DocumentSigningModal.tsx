@@ -98,7 +98,7 @@ const RTL_FIELD_TYPES = [
   { type: "ltarv", label: "LTARV", width: 70, height: 25 },
   { type: "ltaiv", label: "LTAIV", width: 70, height: 25 },
   { type: "experienceTier", label: "Experience Tier", width: 120, height: 25 },
-  { type: "completedProjects", label: "Completed Projects", width: 120, height: 25 },
+  { type: "completedProjects", label: "Completed Deals", width: 120, height: 25 },
   { type: "cashOutAmount", label: "Cash-Out Amount", width: 120, height: 25 },
 ];
 

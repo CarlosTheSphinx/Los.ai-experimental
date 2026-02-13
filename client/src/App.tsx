@@ -22,8 +22,6 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
-import AdminDealsLegacy from "@/pages/admin/projects-legacy";
-import AdminDealDetailLegacy from "@/pages/admin/project-detail-legacy";
 import AdminSettings from "@/pages/admin/settings";
 import AdminDeals from "@/pages/admin/deals";
 import AdminDealDetail from "@/pages/admin/deal-detail";
