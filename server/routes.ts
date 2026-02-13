@@ -41,8 +41,10 @@ import { registerAuthRoutes } from './routes/auth';
 import { registerMessagingRoutes } from './routes/messaging';
 import { registerPortalRoutes } from './routes/portal';
 import { registerAdminProgramsRoutes } from './routes/admin-programs';
-import { registerAiReviewRoutes } from "./routes/ai-review";
-import { registerProcessorRoutes } from "./routes/processor";
+import { registerAiReviewRoutes } from './routes/ai-review';
+import { registerProcessorRoutes } from './routes/processor';
+import { registerAiAssistantRoutes } from './routes/ai-assistant';
+
 // Initialize Apify client
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 if (!APIFY_TOKEN) {
@@ -3488,6 +3490,9 @@ export async function registerRoutes(
   // ==================== MESSAGING ROUTES ====================
   registerMessagingRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
+  // ==================== AI ASSISTANT ROUTES ====================
+  registerAiAssistantRoutes(app);
+
   // ==================== PROCESSOR ROUTES ====================
   registerProcessorRoutes(app);
 
@@ -3495,9 +3500,6 @@ export async function registerRoutes(
 
   // Register admin programs routes
   registerAdminProgramsRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
-
-  // Register AI review routes
-  registerAiReviewRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // Note: Old messaging routes code has been moved to routes/messaging.ts
 

@@ -44,6 +44,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
 import { InboxBadge } from "@/components/InboxBadge";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 import type { PermissionKey } from "@shared/schema";
 
@@ -298,6 +299,9 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       </div>
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+
+      {/* AI Assistant Panel - show for admin/processor users */}
+      {isAdmin && <ProcessorAssistant />}
     </div>
   );
 }
