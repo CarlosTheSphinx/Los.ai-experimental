@@ -33,7 +33,7 @@ export default function PublicPricingPage() {
         "Document collection",
         "Email support",
       ],
-      cta: "Get Started",
+      cta: "Sign Up",
       highlighted: false,
     },
     {
@@ -48,7 +48,7 @@ export default function PublicPricingPage() {
         "Priority support",
         "Team collaboration tools",
       ],
-      cta: "Get Started",
+      cta: "Sign Up",
       highlighted: true,
     },
     {
@@ -167,7 +167,7 @@ export default function PublicPricingPage() {
                     ))}
                   </ul>
 
-                  <Link href="/contact">
+                  <Link href={tier.name === "Enterprise" ? "/contact" : "/register"}>
                     <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white" size="lg">
                       {tier.cta}
                     </Button>
@@ -238,9 +238,9 @@ export default function PublicPricingPage() {
               </p>
             </div>
 
-            <Link href="/contact">
+            <Link href="/register">
               <Button size="lg" className="bg-primary hover:bg-primary/90">
-                Get Started Now
+                Sign Up Now
               </Button>
             </Link>
           </motion.div>

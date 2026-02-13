@@ -53,13 +53,15 @@ export function PublicLayout({ children }: PublicLayoutProps) {
                 Log in
               </a>
             </Link>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors"
-            >
-              Request access
-            </Button>
+            <Link href="/register">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors"
+              >
+                Sign Up
+              </Button>
+            </Link>
           </div>
 
           <button
@@ -91,13 +93,15 @@ export function PublicLayout({ children }: PublicLayoutProps) {
                     Log in
                   </a>
                 </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors w-full"
-                >
-                  Request access
-                </Button>
+                <Link href="/register">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors w-full"
+                  >
+                    Sign Up
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>

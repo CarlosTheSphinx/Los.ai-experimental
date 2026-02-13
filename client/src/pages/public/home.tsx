@@ -590,16 +590,18 @@ export default function PublicHomePage() {
                     ))}
                   </div>
 
-                  <Button
-                    size="lg"
-                    className={`w-full rounded-lg font-medium transition-all duration-300 ${
-                      plan.highlighted
-                        ? "bg-blue-600 hover:bg-blue-700 text-white"
-                        : "bg-gray-100 text-gray-900 hover:bg-gray-200"
-                    }`}
-                  >
-                    {plan.name === "Enterprise" ? "Contact Sales" : "Get Started"}
-                  </Button>
+                  <Link href={plan.name === "Enterprise" ? "/contact" : "/register"}>
+                    <Button
+                      size="lg"
+                      className={`w-full rounded-lg font-medium transition-all duration-300 ${
+                        plan.highlighted
+                          ? "bg-blue-600 hover:bg-blue-700 text-white"
+                          : "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      {plan.name === "Enterprise" ? "Contact Sales" : "Sign Up"}
+                    </Button>
+                  </Link>
                 </Card>
               </motion.div>
             ))}
