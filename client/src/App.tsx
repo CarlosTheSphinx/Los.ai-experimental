@@ -50,6 +50,7 @@ import AdminCommercialDealDetail from "@/pages/admin/commercial-deal-detail";
 import CommercialSubmissionDetail from "@/pages/commercial-submission-detail";
 import AdminAIReview from "@/pages/admin/ai-review";
 import AdminCommercialConfig from "@/pages/admin/commercial-config";
+import ProcessorDashboard from "@/pages/admin/processor-dashboard";
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
 import PublicPricingPage from "@/pages/public/pricing";
@@ -182,6 +183,7 @@ function MainRoutes() {
           <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
           <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
           <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />
+          <Route path="/admin/processor" component={() => <AdminProtectedRoute component={ProcessorDashboard} />} />
 
           <Route component={NotFound} />
         </Switch>

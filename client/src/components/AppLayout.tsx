@@ -21,6 +21,7 @@ import {
   Sparkles,
   ClipboardEdit,
   Search,
+  Zap,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -80,6 +81,7 @@ const borrowerNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/processor", label: "One-Click Processing", icon: Zap, requiredPermission: "processor.view" },
   { href: "/admin/deals", label: "Pipeline", icon: FileText, requiredPermission: "pipeline.view", shortcut: "⌘2" },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
