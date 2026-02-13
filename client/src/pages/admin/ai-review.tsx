@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +35,8 @@ import {
   Search,
   CheckCircle2,
   FolderOpen,
+  Upload,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +59,20 @@ interface ProgramDocument {
   stepId: number | null;
 }
 
+interface DocumentReviewRule {
+  id?: number;
+  programId: number;
+  documentName: string;
+  documentCategory: string;
+  ruleName: string;
+  ruleDescription: string;
+  ruleConfig: Record<string, any>;
+  severity: 'required' | 'recommended' | 'info';
+  isActive: boolean;
+  confidence?: number;
+  createdByName?: string;
+}
+
 interface ReviewRule {
   id?: number;
   ruleTitle: string;
@@ -66,19 +82,9 @@ interface ReviewRule {
   isActive: boolean;
 }
 
-const RULE_TYPE_OPTIONS = [
-  { value: "presence", label: "Presence Check", description: "Verify that required information exists in the document" },
-  { value: "numeric_threshold", label: "Numeric Threshold", description: "Check numeric values against expected ranges" },
-  { value: "format", label: "Format / Structure", description: "Validate document format, structure, or layout" },
-  { value: "consistency", label: "Cross-Reference", description: "Cross-check data consistency across pages or fields" },
-  { value: "red_flag", label: "Red Flag Detection", description: "Flag suspicious patterns or anomalies" },
-  { value: "signature_date", label: "Signature / Date", description: "Verify signatures and date fields" },
-  { value: "general", label: "General", description: "General review instruction" },
-];
-
 const SEVERITY_OPTIONS = [
-  { value: "fail", label: "Fail", color: "text-destructive", bg: "bg-destructive/10", description: "Must pass - blocks approval" },
-  { value: "warn", label: "Warning", color: "text-warning", bg: "bg-warning/10", description: "Should review - flagged for attention" },
+  { value: "required", label: "Required", color: "text-destructive", bg: "bg-destructive/10", description: "Must pass - blocks approval" },
+  { value: "recommended", label: "Recommended", color: "text-warning", bg: "bg-warning/10", description: "Should pass - flagged if not" },
   { value: "info", label: "Info", color: "text-info", bg: "bg-info/10", description: "Informational - noted in report" },
 ];
 
@@ -88,360 +94,307 @@ const CATEGORY_LABELS: Record<string, string> = {
   property_docs: "Property Documents",
   financial_docs: "Financial Documents",
   closing_docs: "Closing Documents",
-  title_docs: "Title Documents",
-  insurance_docs: "Insurance Documents",
-  appraisal_docs: "Appraisal Documents",
-  legal_docs: "Legal Documents",
-  misc_docs: "Miscellaneous",
+  compliance_docs: "Compliance Documents",
 };
 
-function TemplateRulesEditor({
-  templateId,
-  programId,
-  documentName,
-}: {
-  templateId: number;
-  programId: number;
-  documentName: string;
-}) {
+// Guidelines uploader component
+function GuidelineUploader({ programId, onSuccess }: { programId: number; onSuccess: () => void }) {
   const { toast } = useToast();
-  const [rules, setRules] = useState<ReviewRule[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
-  const { data: rulesData, isLoading } = useQuery<{ rules: any[] }>({
-    queryKey: [`/api/admin/document-templates/${templateId}/review-rules`],
-  });
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  useEffect(() => {
-    if (rulesData?.rules) {
-      setRules(
-        rulesData.rules.map((r: any) => ({
-          id: r.id,
-          ruleTitle: r.ruleTitle || "",
-          ruleDescription: r.ruleDescription || "",
-          ruleType: r.ruleType || "general",
-          severity: r.severity || "fail",
-          isActive: r.isActive !== false,
-        }))
-      );
-      setHasChanges(false);
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast({
+        title: "Invalid file",
+        description: "Please upload a PDF file",
+        variant: "destructive"
+      });
+      return;
     }
-  }, [rulesData]);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest(
-        "POST",
-        `/api/admin/document-templates/${templateId}/review-rules`,
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const uploadRes = await fetch(
+        `/api/admin/programs/${programId}/guideline-upload`,
         {
-          programId,
-          rules: rules
-            .filter((r) => r.ruleTitle.trim())
-            .map((r, idx) => ({
-              ruleTitle: r.ruleTitle.trim(),
-              ruleDescription: r.ruleDescription.trim(),
-              ruleType: r.ruleType,
-              severity: r.severity,
-              documentType: documentName,
-              isActive: r.isActive,
-              sortOrder: idx,
-            })),
+          method: 'POST',
+          body: formData
         }
       );
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Rules saved successfully" });
-      setHasChanges(false);
-      queryClient.invalidateQueries({
-        queryKey: [`/api/admin/document-templates/${templateId}/review-rules`],
+
+      if (!uploadRes.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const uploadData = await uploadRes.json();
+      const guidelineUploadId = uploadData.id;
+
+      // Now trigger AI analysis
+      setAnalyzing(true);
+      const generateRes = await apiRequest(
+        'POST',
+        `/api/admin/programs/${programId}/review-rules/generate`,
+        { guidelineUploadId }
+      );
+
+      if (generateRes.success) {
+        toast({
+          title: "Success",
+          description: `Generated ${generateRes.rules?.length || 0} document review rules from guidelines`
+        });
+        onSuccess();
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload and analyze guidelines",
+        variant: "destructive"
       });
-    },
-    onError: () => {
-      toast({ title: "Failed to save rules", variant: "destructive" });
-    },
-  });
-
-  const addRule = () => {
-    setRules([
-      ...rules,
-      {
-        ruleTitle: "",
-        ruleDescription: "",
-        ruleType: "general",
-        severity: "fail",
-        isActive: true,
-      },
-    ]);
-    setHasChanges(true);
+    } finally {
+      setUploading(false);
+      setAnalyzing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
-
-  const updateRule = (index: number, field: keyof ReviewRule, value: any) => {
-    const updated = [...rules];
-    (updated[index] as any)[field] = value;
-    setRules(updated);
-    setHasChanges(true);
-  };
-
-  const removeRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
-    setHasChanges(true);
-  };
-
-  const moveRule = (index: number, direction: "up" | "down") => {
-    const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= rules.length) return;
-    const updated = [...rules];
-    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
-    setRules(updated);
-    setHasChanges(true);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-2 p-4">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-3 p-4">
-      {rules.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">No AI review rules configured for this document.</p>
-          <p className="text-xs mt-1">
-            Add rules to tell the AI what to check when reviewing this document type.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {rules.map((rule, idx) => (
-            <div
-              key={idx}
-              className="border rounded-md p-4 space-y-3 bg-background"
-              data-testid={`ai-rule-row-${templateId}-${idx}`}
+    <Card className="bg-blue-50 border-blue-200">
+      <CardContent className="pt-6">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2 mb-1">
+              <Zap className="h-4 w-4 text-blue-600" />
+              Auto-Generate Rules from Guidelines
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Upload a PDF of your document stipulations. Our AI will automatically extract document review rules.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={handleFileSelect}
+              disabled={uploading || analyzing}
+              style={{ display: 'none' }}
+            />
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || analyzing}
+              variant="outline"
+              size="sm"
+              className="gap-2"
             >
-              <div className="flex items-start gap-3">
-                <div className="flex flex-col gap-0.5 mt-2">
-                  <button
-                    onClick={() => moveRule(idx, "up")}
-                    disabled={idx === 0}
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    data-testid={`button-ai-rule-up-${templateId}-${idx}`}
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => moveRule(idx, "down")}
-                    disabled={idx === rules.length - 1}
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    data-testid={`button-ai-rule-down-${templateId}-${idx}`}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 space-y-3">
-                  <Input
-                    placeholder="Rule title (e.g., Verify borrower name matches across all pages)"
-                    value={rule.ruleTitle}
-                    onChange={(e) => updateRule(idx, "ruleTitle", e.target.value)}
-                    data-testid={`input-ai-rule-title-${templateId}-${idx}`}
-                  />
-                  <Textarea
-                    placeholder="Detailed instructions for the AI reviewer... Be specific about what to check, what values are acceptable, and what should be flagged."
-                    value={rule.ruleDescription}
-                    onChange={(e) =>
-                      updateRule(idx, "ruleDescription", e.target.value)
-                    }
-                    className="min-h-[80px]"
-                    data-testid={`input-ai-rule-desc-${templateId}-${idx}`}
-                  />
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">Rule Type</span>
-                      <Select
-                        value={rule.ruleType}
-                        onValueChange={(v) => updateRule(idx, "ruleType", v)}
-                      >
-                        <SelectTrigger
-                          className="w-[200px]"
-                          data-testid={`select-ai-rule-type-${templateId}-${idx}`}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {RULE_TYPE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">Severity</span>
-                      <Select
-                        value={rule.severity}
-                        onValueChange={(v) => updateRule(idx, "severity", v)}
-                      >
-                        <SelectTrigger
-                          className="w-[150px]"
-                          data-testid={`select-ai-rule-severity-${templateId}-${idx}`}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SEVERITY_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              <span className={opt.color}>{opt.label}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "mt-5 text-xs no-default-hover-elevate no-default-active-elevate",
-                        SEVERITY_OPTIONS.find((s) => s.value === rule.severity)?.bg
-                      )}
-                    >
-                      {rule.severity === "fail" && (
-                        <AlertTriangle className="h-3 w-3 mr-1 text-destructive" />
-                      )}
-                      {rule.severity === "warn" && (
-                        <AlertTriangle className="h-3 w-3 mr-1 text-warning" />
-                      )}
-                      {rule.severity === "info" && (
-                        <Info className="h-3 w-3 mr-1 text-info" />
-                      )}
-                      {SEVERITY_OPTIONS.find((s) => s.value === rule.severity)
-                        ?.description}
-                    </Badge>
-                  </div>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => removeRule(idx)}
-                  className="text-destructive flex-shrink-0"
-                  data-testid={`button-ai-remove-rule-${templateId}-${idx}`}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
+              {uploading || analyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {uploading ? 'Uploading...' : 'Analyzing...'}
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  Upload Guidelines PDF
+                </>
+              )}
+            </Button>
+          </div>
         </div>
-      )}
-      <div className="flex items-center justify-between gap-2 pt-2">
-        <Button
-          variant="outline"
-          onClick={addRule}
-          data-testid={`button-ai-add-rule-${templateId}`}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Rule
-        </Button>
-        {hasChanges && (
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            data-testid={`button-ai-save-rules-${templateId}`}
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-4 w-4 mr-2" />
-            )}
-            Save Rules
-          </Button>
-        )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function DocumentTemplateCard({
-  doc,
-  programId,
-  isExpanded,
-  onToggle,
-}: {
-  doc: ProgramDocument;
-  programId: number;
-  isExpanded: boolean;
-  onToggle: () => void;
-}) {
-  const { data: rulesData } = useQuery<{ rules: any[] }>({
-    queryKey: [`/api/admin/document-templates/${doc.id}/review-rules`],
+// Document review rules table
+function DocumentReviewRulesTable({ programId }: { programId: number }) {
+  const { toast } = useToast();
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [expandedRuleId, setExpandedRuleId] = useState<number | null>(null);
+
+  const { data: rulesData, isLoading } = useQuery<DocumentReviewRule[]>({
+    queryKey: [`/api/admin/programs/${programId}/review-rules`],
+    enabled: !!programId
   });
 
-  const ruleCount = rulesData?.rules?.length || 0;
+  const rules = rulesData || [];
+
+  const approveMutation = useMutation({
+    mutationFn: async (ruleId: number) => {
+      return apiRequest('POST', `/api/admin/review-rules/${ruleId}/approve`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/admin/programs/${programId}/review-rules`]
+      });
+      toast({
+        title: "Success",
+        description: "Rule approved and activated"
+      });
+    }
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async (rule: DocumentReviewRule) => {
+      return apiRequest('PUT', `/api/admin/review-rules/${rule.id}`, {
+        isActive: !rule.isActive
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/admin/programs/${programId}/review-rules`]
+      });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ruleId: number) => {
+      return apiRequest('DELETE', `/api/admin/review-rules/${ruleId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/admin/programs/${programId}/review-rules`]
+      });
+      toast({
+        title: "Success",
+        description: "Rule deleted"
+      });
+    }
+  });
+
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />;
+  }
+
+  if (rules.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-30" />
+          <p className="text-muted-foreground">No document review rules configured yet</p>
+          <p className="text-xs text-muted-foreground mt-2">Upload guidelines above to auto-generate rules</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Group by document name
+  const grouped = rules.reduce((acc, rule) => {
+    const key = `${rule.documentCategory}::${rule.documentName}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(rule);
+    return acc;
+  }, {} as Record<string, DocumentReviewRule[]>);
 
   return (
-    <Card data-testid={`card-ai-doc-${doc.id}`}>
-      <Collapsible open={isExpanded} onOpenChange={onToggle}>
-        <CollapsibleTrigger asChild>
-          <CardContent className="p-4 cursor-pointer" data-testid={`trigger-ai-doc-${doc.id}`}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-medium text-sm" data-testid={`text-ai-doc-name-${doc.id}`}>
-                    {doc.documentName}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {CATEGORY_LABELS[doc.documentCategory] || doc.documentCategory}
+    <div className="space-y-3">
+      {Object.entries(grouped).map(([key, docRules]) => (
+        <Card key={key}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">
+                  {docRules[0].documentName}
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  {CATEGORY_LABELS[docRules[0].documentCategory] || docRules[0].documentCategory}
+                </CardDescription>
+              </div>
+              <Badge variant="outline">{docRules.length} rules</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {docRules.map((rule) => (
+                <div key={rule.id} className="border rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-sm">{rule.ruleName}</h4>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-xs',
+                            rule.severity === 'required' && 'bg-destructive/10 text-destructive',
+                            rule.severity === 'recommended' && 'bg-warning/10 text-warning',
+                            rule.severity === 'info' && 'bg-info/10 text-info'
+                          )}
+                        >
+                          {rule.severity}
+                        </Badge>
+                        {!rule.isActive && (
+                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                        )}
+                        {rule.confidence && (
+                          <Badge variant="outline" className="text-xs">
+                            {Math.round(rule.confidence * 100)}% confidence
+                          </Badge>
+                        )}
+                      </div>
+                      {rule.ruleDescription && (
+                        <p className="text-sm text-muted-foreground">{rule.ruleDescription}</p>
+                      )}
+                      {rule.createdByName && (
+                        <p className="text-xs text-muted-foreground mt-1">Added by {rule.createdByName}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => toggleActiveMutation.mutate(rule)}
+                        disabled={toggleActiveMutation.isPending}
+                        className="h-8 w-8 p-0"
+                        title={rule.isActive ? "Deactivate" : "Activate"}
+                      >
+                        {rule.isActive ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        )}
+                      </Button>
+                      {!rule.isActive && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => approveMutation.mutate(rule.id || 0)}
+                          disabled={approveMutation.isPending}
+                          className="h-8 text-xs"
+                        >
+                          Approve
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteMutation.mutate(rule.id || 0)}
+                        disabled={deleteMutation.isPending}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {doc.isRequired && (
-                  <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                    Required
-                  </Badge>
-                )}
-                <Badge
-                  variant={ruleCount > 0 ? "default" : "outline"}
-                  className={cn(
-                    "text-xs no-default-hover-elevate no-default-active-elevate",
-                    ruleCount > 0 ? "" : "text-muted-foreground"
-                  )}
-                >
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  {ruleCount} {ruleCount === 1 ? "rule" : "rules"}
-                </Badge>
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </div>
+              ))}
             </div>
           </CardContent>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t">
-            <TemplateRulesEditor
-              templateId={doc.id}
-              programId={programId}
-              documentName={doc.documentName}
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
+        </Card>
+      ))}
+    </div>
   );
 }
 
 export default function AIReviewPage() {
   const [selectedProgramId, setSelectedProgramId] = useState<string>("");
-  const [expandedDocId, setExpandedDocId] = useState<number | null>(null);
-  const [searchFilter, setSearchFilter] = useState("");
 
   const { data: programsData, isLoading: loadingPrograms } = useQuery<LoanProgram[]>({
     queryKey: ["/api/admin/programs"],
@@ -449,42 +402,15 @@ export default function AIReviewPage() {
 
   const programs = programsData || [];
 
-  const { data: programDetail, isLoading: loadingDetail } = useQuery<{
-    program: LoanProgram;
-    documents: ProgramDocument[];
-  }>({
-    queryKey: ["/api/admin/programs", parseInt(selectedProgramId)],
-    enabled: !!selectedProgramId,
-  });
-
-  const documents = programDetail?.documents || [];
-  const filteredDocs = searchFilter
-    ? documents.filter(
-        (d) =>
-          d.documentName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-          d.documentCategory.toLowerCase().includes(searchFilter.toLowerCase())
-      )
-    : documents;
-
-  const groupedDocs = filteredDocs.reduce<Record<string, ProgramDocument[]>>(
-    (acc, doc) => {
-      const cat = doc.documentCategory || "misc_docs";
-      if (!acc[cat]) acc[cat] = [];
-      acc[cat].push(doc);
-      return acc;
-    },
-    {}
-  );
-
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-ai-review-title">
           <Sparkles className="h-6 w-6 text-primary" />
-          AI Document Review
+          AI Document Review Configuration
         </h1>
         <p className="text-muted-foreground mt-1">
-          Configure rules that the AI uses when reviewing uploaded loan documents. Select a program to manage its document review rules.
+          Configure intelligent document review rules for your loan programs. Upload guidelines to auto-generate rules, or create them manually.
         </p>
       </div>
 
@@ -493,37 +419,25 @@ export default function AIReviewPage() {
           <div>
             <CardTitle className="text-base flex items-center gap-2">
               <Settings2 className="h-4 w-4" />
-              Select Program
+              Select Loan Program
             </CardTitle>
             <CardDescription>
-              Choose a loan program to configure its document review rules
+              Choose a program to configure its document review rules
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           {loadingPrograms ? (
-            <Skeleton className="h-9 w-full max-w-md" />
+            <Skeleton className="h-10 w-64" />
           ) : (
-            <Select
-              value={selectedProgramId}
-              onValueChange={(v) => {
-                setSelectedProgramId(v);
-                setExpandedDocId(null);
-                setSearchFilter("");
-              }}
-            >
-              <SelectTrigger className="max-w-md" data-testid="select-ai-program">
-                <SelectValue placeholder="Select a loan program..." />
+            <Select value={selectedProgramId} onValueChange={setSelectedProgramId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select a program..." />
               </SelectTrigger>
               <SelectContent>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    <span className="flex items-center gap-2">
-                      {p.name}
-                      {!p.isActive && (
-                        <span className="text-xs text-muted-foreground">(inactive)</span>
-                      )}
-                    </span>
+                {programs.map((prog) => (
+                  <SelectItem key={prog.id} value={prog.id.toString()}>
+                    {prog.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -533,89 +447,21 @@ export default function AIReviewPage() {
       </Card>
 
       {selectedProgramId && (
-        <>
-          {loadingDetail ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : documents.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <FolderOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-40" />
-                <h3 className="font-semibold text-lg mb-1">No Document Templates</h3>
-                <p className="text-muted-foreground text-sm">
-                  This program has no document templates yet. Add documents in the Programs section first.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-lg" data-testid="text-ai-program-name">
-                    {programDetail?.program.name}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {documents.length} document {documents.length === 1 ? "template" : "templates"}
-                  </p>
-                </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search documents..."
-                    value={searchFilter}
-                    onChange={(e) => setSearchFilter(e.target.value)}
-                    className="pl-9 w-[250px]"
-                    data-testid="input-ai-search-docs"
-                  />
-                </div>
-              </div>
+        <div className="space-y-6">
+          <GuidelineUploader
+            programId={parseInt(selectedProgramId)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({
+                queryKey: [`/api/admin/programs/${selectedProgramId}/review-rules`]
+              });
+            }}
+          />
 
-              {Object.keys(groupedDocs).length === 0 ? (
-                <Card>
-                  <CardContent className="py-8 text-center text-muted-foreground">
-                    No documents match your search.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-6">
-                  {Object.entries(groupedDocs)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([category, docs]) => (
-                      <div key={category} className="space-y-2">
-                        <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                          <FolderOpen className="h-4 w-4" />
-                          {CATEGORY_LABELS[category] || category}
-                          <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                            {docs.length}
-                          </Badge>
-                        </h3>
-                        <div className="space-y-2">
-                          {docs
-                            .sort((a, b) => a.sortOrder - b.sortOrder)
-                            .map((doc) => (
-                              <DocumentTemplateCard
-                                key={doc.id}
-                                doc={doc}
-                                programId={parseInt(selectedProgramId)}
-                                isExpanded={expandedDocId === doc.id}
-                                onToggle={() =>
-                                  setExpandedDocId(
-                                    expandedDocId === doc.id ? null : doc.id
-                                  )
-                                }
-                              />
-                            ))}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </>
-          )}
-        </>
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Document Review Rules</h2>
+            <DocumentReviewRulesTable programId={parseInt(selectedProgramId)} />
+          </div>
+        </div>
       )}
 
       {!selectedProgramId && !loadingPrograms && (
@@ -623,25 +469,28 @@ export default function AIReviewPage() {
           <CardContent className="py-16 text-center">
             <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary opacity-30" />
             <h3 className="font-semibold text-lg mb-2">
-              Get Started with AI Document Review
+              Configure AI Document Review
             </h3>
             <p className="text-muted-foreground text-sm max-w-md mx-auto">
-              Select a loan program above to configure AI review rules for each document type. 
-              The AI will use these rules when reviewing uploaded documents to automatically check 
-              for compliance, completeness, and potential issues.
+              Select a loan program above to configure AI review rules. You can either upload guidelines
+              to auto-generate rules, or create rules manually.
             </p>
-            <div className="flex items-center justify-center gap-6 mt-6 text-xs text-muted-foreground">
+            <div className="flex items-center justify-center gap-6 mt-6 text-xs text-muted-foreground flex-wrap">
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-success" />
-                Presence checks
+                <Upload className="h-4 w-4 text-primary" />
+                Upload guidelines
               </div>
               <div className="flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                Red flag detection
+                <Zap className="h-4 w-4 text-amber-500" />
+                Auto-generate rules
               </div>
               <div className="flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Consistency validation
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Review & approve
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                Auto-review documents
               </div>
             </div>
           </CardContent>
