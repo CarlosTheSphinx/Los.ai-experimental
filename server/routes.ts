@@ -43,6 +43,7 @@ import { registerPortalRoutes } from './routes/portal';
 import { registerAdminProgramsRoutes } from './routes/admin-programs';
 import { registerAiReviewRoutes } from './routes/ai-review';
 import { registerProcessorRoutes } from './routes/processor';
+import { registerBrokerSdrRoutes } from './routes/broker-sdr';
 import { registerAiAssistantRoutes } from './routes/ai-assistant';
 
 // Initialize Apify client
@@ -3495,6 +3496,12 @@ export async function registerRoutes(
 
   // ==================== PROCESSOR ROUTES ====================
   registerProcessorRoutes(app);
+
+  // ==================== AI REVIEW ROUTES ====================
+  registerAiReviewRoutes(app);
+
+  // ==================== BROKER SDR ROUTES ====================
+  registerBrokerSdrRoutes(app);
 
   // ==================== ADMIN ROUTES ====================
 

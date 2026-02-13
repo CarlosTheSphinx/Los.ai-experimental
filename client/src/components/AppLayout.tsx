@@ -21,7 +21,11 @@ import {
   Sparkles,
   ClipboardEdit,
   Search,
+
   Zap,
+
+  Send,
+
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -68,6 +72,8 @@ const brokerNavItems: NavItem[] = [
   { href: "/deals", label: "Loans", icon: FolderKanban, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
+  { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
+  { href: "/broker/outreach", label: "Outreach", icon: Send, shortcut: undefined },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
 ];

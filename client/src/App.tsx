@@ -50,7 +50,12 @@ import AdminCommercialDealDetail from "@/pages/admin/commercial-deal-detail";
 import CommercialSubmissionDetail from "@/pages/commercial-submission-detail";
 import AdminAIReview from "@/pages/admin/ai-review";
 import AdminCommercialConfig from "@/pages/admin/commercial-config";
+
 import ProcessorDashboard from "@/pages/admin/processor-dashboard";
+
+import BrokerContactsPage from "@/pages/broker-contacts";
+import BrokerOutreachPage from "@/pages/broker-outreach";
+
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
 import PublicPricingPage from "@/pages/public/pricing";
@@ -162,6 +167,10 @@ function MainRoutes() {
           <Route path="/commercial-submission/new" component={() => <ProtectedRoute component={CommercialSubmissionPage} />} />
           <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
           <Route path="/commercial-submission/:id" component={() => <ProtectedRoute component={CommercialSubmissionDetail} />} />
+
+          {/* Broker CRM Routes */}
+          <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
+          <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
 
           {/* Admin Routes */}
           <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
