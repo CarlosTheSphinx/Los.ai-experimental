@@ -12,9 +12,9 @@ import Quotes from "@/pages/quotes";
 import SignPage from "@/pages/sign";
 import Agreements from "@/pages/agreements";
 import AgreementDetail from "@/pages/agreement-detail";
-import Deals from "@/pages/projects";
-import DealDetail from "@/pages/project-detail";
-import NewDeal from "@/pages/new-project";
+import Deals from "@/pages/deals";
+import DealDetail from "@/pages/deal-detail";
+import NewDeal from "@/pages/new-deal";
 import BorrowerPortal from "@/pages/borrower-portal";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -22,8 +22,6 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
-import AdminDealsLegacy from "@/pages/admin/projects";
-import AdminDealDetailLegacy from "@/pages/admin/project-detail";
 import AdminSettings from "@/pages/admin/settings";
 import AdminDeals from "@/pages/admin/deals";
 import AdminDealDetail from "@/pages/admin/deal-detail";
@@ -50,6 +48,12 @@ import AdminCommercialDealDetail from "@/pages/admin/commercial-deal-detail";
 import CommercialSubmissionDetail from "@/pages/commercial-submission-detail";
 import AdminAIReview from "@/pages/admin/ai-review";
 import AdminCommercialConfig from "@/pages/admin/commercial-config";
+
+import ProcessorDashboard from "@/pages/admin/processor-dashboard";
+
+import BrokerContactsPage from "@/pages/broker-contacts";
+import BrokerOutreachPage from "@/pages/broker-outreach";
+
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
 import PublicPricingPage from "@/pages/public/pricing";
@@ -162,6 +166,10 @@ function MainRoutes() {
           <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
           <Route path="/commercial-submission/:id" component={() => <ProtectedRoute component={CommercialSubmissionDetail} />} />
 
+          {/* Broker CRM Routes */}
+          <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
+          <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
+
           {/* Admin Routes */}
           <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
           <Route path="/admin/dashboard" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
@@ -182,6 +190,7 @@ function MainRoutes() {
           <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
           <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
           <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />
+          <Route path="/admin/processor" component={() => <AdminProtectedRoute component={ProcessorDashboard} />} />
 
           <Route component={NotFound} />
         </Switch>

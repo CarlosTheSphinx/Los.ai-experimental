@@ -41,6 +41,10 @@ import { registerAuthRoutes } from './routes/auth';
 import { registerMessagingRoutes } from './routes/messaging';
 import { registerPortalRoutes } from './routes/portal';
 import { registerAdminProgramsRoutes } from './routes/admin-programs';
+import { registerAiReviewRoutes } from './routes/ai-review';
+import { registerProcessorRoutes } from './routes/processor';
+import { registerBrokerSdrRoutes } from './routes/broker-sdr';
+import { registerAiAssistantRoutes } from './routes/ai-assistant';
 
 // Initialize Apify client
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
@@ -3486,6 +3490,18 @@ export async function registerRoutes(
 
   // ==================== MESSAGING ROUTES ====================
   registerMessagingRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
+
+  // ==================== AI ASSISTANT ROUTES ====================
+  registerAiAssistantRoutes(app);
+
+  // ==================== PROCESSOR ROUTES ====================
+  registerProcessorRoutes(app);
+
+  // ==================== AI REVIEW ROUTES ====================
+  registerAiReviewRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
+
+  // ==================== BROKER SDR ROUTES ====================
+  registerBrokerSdrRoutes(app);
 
   // ==================== ADMIN ROUTES ====================
 
@@ -13594,6 +13610,15 @@ Return JSON only:
       console.error('Error fetching AI review:', error);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // ===================== ALIAS ROUTES: /deals -> /projects (nomenclature consistency) =====================
+  // Add a middleware that rewrites /api/deals to /api/projects for backward compatibility
+  app.use((req: AuthRequest, res: Response, next: Function) => {
+    if (req.path.startsWith('/api/deals')) {
+      req.url = req.url.replace('/api/deals', '/api/projects');
+    }
+    next();
   });
 
   // Run expired submission check every hour

@@ -253,7 +253,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     name="completedProjects"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-foreground">Completed Projects (In last three years)</FormLabel>
+                        <FormLabel className="text-foreground">Completed Deals (In last three years)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"

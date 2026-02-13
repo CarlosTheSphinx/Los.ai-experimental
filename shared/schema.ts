@@ -13,7 +13,7 @@ export const users = pgTable("users", {
   title: varchar("title", { length: 255 }),
   role: varchar("role", { length: 50 }).default("user").notNull(), // user, processor, staff, admin, super_admin
   roles: text("roles").array(),
-  userType: varchar("user_type", { length: 50 }).default("broker"), // broker, borrower, null for Google OAuth users pending selection
+  userType: varchar("user_type", { length: 50 }).default("broker"), // broker, borrower, lender
   createdAt: timestamp("created_at").defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
   emailVerified: boolean("email_verified").default(false),
@@ -497,6 +497,12 @@ export type ProjectActivity = typeof projectActivity.$inferSelect;
 export type InsertProjectActivity = z.infer<typeof insertProjectActivitySchema>;
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
+
+// Deal aliases (consistent nomenclature - table is still called 'projects' for backward compatibility)
+export const deals = projects;
+export const insertDealSchema = insertProjectSchema;
+export type Deal = Project;
+export type InsertDeal = InsertProject;
 export type ProjectWebhook = typeof projectWebhooks.$inferSelect;
 export type InsertProjectWebhook = z.infer<typeof insertProjectWebhookSchema>;
 
@@ -529,14 +535,20 @@ export const dealDocuments = pgTable("deal_documents", {
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewNotes: text("review_notes"),
-  
+
+  // AI Review fields
+  aiReviewStatus: varchar("ai_review_status", { length: 50 }).default("not_reviewed"), // pending, reviewing, approved, denied, not_reviewed
+  aiReviewReason: text("ai_review_reason"),
+  aiReviewedAt: timestamp("ai_reviewed_at"),
+  aiReviewConfidence: real("ai_review_confidence"), // 0-1 confidence score
+
   sortOrder: integer("sort_order").default(0),
-  
+
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveFileUrl: text("google_drive_file_url"),
   driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default("NOT_SYNCED"),
   driveUploadError: text("drive_upload_error"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1120,9 +1132,12 @@ export const loanDigestConfigs = pgTable("loan_digest_configs", {
   emailSubject: varchar("email_subject", { length: 255 }).default("Loan Update: Action Required"),
   emailBody: text("email_body").default("Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nSphinx Capital"),
   smsBody: text("sms_body").default("Sphinx Capital: {{documentsCount}} docs needed for your loan. Log in to your portal for details."),
-  
+
+  // COMMUNICATION CHANNELS - which channels are enabled for communications on this deal
+  communicationChannels: jsonb("communication_channels").default({ email: true, sms: false, inApp: true }).notNull(),
+
   isEnabled: boolean("is_enabled").default(true).notNull(),
-  
+
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2087,3 +2102,122 @@ export const programReviewRules = pgTable("program_review_rules", {
 export const insertProgramReviewRuleSchema = createInsertSchema(programReviewRules).omit({ id: true, createdAt: true, updatedAt: true });
 export type ProgramReviewRule = typeof programReviewRules.$inferSelect;
 export type InsertProgramReviewRule = z.infer<typeof insertProgramReviewRuleSchema>;
+
+// ==================== PHASE 1: NEW TABLES ====================
+
+// Processor Daily Queue - for managing batch processing of digests, document reviews, etc.
+export const processorDailyQueue = pgTable("processor_daily_queue", {
+  id: serial("id").primaryKey(),
+  processorId: integer("processor_id").references(() => users.id, { onDelete: 'set null' }),
+  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  queueDate: timestamp("queue_date").notNull(),
+  actionType: varchar("action_type", { length: 50 }).notNull(), // digest_send, document_review, task_creation, message_send
+  actionData: jsonb("action_data").notNull(),
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, approved, sent, failed
+  editedContent: text("edited_content"),
+  approvedBy: integer("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProcessorDailyQueueSchema = createInsertSchema(processorDailyQueue).omit({ id: true, createdAt: true });
+export type ProcessorDailyQueue = typeof processorDailyQueue.$inferSelect;
+export type InsertProcessorDailyQueue = z.infer<typeof insertProcessorDailyQueueSchema>;
+
+// Broker Contacts - contact management for brokers
+export const brokerContacts = pgTable("broker_contacts", {
+  id: serial("id").primaryKey(),
+  brokerId: integer("broker_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  company: varchar("company", { length: 255 }),
+  contactType: varchar("contact_type", { length: 50 }).notNull(), // prospect, client, referral, other
+  lastContactedAt: timestamp("last_contacted_at"),
+  notes: text("notes"),
+  tags: jsonb("tags"), // array of strings
+  source: varchar("source", { length: 100 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBrokerContactSchema = createInsertSchema(brokerContacts).omit({ id: true, createdAt: true, updatedAt: true });
+export type BrokerContact = typeof brokerContacts.$inferSelect;
+export type InsertBrokerContact = z.infer<typeof insertBrokerContactSchema>;
+
+// Broker Outreach Messages - tracking outreach campaigns and messages
+export const brokerOutreachMessages = pgTable("broker_outreach_messages", {
+  id: serial("id").primaryKey(),
+  brokerId: integer("broker_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  contactId: integer("contact_id").references(() => brokerContacts.id, { onDelete: 'set null' }),
+  campaignId: integer("campaign_id"),
+  channel: varchar("channel", { length: 50 }).notNull(), // email, sms, both
+  subject: varchar("subject", { length: 255 }),
+  body: text("body").notNull(),
+  personalizedBody: text("personalized_body"),
+  status: varchar("status", { length: 50 }).default("draft").notNull(), // draft, approved, sent, failed, bounced
+  sentAt: timestamp("sent_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  aiGenerated: boolean("ai_generated").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBrokerOutreachMessageSchema = createInsertSchema(brokerOutreachMessages).omit({ id: true, createdAt: true });
+export type BrokerOutreachMessage = typeof brokerOutreachMessages.$inferSelect;
+export type InsertBrokerOutreachMessage = z.infer<typeof insertBrokerOutreachMessageSchema>;
+
+// AI Assistant Conversations - conversation history with AI assistant
+export const aiAssistantConversations = pgTable("ai_assistant_conversations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'set null' }),
+  conversationType: varchar("conversation_type", { length: 50 }).notNull(), // daily_briefing, deal_review, general
+  title: varchar("title", { length: 255 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAiAssistantConversationSchema = createInsertSchema(aiAssistantConversations).omit({ id: true, createdAt: true, updatedAt: true });
+export type AiAssistantConversation = typeof aiAssistantConversations.$inferSelect;
+export type InsertAiAssistantConversation = z.infer<typeof insertAiAssistantConversationSchema>;
+
+// AI Assistant Messages - individual messages in conversations
+export const aiAssistantMessages = pgTable("ai_assistant_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => aiAssistantConversations.id, { onDelete: 'cascade' }).notNull(),
+  role: varchar("role", { length: 50 }).notNull(), // user, assistant, system
+  content: text("content").notNull(),
+  actionsTaken: jsonb("actions_taken"), // array of actions performed based on this message
+  voiceInput: boolean("voice_input").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiAssistantMessageSchema = createInsertSchema(aiAssistantMessages).omit({ id: true, createdAt: true });
+export type AiAssistantMessage = typeof aiAssistantMessages.$inferSelect;
+export type InsertAiAssistantMessage = z.infer<typeof insertAiAssistantMessageSchema>;
+
+// Document Review Rules - rules for AI document review
+export const documentReviewRules = pgTable("document_review_rules", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  documentCategory: varchar("document_category", { length: 100 }).notNull(),
+  documentName: varchar("document_name", { length: 255 }).notNull(),
+  ruleName: varchar("rule_name", { length: 255 }).notNull(),
+  ruleDescription: text("rule_description"),
+  ruleConfig: jsonb("rule_config").notNull(), // contains the check criteria
+  severity: varchar("severity", { length: 50 }).notNull(), // required, recommended, info
+  isActive: boolean("is_active").default(true).notNull(),
+  sourceGuidelineId: integer("source_guideline_id"), // reference to uploaded guidelines
+  confidence: real("confidence"), // expected confidence score 0-1
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDocumentReviewRuleSchema = createInsertSchema(documentReviewRules).omit({ id: true, createdAt: true });
+export type DocumentReviewRule = typeof documentReviewRules.$inferSelect;
+export type InsertDocumentReviewRule = z.infer<typeof insertDocumentReviewRuleSchema>;

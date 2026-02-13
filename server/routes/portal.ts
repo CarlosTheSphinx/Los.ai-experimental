@@ -70,6 +70,122 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // ==================== BORROWER DASHBOARD ENDPOINT ====================
+
+  app.get('/api/portal/:token/dashboard', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+
+      const project = await storage.getProjectByToken(token);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found or link is invalid' });
+      }
+
+      if (!project.borrowerPortalEnabled) {
+        return res.status(403).json({ error: 'Borrower portal is disabled for this project' });
+      }
+
+      // Fetch program name
+      let programName: string | null = null;
+      if (project.programId) {
+        const [program] = await db.select({ name: loanPrograms.name }).from(loanPrograms).where(eq(loanPrograms.id, project.programId));
+        if (program) programName = program.name;
+      }
+
+      // Get all stages
+      const stages = await db.select().from(projectStages)
+        .where(eq(projectStages.projectId, project.id))
+        .orderBy(asc(projectStages.stageOrder));
+
+      // Get all documents with files
+      const allDocs = await db.select().from(dealDocuments)
+        .where(eq(dealDocuments.dealId, project.id))
+        .orderBy(asc(dealDocuments.sortOrder));
+
+      const docsWithFiles = await Promise.all(allDocs.map(async (doc) => {
+        const files = await db.select().from(dealDocumentFiles)
+          .where(eq(dealDocumentFiles.documentId, doc.id))
+          .orderBy(asc(dealDocumentFiles.sortOrder));
+        return { ...doc, files };
+      }));
+
+      // Filter documents visible to borrower
+      const borrowerDocs = docsWithFiles.filter(doc =>
+        doc.visibility === 'borrower' || doc.visibility === 'all'
+      );
+
+      // Get tasks visible to borrower
+      const tasks = await storage.getTasksByProjectId(project.id);
+      const borrowerTasks = tasks.filter(t => t.visibleToBorrower);
+
+      // Calculate stats
+      const totalDocuments = borrowerDocs.filter(d => d.isRequired).length;
+      const approvedDocuments = borrowerDocs.filter(d => d.status === 'approved').length;
+      const pendingDocuments = borrowerDocs.filter(d => d.status === 'pending').length;
+      const rejectedDocuments = borrowerDocs.filter(d => d.status === 'rejected').length;
+      const completionPercentage = totalDocuments > 0 ? Math.round((approvedDocuments / totalDocuments) * 100) : 0;
+
+      res.json({
+        deal: {
+          id: project.id,
+          dealName: project.projectName,
+          borrowerName: project.borrowerName,
+          propertyAddress: project.propertyAddress,
+          status: project.status,
+          currentStage: project.currentStage,
+          progressPercentage: project.progressPercentage,
+          loanAmount: project.loanAmount,
+          programName,
+        },
+        stages: stages.map(s => ({
+          id: s.id,
+          stageName: s.stageName,
+          stageKey: s.stageKey,
+          stageOrder: s.stageOrder,
+          status: s.status,
+        })),
+        documents: borrowerDocs.map(doc => ({
+          id: doc.id,
+          documentName: doc.documentName,
+          documentCategory: doc.documentCategory,
+          documentDescription: doc.documentDescription,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          assignedTo: doc.assignedTo,
+          aiReviewStatus: doc.aiReviewStatus,
+          aiReviewReason: doc.aiReviewReason,
+          uploadedAt: doc.uploadedAt,
+          reviewedAt: doc.reviewedAt,
+          files: doc.files.map(f => ({
+            id: f.id,
+            fileName: f.fileName,
+            fileSize: f.fileSize,
+            uploadedAt: f.uploadedAt,
+          })),
+        })),
+        tasks: borrowerTasks.map(t => ({
+          id: t.id,
+          taskName: t.taskTitle || t.taskName || '',
+          taskDescription: t.taskDescription,
+          status: t.status,
+          priority: t.priority,
+          dueDate: t.dueDate,
+          borrowerActionRequired: t.borrowerActionRequired,
+        })),
+        stats: {
+          totalDocuments,
+          approvedDocuments,
+          pendingDocuments,
+          rejectedDocuments,
+          completionPercentage,
+        },
+      });
+    } catch (error) {
+      console.error('Borrower dashboard error:', error);
+      res.status(500).json({ error: 'Failed to load borrower dashboard' });
+    }
+  });
+
   // ==================== BORROWER PORTAL DOCUMENT ENDPOINTS ====================
 
   app.get('/api/portal/:token/documents', async (req: Request, res: Response) => {

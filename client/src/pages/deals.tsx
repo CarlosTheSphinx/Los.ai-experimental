@@ -36,10 +36,10 @@ import {
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
-interface Project {
+interface Deal {
   id: number;
-  projectNumber: string;
-  projectName: string;
+  dealNumber: string;
+  dealName: string;
   status: string;
   currentStage: string;
   progressPercentage: number;
@@ -189,7 +189,7 @@ export default function Projects() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  const { data, isLoading } = useQuery<{ projects: Project[] }>({
+  const { data, isLoading } = useQuery<{ projects: Deal[] }>({
     queryKey: ['/api/deals'],
     queryFn: async () => {
       const res = await fetch('/api/deals', { credentials: 'include' });
@@ -204,8 +204,8 @@ export default function Projects() {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
-      p.projectNumber?.toLowerCase().includes(query) ||
-      p.projectName?.toLowerCase().includes(query) ||
+      p.dealNumber?.toLowerCase().includes(query) ||
+      p.dealName?.toLowerCase().includes(query) ||
       p.borrowerName?.toLowerCase().includes(query) ||
       p.propertyAddress?.toLowerCase().includes(query)
     );
@@ -374,7 +374,7 @@ export default function Projects() {
               >
                 <Link href={`/deals/${project.id}`}>
                   <div className="p-5">
-                    {/* Top row: Project number, status badge, arrow */}
+                    {/* Top row: Deal number, status badge, arrow */}
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-muted-foreground font-mono" data-testid={`text-deal-number-${project.id}`}>
@@ -405,7 +405,7 @@ export default function Projects() {
                     
                     {/* Loan title */}
                     <h3 className="text-base font-semibold mb-3 truncate" data-testid={`text-deal-name-${project.id}`}>
-                      {project.projectName}
+                      {project.dealName}
                     </h3>
                     
                     {/* Progress bar */}

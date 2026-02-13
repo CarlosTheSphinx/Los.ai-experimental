@@ -148,7 +148,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
       }
 
       // Validate userType - default to broker if not provided
-      const validUserType = userType === 'broker' || userType === 'borrower' ? userType : 'broker';
+      const validUserType = (userType === 'broker' || userType === 'borrower' || userType === 'lender') ? userType : 'broker';
 
       const existingUser = await storage.getUserByEmail(email.toLowerCase());
       if (existingUser) {
@@ -157,8 +157,11 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
 
       const passwordHash = await hashPassword(password);
 
-      // Borrowers don't need onboarding, brokers do
+      // Borrowers don't need onboarding, brokers and lenders do
       const onboardingCompleted = validUserType === 'borrower';
+
+      // Lenders get admin role by default
+      const userRole = validUserType === 'lender' ? 'admin' : 'user';
 
       const user = await storage.createUser({
         email: email.toLowerCase(),
@@ -166,6 +169,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         fullName: resolvedFullName,
         companyName: companyName || null,
         phone: phone || null,
+        role: userRole,
         emailVerified: false,
         isActive: true,
         passwordResetToken: null,

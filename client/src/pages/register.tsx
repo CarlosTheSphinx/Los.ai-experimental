@@ -12,12 +12,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Briefcase, Home, Zap, Shield, Clock } from 'lucide-react';
+import { Loader2, Briefcase, Home, Zap, Shield, Clock, Crown } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const registerSchema = z.object({
-  userType: z.enum(['broker', 'borrower'], { required_error: 'Please select your account type' }),
+  userType: z.enum(['broker', 'borrower', 'lender'], { required_error: 'Please select your account type' }),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Please enter a valid email address'),
@@ -58,8 +58,8 @@ export default function RegisterPage() {
         lastName: data.lastName,
         userType: data.userType,
       });
-      // Redirect based on user type - brokers go to onboarding, borrowers go straight to dashboard
-      if (data.userType === 'broker') {
+      // Redirect based on user type - brokers and lenders go to onboarding, borrowers go straight to dashboard
+      if (data.userType === 'broker' || data.userType === 'lender') {
         setLocation('/onboarding');
       } else {
         setLocation('/');
@@ -147,7 +147,7 @@ export default function RegisterPage() {
                       <RadioGroup
                         onValueChange={field.onChange}
                         value={field.value}
-                        className="grid grid-cols-2 gap-4"
+                        className="grid grid-cols-3 gap-3"
                       >
                         <div>
                           <RadioGroupItem
@@ -160,8 +160,8 @@ export default function RegisterPage() {
                             className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover-elevate peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
                             data-testid="radio-broker"
                           >
-                            <Briefcase className="mb-3 h-6 w-6" />
-                            <span className="font-semibold">Partner</span>
+                            <Briefcase className="mb-3 h-5 w-5" />
+                            <span className="font-semibold text-sm">Broker</span>
                           </Label>
                         </div>
                         <div>
@@ -175,8 +175,24 @@ export default function RegisterPage() {
                             className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover-elevate peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
                             data-testid="radio-borrower"
                           >
-                            <Home className="mb-3 h-6 w-6" />
-                            <span className="font-semibold">Borrower</span>
+                            <Home className="mb-3 h-5 w-5" />
+                            <span className="font-semibold text-sm">Borrower</span>
+                          </Label>
+                        </div>
+                        <div className="relative">
+                          <RadioGroupItem
+                            value="lender"
+                            id="lender"
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor="lender"
+                            className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover-elevate peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                            data-testid="radio-lender"
+                          >
+                            <Crown className="mb-3 h-5 w-5" />
+                            <span className="font-semibold text-sm">Lender</span>
+                            <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full mt-1">Pro</span>
                           </Label>
                         </div>
                       </RadioGroup>

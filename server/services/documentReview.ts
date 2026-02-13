@@ -3,7 +3,7 @@ import { ObjectStorageService } from "../replit_integrations/object_storage/obje
 const objectStorageService = new ObjectStorageService();
 import { storage } from "../storage";
 import { db } from "../db";
-import { loanPrograms, dealDocuments, dealDocumentFiles, dealProperties, projects, savedQuotes, programReviewRules, programDocumentTemplates } from "@shared/schema";
+import { loanPrograms, dealDocuments, dealDocumentFiles, dealProperties, projects, savedQuotes, programReviewRules, programDocumentTemplates, documentReviewRules } from "@shared/schema";
 import { eq, and, or, asc } from "drizzle-orm";
 
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
@@ -550,5 +550,224 @@ Review this document against ALL ${rulesForPrompt.length} rules above. Produce o
   } catch (error: any) {
     console.error('Document review error:', error);
     return { success: false, error: `Review failed: ${error.message}` };
+  }
+}
+
+export async function reviewDocumentWithRules(
+  documentId: number,
+  filePath: string,
+  programId: number,
+  userId: number
+): Promise<{
+  status: 'approved' | 'denied' | 'error';
+  reason: string;
+  confidence: number;
+}> {
+  if (!aiApiKey) {
+    return {
+      status: 'error',
+      reason: 'AI document review is not available. AI_INTEGRATIONS_OPENAI_API_KEY is not configured.',
+      confidence: 0
+    };
+  }
+
+  try {
+    // Get the document
+    const [doc] = await db.select().from(dealDocuments).where(eq(dealDocuments.id, documentId));
+    if (!doc) {
+      return {
+        status: 'error',
+        reason: 'Document not found',
+        confidence: 0
+      };
+    }
+
+    // Get applicable review rules for this document
+    const rules = await db.select().from(documentReviewRules).where(
+      and(
+        eq(documentReviewRules.programId, programId),
+        eq(documentReviewRules.isActive, true),
+        or(
+          eq(documentReviewRules.documentName, doc.documentName),
+          eq(documentReviewRules.documentCategory, doc.documentCategory || '')
+        )
+      )
+    );
+
+    if (rules.length === 0) {
+      return {
+        status: 'approved',
+        reason: 'No review rules configured for this document type. Document approved by default.',
+        confidence: 0.5
+      };
+    }
+
+    // Process the document file
+    let hasImages = false;
+    let documentText: string | null = null;
+    const imageContents: Array<{ base64: string; mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; fileName: string }> = [];
+    const textParts: string[] = [];
+
+    const fp = filePath;
+    const mt = doc.mimeType;
+    const fn = doc.fileName || 'file';
+
+    try {
+      if (isImageFile(fp, mt)) {
+        hasImages = true;
+        const buffer = await downloadDocumentBuffer(fp);
+        imageContents.push({
+          base64: buffer.toString('base64'),
+          mediaType: getImageMediaType(mt, fp),
+          fileName: fn,
+        });
+      } else if (isPdfFile(fp, mt)) {
+        const text = await extractTextFromDocument(fp, mt);
+        const textIsSubstantial = hasSubstantialText(text);
+
+        if (textIsSubstantial) {
+          textParts.push(`--- File: ${fn} ---\n${text}`);
+        }
+
+        if (!textIsSubstantial) {
+          const buffer = await downloadDocumentBuffer(fp);
+          const pdfImages = await renderPdfPagesToImages(buffer);
+          if (pdfImages.length > 0) {
+            hasImages = true;
+            for (const pdfImg of pdfImages) {
+              imageContents.push({
+                base64: pdfImg.base64,
+                mediaType: 'image/png',
+                fileName: `${fn} - Page ${pdfImg.pageNum}`,
+              });
+            }
+          } else if (text && text.trim().length > 5) {
+            textParts.push(`--- File: ${fn} ---\n${text}`);
+          }
+        }
+      } else {
+        const text = await extractTextFromDocument(fp, mt);
+        if (text && text.trim().length > 5) {
+          textParts.push(`--- File: ${fn} ---\n${text}`);
+        }
+      }
+    } catch (err: any) {
+      console.error(`Could not read file ${fn}:`, err.message);
+      return {
+        status: 'error',
+        reason: `Failed to read document file: ${err.message}`,
+        confidence: 0
+      };
+    }
+
+    if (imageContents.length === 0 && textParts.length === 0) {
+      return {
+        status: 'error',
+        reason: 'Could not extract content from the uploaded file.',
+        confidence: 0
+      };
+    }
+
+    const isImage = imageContents.length > 0;
+    documentText = textParts.length > 0 ? textParts.join('\n\n').slice(0, 30000) : null;
+
+    // Build rules text for the prompt
+    const rulesText = rules.map((r, idx) => `Rule ${idx + 1} [${r.severity.toUpperCase()}]:
+  "${r.ruleName}"
+  Details: ${r.ruleDescription}
+  Config: ${JSON.stringify(r.ruleConfig)}`).join('\n\n');
+
+    const systemPrompt = `You are an expert loan document reviewer. You review documents against specific rules and determine if the document passes review.
+
+${isImage ? '\nIMPORTANT: The document is provided as an IMAGE. You must visually examine the image to read all text, names, dates, numbers, and other information visible in the document.\n' : ''}
+
+For each rule, evaluate whether the document meets the requirement. Then provide:
+- "overallStatus": "approved" if all REQUIRED rules pass, "denied" if any REQUIRED rule fails, "warning" if only WARNING/INFO rules have issues
+- "findings": array of findings for each rule with status (pass/fail/warning/info) and details
+- "confidence": your confidence in the assessment (0-1)
+
+Respond ONLY with valid JSON.`;
+
+    const userPrompt = `## Document Being Reviewed
+**Document Name:** ${doc.documentName || doc.fileName || 'Unknown'}
+**Document Category:** ${doc.documentCategory || 'General'}
+
+## Rules to Check (${rules.length} rules)
+${rulesText}
+
+${isImage && imageContents.length > 0 ? `## Document Images (${imageContents.length} file${imageContents.length > 1 ? 's' : ''})
+The document images are attached. Please visually examine all images to verify each rule.` : ''}
+
+${documentText ? `## Document Content
+${documentText}` : ''}
+
+Review this document against ALL ${rules.length} rules above. For each rule, determine if it's met or not. Return JSON with overallStatus (approved/denied/warning), findings array, and confidence score.`;
+
+    let messages: any[];
+    if (isImage && imageContents.length > 0) {
+      const contentParts: any[] = [{ type: 'text', text: userPrompt }];
+      for (const ic of imageContents) {
+        contentParts.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${ic.mediaType};base64,${ic.base64}`,
+            detail: 'high',
+          },
+        });
+      }
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: contentParts },
+      ];
+    } else {
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ];
+    }
+
+    const response = await openai.chat.completions.create({
+      model: isImage ? 'gpt-4o' : 'gpt-5-mini',
+      messages,
+      response_format: { type: 'json_object' },
+      max_completion_tokens: 2048,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return {
+        status: 'error',
+        reason: 'AI returned empty response',
+        confidence: 0
+      };
+    }
+
+    let result: any;
+    try {
+      result = JSON.parse(content);
+    } catch {
+      return {
+        status: 'error',
+        reason: 'AI returned invalid JSON format',
+        confidence: 0
+      };
+    }
+
+    const status = result.overallStatus === 'approved' ? 'approved' : 'denied';
+    const confidence = typeof result.confidence === 'number' ? result.confidence : 0.8;
+    const reason = result.summary || result.reason || 'Review completed by AI';
+
+    return {
+      status,
+      reason,
+      confidence
+    };
+  } catch (error: any) {
+    console.error('Document review with rules error:', error);
+    return {
+      status: 'error',
+      reason: `Review failed: ${error.message}`,
+      confidence: 0
+    };
   }
 }

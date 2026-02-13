@@ -21,6 +21,11 @@ import {
   Sparkles,
   ClipboardEdit,
   Search,
+
+  Zap,
+
+  Send,
+
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -43,6 +48,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
 import { InboxBadge } from "@/components/InboxBadge";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 import type { PermissionKey } from "@shared/schema";
 
@@ -63,15 +69,17 @@ const brokerNavItems: NavItem[] = [
   { href: "/", label: "New Quote", icon: Calculator, shortcut: undefined },
   { href: "/quotes", label: "Saved Quotes", icon: FileText, shortcut: undefined },
   { href: "/agreements", label: "Term Sheets", icon: ClipboardList, shortcut: undefined },
-  { href: "/deals", label: "Loans", icon: FolderKanban, shortcut: undefined },
+  { href: "/deals", label: "Deals", icon: FolderKanban, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
+  { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
+  { href: "/broker/outreach", label: "Outreach", icon: Send, shortcut: undefined },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
 ];
 
 const borrowerNavItems: NavItem[] = [
-  { href: "/", label: "My Loans", icon: FolderKanban },
+  { href: "/", label: "My Deals", icon: FolderKanban },
   { href: "/borrower-quote", label: "Get a Quote", icon: Calculator },
   { href: "/borrower-quotes", label: "My Quotes", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
@@ -80,6 +88,7 @@ const borrowerNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/processor", label: "One-Click Processing", icon: Zap, requiredPermission: "processor.view" },
   { href: "/admin/deals", label: "Pipeline", icon: FileText, requiredPermission: "pipeline.view", shortcut: "⌘2" },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
@@ -296,6 +305,9 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       </div>
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+
+      {/* AI Assistant Panel - show for admin/processor users */}
+      {isAdmin && <ProcessorAssistant />}
     </div>
   );
 }

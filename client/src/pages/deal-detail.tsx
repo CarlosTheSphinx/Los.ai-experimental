@@ -122,10 +122,10 @@ interface DealDocument {
   sortOrder: number;
 }
 
-interface Project {
+interface Deal {
   id: number;
-  projectNumber: string;
-  projectName: string;
+  dealNumber: string;
+  dealName: string;
   status: string;
   currentStage: string;
   progressPercentage: number;
@@ -198,7 +198,7 @@ export default function ProjectDetail() {
   const [newThreadMessage, setNewThreadMessage] = useState("");
 
   const { data, isLoading, refetch } = useQuery<{ 
-    project: Project; 
+    deal: Deal; 
     stages: Stage[]; 
     activity: ActivityItem[];
     processors?: DealProcessor[];
@@ -526,7 +526,7 @@ export default function ProjectDetail() {
             </Badge>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-semibold tracking-tight" data-testid="text-deal-name">{project.projectName}</h1>
+            <h1 className="text-xl font-semibold tracking-tight" data-testid="text-deal-name">{project.dealName}</h1>
             {project.programName && (
               <Badge variant="outline" data-testid="badge-program-name">
                 {project.programName}
@@ -1048,7 +1048,7 @@ export default function ProjectDetail() {
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => {
-                          const subject = encodeURIComponent(`RE: ${project.projectName} (DEAL-${project.id})`);
+                          const subject = encodeURIComponent(`RE: ${project.dealName} (DEAL-${project.id})`);
                           window.open(`mailto:${project.borrowerEmail}?subject=${subject}`, '_blank');
                         }}
                         title="Send email"
@@ -1131,7 +1131,7 @@ export default function ProjectDetail() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() => {
-                                const subject = encodeURIComponent(`RE: ${project.projectName} (DEAL-${project.id})`);
+                                const subject = encodeURIComponent(`RE: ${project.dealName} (DEAL-${project.id})`);
                                 window.open(`mailto:${proc.user.email}?subject=${subject}`, '_blank');
                               }}
                               title="Send email"
@@ -1149,7 +1149,7 @@ export default function ProjectDetail() {
                                     try {
                                       await apiRequest('POST', '/api/communication/sms', {
                                         to: proc.user.phone,
-                                        message: `Regarding DEAL-${project.id} (${project.projectName}): Please check the deal for updates.`,
+                                        message: `Regarding DEAL-${project.id} (${project.dealName}): Please check the deal for updates.`,
                                         dealId: project.id,
                                       });
                                       toast({ title: "SMS sent" });

@@ -11,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-export default function NewProject() {
+export default function NewDeal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
   const [formData, setFormData] = useState({
-    projectName: "",
+    dealName: "",
     borrowerName: "",
     borrowerEmail: "",
     borrowerPhone: "",
@@ -53,7 +53,7 @@ export default function NewProject() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.projectName || !formData.borrowerName || !formData.borrowerEmail) {
+    if (!formData.dealName || !formData.borrowerName || !formData.borrowerEmail) {
       toast({ title: "Please fill in required fields", variant: "destructive" });
       return;
     }
@@ -88,11 +88,11 @@ export default function NewProject() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="projectName">Deal Name *</Label>
+              <Label htmlFor="dealName">Deal Name *</Label>
               <Input
-                id="projectName"
-                value={formData.projectName}
-                onChange={(e) => updateField("projectName", e.target.value)}
+                id="dealName"
+                value={formData.dealName}
+                onChange={(e) => updateField("dealName", e.target.value)}
                 placeholder="e.g., Smith Refinance"
                 data-testid="input-deal-name"
               />
