@@ -158,9 +158,18 @@ export default function PublicHomePage() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.1 }}
-              className="text-6xl md:text-7xl lg:text-8xl font-bold text-white leading-tight tracking-tight"
+              className="font-bold text-white leading-tight tracking-tight" style={{ fontSize: 'clamp(2rem, 5vw, 4.5rem)' }}
             >
-              Lending, Automated.
+              The World's First
+              <br />
+              <span className="whitespace-nowrap">Loan{" "}
+              <span className="relative inline-block">
+                Origination
+                <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-8deg)' }}>
+                  <span className="block w-full" style={{ height: '10px', background: 'rgba(59, 130, 246, 0.85)', borderRadius: '3px' }}></span>
+                </span>
+              </span>
+              {" "}Automation System</span>
             </motion.h1>
 
             {/* Subheadline */}
@@ -170,20 +179,31 @@ export default function PublicHomePage() {
               transition={{ duration: 0.8, delay: 0.2 }}
               className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto"
             >
-              The first AI-powered loan origination system.
+              Lendry.AI automates origination and processing so lending teams can move deals forward with clarity, speed, and control.
             </motion.p>
 
-            {/* CTA Button - Borderless Text Style */}
+            {/* CTA Buttons */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.3 }}
-              className="flex justify-center pt-4"
+              className="flex flex-col sm:flex-row gap-4 justify-center pt-4"
             >
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-white border-white/30 hover:border-white/60"
+                onClick={() => {
+                  const el = document.getElementById('how-it-works');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                See how Lendry.AI works &gt;
+              </Button>
               <Link href="/register">
-                <a className="text-lg text-white/90 hover:text-white border-b border-transparent hover:border-white/50 transition-all duration-300 pb-1">
-                  Start Free
-                </a>
+                <Button size="lg" variant="outline" className="text-white border-white/30 hover:border-white/60">
+                  Request access
+                </Button>
               </Link>
             </motion.div>
           </motion.div>
