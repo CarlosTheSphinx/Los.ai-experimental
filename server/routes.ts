@@ -3498,7 +3498,7 @@ export async function registerRoutes(
   registerProcessorRoutes(app);
 
   // ==================== AI REVIEW ROUTES ====================
-  registerAiReviewRoutes(app);
+  registerAiReviewRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // ==================== BROKER SDR ROUTES ====================
   registerBrokerSdrRoutes(app);

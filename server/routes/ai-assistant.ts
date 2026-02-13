@@ -31,7 +31,7 @@ export function registerAiAssistantRoutes(app: Express): void {
    */
   app.get("/api/assistant/conversations", authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
@@ -50,7 +50,7 @@ export function registerAiAssistantRoutes(app: Express): void {
    */
   app.post("/api/assistant/conversations", authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
@@ -99,7 +99,7 @@ export function registerAiAssistantRoutes(app: Express): void {
     async (req: AuthRequest, res: Response) => {
       try {
         const conversationId = parseInt(req.params.id);
-        const userId = req.userId;
+        const userId = req.user?.id;
 
         if (!userId) {
           return res.status(401).json({ error: "Not authenticated" });
@@ -133,7 +133,7 @@ export function registerAiAssistantRoutes(app: Express): void {
     async (req: AuthRequest, res: Response) => {
       try {
         const conversationId = parseInt(req.params.id);
-        const userId = req.userId;
+        const userId = req.user?.id;
         const { content, voiceInput } = req.body;
 
         if (!userId) {
@@ -187,7 +187,7 @@ export function registerAiAssistantRoutes(app: Express): void {
     audioBodyParser,
     async (req: AuthRequest, res: Response) => {
       try {
-        const userId = req.userId;
+        const userId = req.user?.id;
         if (!userId) {
           return res.status(401).json({ error: "Not authenticated" });
         }
@@ -215,7 +215,7 @@ export function registerAiAssistantRoutes(app: Express): void {
    */
   app.get("/api/assistant/briefing", authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.userId;
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
