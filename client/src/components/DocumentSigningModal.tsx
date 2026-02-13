@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, Users, FileText, Send, Plus, Trash2, X, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Check, Mail, ZoomIn, ZoomOut, FileStack, Sparkles, ExternalLink, Loader2, Copy, BookmarkPlus, PanelRightOpen, PanelRightClose, Save, AlertTriangle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBranding } from "@/hooks/use-branding";
 import type { SavedQuote } from "@shared/schema";
 import { Document as PDFDocument, Page as PDFPage, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -487,6 +488,7 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
 
 export function DocumentSigningModal({ open, onClose, quote, existingDocumentId }: DocumentSigningModalProps) {
   const { toast } = useToast();
+  const { branding } = useBranding();
   type Step = "upload" | "fields" | "send";
   const [step, setStep] = useState<Step>("upload");
   const [documentId, setDocumentId] = useState<number | null>(null);
@@ -498,7 +500,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
   const [selectedFieldType, setSelectedFieldType] = useState<string | null>(null);
   const [selectedSignerIndex, setSelectedSignerIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [senderName, setSenderName] = useState("Sphinx Capital");
+  const [senderName, setSenderName] = useState(branding.emailSignature);
   const [pdfScale, setPdfScale] = useState(1.0);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 612, height: 792 });
   
@@ -895,7 +897,7 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
       if (!documentId) throw new Error('No document to send');
       const res = await apiRequest('POST', `/api/documents/${documentId}/pandadoc/send`, {
         subject: `Please sign: ${quote.quoteName || 'Document'}`,
-        message: `Please review and sign this document from ${senderName || 'Sphinx Capital'}.`,
+        message: `Please review and sign this document from ${senderName || branding.companyName}.`,
       });
       const data = await res.json();
       if (!data.success) {

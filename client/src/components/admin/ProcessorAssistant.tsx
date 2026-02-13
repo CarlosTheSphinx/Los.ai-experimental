@@ -70,8 +70,18 @@ interface BriefingContent {
   queueItemsCount: number;
 }
 
-export function ProcessorAssistant() {
-  const [isOpen, setIsOpen] = useState(false);
+interface ProcessorAssistantProps {
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: ProcessorAssistantProps = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setIsOpen = (val: boolean) => {
+    if (onOpenChange) onOpenChange(val);
+    setInternalOpen(val);
+  };
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -311,7 +321,7 @@ export function ProcessorAssistant() {
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-blue-600" />
-                <h3 className="font-semibold">AI Assistant</h3>
+                <h3 className="font-semibold">Your Assistant</h3>
               </div>
               <Button
                 variant="ghost"
@@ -402,7 +412,7 @@ export function ProcessorAssistant() {
                         {currentConversation?.title}
                       </p>
                       <p className="text-xs text-slate-500 mt-2">
-                        Ask me anything about your deals or use voice commands
+                        How can I help?
                       </p>
                     </div>
                   )}

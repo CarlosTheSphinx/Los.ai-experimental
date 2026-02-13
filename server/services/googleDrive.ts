@@ -331,53 +331,63 @@ export async function uploadFileToProjectFolder({
   return { fileId, webViewLink };
 }
 
+/** @deprecated Use syncDealDocumentToDrive instead */
 export async function syncDocumentToDrive(documentId: number): Promise<void> {
-  const [doc] = await db.select()
+  // Legacy wrapper - try both tables for backward compatibility
+  const projectDoc = await db.select()
     .from(projectDocuments)
     .where(eq(projectDocuments.id, documentId))
     .limit(1);
 
-  if (!doc || !doc.filePath) {
-    throw new Error(`Document ${documentId} not found or has no file`);
-  }
+  if (projectDoc.length > 0) {
+    // Found in projectDocuments, but log deprecation
+    console.warn(`syncDocumentToDrive: Document ${documentId} found in deprecated projectDocuments table`);
 
-  await db.update(projectDocuments)
-    .set({ driveUploadStatus: 'PENDING', driveUploadError: null })
-    .where(eq(projectDocuments.id, documentId));
-
-  try {
-    const { ObjectStorageService } = await import('../replit_integrations/object_storage/objectStorage');
-    const objectStorageService = new ObjectStorageService();
-    const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
-    const fileStream = objectFile.createReadStream();
-
-    const mimeType = doc.documentType === 'pdf' ? 'application/pdf' : 'application/octet-stream';
-
-    const { fileId, webViewLink } = await uploadFileToProjectFolder({
-      projectId: doc.projectId,
-      fileStream,
-      originalName: doc.documentName,
-      mimeType,
-    });
+    const doc = projectDoc[0];
+    if (!doc.filePath) {
+      throw new Error(`Document ${documentId} not found or has no file`);
+    }
 
     await db.update(projectDocuments)
-      .set({
-        googleDriveFileId: fileId,
-        googleDriveFileUrl: webViewLink,
-        googleDriveMimeType: mimeType,
-        driveUploadStatus: 'OK',
-        driveUploadError: null,
-      })
-      .where(eq(projectDocuments.id, documentId));
-  } catch (error: any) {
-    await db.update(projectDocuments)
-      .set({
-        driveUploadStatus: 'ERROR',
-        driveUploadError: error.message || 'Unknown error uploading to Drive',
-      })
+      .set({ driveUploadStatus: 'PENDING', driveUploadError: null })
       .where(eq(projectDocuments.id, documentId));
 
-    throw error;
+    try {
+      const { ObjectStorageService } = await import('../replit_integrations/object_storage/objectStorage');
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
+      const fileStream = objectFile.createReadStream();
+
+      const mimeType = doc.documentType === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+
+      const { fileId, webViewLink } = await uploadFileToProjectFolder({
+        projectId: doc.projectId,
+        fileStream,
+        originalName: doc.documentName,
+        mimeType,
+      });
+
+      await db.update(projectDocuments)
+        .set({
+          googleDriveFileId: fileId,
+          googleDriveFileUrl: webViewLink,
+          googleDriveMimeType: mimeType,
+          driveUploadStatus: 'OK',
+          driveUploadError: null,
+        })
+        .where(eq(projectDocuments.id, documentId));
+    } catch (error: any) {
+      await db.update(projectDocuments)
+        .set({
+          driveUploadStatus: 'ERROR',
+          driveUploadError: error.message || 'Unknown error uploading to Drive',
+        })
+        .where(eq(projectDocuments.id, documentId));
+
+      throw error;
+    }
+  } else {
+    throw new Error(`Document ${documentId} not found in projectDocuments table`);
   }
 }
 

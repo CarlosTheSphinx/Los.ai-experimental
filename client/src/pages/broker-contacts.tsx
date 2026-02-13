@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Upload, Search, Edit2, Trash2, Mail, MessageSquare, Sparkles } from 'lucide-react';
+import { Plus, Upload, Search, Edit2, Trash2, Mail, MessageSquare, Sparkles, Target } from 'lucide-react';
 import { api } from '@shared/routes';
 
 interface Contact {
@@ -289,18 +289,29 @@ export default function BrokerContactsPage() {
 
   const counts = getContactTypeCounts();
 
+  const handleSmartProspect = () => {
+    toast({
+      title: 'Smart Prospect',
+      description: 'Smart Prospect is enriching your contacts...',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">My Contacts</h1>
+            <h1 className="text-3xl font-bold">Contacts</h1>
             <p className="text-muted-foreground mt-1">
-              Manage and organize your broker contacts
+              Powered by Smart Prospect
             </p>
           </div>
           <div className="flex gap-2">
+            <Button onClick={handleSmartProspect} className="gap-2">
+              <Target className="w-4 h-4" />
+              Smart Prospect
+            </Button>
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
               <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()} className="gap-2">

@@ -8,16 +8,31 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Send, Bell, User, Clock, Plus, MessageCircle, Briefcase } from "lucide-react";
+import {
+  MessageSquare,
+  Send,
+  Bell,
+  User,
+  Clock,
+  Plus,
+  MessageCircle,
+  Briefcase,
+  Star,
+  Archive,
+  Phone,
+  FileText,
+  MoreHorizontal,
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { 
-  listThreads, 
-  getThread, 
-  sendMessage, 
-  markRead, 
+import { useBranding } from "@/hooks/use-branding";
+import {
+  listThreads,
+  getThread,
+  sendMessage,
+  markRead,
   createThread,
-  type MessageThread, 
-  type Message 
+  type MessageThread,
+  type Message
 } from "@/lib/messagesApi";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
@@ -37,16 +52,52 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
+
+// Message templates
+const MESSAGE_TEMPLATES = [
+  {
+    name: "Document Request",
+    content: "Hi, could you please provide the following documents for your loan application:\n\n[list documents]"
+  },
+  {
+    name: "Status Update",
+    content: "I wanted to give you a quick update on your loan.\n\n[update details]"
+  },
+  {
+    name: "Missing Information",
+    content: "We noticed some information is missing from your application. Could you please provide:\n\n[details]"
+  },
+  {
+    name: "Approval Notice",
+    content: "Great news! Your loan has been conditionally approved. Here are the next steps:\n\n[steps]"
+  },
+  {
+    name: "Follow Up",
+    content: "I'm following up on our previous conversation.\n\n[details]"
+  }
+];
+
+const QUICK_REPLIES = [
+  "Thanks, received!",
+  "I'll look into this",
+  "Can you send more details?"
+];
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const { branding } = useBranding();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const urlDealId = searchParams.get('dealId');
   const openNew = searchParams.get('new') === 'true';
-  
+
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [isNewThreadDialogOpen, setIsNewThreadDialogOpen] = useState(false);
@@ -54,9 +105,37 @@ export default function MessagesPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedDealId, setSelectedDealId] = useState<string>("");
   const [initialMessage, setInitialMessage] = useState("");
+  const [starredThreadIds, setStarredThreadIds] = useState<Set<number>>(new Set());
+  const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
+
+  const toggleStarred = (threadId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newStarred = new Set(starredThreadIds);
+    if (newStarred.has(threadId)) {
+      newStarred.delete(threadId);
+    } else {
+      newStarred.add(threadId);
+    }
+    setStarredThreadIds(newStarred);
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "?";
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const insertTemplate = (templateContent: string) => {
+    setDraft(templateContent);
+    setIsTemplatePopoverOpen(false);
+  };
 
   const { data: threadsData, isLoading: threadsLoading, refetch: refetchThreads } = useQuery({
     queryKey: ["/api/messages/threads"],
@@ -168,7 +247,7 @@ export default function MessagesPage() {
           <div>
             <h1 className="text-2xl font-bold">Messages</h1>
             <p className="text-sm text-muted-foreground">
-              {isAdmin ? "Communicate with borrowers and partners" : "Messages from Sphinx Capital"}
+              {isAdmin ? "Communicate with borrowers and partners" : `Messages from ${branding.companyName}`}
             </p>
           </div>
         </div>
@@ -182,7 +261,7 @@ export default function MessagesPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{isAdmin ? "Start New Conversation" : "Message Sphinx Capital"}</DialogTitle>
+              <DialogTitle>{isAdmin ? "Start New Conversation" : `Message ${branding.companyName}`}</DialogTitle>
               <DialogDescription>
                 {isAdmin 
                   ? "Select a user to start a new conversation thread."
@@ -288,30 +367,65 @@ export default function MessagesPage() {
             ) : (
               <div className="p-2">
                 {threads.map((thread) => (
-                  <button
+                  <div
                     key={thread.id}
-                    onClick={() => setActiveThreadId(thread.id)}
-                    className={`w-full text-left p-3 rounded-lg mb-1 transition-colors hover-elevate ${
+                    className={`group w-full text-left p-3 rounded-lg mb-1 transition-colors ${
                       thread.id === activeThreadId
                         ? "bg-primary/10 border border-primary/20"
                         : "hover:bg-muted"
                     }`}
                     data-testid={`thread-item-${thread.id}`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm truncate">
-                        {thread.subject || (thread.dealId ? `Deal #${thread.dealId}` : "General")}
-                      </span>
+                    <button
+                      onClick={() => setActiveThreadId(thread.id)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm truncate">
+                            {thread.userName || "User"}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {thread.subject || (thread.dealId ? `Deal #${thread.dealId}` : "General")}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {thread.unreadCount && thread.unreadCount > 0 && (
+                            <span className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                          )}
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {format(new Date(thread.lastMessageAt), "MMM d")}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">
+                        {(thread as any).lastMessagePreview || "No messages yet"}
+                      </div>
+                    </button>
+
+                    <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => toggleStarred(thread.id, e)}
+                        className="p-1 hover:bg-muted rounded transition-colors"
+                      >
+                        <Star
+                          className={`h-4 w-4 ${
+                            starredThreadIds.has(thread.id)
+                              ? "fill-yellow-500 text-yellow-500"
+                              : "text-muted-foreground"
+                          }`}
+                        />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        className="p-1 hover:bg-muted rounded transition-colors"
+                      >
+                        <Archive className="h-4 w-4 text-muted-foreground" />
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <User className="h-3 w-3" />
-                      <span className="truncate">{thread.userName}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                      <Clock className="h-3 w-3" />
-                      <span>{format(new Date(thread.lastMessageAt), "MMM d, h:mm a")}</span>
-                    </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -322,18 +436,31 @@ export default function MessagesPage() {
           {activeThread ? (
             <>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">
-                      {activeThread.subject || (activeThread.dealId ? `Deal #${activeThread.dealId}` : "General Conversation")}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      With: {(activeThread as any).userName || "User"}
-                    </p>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="flex items-center justify-center h-10 w-10 rounded-full bg-muted text-sm font-semibold">
+                      {getInitials((activeThread as any).userName)}
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">
+                        {(activeThread as any).userName || "User"}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">
+                        {activeThread.subject || (activeThread.dealId ? `Deal #${activeThread.dealId}` : "General Conversation")}
+                      </p>
+                    </div>
                   </div>
-                  {activeThread.dealId && (
-                    <Badge variant="outline">Deal #{activeThread.dealId}</Badge>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Phone className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <Separator />
@@ -385,22 +512,80 @@ export default function MessagesPage() {
                 )}
               </ScrollArea>
               <Separator />
-              <div className="p-4 flex gap-2">
-                <Input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type a message..."
-                  className="flex-1"
-                  data-testid="input-message"
-                />
-                <Button 
-                  onClick={handleSend} 
-                  disabled={!draft.trim() || sendMutation.isPending}
-                  data-testid="button-send-message"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+
+              {messages.length > 0 && (
+                <>
+                  <div className="px-4 pt-3 pb-0">
+                    <div className="flex gap-2 flex-wrap">
+                      {QUICK_REPLIES.map((reply) => (
+                        <Button
+                          key={reply}
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-8"
+                          onClick={() => setDraft(reply)}
+                        >
+                          {reply}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <Separator className="mt-3" />
+                </>
+              )}
+
+              <div className="p-4 space-y-3">
+                <div className="flex gap-2">
+                  <Popover open={isTemplatePopoverOpen} onOpenChange={setIsTemplatePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        title="Message templates"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-56 p-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
+                          Message Templates
+                        </p>
+                        {MESSAGE_TEMPLATES.map((template) => (
+                          <button
+                            key={template.name}
+                            onClick={() => insertTemplate(template.content)}
+                            className="w-full text-left px-2 py-2 rounded hover:bg-muted transition-colors text-sm"
+                          >
+                            <div className="font-medium">{template.name}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-1">
+                              {template.content.split("\n")[0]}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message..."
+                    className="flex-1"
+                    data-testid="input-message"
+                  />
+                  <Button
+                    onClick={handleSend}
+                    disabled={!draft.trim() || sendMutation.isPending}
+                    data-testid="button-send-message"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </>
           ) : (

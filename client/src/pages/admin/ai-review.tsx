@@ -176,7 +176,7 @@ function GuidelineUploader({ programId, onSuccess }: { programId: number; onSucc
               Auto-Generate Rules from Guidelines
             </h3>
             <p className="text-sm text-muted-foreground">
-              Upload a PDF of your document stipulations. Our AI will automatically extract document review rules.
+              Upload your guidelines and Lane will auto-generate review rules
             </p>
           </div>
           <div className="flex gap-2">
@@ -407,7 +407,7 @@ export default function AIReviewPage() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-ai-review-title">
           <Sparkles className="h-6 w-6 text-primary" />
-          AI Document Review Configuration
+          Lane - Document Review Configuration
         </h1>
         <p className="text-muted-foreground mt-1">
           Configure intelligent document review rules for your loan programs. Upload guidelines to auto-generate rules, or create them manually.
@@ -469,7 +469,7 @@ export default function AIReviewPage() {
           <CardContent className="py-16 text-center">
             <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary opacity-30" />
             <h3 className="font-semibold text-lg mb-2">
-              Configure AI Document Review
+              Configure Lane Document Review
             </h3>
             <p className="text-muted-foreground text-sm max-w-md mx-auto">
               Select a loan program above to configure AI review rules. You can either upload guidelines

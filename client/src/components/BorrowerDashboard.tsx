@@ -404,6 +404,9 @@ export function BorrowerDashboard() {
               </div>
             </div>
             <Progress value={data.stats.completionPercentage} className="h-3 mt-4" />
+            <p className="text-xs text-muted-foreground mt-3 text-center">
+              Lane has reviewed {data.stats.approvedDocuments} of {data.stats.totalDocuments} documents
+            </p>
           </CardContent>
         </Card>
       )}
@@ -705,11 +708,16 @@ function DocumentCard({ doc, expanded, onToggleExpanded }: DocumentCardProps) {
 
           {/* Action */}
           {doc.status === 'pending' && (
-            <div className="flex-shrink-0">
+            <div className="flex flex-col items-end gap-2 flex-shrink-0">
               <Button size="sm" variant="outline">
                 <UploadCloud className="h-4 w-4 mr-1" />
                 Upload
               </Button>
+            </div>
+          )}
+          {doc.status === 'uploaded' && (
+            <div className="flex-shrink-0">
+              <p className="text-xs text-amber-600 font-medium">Lane is reviewing your document...</p>
             </div>
           )}
         </div>

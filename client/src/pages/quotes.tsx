@@ -23,6 +23,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useBranding } from "@/hooks/use-branding";
 import type { SavedQuote } from "@shared/schema";
 import { DocumentSigningModal } from "@/components/DocumentSigningModal";
 import { TermSheetStatus } from "@/components/TermSheetStatus";
@@ -44,6 +45,7 @@ interface DocumentInfo {
 
 function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
   const { toast } = useToast();
+  const { branding } = useBranding();
 
   const { data, isLoading } = useQuery<{ success: boolean; documents: DocumentInfo[] }>({
     queryKey: ['/api/quotes', quoteId, 'documents'],
@@ -57,7 +59,7 @@ function QuoteDocumentStatus({ quoteId }: { quoteId: number }) {
     mutationFn: async (documentId: number) => {
       const res = await apiRequest('POST', `/api/documents/${documentId}/pandadoc/send`, {
         subject: 'Reminder: Please sign this document',
-        message: 'This is a reminder to review and sign the attached document from Sphinx Capital.',
+        message: `This is a reminder to review and sign the attached document from ${branding.companyName}.`,
       });
       return res.json();
     },

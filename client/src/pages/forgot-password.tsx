@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { useBranding } from '@/hooks/use-branding';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
 import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
@@ -20,6 +21,7 @@ type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 
 export default function ForgotPasswordPage() {
   const { toast } = useToast();
+  const { branding } = useBranding();
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
 
@@ -52,7 +54,7 @@ export default function ForgotPasswordPage() {
         <div className="flex items-center justify-center w-full p-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <img src={sphinxLogo} alt={branding.companyName} className="h-10 w-auto object-contain mx-auto mb-6" />
               <div className="flex justify-center mb-4">
                 <CheckCircle className="h-12 w-12 text-success" />
               </div>
@@ -81,7 +83,7 @@ export default function ForgotPasswordPage() {
       <div className="flex items-center justify-center w-full p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+            <img src={sphinxLogo} alt={branding.companyName} className="h-10 w-auto object-contain mx-auto mb-6" />
             <CardTitle className="text-2xl font-bold tracking-tight">Forgot Password</CardTitle>
             <CardDescription>
               Enter your email and we'll send you a reset link

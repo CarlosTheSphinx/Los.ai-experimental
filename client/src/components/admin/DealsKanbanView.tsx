@@ -177,6 +177,15 @@ function DealCardContent({
   const nameParts = (project.borrowerName || project.projectName || "").split(" - ");
   const displayName = project.borrowerName || nameParts[0] || "Unknown";
 
+  // Mock Lane confidence calculation based on progress percentage
+  const laneConfidence = Math.min(95, Math.max(60, project.progressPercentage + 20));
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 80) return 'bg-green-100 text-green-700';
+    if (confidence >= 50) return 'bg-yellow-100 text-yellow-700';
+    return 'bg-red-100 text-red-700';
+  };
+
   return (
     <Card
       className={cn("overflow-visible", isDragOverlay && "shadow-lg opacity-90")}
@@ -192,15 +201,20 @@ function DealCardContent({
               {displayName}
             </span>
           </Link>
-          {dragHandleProps && (
-            <div
-              {...dragHandleProps}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded hover-elevate flex-shrink-0"
-              data-testid={`drag-handle-deal-${project.id}`}
-            >
-              <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${getConfidenceColor(laneConfidence)}`} data-testid={`lane-confidence-${project.id}`}>
+              Lane: {laneConfidence}%
+            </span>
+            {dragHandleProps && (
+              <div
+                {...dragHandleProps}
+                className="cursor-grab active:cursor-grabbing p-0.5 rounded hover-elevate"
+                data-testid={`drag-handle-deal-${project.id}`}
+              >
+                <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+            )}
+          </div>
         </div>
 
         {project.propertyAddress && (

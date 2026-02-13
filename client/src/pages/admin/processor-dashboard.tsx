@@ -366,7 +366,8 @@ export default function ProcessorDashboard() {
               <Zap className="h-8 w-8 text-blue-600" />
               One-Click Processing
             </h1>
-            <p className="text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">Powered by Lane — AI Document Review</p>
+            <p className="text-xs text-muted-foreground mt-1">
               {format(selectedDate, 'EEEE, MMMM d, yyyy')}
             </p>
           </div>
@@ -382,7 +383,7 @@ export default function ProcessorDashboard() {
         </div>
 
         {/* Stats Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-blue-900">{stats.total || 0}</div>
@@ -411,6 +412,12 @@ export default function ProcessorDashboard() {
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-red-900">{stats.failed || 0}</div>
               <p className="text-sm text-red-700">Failed</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100">
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold text-emerald-900">~12 hrs</div>
+              <p className="text-sm text-emerald-700">Est. Time Saved</p>
             </CardContent>
           </Card>
         </div>
@@ -473,8 +480,8 @@ export default function ProcessorDashboard() {
             <Card className="border-dashed">
               <CardContent className="text-center py-8">
                 <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                <p className="text-lg font-semibold">All clear for today!</p>
-                <p className="text-muted-foreground">No items need processing.</p>
+                <p className="text-lg font-semibold">All caught up!</p>
+                <p className="text-muted-foreground">No deals in the processing queue.</p>
               </CardContent>
             </Card>
           ) : (

@@ -21,11 +21,13 @@ import {
   Sparkles,
   ClipboardEdit,
   Search,
-
   Zap,
-
   Send,
-
+  UserCircle,
+  Target,
+  BotMessageSquare,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -46,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useBranding } from "@/hooks/use-branding";
 import { InboxBadge } from "@/components/InboxBadge";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
@@ -73,7 +76,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
-  { href: "/broker/outreach", label: "Outreach", icon: Send, shortcut: undefined },
+  { href: "/broker/outreach", label: "Smart Prospect", icon: Target, shortcut: undefined },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
 ];
@@ -95,7 +98,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
-  { href: "/admin/ai-review", label: "AI Review", icon: Sparkles, requiredPermission: "programs.view" },
+  { href: "/admin/ai-review", label: "Lane", icon: UserCircle, requiredPermission: "programs.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘3" },
@@ -106,9 +109,12 @@ const adminNavItems: NavItem[] = [
 function AppLayoutContent({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const { setOpenMobile, isMobile } = useSidebar();
+  const { setOpenMobile, isMobile, open, setOpen } = useSidebar();
   const { hasPermission, isSuperAdmin } = usePermissions();
+  const { branding } = useBranding();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin', 'processor'].includes(user.role);
   const isBorrower = user?.userType === 'borrower';
@@ -139,25 +145,47 @@ function AppLayoutContent({ children }: AppLayoutProps) {
         e.preventDefault();
         setCommandPaletteOpen(true);
       }
+      // Alt+S toggles sidebar
+      if (e.altKey && e.key === 's') {
+        e.preventDefault();
+        setOpen(!open);
+      }
+      // Alt+A toggles Your Assistant
+      if (e.altKey && e.key === 'a') {
+        e.preventDefault();
+        setAssistantOpen(!assistantOpen);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [open, assistantOpen]);
 
   return (
     <div className="flex h-screen w-full bg-background">
       <Sidebar collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border space-y-3">
-          <div className="flex flex-col items-start gap-1">
-            <img
-              src={sphinxLogo}
-              alt="Sphinx Capital"
-              className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
-            />
-            <span className="text-[10px] text-muted-foreground font-medium group-data-[collapsible=icon]:hidden">
-              Intelligent Lending
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col items-start gap-1">
+              <img
+                src={sphinxLogo}
+                alt={branding.companyName}
+                className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
+                title="Logo"
+              />
+              <span className="text-[10px] text-muted-foreground font-medium group-data-[collapsible=icon]:hidden">
+                Intelligent Lending
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden"
+              onClick={() => setSidebarPinned(!sidebarPinned)}
+              title={sidebarPinned ? "Unpin sidebar" : "Pin sidebar open"}
+            >
+              {sidebarPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+            </Button>
           </div>
           <Button
             variant="outline"
@@ -167,6 +195,15 @@ function AppLayoutContent({ children }: AppLayoutProps) {
           >
             <Search className="h-3.5 w-3.5 mr-2" />
             Search... ⌘K
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-full h-8 hidden group-data-[collapsible=icon]:flex items-center justify-center text-muted-foreground"
+            onClick={() => setCommandPaletteOpen(true)}
+            title="Search (⌘K)"
+          >
+            <Search className="h-4 w-4" />
           </Button>
         </SidebarHeader>
         <SidebarContent>
@@ -306,8 +343,20 @@ function AppLayoutContent({ children }: AppLayoutProps) {
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
 
-      {/* AI Assistant Panel - show for admin/processor users */}
-      {isAdmin && <ProcessorAssistant />}
+      {/* Your Assistant - AI Panel for admin/processor users */}
+      {isAdmin && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
+
+      {/* Your Assistant FAB (Floating Action Button) */}
+      {isAdmin && !assistantOpen && (
+        <button
+          onClick={() => setAssistantOpen(true)}
+          className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center group"
+          title="Your Assistant (Alt+A)"
+          data-testid="fab-your-assistant"
+        >
+          <BotMessageSquare className="h-6 w-6 group-hover:scale-110 transition-transform" />
+        </button>
+      )}
     </div>
   );
 }

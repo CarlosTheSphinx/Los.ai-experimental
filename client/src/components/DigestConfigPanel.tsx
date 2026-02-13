@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { useBranding } from '@/hooks/use-branding';
 import { apiRequest } from '@/lib/queryClient';
 import { 
   Bell, 
@@ -104,6 +105,7 @@ const TIMEZONE_OPTIONS = [
 
 export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const { toast } = useToast();
+  const { branding } = useBranding();
   const queryClient = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
   const [showAddRecipient, setShowAddRecipient] = useState(false);
@@ -498,8 +500,8 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
 
               <div className="space-y-2">
                 <Label>Email Body</Label>
-                <Textarea 
-                  value={config.emailBody || "Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nSphinx Capital"}
+                <Textarea
+                  value={config.emailBody || `Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\n${branding.emailSignature}`}
                   onChange={(e) => handleConfigChange('emailBody', e.target.value)}
                   className="min-h-[200px] font-mono text-sm"
                   placeholder="Enter email body template..."
@@ -509,8 +511,8 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
 
               <div className="space-y-2">
                 <Label>SMS Message</Label>
-                <Textarea 
-                  value={config.smsBody || "Sphinx Capital: {{documentsCount}} docs needed for your loan. Log in to your portal for details."}
+                <Textarea
+                  value={config.smsBody || `${branding.smsSignature}: {{documentsCount}} docs needed for your loan. Log in to your portal for details.`}
                   onChange={(e) => handleConfigChange('smsBody', e.target.value)}
                   className="min-h-[80px] font-mono text-sm"
                   placeholder="Enter SMS template..."

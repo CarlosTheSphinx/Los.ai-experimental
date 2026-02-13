@@ -13635,5 +13635,59 @@ Return JSON only:
     });
   }, 10000);
 
+  // Branding endpoints
+  app.get('/api/settings/branding', async (req: AuthRequest, res: Response) => {
+    try {
+      const settings = await storage.getAllSettings();
+      const brandingSettings = settings.filter(s => s.settingKey.startsWith('branding_'));
+
+      const branding = {
+        companyName: brandingSettings.find(s => s.settingKey === 'branding_company_name')?.settingValue ?? 'Sphinx Capital',
+        companyShortName: brandingSettings.find(s => s.settingKey === 'branding_company_short_name')?.settingValue ?? 'Sphinx',
+        copyrightYear: parseInt(brandingSettings.find(s => s.settingKey === 'branding_copyright_year')?.settingValue ?? new Date().getFullYear().toString()),
+        emailSignature: brandingSettings.find(s => s.settingKey === 'branding_email_signature')?.settingValue ?? 'Sphinx Capital',
+        smsSignature: brandingSettings.find(s => s.settingKey === 'branding_sms_signature')?.settingValue ?? 'Sphinx Capital',
+        logoUrl: brandingSettings.find(s => s.settingKey === 'branding_logo_url')?.settingValue,
+        logoDarkUrl: brandingSettings.find(s => s.settingKey === 'branding_logo_dark_url')?.settingValue,
+      };
+
+      res.json(branding);
+    } catch (error) {
+      console.error('Error fetching branding settings:', error);
+      res.status(500).json({ error: 'Failed to fetch branding settings' });
+    }
+  });
+
+  app.post('/api/admin/settings/branding', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { companyName, companyShortName, copyrightYear, emailSignature, smsSignature, logoUrl, logoDarkUrl } = req.body;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Upsert each setting
+      const updates = [
+        { key: 'branding_company_name', value: companyName },
+        { key: 'branding_company_short_name', value: companyShortName },
+        { key: 'branding_copyright_year', value: copyrightYear.toString() },
+        { key: 'branding_email_signature', value: emailSignature },
+        { key: 'branding_sms_signature', value: smsSignature },
+        { key: 'branding_logo_url', value: logoUrl || '' },
+        { key: 'branding_logo_dark_url', value: logoDarkUrl || '' },
+      ];
+
+      for (const { key, value } of updates) {
+        await storage.upsertSetting(key, value, `Branding setting: ${key}`, userId);
+      }
+
+      res.json({ success: true, message: 'Branding settings updated' });
+    } catch (error) {
+      console.error('Error updating branding settings:', error);
+      res.status(500).json({ error: 'Failed to update branding settings' });
+    }
+  });
+
   return httpServer;
 }

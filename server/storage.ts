@@ -1,8 +1,9 @@
 
 import { db } from "./db";
-import { 
+import {
   pricingRequests, savedQuotes, documents, signers, documentFields, documentAuditLog, users,
   projects, projectStages, projectTasks, projectActivity, projectDocuments, projectWebhooks,
+  dealDocuments, dealDocumentFiles,
   systemSettings, adminTasks, adminActivity, dealStages, teamPermissions,
   commercialSubmissions, commercialSubmissionDocuments,
   documentReviewResults,
@@ -15,6 +16,7 @@ import {
   type Project, type InsertProject, type ProjectStage, type InsertProjectStage,
   type ProjectTask, type InsertProjectTask, type ProjectActivity, type InsertProjectActivity,
   type ProjectDocument, type InsertProjectDocument, type ProjectWebhook, type InsertProjectWebhook,
+  type DealDocument, type InsertDealDocument, type DealDocumentFile,
   type SystemSetting, type InsertSystemSetting, type AdminTask, type InsertAdminTask,
   type AdminActivity, type InsertAdminActivity,
   type DealStage, type InsertDealStage,
@@ -598,15 +600,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Project documents methods
+  /** @deprecated Use dealDocuments methods instead */
   async createProjectDocument(doc: InsertProjectDocument): Promise<ProjectDocument> {
     const [created] = await db.insert(projectDocuments).values(doc).returning();
     return created;
   }
 
+  /** @deprecated Use dealDocuments methods instead */
   async getDocumentsByProjectId(projectId: number): Promise<ProjectDocument[]> {
     return await db.select().from(projectDocuments)
       .where(eq(projectDocuments.projectId, projectId))
       .orderBy(desc(projectDocuments.uploadedAt));
+  }
+
+  // Deal documents methods
+  async createDealDocument(doc: InsertDealDocument): Promise<DealDocument> {
+    const [created] = await db.insert(dealDocuments).values(doc).returning();
+    return created;
+  }
+
+  async getDealDocumentsByDealId(dealId: number): Promise<DealDocument[]> {
+    return await db.select().from(dealDocuments)
+      .where(eq(dealDocuments.dealId, dealId))
+      .orderBy(desc(dealDocuments.createdAt));
+  }
+
+  async getDealDocumentById(documentId: number): Promise<DealDocument | undefined> {
+    const [doc] = await db.select().from(dealDocuments)
+      .where(eq(dealDocuments.id, documentId));
+    return doc;
+  }
+
+  async updateDealDocument(id: number, updates: Partial<DealDocument>): Promise<DealDocument | undefined> {
+    const [updated] = await db.update(dealDocuments).set(updates).where(eq(dealDocuments.id, id)).returning();
+    return updated;
   }
 
   // Project webhooks methods
@@ -736,22 +763,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Admin Activity methods
+  /** @deprecated Use createProjectActivity with isInternal=true instead */
   async createAdminActivity(activity: InsertAdminActivity): Promise<AdminActivity> {
-    const [created] = await db.insert(adminActivity).values(activity).returning();
-    return created;
+    // Convert to projectActivity with isInternal=true
+    const projectActivityData: InsertProjectActivity = {
+      projectId: activity.projectId,
+      userId: activity.userId,
+      activityType: activity.actionType,
+      activityDescription: activity.actionDescription,
+      metadata: activity.metadata,
+      visibleToBorrower: false,
+      isInternal: true,
+    };
+    const [created] = await db.insert(projectActivity).values(projectActivityData).returning();
+    return created as AdminActivity;
   }
 
+  /** @deprecated Use queryProjectActivity with isInternal=true instead */
   async getAdminActivityByProjectId(projectId: number): Promise<AdminActivity[]> {
-    return await db.select().from(adminActivity)
-      .where(eq(adminActivity.projectId, projectId))
-      .orderBy(desc(adminActivity.createdAt))
-      .limit(100);
+    return await db.select().from(projectActivity)
+      .where(and(
+        eq(projectActivity.projectId, projectId),
+        eq(projectActivity.isInternal, true)
+      ))
+      .orderBy(desc(projectActivity.createdAt))
+      .limit(100) as Promise<AdminActivity[]>;
   }
 
+  /** @deprecated Use queryProjectActivity with isInternal=true instead */
   async getRecentAdminActivity(limit: number = 20): Promise<AdminActivity[]> {
-    return await db.select().from(adminActivity)
-      .orderBy(desc(adminActivity.createdAt))
-      .limit(limit);
+    return await db.select().from(projectActivity)
+      .where(eq(projectActivity.isInternal, true))
+      .orderBy(desc(projectActivity.createdAt))
+      .limit(limit) as Promise<AdminActivity[]>;
   }
 
   // Dashboard stats

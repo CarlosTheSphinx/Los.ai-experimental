@@ -31,6 +31,7 @@ interface DashboardStats {
   activePipelineValue: number;
   fundedVolume: number;
 }
+// Note: activeProjects and completedProjects internally refer to deals
 
 interface AdminActivityItem {
   id: number;
@@ -627,7 +628,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-4xl font-bold tracking-tight">{stats?.totalActiveUsers || 0}</div>
+              <div className="text-5xl font-bold tracking-tight">{stats?.totalActiveUsers || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.regularUsers || 0} regular users</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -649,7 +650,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-4xl font-bold tracking-tight">{stats?.activeProjects || 0}</div>
+              <div className="text-5xl font-bold tracking-tight">{stats?.activeProjects || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.completedProjects || 0} completed</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -693,7 +694,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-4xl font-bold tracking-tight">{formatCurrency(stats?.fundedVolume || 0)}</div>
+              <div className="text-5xl font-bold tracking-tight">{formatCurrency(stats?.fundedVolume || 0)}</div>
               <p className="text-xs text-muted-foreground mt-1">Total funded</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -707,34 +708,39 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Actions Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
-          <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
-            <div className="rounded-lg bg-primary/10 p-3">
-              <Plus className="h-5 w-5 text-primary" />
-            </div>
-            <p className="font-semibold text-sm text-foreground">New Deal</p>
-            <p className="text-xs text-muted-foreground text-center">Create a new lending opportunity</p>
-          </CardContent>
-        </Card>
-        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
-          <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
-            <div className="rounded-lg bg-info/10 p-3">
-              <FolderUp className="h-5 w-5 text-info" />
-            </div>
-            <p className="font-semibold text-sm text-foreground">Upload Document</p>
-            <p className="text-xs text-muted-foreground text-center">Add borrower documentation</p>
-          </CardContent>
-        </Card>
-        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
-          <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
-            <div className="rounded-lg bg-accent/10 p-3">
-              <Calculator className="h-5 w-5 text-accent" />
-            </div>
-            <p className="font-semibold text-sm text-foreground">Run Pricing</p>
-            <p className="text-xs text-muted-foreground text-center">Generate loan quote</p>
-          </CardContent>
-        </Card>
+      <div className="space-y-3">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Lane Suggests:</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+            <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Plus className="h-5 w-5 text-primary" />
+              </div>
+              <p className="font-semibold text-sm text-foreground">New Deal</p>
+              <p className="text-xs text-muted-foreground text-center">Create a new lending opportunity</p>
+            </CardContent>
+          </Card>
+          <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+            <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
+              <div className="rounded-lg bg-info/10 p-3">
+                <FolderUp className="h-5 w-5 text-info" />
+              </div>
+              <p className="font-semibold text-sm text-foreground">Upload Document</p>
+              <p className="text-xs text-muted-foreground text-center">Add borrower documentation</p>
+            </CardContent>
+          </Card>
+          <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+            <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
+              <div className="rounded-lg bg-accent/10 p-3">
+                <Calculator className="h-5 w-5 text-accent" />
+              </div>
+              <p className="font-semibold text-sm text-foreground">Run Pricing</p>
+              <p className="text-xs text-muted-foreground text-center">Generate loan quote</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -763,8 +769,17 @@ export default function AdminDashboard() {
 
       <Card data-testid="card-recent-activity">
         <CardHeader>
-          <CardTitle>Recent Admin Activity</CardTitle>
-          <CardDescription>Latest actions taken by staff</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Recent Admin Activity</CardTitle>
+              <CardDescription>Latest actions taken by staff</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-xs h-7">All</Button>
+              <Button variant="outline" size="sm" className="text-xs h-7">My Activity</Button>
+              <Button variant="outline" size="sm" className="text-xs h-7">Lane Activity</Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {activity.length === 0 ? (

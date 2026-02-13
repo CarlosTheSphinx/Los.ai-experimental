@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useBranding } from "@/hooks/use-branding";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 
@@ -152,6 +153,7 @@ export default function AdminPartners() {
   const [isBroadcastDialogOpen, setIsBroadcastDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("partners");
   const { toast } = useToast();
+  const { branding } = useBranding();
   
   const [newPartner, setNewPartner] = useState({
     name: "",
@@ -360,7 +362,7 @@ export default function AdminPartners() {
                     id="broadcast-subject"
                     value={broadcastForm.subject}
                     onChange={(e) => setBroadcastForm({ ...broadcastForm, subject: e.target.value })}
-                    placeholder="Important Update from Sphinx Capital"
+                    placeholder={`Important Update from ${branding.companyName}`}
                     data-testid="input-broadcast-subject"
                   />
                 </div>
@@ -394,7 +396,7 @@ export default function AdminPartners() {
                     id="broadcast-email"
                     value={broadcastForm.emailBody}
                     onChange={(e) => setBroadcastForm({ ...broadcastForm, emailBody: e.target.value })}
-                    placeholder="Dear {{firstName}},&#10;&#10;We wanted to share an important update with you...&#10;&#10;Best regards,&#10;Sphinx Capital Team"
+                    placeholder={`Dear {{firstName}},\n\nWe wanted to share an important update with you...\n\nBest regards,\n${branding.companyName} Team`}
                     rows={8}
                     data-testid="input-broadcast-email"
                   />
@@ -407,7 +409,7 @@ export default function AdminPartners() {
                       id="broadcast-sms"
                       value={broadcastForm.smsBody}
                       onChange={(e) => setBroadcastForm({ ...broadcastForm, smsBody: e.target.value })}
-                      placeholder="Hi {{firstName}}, important update from Sphinx Capital. Check your email for details!"
+                      placeholder={`Hi {{firstName}}, important update from ${branding.companyName}. Check your email for details!`}
                       rows={3}
                       data-testid="input-broadcast-sms"
                     />

@@ -5,13 +5,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/use-auth';
+import { useBranding } from '@/hooks/use-branding';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Shield, Zap, FileCheck, Plus } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
@@ -26,6 +27,7 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const { login } = useAuth();
+  const { branding } = useBranding();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -72,119 +74,23 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left Panel — Brand + Trust Signals (hidden on mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 bg-foreground text-background flex-col justify-between p-12 relative overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute inset-0 bg-gradient-to-br from-foreground via-foreground to-background animate-pulse" />
-        </div>
-        <div className="relative z-10">
+      {/* Left Panel — Cinematic Gradient with Centered Logo & Tagline (hidden on mobile) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-[#0F2438] via-[#1A3A52] to-[#0F1729] text-background flex-col justify-between items-center p-12">
+        {/* Centered Logo & Tagline */}
+        <div className="flex flex-col items-center justify-center flex-1">
           <img
             src={sphinxLogo}
-            alt="Sphinx Capital"
-            className="h-14 w-auto object-contain mb-12 brightness-0 invert"
+            alt={branding.companyName}
+            className="h-16 w-auto object-contain mb-6"
           />
-          <h1 className="text-4xl font-bold tracking-tight mb-4">
-            Intelligent Lending, Simplified
+          <h1 className="text-4xl font-bold tracking-tight text-center">
+            Lending, Automated.
           </h1>
-          <p className="text-lg opacity-80 max-w-md">
-            AI-powered loan origination for private lenders. Close DSCR, RTL, and non-QM deals faster.
-          </p>
-
-          {/* Deal Pipeline Dashboard Mockup */}
-          <div className="mt-8 mb-8 rounded-lg bg-background/5 border border-background/10 p-4 backdrop-blur-sm">
-            {/* Header with title and button */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs uppercase tracking-widest opacity-60 font-semibold">Deal Pipeline</span>
-              <button className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-background px-2.5 py-1 rounded transition-colors">
-                <Plus className="h-3 w-3" />
-                <span>New Deal</span>
-              </button>
-            </div>
-
-            {/* Mini Kanban Board */}
-            <div className="grid grid-cols-4 gap-2">
-              {/* INTAKE Column */}
-              <div>
-                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Intake</div>
-                <div className="space-y-1.5">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
-                      Deal #{2401 + i}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* DOCS Column */}
-              <div>
-                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Docs</div>
-                <div className="space-y-1.5">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
-                      Deal #{2500 + i}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* CONDITIONS Column */}
-              <div>
-                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Conditions</div>
-                <div className="space-y-1.5">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
-                      Deal #{2510 + i}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* CLEAR TO CLOSE Column */}
-              <div>
-                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Clear</div>
-                <div className="space-y-1.5">
-                  <div className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
-                    Deal #2520
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="flex items-start gap-4">
-            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
-              <Zap className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-base">AI-Powered Pricing</p>
-              <p className="text-sm opacity-70">Get instant, data-driven loan pricing in seconds</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
-              <FileCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-base">Smart Document Review</p>
-              <p className="text-sm opacity-70">AI reads and validates documents automatically</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="rounded-full bg-background/10 p-2.5 mt-0.5">
-              <Shield className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-base">Bank-Level Security</p>
-              <p className="text-sm opacity-70">256-bit encryption and SOC 2 compliance</p>
-            </div>
-          </div>
-        </div>
-
-        <p className="text-xs opacity-50 relative z-10">
-          &copy; {new Date().getFullYear()} Sphinx Capital. All rights reserved.
+        {/* Copyright Footer */}
+        <p className="text-xs text-background/60">
+          &copy; {branding.copyrightYear} {branding.companyName}. All rights reserved.
         </p>
       </div>
 
@@ -200,7 +106,7 @@ export default function LoginPage() {
           <div className="lg:hidden text-center">
             <img
               src={sphinxLogo}
-              alt="Sphinx Capital"
+              alt={branding.companyName}
               className="h-12 w-auto object-contain mx-auto mb-4"
             />
           </div>
@@ -314,19 +220,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Trust signals for mobile */}
-          <div className="lg:hidden pt-4 border-t border-border">
-            <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <Shield className="h-3.5 w-3.5" />
-                <span>256-bit encryption</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                <span>AI-powered</span>
-              </div>
-            </div>
-          </div>
         </motion.div>
       </div>
     </div>

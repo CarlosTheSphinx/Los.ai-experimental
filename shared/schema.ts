@@ -414,21 +414,23 @@ export const projectActivity = pgTable("project_activity", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }),
-  
+
   activityType: varchar("activity_type", { length: 100 }).notNull(),
   activityDescription: text("activity_description").notNull(),
-  
+
   oldValue: text("old_value"),
   newValue: text("new_value"),
-  
+
   metadata: jsonb("metadata"),
-  
+
   visibleToBorrower: boolean("visible_to_borrower").default(false),
-  
+  isInternal: boolean("is_internal").default(false), // Used to mark admin-only activity (replaces adminActivity)
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Project documents
+/** @deprecated Use dealDocuments instead */
 export const projectDocuments = pgTable("project_documents", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
@@ -495,7 +497,9 @@ export type ProjectTask = typeof projectTasks.$inferSelect;
 export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
 export type ProjectActivity = typeof projectActivity.$inferSelect;
 export type InsertProjectActivity = z.infer<typeof insertProjectActivitySchema>;
+/** @deprecated Use DealDocument instead */
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
+/** @deprecated Use InsertDealDocument instead */
 export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
 
 // Deal aliases (consistent nomenclature - table is still called 'projects' for backward compatibility)
@@ -661,6 +665,7 @@ export const adminTasks = pgTable("admin_tasks", {
 });
 
 // Admin activity log - separate from user-facing activity
+/** @deprecated Use projectActivity with isInternal=true instead */
 export const adminActivity = pgTable("admin_activity", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
@@ -684,7 +689,9 @@ export type SystemSetting = typeof systemSettings.$inferSelect;
 export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
 export type AdminTask = typeof adminTasks.$inferSelect;
 export type InsertAdminTask = z.infer<typeof insertAdminTaskSchema>;
+/** @deprecated Use ProjectActivity instead */
 export type AdminActivity = typeof adminActivity.$inferSelect;
+/** @deprecated Use InsertProjectActivity instead */
 export type InsertAdminActivity = z.infer<typeof insertAdminActivitySchema>;
 
 // Deal Stages - configurable deal workflow stages
