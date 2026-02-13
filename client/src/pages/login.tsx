@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Shield, Zap, FileCheck } from 'lucide-react';
+import { Loader2, Shield, Zap, FileCheck, Plus } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
@@ -90,6 +90,67 @@ export default function LoginPage() {
           <p className="text-lg opacity-80 max-w-md">
             AI-powered loan origination for private lenders. Close DSCR, RTL, and non-QM deals faster.
           </p>
+
+          {/* Deal Pipeline Dashboard Mockup */}
+          <div className="mt-8 mb-8 rounded-lg bg-background/5 border border-background/10 p-4 backdrop-blur-sm">
+            {/* Header with title and button */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs uppercase tracking-widest opacity-60 font-semibold">Deal Pipeline</span>
+              <button className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-background px-2.5 py-1 rounded transition-colors">
+                <Plus className="h-3 w-3" />
+                <span>New Deal</span>
+              </button>
+            </div>
+
+            {/* Mini Kanban Board */}
+            <div className="grid grid-cols-4 gap-2">
+              {/* INTAKE Column */}
+              <div>
+                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Intake</div>
+                <div className="space-y-1.5">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
+                      Deal #{2401 + i}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* DOCS Column */}
+              <div>
+                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Docs</div>
+                <div className="space-y-1.5">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
+                      Deal #{2500 + i}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CONDITIONS Column */}
+              <div>
+                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Conditions</div>
+                <div className="space-y-1.5">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
+                      Deal #{2510 + i}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CLEAR TO CLOSE Column */}
+              <div>
+                <div className="text-xs uppercase tracking-wide opacity-60 font-semibold mb-2">Clear</div>
+                <div className="space-y-1.5">
+                  <div className="bg-background/10 rounded p-2 text-xs text-background/70 truncate">
+                    Deal #2520
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6">

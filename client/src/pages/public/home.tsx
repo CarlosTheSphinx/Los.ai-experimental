@@ -16,18 +16,18 @@ const containerVariants = {
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
+      staggerChildren: 0.15,
+      delayChildren: 0.2,
     },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 40 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.6 },
+    transition: { duration: 0.8, ease: [0.25, 0.1, 0.25, 1] },
   },
 };
 
@@ -136,6 +136,7 @@ export default function PublicHomePage() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
+            transition={{ staggerChildren: 0.15, delayChildren: 0.3 }}
             className="space-y-8"
           >
             {/* Hero Headline */}
@@ -191,8 +192,11 @@ export default function PublicHomePage() {
 
             {/* Deal Pipeline Mockup */}
             <motion.div
-              variants={itemVariants}
-              className="mt-12 rounded-lg bg-[#1E293B] p-8 border border-gray-700"
+              initial={{ opacity: 0, y: 60 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.0, delay: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+              viewport={{ once: true }}
+              className="mt-12 rounded-lg bg-[#1E293B] p-8 border border-gray-700 will-change-transform"
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-white font-semibold text-sm">Deal Pipeline</h3>
@@ -283,11 +287,11 @@ export default function PublicHomePage() {
       <section className="py-24 lg:py-32 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-16 will-change-transform"
           >
             <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-gray-900 mb-4">
               Built for the way lending actually works
@@ -307,7 +311,7 @@ export default function PublicHomePage() {
             {features.map((feature, idx) => {
               const Icon = feature.icon;
               return (
-                <motion.div key={idx} variants={itemVariants}>
+                <motion.div key={idx} variants={itemVariants} className="will-change-transform">
                   <div className="h-full">
                     <div className="flex flex-col h-full">
                       <div className="w-14 h-14 rounded-lg bg-[#1E293B] flex items-center justify-center mb-4">
@@ -332,11 +336,11 @@ export default function PublicHomePage() {
       <section className="py-24 lg:py-32 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-16 will-change-transform"
           >
             <p className="text-sm font-semibold text-blue-600 tracking-wide uppercase mb-2">
               How Lendry.AI Works
@@ -350,10 +354,11 @@ export default function PublicHomePage() {
             {howItWorks.map((step, idx) => (
               <motion.div
                 key={idx}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
+                transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
                 viewport={{ once: true }}
+                className="will-change-transform"
               >
                 <div
                   className={`grid grid-cols-1 lg:grid-cols-2 gap-12 items-center ${
@@ -478,11 +483,11 @@ export default function PublicHomePage() {
       <section className="py-24 lg:py-32 bg-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-16 will-change-transform"
           >
             <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-gray-900 mb-4">
               Transparent Pricing
@@ -500,7 +505,7 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {pricingPlans.map((plan, idx) => (
-              <motion.div key={idx} variants={itemVariants}>
+              <motion.div key={idx} variants={itemVariants} className="will-change-transform">
                 <Card
                   className={`p-8 h-full flex flex-col ${
                     plan.highlighted
@@ -554,11 +559,11 @@ export default function PublicHomePage() {
       <section className="py-24 lg:py-32 bg-[#0F1729]">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
             viewport={{ once: true }}
-            className="space-y-8"
+            className="space-y-8 will-change-transform"
           >
             <div>
               <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4">

@@ -611,14 +611,14 @@ export default function AdminDashboard() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-admin-dashboard-title">Admin Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-admin-dashboard-title">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Overview of your lending operations</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Active Users Card */}
-        <Card data-testid="card-stat-users" className="stat-card-blue hover:shadow-lg transition-all duration-200">
+        <Card data-testid="card-stat-users" className="stat-card-blue hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Active Users</CardTitle>
             <div className="rounded-full bg-info/10 p-2">
@@ -627,7 +627,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-3xl font-bold tracking-tight">{stats?.totalActiveUsers || 0}</div>
+              <div className="text-4xl font-bold tracking-tight">{stats?.totalActiveUsers || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.regularUsers || 0} regular users</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -640,7 +640,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Active Deals Card */}
-        <Card data-testid="card-stat-deals" className="stat-card-navy hover:shadow-lg transition-all duration-200">
+        <Card data-testid="card-stat-deals" className="stat-card-navy hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Active Deals</CardTitle>
             <div className="rounded-full bg-foreground/10 p-2">
@@ -649,7 +649,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-3xl font-bold tracking-tight">{stats?.activeProjects || 0}</div>
+              <div className="text-4xl font-bold tracking-tight">{stats?.activeProjects || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.completedProjects || 0} completed</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -662,7 +662,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Pipeline Value Card — HERO CARD (spans 2 columns for visual hierarchy) */}
-        <Card data-testid="card-stat-pipeline" className="stat-card-emerald hover:shadow-lg transition-all duration-200 lg:col-span-2">
+        <Card data-testid="card-stat-pipeline" className="stat-card-emerald hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Pipeline Value</CardTitle>
             <div className="rounded-full bg-accent/10 p-2">
@@ -684,7 +684,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Funded Volume Card */}
-        <Card data-testid="card-stat-funded" className="stat-card-amber hover:shadow-lg transition-all duration-200">
+        <Card data-testid="card-stat-funded" className="stat-card-amber hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Funded Volume</CardTitle>
             <div className="rounded-full bg-warning/10 p-2">
@@ -693,7 +693,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <div className="text-3xl font-bold tracking-tight">{formatCurrency(stats?.fundedVolume || 0)}</div>
+              <div className="text-4xl font-bold tracking-tight">{formatCurrency(stats?.fundedVolume || 0)}</div>
               <p className="text-xs text-muted-foreground mt-1">Total funded</p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -708,7 +708,7 @@ export default function AdminDashboard() {
 
       {/* Quick Actions Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border-2 border-dashed border-border hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 cursor-pointer">
+        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
           <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
             <div className="rounded-lg bg-primary/10 p-3">
               <Plus className="h-5 w-5 text-primary" />
@@ -717,7 +717,7 @@ export default function AdminDashboard() {
             <p className="text-xs text-muted-foreground text-center">Create a new lending opportunity</p>
           </CardContent>
         </Card>
-        <Card className="border-2 border-dashed border-border hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 cursor-pointer">
+        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
           <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
             <div className="rounded-lg bg-info/10 p-3">
               <FolderUp className="h-5 w-5 text-info" />
@@ -726,7 +726,7 @@ export default function AdminDashboard() {
             <p className="text-xs text-muted-foreground text-center">Add borrower documentation</p>
           </CardContent>
         </Card>
-        <Card className="border-2 border-dashed border-border hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 cursor-pointer">
+        <Card className="border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
           <CardContent className="flex flex-col items-center justify-center p-6 gap-3">
             <div className="rounded-lg bg-accent/10 p-3">
               <Calculator className="h-5 w-5 text-accent" />
