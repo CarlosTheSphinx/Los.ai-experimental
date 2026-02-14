@@ -18,13 +18,30 @@ import {
 export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   const { storage, db, authenticateUser, requireAdmin, requirePermission } = deps;
 
+  async function verifyProgramOwnership(req: AuthRequest, res: Response, programId: number): Promise<boolean> {
+    const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, programId));
+    if (!program) {
+      res.status(404).json({ error: 'Program not found' });
+      return false;
+    }
+    const user = await storage.getUserById(req.user!.id);
+    if (user?.role !== 'super_admin' && program.createdBy !== req.user!.id) {
+      res.status(403).json({ error: 'Not authorized to access this program' });
+      return false;
+    }
+    return true;
+  }
+
   // ==================== LOAN PROGRAMS ROUTES ====================
 
   app.get('/api/admin/programs', authenticateUser, requireAdmin, requirePermission('programs.view'), async (req: AuthRequest, res: Response) => {
     try {
-      const programs = await db.select().from(loanPrograms).orderBy(loanPrograms.sortOrder);
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
+      const programs = await db.select().from(loanPrograms)
+        .where(isSuperAdmin ? undefined : eq(loanPrograms.createdBy, req.user!.id))
+        .orderBy(loanPrograms.sortOrder);
 
-      // Get document and task counts for each program
       const programsWithCounts = await Promise.all(programs.map(async (program) => {
         const docs = await db.select().from(programDocumentTemplates).where(eq(programDocumentTemplates.programId, program.id));
         const tasks = await db.select().from(programTaskTemplates).where(eq(programTaskTemplates.programId, program.id));
@@ -52,6 +69,11 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
 
       if (!program) {
         return res.status(404).json({ error: 'Program not found' });
+      }
+
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && program.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to view this program' });
       }
 
       const documents = await db.select().from(programDocumentTemplates)
@@ -126,6 +148,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           eligiblePropertyTypes: eligiblePropertyTypes || [],
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
+          createdBy: req.user!.id,
         }).returning();
 
         // Create inline document templates if provided
@@ -176,6 +199,14 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.put('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
+
+      const [existingProgram] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      if (!existingProgram) return res.status(404).json({ error: 'Program not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingProgram.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to modify this program' });
+      }
+
       const {
         name, description, loanType,
         minLoanAmount, maxLoanAmount,
@@ -223,6 +254,11 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         return res.status(404).json({ error: 'Program not found' });
       }
 
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && program.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to modify this program' });
+      }
+
       const [updated] = await db.update(loanPrograms)
         .set({ isActive: !program.isActive, updatedAt: new Date() })
         .where(eq(loanPrograms.id, parseInt(id)))
@@ -240,6 +276,13 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     try {
       const { id } = req.params;
 
+      const [existingProgram] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      if (!existingProgram) return res.status(404).json({ error: 'Program not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingProgram.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to delete this program' });
+      }
+
       await db.delete(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
 
       res.json({ success: true });
@@ -255,6 +298,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.post('/api/admin/programs/:programId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
 
       if (!documentName || !documentCategory) {
@@ -283,6 +327,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   // Batch update document step assignments (MUST be before :docId route)
   app.put('/api/admin/programs/:programId/documents/batch-step', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
+      const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { assignments } = req.body;
       if (!Array.isArray(assignments)) {
         return res.status(400).json({ error: 'Assignments must be an array' });
@@ -295,7 +341,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         }
       });
       res.json({ success: true });
-      const { programId } = req.params;
       const { syncProgramToProjects } = await import('../services/projectPipeline');
       syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
@@ -307,7 +352,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   // Update document template
   app.put('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { docId } = req.params;
+      const { programId, docId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
 
       const updateData: any = {};
@@ -336,6 +382,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.delete('/api/admin/programs/:programId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId, docId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
 
       await db.delete(programDocumentTemplates).where(eq(programDocumentTemplates.id, parseInt(docId)));
 
@@ -354,6 +401,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.post('/api/admin/programs/:programId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole } = req.body;
 
       if (!taskName) {
@@ -383,6 +431,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   // Batch update task step assignments (MUST be before :taskId route)
   app.put('/api/admin/programs/:programId/tasks/batch-step', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
+      const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { assignments } = req.body;
       if (!Array.isArray(assignments)) {
         return res.status(400).json({ error: 'Assignments must be an array' });
@@ -397,7 +447,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         }
       });
       res.json({ success: true });
-      const { programId } = req.params;
       const { syncProgramToProjects } = await import('../services/projectPipeline');
       syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
     } catch (error) {
@@ -409,7 +458,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   // Update task template
   app.put('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { taskId } = req.params;
+      const { programId, taskId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole } = req.body;
 
       const updateData: any = {};
@@ -439,6 +489,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.delete('/api/admin/programs/:programId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId, taskId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
 
       await db.delete(programTaskTemplates).where(eq(programTaskTemplates.id, parseInt(taskId)));
 
@@ -537,6 +588,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.get('/api/admin/programs/:programId/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const steps = await db.select({
         id: programWorkflowSteps.id,
         programId: programWorkflowSteps.programId,
@@ -569,6 +621,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.put('/api/admin/programs/:programId/workflow-steps', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
+      if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
       const { steps } = req.body;
       if (!Array.isArray(steps)) {
         return res.status(400).json({ error: 'Steps must be an array' });
@@ -694,6 +747,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.get('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const programId = parseInt(req.params.programId);
+      if (!await verifyProgramOwnership(req, res, programId)) return;
       const rules = await storage.getReviewRulesByProgramId(programId);
       res.json({ rules });
     } catch (error: any) {
@@ -705,6 +759,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   app.post('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const programId = parseInt(req.params.programId);
+      if (!await verifyProgramOwnership(req, res, programId)) return;
       const { rules } = req.body;
       if (!Array.isArray(rules)) {
         return res.status(400).json({ error: 'rules must be an array' });

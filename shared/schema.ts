@@ -735,6 +735,7 @@ export const loanPrograms = pgTable("loan_programs", {
   
   reviewGuidelines: text("review_guidelines"),
   creditPolicyId: integer("credit_policy_id"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -2081,6 +2082,7 @@ export const creditPolicies = pgTable("credit_policies", {
   description: text("description"),
   sourceFileName: varchar("source_file_name", { length: 500 }),
   isActive: boolean("is_active").default(true),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

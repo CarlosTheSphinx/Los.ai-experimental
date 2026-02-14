@@ -7293,7 +7293,11 @@ export async function registerRoutes(
   // Get all loan programs with their document and task templates
   app.get('/api/admin/programs', authenticateUser, requireAdmin, requirePermission('programs.view'), async (req: AuthRequest, res: Response) => {
     try {
-      const programs = await db.select().from(loanPrograms).orderBy(loanPrograms.sortOrder);
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
+      const programs = await db.select().from(loanPrograms)
+        .where(isSuperAdmin ? undefined : eq(loanPrograms.createdBy, req.user!.id))
+        .orderBy(loanPrograms.sortOrder);
       
       // Get document and task counts for each program
       const programsWithCounts = await Promise.all(programs.map(async (program) => {
@@ -7323,6 +7327,11 @@ export async function registerRoutes(
       
       if (!program) {
         return res.status(404).json({ error: 'Program not found' });
+      }
+      
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && program.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to view this program' });
       }
       
       const documents = await db.select().from(programDocumentTemplates)
@@ -7397,6 +7406,7 @@ export async function registerRoutes(
           eligiblePropertyTypes: eligiblePropertyTypes || [],
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
+          createdBy: req.user!.id,
         }).returning();
         
         // Create inline document templates if provided
@@ -7447,6 +7457,14 @@ export async function registerRoutes(
   app.put('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
+      
+      const [existingProgram] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      if (!existingProgram) return res.status(404).json({ error: 'Program not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingProgram.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to modify this program' });
+      }
+      
       const { 
         name, description, loanType, 
         minLoanAmount, maxLoanAmount, 
@@ -7510,6 +7528,13 @@ export async function registerRoutes(
   app.delete('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
+      
+      const [existingProgram] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+      if (!existingProgram) return res.status(404).json({ error: 'Program not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingProgram.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to delete this program' });
+      }
       
       await db.delete(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
       
@@ -8199,7 +8224,11 @@ Respond ONLY with valid JSON in this format:
 
   app.get('/api/admin/credit-policies', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const policies = await storage.getCreditPolicies();
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
+      const policies = isSuperAdmin 
+        ? await db.select().from(creditPolicies).orderBy(desc(creditPolicies.createdAt))
+        : await db.select().from(creditPolicies).where(eq(creditPolicies.createdBy, req.user!.id)).orderBy(desc(creditPolicies.createdAt));
       const policiesWithRuleCount = await Promise.all(
         policies.map(async (p) => {
           const rules = await storage.getReviewRulesByCreditPolicyId(p.id);
@@ -8218,6 +8247,10 @@ Respond ONLY with valid JSON in this format:
       const id = parseInt(req.params.id);
       const policy = await storage.getCreditPolicyById(id);
       if (!policy) return res.status(404).json({ error: 'Credit policy not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && policy.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to view this credit policy' });
+      }
       const rules = await storage.getReviewRulesByCreditPolicyId(id);
       res.json({ ...policy, rules });
     } catch (error: any) {
@@ -8235,6 +8268,7 @@ Respond ONLY with valid JSON in this format:
         name,
         description: description || null,
         sourceFileName: sourceFileName || null,
+        createdBy: req.user!.id,
       });
 
       let createdRules: any[] = [];
@@ -8263,6 +8297,13 @@ Respond ONLY with valid JSON in this format:
   app.put('/api/admin/credit-policies/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      const existingPolicy = await storage.getCreditPolicyById(id);
+      if (!existingPolicy) return res.status(404).json({ error: 'Credit policy not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingPolicy.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to modify this credit policy' });
+      }
+      
       const { name, description, rules } = req.body;
 
       const policy = await storage.updateCreditPolicy(id, {
@@ -8299,6 +8340,12 @@ Respond ONLY with valid JSON in this format:
   app.delete('/api/admin/credit-policies/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      const existingPolicy = await storage.getCreditPolicyById(id);
+      if (!existingPolicy) return res.status(404).json({ error: 'Credit policy not found' });
+      const user = await storage.getUserById(req.user!.id);
+      if (user?.role !== 'super_admin' && existingPolicy.createdBy !== req.user!.id) {
+        return res.status(403).json({ error: 'Not authorized to delete this credit policy' });
+      }
       await db.update(loanPrograms).set({ creditPolicyId: null }).where(eq(loanPrograms.creditPolicyId, id));
       await storage.deleteCreditPolicy(id);
       res.json({ success: true });
@@ -9006,10 +9053,14 @@ Respond ONLY with valid JSON in this format:
   // Get programs with active rulesets (for quote page)
   app.get('/api/programs-with-pricing', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      // Get all active programs
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
       const programs = await db.select()
         .from(loanPrograms)
-        .where(eq(loanPrograms.isActive, true))
+        .where(isSuperAdmin 
+          ? eq(loanPrograms.isActive, true)
+          : and(eq(loanPrograms.isActive, true), eq(loanPrograms.createdBy, req.user!.id))
+        )
         .orderBy(loanPrograms.sortOrder);
       
       // Check which have active rulesets

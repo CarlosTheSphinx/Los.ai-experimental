@@ -55,6 +55,9 @@ A "single source of truth" checklist system where admin, broker, and borrower vi
 -   Documents use `assignedTo` (borrower/broker/admin) and `visibility` (all/borrower/broker/admin) for role-based filtering. Tasks use existing `visibleToBorrower` field mapped from program template `visibility` settings.
 -   When a borrower uploads a document, admin sees it immediately via polling; when admin approves/rejects, borrower/broker see it immediately.
 
+**Multi-Tenancy (Loan Programs & Credit Policies)**:
+Each lender (admin user) can only see and manage their own loan programs and credit policies. The `loan_programs` and `credit_policies` tables have a `created_by` column referencing the user who created them. All API endpoints filter data by the logged-in user's ID, with `super_admin` users having visibility into all records across all tenants. Ownership checks are enforced on GET, PUT, and DELETE operations.
+
 **Terminology Note**:
 The database still uses `projects` as the table name, but the entire UI refers to these entities as "Deals" or "Loans" (used interchangeably). Frontend routes use `/deals/*` and `/api/deals/*` with URL rewriting middleware on the backend mapping to the underlying `/api/projects/*` handlers. Internal TypeScript variable names may still reference `project` but all user-facing text says "Deal" or "Loan". User-facing identifiers use `DEAL-{id}` format (e.g., `DEAL-27`) instead of the old `PRJ-YYYY-NNNN` project number format. All views (admin, broker, borrower portal) now display consistent deal identifiers, loan program names, and numbered-stage progress with document/task counts.
 
