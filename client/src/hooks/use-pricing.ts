@@ -18,12 +18,18 @@ export function usePricing() {
       const res = await fetch(api.pricing.submit.path, {
         method: api.pricing.submit.method,
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("The pricing request timed out or returned an unexpected response. Please try again.");
+      }
+
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to fetch pricing");
+        throw new Error(errorData.message || errorData.error || "Failed to fetch pricing");
       }
 
       const result = await res.json();
