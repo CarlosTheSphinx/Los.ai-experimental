@@ -14,7 +14,6 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
-import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -78,11 +77,10 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-[#0F2438] via-[#1A3A52] to-[#0F1729] text-background flex-col justify-between items-center p-12">
         {/* Centered Logo & Tagline */}
         <div className="flex flex-col items-center justify-center flex-1">
-          <img
-            src={sphinxLogo}
-            alt={branding.companyName}
-            className="h-16 w-auto object-contain mb-6"
-          />
+          <div className="flex items-center gap-0 mb-6">
+            <span className="text-3xl font-bold text-white">Lendry.</span>
+            <span className="text-3xl font-bold text-blue-400">AI</span>
+          </div>
           <h1 className="text-4xl font-bold tracking-tight text-center">
             Lending, Automated.
           </h1>
@@ -103,12 +101,11 @@ export default function LoginPage() {
           className="w-full max-w-md space-y-8"
         >
           {/* Mobile logo */}
-          <div className="lg:hidden text-center">
-            <img
-              src={sphinxLogo}
-              alt={branding.companyName}
-              className="h-12 w-auto object-contain mx-auto mb-4"
-            />
+          <div className="lg:hidden text-center mb-4">
+            <div className="flex items-center justify-center gap-0">
+              <span className="text-2xl font-bold text-foreground">Lendry.</span>
+              <span className="text-2xl font-bold text-primary">AI</span>
+            </div>
           </div>
 
           <div>
@@ -203,22 +200,6 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          {/* Social Proof */}
-          <div className="pt-4 border-t border-border">
-            <p className="text-center text-xs text-muted-foreground mb-3">
-              Trusted by 50+ leading lenders
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-[10px] font-semibold text-muted-foreground border border-border"
-                >
-                  L{i}
-                </div>
-              ))}
-            </div>
-          </div>
 
         </motion.div>
       </div>

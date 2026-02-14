@@ -52,7 +52,6 @@ import { useBranding } from "@/hooks/use-branding";
 import { InboxBadge } from "@/components/InboxBadge";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
-import sphinxLogo from "@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg";
 import type { PermissionKey } from "@shared/schema";
 
 interface AppLayoutProps {
@@ -167,14 +166,15 @@ function AppLayoutContent({ children }: AppLayoutProps) {
         <SidebarHeader className="p-4 border-b border-sidebar-border space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex flex-col items-start gap-1">
-              <img
-                src={sphinxLogo}
-                alt={branding.companyName}
-                className="h-[52px] w-auto object-contain group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10"
-                title="Logo"
-              />
+              <div className="flex items-center gap-0 group-data-[collapsible=icon]:hidden">
+                <span className="text-lg font-bold text-foreground">Lendry.</span>
+                <span className="text-lg font-bold text-primary">AI</span>
+              </div>
+              <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center h-10 w-10">
+                <span className="text-sm font-bold text-primary">L</span>
+              </div>
               <span className="text-[10px] text-muted-foreground font-medium group-data-[collapsible=icon]:hidden">
-                Intelligent Lending
+                Intelligent Lending Platform
               </span>
             </div>
             <Button

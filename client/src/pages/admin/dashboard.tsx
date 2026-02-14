@@ -631,10 +631,12 @@ export default function AdminDashboard() {
               <div className="text-5xl font-bold tracking-tight">{stats?.totalActiveUsers || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.regularUsers || 0} regular users</p>
             </div>
-            <div className="flex items-center gap-1.5">
-              <ArrowUpRight className="h-3.5 w-3.5 text-success" />
-              <span className="text-xs font-medium text-success">+8% vs last month</span>
-            </div>
+            {(stats?.totalActiveUsers || 0) > 0 && (
+              <div className="flex items-center gap-1.5">
+                <ArrowUpRight className="h-3.5 w-3.5 text-success" />
+                <span className="text-xs font-medium text-success">Active</span>
+              </div>
+            )}
             {/* TODO: Replace with real trend data from API */}
             <SparklineChart data={[12, 15, 14, 18, 20, 19, 22]} color="hsl(160 84% 39%)" />
           </CardContent>
@@ -653,10 +655,12 @@ export default function AdminDashboard() {
               <div className="text-5xl font-bold tracking-tight">{stats?.activeProjects || 0}</div>
               <p className="text-xs text-muted-foreground mt-1">{stats?.completedProjects || 0} completed</p>
             </div>
-            <div className="flex items-center gap-1.5">
-              <ArrowUpRight className="h-3.5 w-3.5 text-success" />
-              <span className="text-xs font-medium text-success">+5% vs last month</span>
-            </div>
+            {(stats?.activeProjects || 0) > 0 && (
+              <div className="flex items-center gap-1.5">
+                <ArrowUpRight className="h-3.5 w-3.5 text-success" />
+                <span className="text-xs font-medium text-success">Active</span>
+              </div>
+            )}
             {/* TODO: Replace with real trend data from API */}
             <SparklineChart data={[8, 10, 9, 12, 11, 13, 14]} color="hsl(212 67% 51%)" />
           </CardContent>
