@@ -240,13 +240,10 @@ export default function AdminPrograms() {
         .filter(task => task.taskName.trim())
         .map(({ id, ...task }) => task);
       
-      return apiRequest("/api/admin/programs", {
-        method: "POST",
-        body: JSON.stringify({
-          ...data,
-          documents: validDocuments,
-          tasks: validTasks,
-        }),
+      return apiRequest("POST", "/api/admin/programs", {
+        ...data,
+        documents: validDocuments,
+        tasks: validTasks,
       });
     },
     onSuccess: () => {
