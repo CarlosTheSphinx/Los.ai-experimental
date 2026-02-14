@@ -508,12 +508,49 @@ export async function registerRoutes(
                       .filter(li => li.offsetParent !== null);
                   }
                   
-                  // Find matching option (flexible matching)
-                  const match = options.find(opt => {
+                  // Normalize strings for fuzzy matching: lowercase, remove hyphens/punctuation, collapse whitespace
+                  const normalize = (s) => s.toLowerCase().replace(/[-_\/\\.,;:!?()]/g, ' ').replace(/\s+/g, ' ').trim();
+                  const normalizedValue = normalize(valueText);
+                  
+                  // Strategy 1: Exact match (case insensitive)
+                  let match = options.find(opt => {
                     const text = opt.textContent.trim();
-                    return text.toLowerCase().includes(valueText.toLowerCase()) || 
-                           valueText.toLowerCase().includes(text.toLowerCase());
+                    return text.toLowerCase() === valueText.toLowerCase();
                   });
+                  
+                  // Strategy 2: Normalized match (ignore hyphens, punctuation, extra spaces)
+                  if (!match) {
+                    match = options.find(opt => {
+                      const normalizedOpt = normalize(opt.textContent.trim());
+                      return normalizedOpt === normalizedValue;
+                    });
+                  }
+                  
+                  // Strategy 3: One contains the other (normalized)
+                  if (!match) {
+                    match = options.find(opt => {
+                      const normalizedOpt = normalize(opt.textContent.trim());
+                      return normalizedOpt.includes(normalizedValue) || 
+                             normalizedValue.includes(normalizedOpt);
+                    });
+                  }
+                  
+                  // Strategy 4: Best fuzzy match - find the option with the most word overlap
+                  if (!match) {
+                    const valueWords = normalizedValue.split(' ').filter(w => w.length > 1);
+                    let bestMatch = null;
+                    let bestScore = 0;
+                    for (const opt of options) {
+                      const optWords = normalize(opt.textContent.trim()).split(' ').filter(w => w.length > 1);
+                      const matchingWords = valueWords.filter(w => optWords.some(ow => ow.includes(w) || w.includes(ow)));
+                      const score = matchingWords.length / Math.max(valueWords.length, optWords.length);
+                      if (score > bestScore && score >= 0.5) {
+                        bestScore = score;
+                        bestMatch = opt;
+                      }
+                    }
+                    match = bestMatch;
+                  }
                   
                   if (match) {
                     match.click();
@@ -532,6 +569,9 @@ export async function registerRoutes(
                 } else {
                   log.info('⚠️  Could not find "' + dropdown.value + '" in available options');
                   dropdownResults.push('⚠️  ' + dropdown.label + ' - option not found');
+                  // Close the open dropdown by pressing Escape so it doesn't interfere with the next one
+                  await page.keyboard.press('Escape');
+                  await wait(300);
                 }
                 
                 // Wait for dropdown to fully close and clear from DOM
@@ -540,7 +580,8 @@ export async function registerRoutes(
                     return document.querySelector('[role="listbox"]') === null;
                   }, { timeout: 2000 });
                 } catch (e) {
-                  // Fallback if listbox doesn't disappear
+                  // Force close any lingering dropdown
+                  await page.keyboard.press('Escape');
                   await wait(400);
                 }
                 
