@@ -15,7 +15,6 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Building2, Handshake, User, Check, Zap, Shield, Clock } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
-import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const registerSchema = z.object({
   userType: z.enum(['broker', 'borrower', 'lender'], { required_error: 'Please select your account type' }),
@@ -104,7 +103,10 @@ export default function RegisterPage() {
       {/* Left Panel - Brand Messaging with Cinematic Gradient */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-[#0F2438] via-[#1A3A52] to-[#0F1729] text-background flex-col justify-between p-12">
         <div className="flex flex-col items-center justify-center h-full">
-          <img src={sphinxLogo} alt={branding.companyName} className="h-16 mb-8" />
+          <div className="flex items-center gap-0 mb-8">
+            <span className="text-3xl font-bold text-white">Lendry.</span>
+            <span className="text-3xl font-bold text-blue-400">AI</span>
+          </div>
           <h1 className="text-4xl font-bold tracking-tight text-center mb-4">Lending, Automated.</h1>
         </div>
 
@@ -119,7 +121,10 @@ export default function RegisterPage() {
         <div className="w-full max-w-md mx-auto">
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8 flex justify-center">
-            <img src={sphinxLogo} alt={branding.companyName} className="h-10" />
+            <div className="flex items-center gap-0">
+              <span className="text-2xl font-bold text-foreground">Lendry.</span>
+              <span className="text-2xl font-bold text-primary">AI</span>
+            </div>
           </div>
 
           {/* Step 1: Account Type Selection */}
@@ -190,7 +195,7 @@ export default function RegisterPage() {
               </button>
 
               <h2 className="text-3xl font-bold tracking-tight mb-2">Sign up details</h2>
-              <p className="text-muted-foreground mb-8">Complete your {accountTypes.find(t => t.id === selectedAccountType)?.title.toLowerCase()} profile</p>
+              <p className="text-muted-foreground mb-8">Complete your {selectedAccountType} profile</p>
 
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

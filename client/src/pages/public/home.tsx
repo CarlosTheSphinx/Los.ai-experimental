@@ -654,10 +654,8 @@ export default function PublicHomePage() {
             </div>
 
             <div className="flex justify-center">
-              <Link href="/register">
-                <a className="text-xl text-white/90 hover:text-white border-b border-transparent hover:border-white/50 transition-all duration-300 pb-1 font-medium">
+              <Link href="/register" className="text-xl text-white/90 hover:text-white border-b border-transparent hover:border-white/50 transition-all duration-300 pb-1 font-medium">
                   Get Started
-                </a>
               </Link>
             </div>
           </motion.div>

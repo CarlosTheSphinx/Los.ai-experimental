@@ -120,7 +120,7 @@ export async function sendPartnerBroadcast(
 
         try {
           await resend.emails.send({
-            from: 'Sphinx Capital <onboarding@resend.dev>',
+            from: 'Lendry.AI <onboarding@resend.dev>',
             to: msg.email,
             subject: personalizeMessage(subject, {
               firstName: msg.firstName,
@@ -143,13 +143,13 @@ export async function sendPartnerBroadcast(
               <body>
                 <div class="container">
                   <div class="header">
-                    <h1>Sphinx Capital</h1>
+                    <h1>Lendry.AI</h1>
                   </div>
                   <div class="content">
                     ${msg.emailBody.replace(/\n/g, '<br/>')}
                   </div>
                   <div class="footer">
-                    <p>Sphinx Capital - Your Partner in Lending</p>
+                    <p>Lendry.AI - Your Partner in Lending</p>
                     <p style="font-size: 11px; color: #94a3b8;">
                       Reply to this email to contact us directly.
                     </p>

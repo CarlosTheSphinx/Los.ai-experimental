@@ -142,7 +142,7 @@ export default function Agreements() {
 
   const resendAllMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('POST', `/api/esignature/agreements/${id}/resend-all`, { senderName: "Sphinx Capital" });
+      return apiRequest('POST', `/api/esignature/agreements/${id}/resend-all`, { senderName: "Lendry.AI" });
     },
     onSuccess: (data: any) => {
       toast({ title: "Emails Resent", description: data.message || "Signing requests resent." });
@@ -155,7 +155,7 @@ export default function Agreements() {
 
   const remindMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('POST', `/api/esignature/agreements/${id}/remind`, { senderName: "Sphinx Capital" });
+      return apiRequest('POST', `/api/esignature/agreements/${id}/remind`, { senderName: "Lendry.AI" });
     },
     onSuccess: (data: any) => {
       toast({ title: "Reminders Sent", description: data.message || "Reminders sent to pending signers." });
@@ -193,7 +193,7 @@ export default function Agreements() {
     mutationFn: async (id: number) => {
       const res = await apiRequest('POST', `/api/documents/${id}/pandadoc/send`, {
         subject: 'Please sign this document',
-        message: 'Please review and sign the attached document from Sphinx Capital.',
+        message: 'Please review and sign the attached document from Lendry.AI.',
       });
       return res.json();
     },

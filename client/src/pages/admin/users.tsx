@@ -483,7 +483,7 @@ function TeamTab() {
                 <Input
                   id="team-email"
                   type="email"
-                  placeholder="team@sphinxcap.com"
+                  placeholder="team@lendry.ai"
                   value={newMember.email}
                   onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
                   data-testid="input-team-email"

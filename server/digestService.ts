@@ -336,7 +336,7 @@ function generateDigestEmailHtml(content: DigestContent, portalLink: string): st
           </p>
         </div>
         <div class="footer">
-          <p>Powered by Sphinx Capital</p>
+          <p>Powered by Lendry.AI</p>
         </div>
       </div>
     </body>
@@ -348,7 +348,7 @@ function generateDigestEmailHtml(content: DigestContent, portalLink: string): st
 function generateDigestSmsText(content: DigestContent, portalLink: string): string {
   const { project, outstandingDocs } = content;
   
-  let text = `Sphinx Capital - ${project.projectName}\n\n`;
+  let text = `Lendry.AI - ${project.projectName}\n\n`;
   
   if (outstandingDocs.length > 0) {
     text += `Documents Needed (${outstandingDocs.length}):\n`;
@@ -422,7 +422,7 @@ function generateCustomEmailHtml(template: string, content: DigestContent, porta
     <body>
       <div class="container">
         <div class="header">
-          <h1 style="margin: 0; font-size: 24px;">Sphinx Capital</h1>
+          <h1 style="margin: 0; font-size: 24px;">Lendry.AI</h1>
           <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;">Loan Status Update</p>
         </div>
         <div class="content">
@@ -432,7 +432,7 @@ function generateCustomEmailHtml(template: string, content: DigestContent, porta
           </div>
         </div>
         <div class="footer">
-          <p>This is an automated message from Sphinx Capital.</p>
+          <p>This is an automated message from Lendry.AI.</p>
         </div>
       </div>
     </body>
@@ -465,7 +465,7 @@ async function sendEmailDigest(
       : generateDigestEmailHtml(content, portalLink);
     
     const result = await client.emails.send({
-      from: 'Sphinx Capital <onboarding@resend.dev>',
+      from: 'Lendry.AI <onboarding@resend.dev>',
       to: email,
       subject,
       html,

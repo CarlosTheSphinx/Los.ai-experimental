@@ -125,7 +125,7 @@ export default function AgreementDetailPage() {
 
   const resendAllMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('POST', `/api/esignature/agreements/${id}/resend-all`, { senderName: "Sphinx Capital" });
+      return apiRequest('POST', `/api/esignature/agreements/${id}/resend-all`, { senderName: "Lendry.AI" });
     },
     onSuccess: (result: any) => {
       toast({ title: "Emails Resent", description: result.message || "Signing requests resent." });
@@ -138,7 +138,7 @@ export default function AgreementDetailPage() {
 
   const resendSignerMutation = useMutation({
     mutationFn: async ({ docId, signerId }: { docId: number; signerId: number }) => {
-      return apiRequest('POST', `/api/esignature/agreements/${docId}/resend-signer/${signerId}`, { senderName: "Sphinx Capital" });
+      return apiRequest('POST', `/api/esignature/agreements/${docId}/resend-signer/${signerId}`, { senderName: "Lendry.AI" });
     },
     onSuccess: (result: any) => {
       toast({ title: "Email Resent", description: result.message || "Email sent." });
@@ -151,7 +151,7 @@ export default function AgreementDetailPage() {
 
   const remindMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('POST', `/api/esignature/agreements/${id}/remind`, { senderName: "Sphinx Capital" });
+      return apiRequest('POST', `/api/esignature/agreements/${id}/remind`, { senderName: "Lendry.AI" });
     },
     onSuccess: (result: any) => {
       toast({ title: "Reminders Sent", description: result.message || "Reminders sent to pending signers." });

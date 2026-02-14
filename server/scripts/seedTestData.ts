@@ -151,7 +151,7 @@ async function seedTestBorrowers(count: number = 20) {
     
     const firstName = faker.person.firstName();
     const lastName = faker.person.lastName();
-    const email = `test.borrower.${i + 1}@sphinxtest.com`;
+    const email = `test.borrower.${i + 1}@lendrytest.ai`;
     const passwordHash = await bcrypt.hash("TestPass123!", 10);
 
     console.log(`📝 Creating borrower ${i + 1}/${count}: ${firstName} ${lastName} (${stage.description})`);
@@ -297,7 +297,7 @@ async function seedTestBorrowers(count: number = 20) {
   console.log(`  - Saved quotes/deals for ${createdUsers.filter(u => u.stage.key !== "registered_only").length} users`);
   console.log(`  - Projects with stages and tasks for qualifying users`);
   console.log("\n📋 Login credentials for all test users:");
-  console.log("   Email pattern: test.borrower.N@sphinxtest.com (where N is 1-20)");
+  console.log("   Email pattern: test.borrower.N@lendrytest.ai (where N is 1-20)");
   console.log("   Password: TestPass123!");
   console.log("\n🔑 Example logins:");
   createdUsers.slice(0, 5).forEach((item, idx) => {

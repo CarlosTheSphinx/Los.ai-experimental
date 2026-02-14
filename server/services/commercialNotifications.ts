@@ -54,7 +54,7 @@ function emailWrapper(headerColor: string, headerText: string, bodyHtml: string)
       ${bodyHtml}
     </div>
     <div class="footer">
-      <p>Powered by Sphinx Capital</p>
+      <p>Powered by Lendry.AI</p>
     </div>
   </div>
 </body>
@@ -81,7 +81,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         if (!(await isNotificationEnabled('commercial_notify_broker_submitted'))) return;
         const { client } = await getResendClient();
         await client.emails.send({
-          from: 'Sphinx Capital <onboarding@resend.dev>',
+          from: 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Your Commercial Deal Submission Has Been Received - ${propertyLabel}`,
           html: emailWrapper('#1e40af', 'Submission Received', `
@@ -105,7 +105,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         if (!(await isNotificationEnabled('commercial_notify_broker_approved'))) return;
         const { client } = await getResendClient();
         await client.emails.send({
-          from: 'Sphinx Capital <onboarding@resend.dev>',
+          from: 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Your Commercial Deal Has Been Approved - ${propertyLabel}`,
           html: emailWrapper('#16a34a', 'Deal Approved', `
@@ -131,7 +131,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         const { client } = await getResendClient();
         const reason = additionalData?.reason || additionalData?.adminNotes || 'No specific reason provided.';
         await client.emails.send({
-          from: 'Sphinx Capital <onboarding@resend.dev>',
+          from: 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Commercial Deal Submission Update - ${propertyLabel}`,
           html: emailWrapper('#dc2626', 'Submission Declined', `
@@ -157,7 +157,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         const { client } = await getResendClient();
         const message = additionalData?.message || additionalData?.adminNotes || 'Additional information is required to process your submission.';
         await client.emails.send({
-          from: 'Sphinx Capital <onboarding@resend.dev>',
+          from: 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Additional Information Needed - ${propertyLabel}`,
           html: emailWrapper('#f59e0b', 'Information Needed', `
@@ -188,7 +188,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         for (const admin of admins) {
           try {
             await client.emails.send({
-              from: 'Sphinx Capital <onboarding@resend.dev>',
+              from: 'Lendry.AI <onboarding@resend.dev>',
               to: admin.email,
               subject: `New Commercial Submission - ${propertyLabel}`,
               html: emailWrapper('#1e40af', 'New Commercial Submission', `
@@ -223,7 +223,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         for (const admin of admins) {
           try {
             await client.emails.send({
-              from: 'Sphinx Capital <onboarding@resend.dev>',
+              from: 'Lendry.AI <onboarding@resend.dev>',
               to: admin.email,
               subject: `Manual Review Required - ${propertyLabel}`,
               html: emailWrapper('#f59e0b', 'Manual Review Required', `
@@ -254,7 +254,7 @@ export async function sendCommercialNotification(type: string, submission: any, 
         if (!(await isNotificationEnabled('commercial_notify_broker_expired'))) return;
         const { client } = await getResendClient();
         await client.emails.send({
-          from: 'Sphinx Capital <onboarding@resend.dev>',
+          from: 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Commercial Deal Submission Expired - ${propertyLabel}`,
           html: emailWrapper('#6b7280', 'Submission Expired', `

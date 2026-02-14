@@ -39,19 +39,15 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href}>
-                <a className="text-sm font-medium text-gray-400 hover:text-white transition-colors">
-                  {link.label}
-                </a>
+              <Link key={link.href} href={link.href} className="text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                {link.label}
               </Link>
             ))}
           </div>
 
           <div className="hidden md:flex items-center gap-4">
-            <Link href="/login">
-              <a className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
-                Log in
-              </a>
+            <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
+              Log in
             </Link>
             <Link href="/register">
               <Button
@@ -81,17 +77,13 @@ export function PublicLayout({ children }: PublicLayoutProps) {
           <div className="md:hidden border-t border-white/10 bg-[#0F1729]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-4">
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href}>
-                  <a className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
-                    {link.label}
-                  </a>
+                <Link key={link.href} href={link.href} className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
+                  {link.label}
                 </Link>
               ))}
               <div className="flex flex-col gap-2 pt-4 border-t border-white/10">
-                <Link href="/login">
-                  <a className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
-                    Log in
-                  </a>
+                <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
+                  Log in
                 </Link>
                 <Link href="/register">
                   <Button
@@ -133,31 +125,23 @@ export function PublicLayout({ children }: PublicLayoutProps) {
               </h3>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <Link href="/#features">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Features
-                    </a>
+                  <Link href="/#features" className="text-gray-400 hover:text-white transition-colors">
+                    Features
                   </Link>
                 </li>
                 <li>
-                  <Link href="/pricing">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Pricing
-                    </a>
+                  <Link href="/pricing" className="text-gray-400 hover:text-white transition-colors">
+                    Pricing
                   </Link>
                 </li>
                 <li>
-                  <Link href="/use-cases">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Use Cases
-                    </a>
+                  <Link href="/use-cases" className="text-gray-400 hover:text-white transition-colors">
+                    Use Cases
                   </Link>
                 </li>
                 <li>
-                  <Link href="/contact">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Contact
-                    </a>
+                  <Link href="/contact" className="text-gray-400 hover:text-white transition-colors">
+                    Contact
                   </Link>
                 </li>
               </ul>
@@ -169,10 +153,8 @@ export function PublicLayout({ children }: PublicLayoutProps) {
               </h3>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <Link href="/contact">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      About
-                    </a>
+                  <Link href="/contact" className="text-gray-400 hover:text-white transition-colors">
+                    About
                   </Link>
                 </li>
                 <li>
@@ -189,24 +171,18 @@ export function PublicLayout({ children }: PublicLayoutProps) {
               </h3>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <Link href="/privacy">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Privacy
-                    </a>
+                  <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors">
+                    Privacy
                   </Link>
                 </li>
                 <li>
-                  <Link href="/terms">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Terms
-                    </a>
+                  <Link href="/terms" className="text-gray-400 hover:text-white transition-colors">
+                    Terms
                   </Link>
                 </li>
                 <li>
-                  <Link href="/security">
-                    <a className="text-gray-400 hover:text-white transition-colors">
-                      Security
-                    </a>
+                  <Link href="/security" className="text-gray-400 hover:text-white transition-colors">
+                    Security
                   </Link>
                 </li>
               </ul>

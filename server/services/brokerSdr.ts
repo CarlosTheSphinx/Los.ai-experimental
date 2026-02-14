@@ -414,7 +414,7 @@ async function sendEmailMessage(
     const { client } = await getResendClient();
 
     const result = await client.emails.send({
-      from: 'noreply@sphinxcapital.com',
+      from: 'noreply@lendry.ai',
       to: message.email,
       subject: message.subject,
       html: `<p>${(message.personalizedBody || message.body).replace(/\n/g, '<br>')}</p>`,

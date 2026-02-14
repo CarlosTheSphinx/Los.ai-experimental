@@ -2363,7 +2363,7 @@ export async function registerRoutes(
             signer.email,
             signer.name,
             doc.name,
-            'Sphinx Capital',
+            'Lendry.AI',
             reason
           );
         } catch (emailError) {
@@ -6005,7 +6005,7 @@ export async function registerRoutes(
                 const { getResendClient } = await import('./email');
                 const { client } = await getResendClient();
                 await client.emails.send({
-                  from: 'Sphinx Capital <onboarding@resend.dev>',
+                  from: 'Lendry.AI <onboarding@resend.dev>',
                   to: emailTo,
                   subject: `Action Required: Document Rejected - ${updated.documentName}`,
                   html: `
@@ -6026,7 +6026,7 @@ export async function registerRoutes(
                           ${reviewNotes ? `<div class="reason"><strong>Reason:</strong> ${reviewNotes}</div>` : ''}
                           <p>Please upload a corrected version through your borrower portal at your earliest convenience.</p>
                         </div>
-                        <div class="footer"><p>Powered by Sphinx Capital</p></div>
+                        <div class="footer"><p>Powered by Lendry.AI</p></div>
                       </div>
                     </body></html>
                   `
@@ -6401,7 +6401,7 @@ export async function registerRoutes(
                   const { getResendClient } = await import('./email');
                   const { client } = await getResendClient();
                   await client.emails.send({
-                    from: 'Sphinx Capital <onboarding@resend.dev>',
+                    from: 'Lendry.AI <onboarding@resend.dev>',
                     to: emailTo,
                     subject: `Action Required: Document Rejected - ${doc.documentName}`,
                     html: `
@@ -6422,7 +6422,7 @@ export async function registerRoutes(
                             <div class="reason"><strong>Reason:</strong> ${reason}</div>
                             <p>Please upload a corrected version through your borrower portal at your earliest convenience.</p>
                           </div>
-                          <div class="footer"><p>Powered by Sphinx Capital</p></div>
+                          <div class="footer"><p>Powered by Lendry.AI</p></div>
                         </div>
                       </body></html>
                     `
@@ -9961,7 +9961,7 @@ Respond ONLY with valid JSON in this format:
       let documentsSection = '';
       let updatesSection = '';
       let documentsCount = 0;
-      let portalLink = process.env.BASE_URL || 'https://app.sphinxcap.com';
+      let portalLink = process.env.BASE_URL || 'https://app.lendry.ai';
       
       // Try to get real data from project or deal
       if (projectId) {
@@ -9971,7 +9971,7 @@ Respond ONLY with valid JSON in this format:
           .limit(1);
         
         if (project) {
-          portalLink = `${process.env.BASE_URL || 'https://app.sphinxcap.com'}/portal/${project.borrowerToken}`;
+          portalLink = `${process.env.BASE_URL || 'https://app.lendry.ai'}/portal/${project.borrowerToken}`;
           
           // Get quote for property info
           if (project.quoteId) {
@@ -10365,7 +10365,7 @@ Respond ONLY with valid JSON in this format:
             const { Resend } = await import('resend');
             const resend = new Resend(process.env.RESEND_API_KEY);
             await resend.emails.send({
-              from: 'Sphinx Capital <no-reply@sphinxcap.com>',
+              from: 'Lendry.AI <no-reply@lendry.ai>',
               to: email,
               subject: emailSubject,
               html: emailBody.replace(/\n/g, '<br>'),
@@ -10614,7 +10614,7 @@ Respond ONLY with valid JSON in this format:
                 const { Resend } = await import('resend');
                 const resend = new Resend(process.env.RESEND_API_KEY);
                 await resend.emails.send({
-                  from: 'Sphinx Capital <no-reply@sphinxcap.com>',
+                  from: 'Lendry.AI <no-reply@lendry.ai>',
                   to: email,
                   subject: emailSubject,
                   html: emailBody.replace(/\n/g, '<br>'),
@@ -13642,11 +13642,11 @@ Return JSON only:
       const brandingSettings = settings.filter(s => s.settingKey.startsWith('branding_'));
 
       const branding = {
-        companyName: brandingSettings.find(s => s.settingKey === 'branding_company_name')?.settingValue ?? 'Sphinx Capital',
-        companyShortName: brandingSettings.find(s => s.settingKey === 'branding_company_short_name')?.settingValue ?? 'Sphinx',
+        companyName: brandingSettings.find(s => s.settingKey === 'branding_company_name')?.settingValue ?? 'Lendry.AI',
+        companyShortName: brandingSettings.find(s => s.settingKey === 'branding_company_short_name')?.settingValue ?? 'Lendry',
         copyrightYear: parseInt(brandingSettings.find(s => s.settingKey === 'branding_copyright_year')?.settingValue ?? new Date().getFullYear().toString()),
-        emailSignature: brandingSettings.find(s => s.settingKey === 'branding_email_signature')?.settingValue ?? 'Sphinx Capital',
-        smsSignature: brandingSettings.find(s => s.settingKey === 'branding_sms_signature')?.settingValue ?? 'Sphinx Capital',
+        emailSignature: brandingSettings.find(s => s.settingKey === 'branding_email_signature')?.settingValue ?? 'Lendry.AI',
+        smsSignature: brandingSettings.find(s => s.settingKey === 'branding_sms_signature')?.settingValue ?? 'Lendry.AI',
         logoUrl: brandingSettings.find(s => s.settingKey === 'branding_logo_url')?.settingValue,
         logoDarkUrl: brandingSettings.find(s => s.settingKey === 'branding_logo_dark_url')?.settingValue,
       };

@@ -51,7 +51,7 @@ export async function sendSigningInvitation(
     
     // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: 'Sphinx Capital <onboarding@resend.dev>',
+      from: 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Document Ready for Signature: ${documentName}`,
       html: `
@@ -85,7 +85,7 @@ export async function sendSigningInvitation(
               <p style="color: #64748b; font-size: 14px;">This link is unique to you and will expire in 7 days.</p>
             </div>
             <div class="footer">
-              <p>Powered by Sphinx Capital</p>
+              <p>Powered by Lendry.AI</p>
             </div>
           </div>
         </body>
@@ -111,7 +111,7 @@ export async function sendVoidNotification(
     const { client } = await getResendClient();
     
     const result = await client.emails.send({
-      from: 'Sphinx Capital <onboarding@resend.dev>',
+      from: 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Document Cancelled: ${documentName}`,
       html: `
@@ -139,7 +139,7 @@ export async function sendVoidNotification(
               <p>If you have any questions, please contact ${senderName} directly.</p>
             </div>
             <div class="footer">
-              <p>Powered by Sphinx Capital</p>
+              <p>Powered by Lendry.AI</p>
             </div>
           </div>
         </body>
@@ -165,7 +165,7 @@ export async function sendSigningReminder(
     const { client } = await getResendClient();
     
     const result = await client.emails.send({
-      from: 'Sphinx Capital <onboarding@resend.dev>',
+      from: 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Reminder: Document Waiting for Your Signature - ${documentName}`,
       html: `
@@ -199,7 +199,7 @@ export async function sendSigningReminder(
               <p style="color: #64748b; font-size: 14px;">This link is unique to you. Please do not share it with others.</p>
             </div>
             <div class="footer">
-              <p>Powered by Sphinx Capital</p>
+              <p>Powered by Lendry.AI</p>
             </div>
           </div>
         </body>
@@ -226,7 +226,7 @@ export async function sendCompletedDocument(
     
     // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: 'Sphinx Capital <onboarding@resend.dev>',
+      from: 'Lendry.AI <onboarding@resend.dev>',
       to: recipientEmail,
       subject: `Document Completed: ${documentName}`,
       html: `
@@ -262,7 +262,7 @@ export async function sendCompletedDocument(
               </div>
             </div>
             <div class="footer">
-              <p>Powered by Sphinx Capital</p>
+              <p>Powered by Lendry.AI</p>
             </div>
           </div>
         </body>
@@ -288,7 +288,7 @@ export async function sendPasswordResetEmail(
     const result = await client.emails.send({
       from: fromEmail,
       to: recipientEmail,
-      subject: 'Password Reset Request - Sphinx Capital',
+      subject: 'Password Reset Request - Lendry.AI',
       html: `
         <!DOCTYPE html>
         <html>
@@ -326,7 +326,7 @@ export async function sendPasswordResetEmail(
               <p>If you didn't request a password reset, you can safely ignore this email.</p>
             </div>
             <div class="footer">
-              <p>Powered by Sphinx Capital</p>
+              <p>Powered by Lendry.AI</p>
             </div>
           </div>
         </body>

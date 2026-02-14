@@ -10,7 +10,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, CheckCircle } from 'lucide-react';
-import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -72,7 +71,7 @@ export default function ResetPasswordPage() {
         <div className="flex items-center justify-center w-full p-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <div className="flex justify-center mb-6"><span className="text-3xl font-bold text-foreground">Lendry.</span><span className="text-3xl font-bold text-blue-500">AI</span></div>
               <div className="flex justify-center mb-4">
                 <CheckCircle className="h-12 w-12 text-success" />
               </div>
@@ -101,7 +100,7 @@ export default function ResetPasswordPage() {
         <div className="flex items-center justify-center w-full p-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+              <div className="flex justify-center mb-6"><span className="text-3xl font-bold text-foreground">Lendry.</span><span className="text-3xl font-bold text-blue-500">AI</span></div>
               <CardTitle className="text-2xl font-bold tracking-tight">Invalid Link</CardTitle>
               <CardDescription>
                 This password reset link is invalid or has expired.
@@ -126,7 +125,7 @@ export default function ResetPasswordPage() {
       <div className="flex items-center justify-center w-full p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <img src={sphinxLogo} alt="Sphinx Capital" className="h-10 w-auto object-contain mx-auto mb-6" />
+            <div className="flex justify-center mb-6"><span className="text-3xl font-bold text-foreground">Lendry.</span><span className="text-3xl font-bold text-blue-500">AI</span></div>
             <CardTitle className="text-2xl font-bold tracking-tight">Reset Password</CardTitle>
             <CardDescription>Enter your new password</CardDescription>
           </CardHeader>

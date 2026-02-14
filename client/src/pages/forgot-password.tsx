@@ -11,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useBranding } from '@/hooks/use-branding';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
-import sphinxLogo from '@assets/Sphinx_Capital_Logo_-_Blue_-_No_Background_(1)_1769811166428.jpeg';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -54,7 +53,7 @@ export default function ForgotPasswordPage() {
         <div className="flex items-center justify-center w-full p-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <img src={sphinxLogo} alt={branding.companyName} className="h-10 w-auto object-contain mx-auto mb-6" />
+              <div className="flex justify-center mb-6"><span className="text-3xl font-bold text-foreground">Lendry.</span><span className="text-3xl font-bold text-blue-500">AI</span></div>
               <div className="flex justify-center mb-4">
                 <CheckCircle className="h-12 w-12 text-success" />
               </div>
@@ -83,7 +82,7 @@ export default function ForgotPasswordPage() {
       <div className="flex items-center justify-center w-full p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <img src={sphinxLogo} alt={branding.companyName} className="h-10 w-auto object-contain mx-auto mb-6" />
+            <div className="flex justify-center mb-6"><span className="text-3xl font-bold text-foreground">Lendry.</span><span className="text-3xl font-bold text-blue-500">AI</span></div>
             <CardTitle className="text-2xl font-bold tracking-tight">Forgot Password</CardTitle>
             <CardDescription>
               Enter your email and we'll send you a reset link

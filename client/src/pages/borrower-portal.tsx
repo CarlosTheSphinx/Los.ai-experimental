@@ -455,7 +455,7 @@ export default function BorrowerPortal() {
 
       <footer className="border-t bg-background mt-12">
         <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-muted-foreground">
-          Loan Progress Portal - Powered by Sphinx Capital
+          Loan Progress Portal - Powered by Lendry.AI
         </div>
       </footer>
     </div>

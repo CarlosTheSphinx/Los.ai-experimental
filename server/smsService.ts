@@ -94,7 +94,7 @@ export async function sendDigestSms(
   updatesCount: number,
   portalLink: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  let message = `Sphinx Capital - ${projectName}\n\n`;
+  let message = `Lendry.AI - ${projectName}\n\n`;
   
   if (outstandingDocsCount > 0) {
     message += `${outstandingDocsCount} document(s) still needed.\n`;
@@ -109,7 +109,7 @@ export async function sendDigestSms(
   // SMS has 160 character limit for single message, 1600 for multi-part
   // Keep it concise but informative
   if (message.length > 160) {
-    message = `Sphinx: ${projectName} - ${outstandingDocsCount} docs needed. View: ${portalLink}`;
+    message = `Lendry.AI: ${projectName} - ${outstandingDocsCount} docs needed. View: ${portalLink}`;
   }
   
   return sendSms(toPhoneNumber, message);

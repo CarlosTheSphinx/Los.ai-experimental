@@ -324,7 +324,7 @@ export default function Quotes() {
             <FileText className="w-5 h-5 md:w-6 md:h-6 text-primary shrink-0" />
             <div className="min-w-0">
               <h1 className="text-lg md:text-xl font-bold text-primary truncate tracking-tight">Saved Quotes</h1>
-              <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">View your commission details</p>
+              <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">View and manage your saved quotes</p>
             </div>
           </div>
         </div>
