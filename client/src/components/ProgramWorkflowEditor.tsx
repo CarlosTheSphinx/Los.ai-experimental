@@ -277,9 +277,14 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
   });
 
   const [configuredSteps, setConfiguredSteps] = useState<ConfiguredStep[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const [initializedForProgram, setInitializedForProgram] = useState<number | null>(null);
 
-  if (programSteps && !initialized) {
+  useEffect(() => {
+    setInitializedForProgram(null);
+    setConfiguredSteps([]);
+  }, [programId]);
+
+  if (programSteps && initializedForProgram !== programId) {
     setConfiguredSteps(
       programSteps.map((ps) => ({
         stepDefinitionId: ps.stepDefinitionId,
@@ -289,7 +294,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
         color: ps.definition.color,
       }))
     );
-    setInitialized(true);
+    setInitializedForProgram(programId);
   }
 
   const addedDefIds = new Set(configuredSteps.map((s) => s.stepDefinitionId));
