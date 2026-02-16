@@ -310,7 +310,7 @@ function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
   return (
     <Card data-testid="card-pipeline-by-stage">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Pipeline by Stage</CardTitle>
+        <CardTitle className="text-lg">Pipeline by Program</CardTitle>
         <CardDescription>Deal count and percentage at each stage</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
