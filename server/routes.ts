@@ -8515,6 +8515,102 @@ Respond ONLY with valid JSON in this format:
     }
   });
 
+  // Credit Policy Chat - conversational rule extraction
+  app.post('/api/admin/credit-policies/chat', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { messages, existingRules } = req.body;
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: 'messages array is required' });
+      }
+
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const existingRulesContext = existingRules && existingRules.length > 0
+        ? `\n\nThe policy already has these rules extracted:\n${existingRules.map((r: any, i: number) => `${i + 1}. [${r.documentType}] ${r.ruleTitle}: ${r.ruleDescription}`).join('\n')}`
+        : '';
+
+      const systemPrompt = `You are a credit policy specialist helping a lender define their loan credit policy rules. Your job is to have a natural conversation to understand the nuances of their lending guidelines and extract specific, actionable rules.
+
+Ask clarifying questions to understand details like:
+- Minimum credit scores, DSCR ratios, LTV limits
+- Property type restrictions and eligibility criteria
+- Documentation requirements and verification standards
+- Income and asset requirements
+- Reserve requirements
+- Any special conditions or exceptions
+
+When the user provides information that can be turned into specific rules, extract them.
+
+IMPORTANT: Your response must ALWAYS be valid JSON in this exact format:
+{
+  "reply": "Your conversational response to the user",
+  "newRules": [
+    {
+      "documentType": "Credit Report",
+      "ruleTitle": "Short rule title",
+      "ruleDescription": "Detailed description of what to check",
+      "category": "Credit"
+    }
+  ]
+}
+
+Common document types: Credit Report, Bank Statements, Tax Returns, Appraisal, Title Report, Insurance, Entity Documents, Income Verification, Property Inspection, Environmental Report, Purchase Contract, General / All Documents.
+
+Common categories: Credit, Income, Property, Compliance, LTV, DSCR, Eligibility, Reserves, Documentation, Insurance.
+
+If the user's message doesn't contain enough detail to extract rules yet, return an empty newRules array and ask follow-up questions.
+If the user provides specific criteria, extract as many rules as you can from their message.${existingRulesContext}`;
+
+      const validRoles = ['user', 'assistant'];
+      const sanitizedMessages = messages
+        .filter((m: any) => validRoles.includes(m.role) && typeof m.content === 'string')
+        .map((m: any) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+      if (sanitizedMessages.length === 0) {
+        return res.status(400).json({ error: 'No valid messages provided' });
+      }
+
+      const chatMessages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...sanitizedMessages,
+      ];
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5-mini',
+        messages: chatMessages,
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 8192,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return res.status(500).json({ error: 'AI returned empty response' });
+      }
+
+      let parsed: { reply: string; newRules?: any[] };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.json({ reply: content, newRules: [] });
+      }
+
+      res.json({
+        reply: parsed.reply || '',
+        newRules: Array.isArray(parsed.newRules) ? parsed.newRules : [],
+      });
+    } catch (error: any) {
+      console.error('Credit policy chat error:', error);
+      res.status(500).json({ error: 'Failed to process chat message' });
+    }
+  });
+
   // ==================== COMMUNICATION ROUTES ====================
 
   app.post('/api/communication/sms', authenticateUser, async (req: AuthRequest, res: Response) => {

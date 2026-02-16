@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +39,10 @@ import {
   Sparkles,
   Pencil,
   ShieldCheck,
+  MessageSquare,
+  Send,
+  BotMessageSquare,
+  User,
 } from "lucide-react";
 
 type Rule = {
@@ -78,6 +82,12 @@ export default function CreditPoliciesTab() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: policies, isLoading } = useQuery<CreditPolicy[]>({
     queryKey: ["/api/admin/credit-policies"],
@@ -146,6 +156,47 @@ export default function CreditPoliciesTab() {
     setSourceFileName("");
     setCollapsedSections({});
     setIsDragOver(false);
+    setShowChat(false);
+    setChatMessages([]);
+    setChatInput("");
+    setIsChatLoading(false);
+  }
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  async function handleChatSend() {
+    const trimmed = chatInput.trim();
+    if (!trimmed || isChatLoading) return;
+
+    const userMsg = { role: "user" as const, content: trimmed };
+    const updatedMessages = [...chatMessages, userMsg];
+    setChatMessages(updatedMessages);
+    setChatInput("");
+    setIsChatLoading(true);
+
+    try {
+      const response = await apiRequest("POST", "/api/admin/credit-policies/chat", {
+        messages: updatedMessages,
+        existingRules: rules,
+      });
+      const data = await response.json();
+
+      const assistantMsg = { role: "assistant" as const, content: data.reply };
+      setChatMessages((prev) => [...prev, assistantMsg]);
+
+      if (data.newRules && data.newRules.length > 0) {
+        setRules((prev) => [...prev, ...data.newRules]);
+        toast({
+          title: `Extracted ${data.newRules.length} new rule${data.newRules.length > 1 ? "s" : ""} from conversation`,
+        });
+      }
+    } catch (error: any) {
+      toast({ title: "Failed to send message", description: error.message, variant: "destructive" });
+    } finally {
+      setIsChatLoading(false);
+    }
   }
 
   async function handleFileUpload(file: File) {
@@ -252,6 +303,106 @@ export default function CreditPoliciesTab() {
             className="min-h-[60px]"
             data-testid="input-policy-description"
           />
+        </div>
+
+        <div className="space-y-3 border-t pt-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Label className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Describe Your Policy
+            </Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChat(!showChat)}
+              data-testid="button-toggle-chat"
+            >
+              {showChat ? "Hide Chat" : "Chat with AI"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Describe your lending guidelines in plain language. AI will ask follow-up questions and extract rules automatically.
+          </p>
+
+          {showChat && (
+            <Card>
+              <CardContent className="p-3 space-y-3">
+                <div className="max-h-[240px] overflow-y-auto space-y-2 min-h-[80px]" data-testid="chat-messages-container">
+                  {chatMessages.length === 0 && (
+                    <div className="flex items-start gap-2 py-2">
+                      <div className="h-6 w-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <BotMessageSquare className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Tell me about your credit policy - what are your key lending criteria? For example: minimum credit scores, LTV limits, property types, DSCR requirements, reserve requirements, etc.
+                      </p>
+                    </div>
+                  )}
+                  {chatMessages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-2 py-1.5 flex-wrap ${msg.role === "user" ? "justify-end" : ""}`}
+                      data-testid={`chat-message-${idx}`}
+                    >
+                      {msg.role === "assistant" && (
+                        <div className="h-6 w-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <BotMessageSquare className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                      )}
+                      <div
+                        className={`text-sm rounded-md px-3 py-2 max-w-[85%] ${
+                          msg.role === "user"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted"
+                        }`}
+                      >
+                        {msg.content}
+                      </div>
+                      {msg.role === "user" && (
+                        <div className="h-6 w-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isChatLoading && (
+                    <div className="flex items-start gap-2 py-1.5">
+                      <div className="h-6 w-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <BotMessageSquare className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="bg-muted rounded-md px-3 py-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleChatSend();
+                      }
+                    }}
+                    placeholder="e.g. Minimum 680 FICO, max 80% LTV..."
+                    disabled={isChatLoading}
+                    data-testid="input-chat-message"
+                  />
+                  <Button
+                    size="icon"
+                    onClick={handleChatSend}
+                    disabled={isChatLoading || !chatInput.trim()}
+                    data-testid="button-send-chat"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-3 border-t pt-4">
