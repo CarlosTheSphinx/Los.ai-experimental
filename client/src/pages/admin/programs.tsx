@@ -320,6 +320,7 @@ export default function AdminPrograms() {
     documentDescription: "",
     isRequired: true,
     stepId: null as number | null,
+    stepDefinitionId: null as number | null,
     assignedTo: "borrower",
     visibility: "all",
   });
@@ -330,6 +331,7 @@ export default function AdminPrograms() {
     taskCategory: "other",
     priority: "medium",
     stepId: null as number | null,
+    stepDefinitionId: null as number | null,
     assignedTo: "admin",
     visibility: "all",
   });
@@ -485,6 +487,7 @@ export default function AdminPrograms() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id, "workflow-steps"] });
       setShowAddDocument(false);
       resetDocumentForm();
       toast({ title: "Document template added" });
@@ -562,6 +565,7 @@ export default function AdminPrograms() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id, "workflow-steps"] });
       setShowAddTask(false);
       resetTaskForm();
       toast({ title: "Task template added" });
@@ -695,6 +699,7 @@ export default function AdminPrograms() {
       documentDescription: "",
       isRequired: true,
       stepId: null,
+      stepDefinitionId: null,
       assignedTo: "borrower",
       visibility: "all",
     });
@@ -721,6 +726,7 @@ export default function AdminPrograms() {
       taskCategory: "other",
       priority: "medium",
       stepId: null,
+      stepDefinitionId: null,
       assignedTo: "admin",
       visibility: "all",
     });
@@ -2626,21 +2632,38 @@ export default function AdminPrograms() {
             <div className="space-y-2">
               <Label>Assign to Stage</Label>
               <Select
-                value={documentForm.stepId ? String(documentForm.stepId) : "none"}
-                onValueChange={(v) =>
-                  setDocumentForm({ ...documentForm, stepId: v === "none" ? null : parseInt(v) })
+                value={
+                  programDetails?.workflowSteps?.length
+                    ? (documentForm.stepId ? String(documentForm.stepId) : "none")
+                    : (documentForm.stepDefinitionId ? `def:${documentForm.stepDefinitionId}` : "none")
                 }
+                onValueChange={(v) => {
+                  if (v === "none") {
+                    setDocumentForm({ ...documentForm, stepId: null, stepDefinitionId: null });
+                  } else if (v.startsWith("def:")) {
+                    setDocumentForm({ ...documentForm, stepId: null, stepDefinitionId: parseInt(v.replace("def:", "")) });
+                  } else {
+                    setDocumentForm({ ...documentForm, stepId: parseInt(v), stepDefinitionId: null });
+                  }
+                }}
               >
                 <SelectTrigger data-testid="select-doc-step">
                   <SelectValue placeholder="No stage assigned" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No stage assigned</SelectItem>
-                  {programDetails?.workflowSteps?.map((step) => (
-                    <SelectItem key={step.id} value={String(step.id)}>
-                      {step.definition.name}
-                    </SelectItem>
-                  ))}
+                  {programDetails?.workflowSteps?.length
+                    ? programDetails.workflowSteps.map((step) => (
+                        <SelectItem key={step.id} value={String(step.id)}>
+                          {step.definition.name}
+                        </SelectItem>
+                      ))
+                    : availableSteps?.map((def) => (
+                        <SelectItem key={def.id} value={`def:${def.id}`}>
+                          {def.name}
+                        </SelectItem>
+                      ))
+                  }
                 </SelectContent>
               </Select>
             </div>
@@ -2779,21 +2802,38 @@ export default function AdminPrograms() {
             <div className="space-y-2">
               <Label>Assign to Stage</Label>
               <Select
-                value={taskForm.stepId ? String(taskForm.stepId) : "none"}
-                onValueChange={(v) =>
-                  setTaskForm({ ...taskForm, stepId: v === "none" ? null : parseInt(v) })
+                value={
+                  programDetails?.workflowSteps?.length
+                    ? (taskForm.stepId ? String(taskForm.stepId) : "none")
+                    : (taskForm.stepDefinitionId ? `def:${taskForm.stepDefinitionId}` : "none")
                 }
+                onValueChange={(v) => {
+                  if (v === "none") {
+                    setTaskForm({ ...taskForm, stepId: null, stepDefinitionId: null });
+                  } else if (v.startsWith("def:")) {
+                    setTaskForm({ ...taskForm, stepId: null, stepDefinitionId: parseInt(v.replace("def:", "")) });
+                  } else {
+                    setTaskForm({ ...taskForm, stepId: parseInt(v), stepDefinitionId: null });
+                  }
+                }}
               >
                 <SelectTrigger data-testid="select-task-step">
                   <SelectValue placeholder="No stage assigned" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No stage assigned</SelectItem>
-                  {programDetails?.workflowSteps?.map((step) => (
-                    <SelectItem key={step.id} value={String(step.id)}>
-                      {step.definition.name}
-                    </SelectItem>
-                  ))}
+                  {programDetails?.workflowSteps?.length
+                    ? programDetails.workflowSteps.map((step) => (
+                        <SelectItem key={step.id} value={String(step.id)}>
+                          {step.definition.name}
+                        </SelectItem>
+                      ))
+                    : availableSteps?.map((def) => (
+                        <SelectItem key={def.id} value={`def:${def.id}`}>
+                          {def.name}
+                        </SelectItem>
+                      ))
+                  }
                 </SelectContent>
               </Select>
             </div>

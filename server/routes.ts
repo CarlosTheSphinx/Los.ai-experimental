@@ -7847,10 +7847,33 @@ export async function registerRoutes(
   app.post('/api/admin/programs/:programId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
-      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId, assignedTo, visibility } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId, stepDefinitionId, assignedTo, visibility } = req.body;
       
       if (!documentName || !documentCategory) {
         return res.status(400).json({ error: 'Document name and category are required' });
+      }
+
+      let resolvedStepId = stepId || null;
+      if (!resolvedStepId && stepDefinitionId) {
+        const pid = parseInt(programId);
+        const existing = await db.select({ id: programWorkflowSteps.id })
+          .from(programWorkflowSteps)
+          .where(and(eq(programWorkflowSteps.programId, pid), eq(programWorkflowSteps.stepDefinitionId, stepDefinitionId)))
+          .limit(1);
+        if (existing.length > 0) {
+          resolvedStepId = existing[0].id;
+        } else {
+          const maxOrder = await db.select({ max: sql<number>`COALESCE(MAX(${programWorkflowSteps.stepOrder}), 0)` })
+            .from(programWorkflowSteps)
+            .where(eq(programWorkflowSteps.programId, pid));
+          const [newStep] = await db.insert(programWorkflowSteps).values({
+            programId: pid,
+            stepDefinitionId,
+            stepOrder: (maxOrder[0]?.max || 0) + 1,
+            isRequired: true,
+          }).returning();
+          resolvedStepId = newStep.id;
+        }
       }
       
       const [doc] = await db.insert(programDocumentTemplates).values({
@@ -7862,7 +7885,7 @@ export async function registerRoutes(
         assignedTo: assignedTo || 'borrower',
         visibility: visibility || 'all',
         sortOrder: sortOrder || 0,
-        stepId: stepId || null,
+        stepId: resolvedStepId,
       }).returning();
       
       res.json({ document: doc });
@@ -7948,10 +7971,33 @@ export async function registerRoutes(
   app.post('/api/admin/programs/:programId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { programId } = req.params;
-      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole, assignedTo, visibility } = req.body;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, stepDefinitionId, assignToRole, assignedTo, visibility } = req.body;
       
       if (!taskName) {
         return res.status(400).json({ error: 'Task name is required' });
+      }
+
+      let resolvedStepId = stepId || null;
+      if (!resolvedStepId && stepDefinitionId) {
+        const pid = parseInt(programId);
+        const existing = await db.select({ id: programWorkflowSteps.id })
+          .from(programWorkflowSteps)
+          .where(and(eq(programWorkflowSteps.programId, pid), eq(programWorkflowSteps.stepDefinitionId, stepDefinitionId)))
+          .limit(1);
+        if (existing.length > 0) {
+          resolvedStepId = existing[0].id;
+        } else {
+          const maxOrder = await db.select({ max: sql<number>`COALESCE(MAX(${programWorkflowSteps.stepOrder}), 0)` })
+            .from(programWorkflowSteps)
+            .where(eq(programWorkflowSteps.programId, pid));
+          const [newStep] = await db.insert(programWorkflowSteps).values({
+            programId: pid,
+            stepDefinitionId,
+            stepOrder: (maxOrder[0]?.max || 0) + 1,
+            isRequired: true,
+          }).returning();
+          resolvedStepId = newStep.id;
+        }
       }
       
       const [task] = await db.insert(programTaskTemplates).values({
@@ -7961,7 +8007,7 @@ export async function registerRoutes(
         taskCategory,
         priority: priority || 'medium',
         sortOrder: sortOrder || 0,
-        stepId: stepId || null,
+        stepId: resolvedStepId,
         assignToRole: assignedTo || assignToRole || 'admin',
         visibility: visibility || 'all',
       }).returning();
