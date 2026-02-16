@@ -43,6 +43,8 @@ import {
   Send,
   BotMessageSquare,
   User,
+  Mic,
+  MicOff,
 } from "lucide-react";
 
 type Rule = {
@@ -87,6 +89,8 @@ export default function CreditPoliciesTab() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: policies, isLoading } = useQuery<CreditPolicy[]>({
@@ -160,11 +164,92 @@ export default function CreditPoliciesTab() {
     setChatMessages([]);
     setChatInput("");
     setIsChatLoading(false);
+    stopRecording();
+  }
+
+  function startRecording() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Your browser doesn't support speech recognition. Please try Chrome or Edge.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    let finalTranscript = "";
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + " ";
+        } else {
+          interim = transcript;
+        }
+      }
+      setChatInput(finalTranscript + interim);
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== "aborted") {
+        toast({
+          title: "Voice recording error",
+          description: event.error === "not-allowed"
+            ? "Microphone access was denied. Please allow microphone access in your browser settings."
+            : "Something went wrong with voice recording. Please try again.",
+          variant: "destructive",
+        });
+      }
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }
+
+  function stopRecording() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsRecording(false);
+  }
+
+  function toggleRecording() {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
   }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleChatSend() {
     const trimmed = chatInput.trim();
@@ -387,19 +472,37 @@ export default function CreditPoliciesTab() {
                         handleChatSend();
                       }
                     }}
-                    placeholder="e.g. Minimum 680 FICO, max 80% LTV..."
+                    placeholder={isRecording ? "Listening... speak now" : "e.g. Minimum 680 FICO, max 80% LTV..."}
                     disabled={isChatLoading}
                     data-testid="input-chat-message"
                   />
                   <Button
                     size="icon"
-                    onClick={handleChatSend}
+                    variant={isRecording ? "destructive" : "outline"}
+                    onClick={toggleRecording}
+                    disabled={isChatLoading}
+                    data-testid="button-toggle-mic"
+                  >
+                    {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    size="icon"
+                    onClick={() => {
+                      stopRecording();
+                      handleChatSend();
+                    }}
                     disabled={isChatLoading || !chatInput.trim()}
                     data-testid="button-send-chat"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
+                {isRecording && (
+                  <p className="text-xs text-destructive flex items-center gap-1.5 flex-wrap">
+                    <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                    Recording... Click the mic to stop, or press Send when ready.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
