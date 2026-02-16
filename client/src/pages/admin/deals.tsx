@@ -1009,7 +1009,7 @@ export default function AdminDeals({ embedded = false }: { embedded?: boolean })
         </div>
       )}
 
-      {stats?.pipelineByProgram && stats.pipelineByProgram.length > 0 && (
+      {stats?.pipelineByProgram && (
         <PipelineByProgram programs={stats.pipelineByProgram} />
       )}
 

@@ -5182,21 +5182,17 @@ export async function registerRoutes(
         }
       }
 
-      // Get unique program IDs from deals
-      const dealProgramIds = [...new Set(allProjects.map(p => p.programId).filter(Boolean))] as number[];
-      const programNames = new Map<number, string>();
-      if (dealProgramIds.length > 0) {
-        const programs = await db.select({ id: loanPrograms.id, name: loanPrograms.name })
-          .from(loanPrograms)
-          .where(inArray(loanPrograms.id, dealProgramIds));
-        programs.forEach(p => programNames.set(p.id, p.name));
-      }
+      // Get ALL active programs (not just ones with deals)
+      const allActivePrograms = await db.select({ id: loanPrograms.id, name: loanPrograms.name })
+        .from(loanPrograms)
+        .where(eq(loanPrograms.isActive, true))
+        .orderBy(asc(loanPrograms.sortOrder));
 
-      // Build pipeline by program
-      const pipelineByProgram = dealProgramIds.map(progId => {
-        const programDeals = allProjects.filter(p => p.programId === progId);
+      // Build pipeline by program - include all configured programs
+      const pipelineByProgram = allActivePrograms.map(prog => {
+        const programDeals = allProjects.filter(p => p.programId === prog.id);
         const programSteps = allProgramStepMappings
-          .filter(m => m.programId === progId)
+          .filter(m => m.programId === prog.id)
           .sort((a, b) => a.stepOrder - b.stepOrder);
 
         const stages = programSteps.map(step => ({
@@ -5207,12 +5203,12 @@ export async function registerRoutes(
         }));
 
         return {
-          programId: progId,
-          programName: programNames.get(progId) || `Program ${progId}`,
+          programId: prog.id,
+          programName: prog.name,
           totalDeals: programDeals.length,
           stages,
         };
-      }).sort((a, b) => b.totalDeals - a.totalDeals);
+      });
 
       // Deals without a program
       const unassignedDeals = allProjects.filter(p => !p.programId);
