@@ -176,6 +176,8 @@ export default function AdminPrograms() {
   const [showEditProgram, setShowEditProgram] = useState(false);
   const [showAddDocument, setShowAddDocument] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [collapsedDocPrograms, setCollapsedDocPrograms] = useState<Set<number>>(new Set());
+  const [collapsedTaskPrograms, setCollapsedTaskPrograms] = useState<Set<number>>(new Set());
   const [workflowEditorProgram, setWorkflowEditorProgram] = useState<LoanProgram | null>(null);
 
   // Inline document/task templates for program creation
@@ -1635,32 +1637,52 @@ export default function AdminPrograms() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {programs.map((program) => (
-                <Card key={program.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <h3 className="font-semibold">{program.name}</h3>
-                        <Badge variant="outline">
-                          {program.documentCount || 0} documents
-                        </Badge>
-                      </div>
-                      <Button
-                        size="sm"
+              {programs.map((program) => {
+                const isCollapsed = collapsedDocPrograms.has(program.id);
+                return (
+                  <Card key={program.id}>
+                    <CardContent className="p-6">
+                      <div
+                        className="flex items-center justify-between cursor-pointer select-none"
                         onClick={() => {
-                          setSelectedProgram(program);
-                          setShowAddDocument(true);
+                          setCollapsedDocPrograms(prev => {
+                            const next = new Set(prev);
+                            if (next.has(program.id)) next.delete(program.id);
+                            else next.add(program.id);
+                            return next;
+                          });
                         }}
-                        data-testid={`button-add-doc-${program.id}`}
+                        data-testid={`toggle-doc-section-${program.id}`}
                       >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Document
-                      </Button>
-                    </div>
-                    <DocumentList programId={program.id} onDelete={deleteDocument.mutate} />
-                  </CardContent>
-                </Card>
-              ))}
+                        <div className="flex items-center gap-3">
+                          {isCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+                          <h3 className="font-semibold">{program.name}</h3>
+                          <Badge variant="outline">
+                            {program.documentCount || 0} documents
+                          </Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProgram(program);
+                            setShowAddDocument(true);
+                          }}
+                          data-testid={`button-add-doc-${program.id}`}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Document
+                        </Button>
+                      </div>
+                      {!isCollapsed && (
+                        <div className="mt-4">
+                          <DocumentList programId={program.id} onDelete={deleteDocument.mutate} />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -1688,30 +1710,50 @@ export default function AdminPrograms() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {programs.map((program) => (
-                <Card key={program.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <h3 className="font-semibold">{program.name}</h3>
-                        <Badge variant="outline">{program.taskCount || 0} tasks</Badge>
-                      </div>
-                      <Button
-                        size="sm"
+              {programs.map((program) => {
+                const isCollapsed = collapsedTaskPrograms.has(program.id);
+                return (
+                  <Card key={program.id}>
+                    <CardContent className="p-6">
+                      <div
+                        className="flex items-center justify-between cursor-pointer select-none"
                         onClick={() => {
-                          setSelectedProgram(program);
-                          setShowAddTask(true);
+                          setCollapsedTaskPrograms(prev => {
+                            const next = new Set(prev);
+                            if (next.has(program.id)) next.delete(program.id);
+                            else next.add(program.id);
+                            return next;
+                          });
                         }}
-                        data-testid={`button-add-task-${program.id}`}
+                        data-testid={`toggle-task-section-${program.id}`}
                       >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Task
-                      </Button>
-                    </div>
-                    <TaskList programId={program.id} onDelete={deleteTask.mutate} />
-                  </CardContent>
-                </Card>
-              ))}
+                        <div className="flex items-center gap-3">
+                          {isCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+                          <h3 className="font-semibold">{program.name}</h3>
+                          <Badge variant="outline">{program.taskCount || 0} tasks</Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProgram(program);
+                            setShowAddTask(true);
+                          }}
+                          data-testid={`button-add-task-${program.id}`}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Task
+                        </Button>
+                      </div>
+                      {!isCollapsed && (
+                        <div className="mt-4">
+                          <TaskList programId={program.id} onDelete={deleteTask.mutate} />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
