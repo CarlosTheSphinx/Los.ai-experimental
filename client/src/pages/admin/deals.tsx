@@ -560,21 +560,25 @@ export default function AdminDeals() {
   const [newDeal, setNewDeal] = useState({
     customerFirstName: "",
     customerLastName: "",
+    borrowerEmail: "",
+    borrowerPhone: "",
     propertyAddress: "",
     loanAmount: "",
     propertyValue: "",
     interestRate: "",
-    loanType: "rtl",
+    loanType: "",
     programId: "",
-    propertyType: "single-family-residence",
+    propertyType: "",
     stage: "initial-review",
     partnerId: "",
     partnerName: "",
+    loanPurpose: "purchase",
+    targetCloseDate: "",
   });
   
   const [partnerInputMode, setPartnerInputMode] = useState<"select" | "manual">("select");
 
-  const { data: programsData } = useQuery<{ programs: Array<{ id: number; name: string; loanType: string; isActive: boolean }> }>({
+  const { data: programsData } = useQuery<{ programs: Array<{ id: number; name: string; loanType: string; isActive: boolean; eligiblePropertyTypes: string[] | null }> }>({
     queryKey: ["/api/programs-with-pricing"],
     queryFn: async () => {
       const res = await fetch("/api/programs-with-pricing", { credentials: "include" });
@@ -591,6 +595,29 @@ export default function AdminDeals() {
       return res.json();
     },
   });
+
+  const selectedProgram = programsData?.programs?.find(p => String(p.id) === newDeal.programId);
+
+  const allPropertyTypes = [
+    { value: "single-family-residence", label: "Single Family Residence" },
+    { value: "2-4-unit", label: "2-4 Unit" },
+    { value: "multifamily-5-plus", label: "Multifamily (5+ Units)" },
+    { value: "rental-portfolio", label: "Rental Portfolio" },
+    { value: "mixed-use", label: "Mixed-Use" },
+    { value: "infill-lot", label: "Infill Lot" },
+    { value: "land", label: "Land" },
+    { value: "office", label: "Office" },
+    { value: "retail", label: "Retail" },
+    { value: "hospitality", label: "Hospitality" },
+    { value: "industrial", label: "Industrial" },
+    { value: "medical", label: "Medical" },
+    { value: "agricultural", label: "Agricultural" },
+    { value: "special-purpose", label: "Special Purpose" },
+  ];
+
+  const availablePropertyTypes = selectedProgram?.eligiblePropertyTypes?.length
+    ? allPropertyTypes.filter(pt => selectedProgram.eligiblePropertyTypes!.includes(pt.value))
+    : allPropertyTypes;
 
   const { data, isLoading } = useQuery<DealsResponse>({
     queryKey: ["/api/admin/deals", searchTerm],
@@ -615,37 +642,65 @@ export default function AdminDeals() {
       setNewDeal({
         customerFirstName: "",
         customerLastName: "",
+        borrowerEmail: "",
+        borrowerPhone: "",
         propertyAddress: "",
         loanAmount: "",
         propertyValue: "",
         interestRate: "",
-        loanType: "rtl",
+        loanType: "",
         programId: "",
-        propertyType: "single-family-residence",
+        propertyType: "",
         stage: "initial-review",
         partnerId: "",
         partnerName: "",
+        loanPurpose: "purchase",
+        targetCloseDate: "",
       });
       setPartnerInputMode("select");
       toast({
         title: "Deal created",
-        description: "The deal has been added to the pipeline.",
+        description: "The deal has been added to the pipeline and is ready for processing.",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to create deal. Please try again.",
+        description: error.message || "Failed to create deal. Please try again.",
         variant: "destructive",
       });
     },
   });
 
   const handleCreateDeal = () => {
-    if (!newDeal.customerFirstName || !newDeal.customerLastName || !newDeal.propertyAddress || !newDeal.loanAmount) {
+    if (!newDeal.programId) {
       toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
+        title: "Missing loan program",
+        description: "Please select a loan program first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newDeal.customerFirstName || !newDeal.customerLastName) {
+      toast({
+        title: "Missing borrower name",
+        description: "Please enter the borrower's first and last name.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newDeal.propertyAddress) {
+      toast({
+        title: "Missing property address",
+        description: "Please enter the property address.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newDeal.loanAmount) {
+      toast({
+        title: "Missing loan amount",
+        description: "Please enter the requested loan amount.",
         variant: "destructive",
       });
       return;
@@ -689,10 +744,44 @@ export default function AdminDeals() {
             <DialogHeader>
               <DialogTitle>Add New Deal</DialogTitle>
               <DialogDescription>
-                Manually add a new deal to the pipeline
+                Select a loan program and fill in the deal details
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-5 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="programId" className="text-sm font-semibold">Loan Program *</Label>
+                <Select
+                  value={newDeal.programId}
+                  onValueChange={(value) => {
+                    const program = programsData?.programs?.find(p => String(p.id) === value);
+                    const eligibleTypes = program?.eligiblePropertyTypes || [];
+                    setNewDeal({
+                      ...newDeal,
+                      programId: value,
+                      loanType: program?.loanType || "",
+                      propertyType: eligibleTypes.length === 1 ? eligibleTypes[0] : (eligibleTypes.includes(newDeal.propertyType) ? newDeal.propertyType : ""),
+                    });
+                  }}
+                >
+                  <SelectTrigger data-testid="select-loan-program">
+                    <SelectValue placeholder="Choose a loan program..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programsData?.programs?.filter(p => p.isActive).map((program) => (
+                      <SelectItem key={program.id} value={String(program.id)}>
+                        {program.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedProgram && (
+                  <p className="text-xs text-muted-foreground">
+                    Type: {selectedProgram.loanType?.toUpperCase().replace(/_/g, " ") || "—"}
+                    {selectedProgram.eligiblePropertyTypes?.length ? ` · ${selectedProgram.eligiblePropertyTypes.length} eligible property types` : ""}
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name *</Label>
@@ -715,6 +804,30 @@ export default function AdminDeals() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="borrowerEmail">Email</Label>
+                  <Input
+                    id="borrowerEmail"
+                    type="email"
+                    value={newDeal.borrowerEmail}
+                    onChange={(e) => setNewDeal({ ...newDeal, borrowerEmail: e.target.value })}
+                    placeholder="john@example.com"
+                    data-testid="input-borrower-email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="borrowerPhone">Phone</Label>
+                  <Input
+                    id="borrowerPhone"
+                    type="tel"
+                    value={newDeal.borrowerPhone}
+                    onChange={(e) => setNewDeal({ ...newDeal, borrowerPhone: e.target.value })}
+                    placeholder="(555) 123-4567"
+                    data-testid="input-borrower-phone"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="address">Property Address *</Label>
                 <AddressAutocomplete
@@ -724,6 +837,42 @@ export default function AdminDeals() {
                   placeholder="Start typing an address..."
                   data-testid="input-property-address"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="propertyType">Property Type</Label>
+                  <Select
+                    value={newDeal.propertyType}
+                    onValueChange={(value) => setNewDeal({ ...newDeal, propertyType: value })}
+                  >
+                    <SelectTrigger data-testid="select-property-type">
+                      <SelectValue placeholder="Select property type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availablePropertyTypes.map((pt) => (
+                        <SelectItem key={pt.value} value={pt.value}>
+                          {pt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="loanPurpose">Loan Purpose</Label>
+                  <Select
+                    value={newDeal.loanPurpose}
+                    onValueChange={(value) => setNewDeal({ ...newDeal, loanPurpose: value })}
+                  >
+                    <SelectTrigger data-testid="select-loan-purpose">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="purchase">Purchase</SelectItem>
+                      <SelectItem value="refinance">Refinance</SelectItem>
+                      <SelectItem value="cash_out">Cash-Out Refinance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -756,66 +905,24 @@ export default function AdminDeals() {
                     id="interestRate"
                     value={newDeal.interestRate}
                     onChange={(e) => setNewDeal({ ...newDeal, interestRate: e.target.value })}
-                    placeholder="11.5%"
+                    placeholder="11.5"
                     data-testid="input-interest-rate"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="programId">Loan Program</Label>
-                  <Select
-                    value={newDeal.programId}
-                    onValueChange={(value) => {
-                      const program = programsData?.programs?.find(p => String(p.id) === value);
-                      setNewDeal({
-                        ...newDeal,
-                        programId: value,
-                        loanType: program?.loanType || newDeal.loanType,
-                      });
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-loan-program">
-                      <SelectValue placeholder="Select a program" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {programsData?.programs?.filter(p => p.isActive).map((program) => (
-                        <SelectItem key={program.id} value={String(program.id)}>
-                          {program.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="targetCloseDate">Target Close Date</Label>
+                  <Input
+                    id="targetCloseDate"
+                    type="date"
+                    value={newDeal.targetCloseDate}
+                    onChange={(e) => setNewDeal({ ...newDeal, targetCloseDate: e.target.value })}
+                    data-testid="input-target-close-date"
+                  />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="propertyType">Property Type</Label>
-                <Select
-                  value={newDeal.propertyType}
-                  onValueChange={(value) => setNewDeal({ ...newDeal, propertyType: value })}
-                >
-                  <SelectTrigger data-testid="select-property-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
-                    <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
-                    <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
-                    <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
-                    <SelectItem value="mixed-use">Mixed-Use</SelectItem>
-                    <SelectItem value="infill-lot">Infill Lot</SelectItem>
-                    <SelectItem value="land">Land</SelectItem>
-                    <SelectItem value="office">Office</SelectItem>
-                    <SelectItem value="retail">Retail</SelectItem>
-                    <SelectItem value="hospitality">Hospitality</SelectItem>
-                    <SelectItem value="industrial">Industrial</SelectItem>
-                    <SelectItem value="medical">Medical</SelectItem>
-                    <SelectItem value="agricultural">Agricultural</SelectItem>
-                    <SelectItem value="special-purpose">Special Purpose</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="partner">Partner</Label>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Label htmlFor="partner">Partner / Broker</Label>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -857,7 +964,7 @@ export default function AdminDeals() {
                 )}
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2">
               <Button
                 variant="outline"
                 onClick={() => setIsAddDialogOpen(false)}

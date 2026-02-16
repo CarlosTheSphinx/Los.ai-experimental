@@ -5208,6 +5208,8 @@ export async function registerRoutes(
       const { 
         customerFirstName, 
         customerLastName, 
+        borrowerEmail,
+        borrowerPhone,
         propertyAddress, 
         loanAmount, 
         propertyValue, 
@@ -5217,7 +5219,9 @@ export async function registerRoutes(
         propertyType, 
         stage,
         partnerId,
-        partnerName
+        partnerName,
+        loanPurpose,
+        targetCloseDate,
       } = req.body;
       
       if (!customerFirstName || !customerLastName || !propertyAddress || !loanAmount) {
@@ -5231,6 +5235,7 @@ export async function registerRoutes(
       const parsedProgramId = reqProgramId ? parseInt(reqProgramId) : null;
       const effectiveLoanType = loanType || 'rtl';
       const borrowerName = `${customerFirstName} ${customerLastName}`.trim();
+      const effectiveLoanPurpose = loanPurpose || 'purchase';
       
       const [deal] = await db.insert(savedQuotes).values({
         userId: req.user!.id,
@@ -5245,8 +5250,8 @@ export async function registerRoutes(
           propertyValue: propertyValueNum,
           ltv,
           loanType: effectiveLoanType,
-          loanPurpose: 'purchase',
-          propertyType: propertyType || 'single-family',
+          loanPurpose: effectiveLoanPurpose,
+          propertyType: propertyType || 'single-family-residence',
           loanTerm: '12 months',
         },
         interestRate: interestRate || 'TBD',
@@ -5261,6 +5266,10 @@ export async function registerRoutes(
       const projectNumber = await storage.generateProjectNumber();
       const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
       
+      const parsedTargetClose = targetCloseDate 
+        ? new Date(targetCloseDate) 
+        : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+      
       const project = await storage.createProject({
         userId: req.user!.id,
         projectName: `${borrowerName} - ${propertyAddress}`,
@@ -5271,15 +5280,15 @@ export async function registerRoutes(
         loanType: effectiveLoanType,
         programId: parsedProgramId,
         propertyAddress,
-        propertyType: propertyType || 'single-family',
+        propertyType: propertyType || 'single-family-residence',
         borrowerName,
-        borrowerEmail: '',
-        borrowerPhone: null,
+        borrowerEmail: borrowerEmail || '',
+        borrowerPhone: borrowerPhone || null,
         status: 'active',
         currentStage: 'documentation',
         progressPercentage: 0,
         applicationDate: new Date(),
-        targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        targetCloseDate: parsedTargetClose,
         borrowerPortalToken: borrowerToken,
         borrowerPortalEnabled: true,
         quoteId: deal.id,
