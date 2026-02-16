@@ -1676,6 +1676,8 @@ export const PERMISSION_KEYS = [
   "onboarding.manage",
   "commercial.view",
   "commercial.manage",
+  "agents.view",
+  "agents.manage",
 ] as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[number];
@@ -1767,6 +1769,13 @@ export const PERMISSION_CATEGORIES: Record<string, { label: string; permissions:
     permissions: [
       { key: "commercial.view", label: "View commercial submissions" },
       { key: "commercial.manage", label: "Manage commercial submissions" },
+    ],
+  },
+  agents: {
+    label: "AI Agents",
+    permissions: [
+      { key: "agents.view", label: "View agent results" },
+      { key: "agents.manage", label: "Manage agent configurations" },
     ],
   },
 };
@@ -2228,3 +2237,153 @@ export const documentReviewRules = pgTable("document_review_rules", {
 export const insertDocumentReviewRuleSchema = createInsertSchema(documentReviewRules).omit({ id: true, createdAt: true });
 export type DocumentReviewRule = typeof documentReviewRules.$inferSelect;
 export type InsertDocumentReviewRule = z.infer<typeof insertDocumentReviewRuleSchema>;
+
+// ==================== AI AGENT SYSTEM ====================
+
+// Agent Configurations - stores per-agent system prompts, tools, model settings
+export const agentConfigurations = pgTable("agent_configurations", {
+  id: serial("id").primaryKey(),
+  agentType: varchar("agent_type", { length: 50 }).notNull(), // 'document_intelligence' | 'processor' | 'communication'
+  name: varchar("name", { length: 255 }).notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  toolDefinitions: jsonb("tool_definitions"), // array of tool schemas
+  modelProvider: varchar("model_provider", { length: 50 }).default("openai").notNull(),
+  modelName: varchar("model_name", { length: 100 }).default("gpt-4o").notNull(),
+  temperature: real("temperature").default(0.2).notNull(),
+  maxTokens: integer("max_tokens").default(4096).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  version: integer("version").default(1).notNull(),
+  tenantOverrides: jsonb("tenant_overrides"), // per-tenant customizations
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAgentConfigurationSchema = createInsertSchema(agentConfigurations).omit({ id: true, createdAt: true, updatedAt: true });
+export type AgentConfiguration = typeof agentConfigurations.$inferSelect;
+export type InsertAgentConfiguration = z.infer<typeof insertAgentConfigurationSchema>;
+
+// Document Extractions - stores Agent 1's structured output per document
+export const documentExtractions = pgTable("document_extractions", {
+  id: serial("id").primaryKey(),
+  dealDocumentId: integer("deal_document_id").references(() => dealDocuments.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  documentType: varchar("document_type", { length: 100 }).notNull(),
+  extractedFields: jsonb("extracted_fields").notNull(),
+  qualityAssessment: jsonb("quality_assessment"),
+  anomalies: jsonb("anomalies"),
+  confidenceScore: real("confidence_score"),
+  classificationMatch: boolean("classification_match"),
+  confirmedDocType: varchar("confirmed_doc_type", { length: 100 }),
+  agentRunId: integer("agent_run_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDocumentExtractionSchema = createInsertSchema(documentExtractions).omit({ id: true, createdAt: true });
+export type DocumentExtraction = typeof documentExtractions.$inferSelect;
+export type InsertDocumentExtraction = z.infer<typeof insertDocumentExtractionSchema>;
+
+// Agent Findings - stores Agent 2's analysis results per deal
+export const agentFindings = pgTable("agent_findings", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
+  agentRunId: integer("agent_run_id"),
+  overallStatus: varchar("overall_status", { length: 50 }), // 'clear' | 'conditions_exist' | 'significant_issues' | 'incomplete_data'
+  policyFindings: jsonb("policy_findings"),
+  documentRequirementFindings: jsonb("document_requirement_findings"),
+  crossDocumentConsistency: jsonb("cross_document_consistency"),
+  missingDocuments: jsonb("missing_documents"),
+  dealHealthSummary: jsonb("deal_health_summary"),
+  recommendedNextActions: jsonb("recommended_next_actions"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentFindingSchema = createInsertSchema(agentFindings).omit({ id: true, createdAt: true });
+export type AgentFinding = typeof agentFindings.$inferSelect;
+export type InsertAgentFinding = z.infer<typeof insertAgentFindingSchema>;
+
+// Agent Communications - stores Agent 3's drafted messages
+export const agentCommunications = pgTable("agent_communications", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  agentRunId: integer("agent_run_id"),
+  recipientType: varchar("recipient_type", { length: 50 }).notNull(), // 'borrower' | 'broker' | 'internal'
+  recipientName: varchar("recipient_name", { length: 255 }),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  htmlBody: text("html_body"),
+  priority: varchar("priority", { length: 50 }).default("routine").notNull(),
+  status: varchar("status", { length: 50 }).default("draft").notNull(), // draft | approved | sent | rejected | edited
+  findingIds: jsonb("finding_ids"), // array of finding references
+  suggestedFollowUpDate: timestamp("suggested_follow_up_date"),
+  internalNotes: text("internal_notes"),
+  editedBody: text("edited_body"), // stores human edits
+  approvedBy: integer("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  sentAt: timestamp("sent_at"),
+  sentVia: varchar("sent_via", { length: 50 }), // 'email' | 'sms'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentCommunicationSchema = createInsertSchema(agentCommunications).omit({ id: true, createdAt: true });
+export type AgentCommunication = typeof agentCommunications.$inferSelect;
+export type InsertAgentCommunication = z.infer<typeof insertAgentCommunicationSchema>;
+
+// Agent Corrections - stores human feedback for per-tenant learning
+export const agentCorrections = pgTable("agent_corrections", {
+  id: serial("id").primaryKey(),
+  agentType: varchar("agent_type", { length: 50 }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
+  originalOutput: text("original_output").notNull(),
+  correctedOutput: text("corrected_output").notNull(),
+  correctionType: varchar("correction_type", { length: 50 }), // 'finding_override' | 'communication_edit' | 'severity_change' | 'false_positive'
+  context: jsonb("context"), // metadata about what was corrected
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentCorrectionSchema = createInsertSchema(agentCorrections).omit({ id: true, createdAt: true });
+export type AgentCorrection = typeof agentCorrections.$inferSelect;
+export type InsertAgentCorrection = z.infer<typeof insertAgentCorrectionSchema>;
+
+// Agent Runs - audit log of every agent execution
+export const agentRuns = pgTable("agent_runs", {
+  id: serial("id").primaryKey(),
+  agentType: varchar("agent_type", { length: 50 }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
+  configurationId: integer("configuration_id").references(() => agentConfigurations.id, { onDelete: 'set null' }),
+  status: varchar("status", { length: 50 }).default("running").notNull(), // running | completed | failed | cancelled
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  estimatedCost: real("estimated_cost"),
+  durationMs: integer("duration_ms"),
+  errorMessage: text("error_message"),
+  triggerType: varchar("trigger_type", { length: 50 }), // 'manual' | 'document_upload' | 'schedule' | 'stage_change'
+  triggeredBy: integer("triggered_by").references(() => users.id, { onDelete: 'set null' }),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertAgentRunSchema = createInsertSchema(agentRuns).omit({ id: true, startedAt: true });
+export type AgentRun = typeof agentRuns.$inferSelect;
+export type InsertAgentRun = z.infer<typeof insertAgentRunSchema>;
+
+// Deal Stories - living narrative per deal (the "story" file)
+export const dealStories = pgTable("deal_stories", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull().unique(),
+  currentNarrative: text("current_narrative").notNull(), // the current compiled story
+  lastUpdatedSection: varchar("last_updated_section", { length: 100 }),
+  storyVersion: integer("story_version").default(1).notNull(),
+  metadata: jsonb("metadata"), // stats like total_findings, docs_received, etc
+  lastAgentUpdate: timestamp("last_agent_update"),
+  lastHumanUpdate: timestamp("last_human_update"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDealStorySchema = createInsertSchema(dealStories).omit({ id: true, createdAt: true, updatedAt: true });
+export type DealStory = typeof dealStories.$inferSelect;
+export type InsertDealStory = z.infer<typeof insertDealStorySchema>;

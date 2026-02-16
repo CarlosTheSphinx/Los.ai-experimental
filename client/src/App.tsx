@@ -50,6 +50,7 @@ import AdminAIReview from "@/pages/admin/ai-review";
 import AdminCommercialConfig from "@/pages/admin/commercial-config";
 
 import ProcessorDashboard from "@/pages/admin/processor-dashboard";
+import AIAgentsPage from "@/pages/admin/ai-agents";
 
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
@@ -191,6 +192,7 @@ function MainRoutes() {
           <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
           <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />
           <Route path="/admin/processor" component={() => <AdminProtectedRoute component={ProcessorDashboard} />} />
+          <Route path="/admin/ai-agents" component={() => <AdminProtectedRoute component={AIAgentsPage} />} />
 
           <Route component={NotFound} />
         </Switch>

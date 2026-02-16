@@ -98,6 +98,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin/ai-review", label: "Lane", icon: UserCircle, requiredPermission: "programs.view" },
+  { href: "/admin/ai-agents", label: "AI Agents", icon: Sparkles, requiredPermission: "agents.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘3" },
