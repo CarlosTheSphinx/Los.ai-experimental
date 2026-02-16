@@ -320,7 +320,7 @@ function ConfigurationEditor({
                 placeholder="Enter the system prompt for this agent..."
               />
               <p className="text-xs text-muted-foreground">
-                Use template variables like {{"{variable_name}"}} to inject dynamic content
+                Use template variables like {"{{variable_name}}"} to inject dynamic content
               </p>
             </div>
           </TabsContent>
