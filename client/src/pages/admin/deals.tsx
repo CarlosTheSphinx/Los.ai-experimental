@@ -303,6 +303,59 @@ function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
   );
 }
 
+function PipelineByStage({ stageStats }: { stageStats: StageInfo[] }) {
+  const totalDeals = stageStats.reduce((sum, s) => sum + s.count, 0);
+  const maxCount = Math.max(...stageStats.map(s => s.count), 1);
+
+  return (
+    <Card data-testid="card-pipeline-by-stage">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg">Pipeline by Stage</CardTitle>
+        <CardDescription>Deal count and percentage at each stage</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-3">
+          {stageStats.map((stage, index) => {
+            const pct = totalDeals > 0 ? Math.round((stage.count / totalDeals) * 100) : 0;
+            return (
+              <div key={index} className="space-y-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-foreground">{stage.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-semibold">{stage.count} deals</span>
+                    <span className="text-xs font-bold px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                      {pct}%
+                    </span>
+                  </div>
+                </div>
+                <div className="w-full h-5 rounded-md overflow-hidden bg-muted">
+                  <div
+                    className="h-full rounded-md transition-all duration-500"
+                    style={{
+                      width: `${Math.max((stage.count / maxCount) * 100, 4)}%`,
+                      backgroundColor: stage.color || 'hsl(212 67% 51%)',
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="pt-3 border-t">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-muted-foreground">Total in Pipeline</span>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold text-primary">{totalDeals}</span>
+              <span className="text-sm text-muted-foreground">deals</span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? {
@@ -1013,9 +1066,14 @@ export default function AdminDeals({ embedded = false }: { embedded?: boolean })
         </div>
       )}
 
-      {stats?.pipelineByProgram && stats.pipelineByProgram.length > 0 && (
-        <PipelineByProgram programs={stats.pipelineByProgram} />
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {stats?.pipelineByProgram && stats.pipelineByProgram.length > 0 && (
+          <PipelineByProgram programs={stats.pipelineByProgram} />
+        )}
+        {stats?.stageStats && stats.stageStats.length > 0 && (
+          <PipelineByStage stageStats={stats.stageStats} />
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline" className="gap-1.5 cursor-pointer hover:bg-accent">
