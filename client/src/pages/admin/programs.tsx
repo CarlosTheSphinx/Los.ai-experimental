@@ -623,8 +623,8 @@ export default function AdminPrograms() {
                   Add Program
                 </Button>
               </DialogTrigger>
-              <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
-                <div className="sticky top-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background backdrop-blur-md">
+              <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 flex flex-col overflow-hidden p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
+                <div className="flex-shrink-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background">
                   <div className="flex items-center gap-3">
                     <Button
                       variant="ghost"
@@ -658,7 +658,7 @@ export default function AdminPrograms() {
                     </Button>
                   </div>
                 </div>
-                <div className="flex h-[calc(100vh-57px)]">
+                <div className="flex flex-1 min-h-0">
                   <div className="w-1/2 overflow-y-auto p-6 md:p-8 border-r">
                 <DialogHeader className="sr-only">
                   <DialogTitle>Add New Loan Program</DialogTitle>
@@ -1442,8 +1442,8 @@ export default function AdminPrograms() {
 
       {/* Edit Program Dialog */}
       <Dialog open={showEditProgram} onOpenChange={setShowEditProgram}>
-        <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
-          <div className="sticky top-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background backdrop-blur-md">
+        <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 flex flex-col overflow-hidden p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
+          <div className="flex-shrink-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -1477,7 +1477,7 @@ export default function AdminPrograms() {
               </Button>
             </div>
           </div>
-          <div className="flex h-[calc(100vh-57px)]">
+          <div className="flex flex-1 min-h-0">
             <div className="w-1/2 overflow-y-auto p-6 md:p-8 border-r">
           <DialogHeader className="sr-only">
             <DialogTitle>Edit Loan Program</DialogTitle>
