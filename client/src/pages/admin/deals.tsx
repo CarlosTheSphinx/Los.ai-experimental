@@ -1010,12 +1010,6 @@ export default function AdminDeals({ embedded = false }: { embedded?: boolean })
             subtitle="Cumulative loan amount"
             icon={DollarSign}
           />
-          <StatsCard
-            title="Total Revenue"
-            value={formatCurrency(stats?.totalRevenue || 0)}
-            subtitle="Points + TPO Premium"
-            icon={TrendingUp}
-          />
         </div>
       )}
 
