@@ -568,12 +568,12 @@ export default function AdminPrograms() {
   });
 
   const bulkCreateDocuments = useMutation({
-    mutationFn: async (docNames: string[]) => {
+    mutationFn: async ({ programId, docNames }: { programId: number; docNames: string[] }) => {
       const promises = docNames.map(docName => {
         const categoryGroup = standardDocuments.find(cat =>
           cat.documents.some(doc => doc.name === docName)
         );
-        return apiRequest("POST", `/api/admin/programs/${selectedProgram?.id}/documents`, {
+        return apiRequest("POST", `/api/admin/programs/${programId}/documents`, {
           documentName: docName,
           documentCategory: categoryGroup?.category || "other",
           documentDescription: "",
@@ -585,8 +585,8 @@ export default function AdminPrograms() {
       });
       return Promise.all(promises);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", variables.programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
       setSelectedStandardDocs(new Set());
       toast({ title: "Documents added successfully" });
@@ -597,11 +597,11 @@ export default function AdminPrograms() {
   });
 
   const deleteDocument = useMutation({
-    mutationFn: async (docId: number) => {
-      return apiRequest("DELETE", `/api/admin/programs/${selectedProgram?.id}/documents/${docId}`);
+    mutationFn: async ({ programId, docId }: { programId: number; docId: number }) => {
+      return apiRequest("DELETE", `/api/admin/programs/${programId}/documents/${docId}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", variables.programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
       toast({ title: "Document template removed" });
     },
@@ -611,13 +611,13 @@ export default function AdminPrograms() {
   });
 
   const createTask = useMutation({
-    mutationFn: async (data: typeof taskForm) => {
-      return apiRequest("POST", `/api/admin/programs/${selectedProgram?.id}/tasks`, data);
+    mutationFn: async ({ programId, data }: { programId: number; data: typeof taskForm }) => {
+      return apiRequest("POST", `/api/admin/programs/${programId}/tasks`, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", variables.programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id, "workflow-steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", variables.programId, "workflow-steps"] });
       setShowAddTask(false);
       resetTaskForm();
       toast({ title: "Task template added" });
@@ -628,11 +628,11 @@ export default function AdminPrograms() {
   });
 
   const deleteTask = useMutation({
-    mutationFn: async (taskId: number) => {
-      return apiRequest("DELETE", `/api/admin/programs/${selectedProgram?.id}/tasks/${taskId}`);
+    mutationFn: async ({ programId, taskId }: { programId: number; taskId: number }) => {
+      return apiRequest("DELETE", `/api/admin/programs/${programId}/tasks/${taskId}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", selectedProgram?.id] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", variables.programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
       toast({ title: "Task template removed" });
     },
@@ -2008,7 +2008,7 @@ export default function AdminPrograms() {
                                   className="w-full mt-2"
                                   onClick={() => {
                                     if (selectedStandardDocs.size > 0) {
-                                      bulkCreateDocuments.mutate(Array.from(selectedStandardDocs));
+                                      bulkCreateDocuments.mutate({ programId: program.id, docNames: Array.from(selectedStandardDocs) });
                                     }
                                   }}
                                   disabled={bulkCreateDocuments.isPending || selectedStandardDocs.size === 0}
@@ -2021,7 +2021,7 @@ export default function AdminPrograms() {
                           </div>
 
                           {/* Document List */}
-                          <DocumentList programId={program.id} onDelete={deleteDocument.mutate} onEdit={loadDocumentForEditing} />
+                          <DocumentList programId={program.id} onDelete={(docId: number) => deleteDocument.mutate({ programId: program.id, docId })} onEdit={loadDocumentForEditing} />
                         </div>
                       )}
                     </CardContent>
@@ -2092,7 +2092,7 @@ export default function AdminPrograms() {
                       </div>
                       {!isCollapsed && (
                         <div className="mt-4">
-                          <TaskList programId={program.id} onDelete={deleteTask.mutate} />
+                          <TaskList programId={program.id} onDelete={(taskId: number) => deleteTask.mutate({ programId: program.id, taskId })} />
                         </div>
                       )}
                     </CardContent>
@@ -2985,8 +2985,8 @@ export default function AdminPrograms() {
               Cancel
             </Button>
             <Button
-              onClick={() => createTask.mutate(taskForm)}
-              disabled={createTask.isPending || !taskForm.taskName}
+              onClick={() => selectedProgram && createTask.mutate({ programId: selectedProgram.id, data: taskForm })}
+              disabled={createTask.isPending || !taskForm.taskName || !selectedProgram}
               data-testid="button-save-task"
             >
               {createTask.isPending && (
