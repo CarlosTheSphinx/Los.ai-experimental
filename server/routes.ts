@@ -4381,6 +4381,42 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Update project fields
+  app.patch('/api/admin/projects/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const { targetCloseDate } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: 'Project ID is required' });
+      }
+
+      const updateData: Record<string, any> = {};
+
+      if (targetCloseDate !== undefined) {
+        updateData.targetCloseDate = targetCloseDate ? new Date(targetCloseDate) : null;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      const [updated] = await db.update(projects)
+        .set(updateData)
+        .where(eq(projects.id, projectId))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      res.json({ project: updated });
+    } catch (error) {
+      console.error('Admin project update error:', error);
+      res.status(500).json({ error: 'Failed to update project' });
+    }
+  });
+
   // Admin - Rebuild project pipeline from linked program
   app.post('/api/admin/projects/:id/rebuild-pipeline', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ interface PipelineProject {
   currentStageName: string;
   currentStageKey: string;
   currentStageId: number | null;
+  targetCloseDate?: string;
   stages: Array<{
     id: number;
     stageKey: string;
@@ -197,9 +199,16 @@ function ProgramPipeline({ program }: { program: PipelineProgram }) {
                       <span className="text-xs font-mono text-muted-foreground flex-shrink-0">
                         {project.projectNumber}
                       </span>
-                      <span className="text-sm truncate">
-                        {project.projectName}
-                      </span>
+                      <div className="flex flex-col min-w-0 flex-1 gap-1">
+                        <span className="text-sm truncate">
+                          {project.projectName}
+                        </span>
+                        {project.targetCloseDate && (
+                          <span className="text-xs text-muted-foreground">
+                            Close: {format(new Date(project.targetCloseDate), 'MMM d, yyyy')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
                       {project.borrowerName && (
@@ -257,9 +266,16 @@ export default function PipelineView({ data }: PipelineViewProps) {
                       <span className="text-xs font-mono text-muted-foreground flex-shrink-0">
                         {project.projectNumber}
                       </span>
-                      <span className="text-sm truncate">
-                        {project.projectName}
-                      </span>
+                      <div className="flex flex-col min-w-0 flex-1 gap-1">
+                        <span className="text-sm truncate">
+                          {project.projectName}
+                        </span>
+                        {project.targetCloseDate && (
+                          <span className="text-xs text-muted-foreground">
+                            Close: {format(new Date(project.targetCloseDate), 'MMM d, yyyy')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
                       <span className="text-xs font-medium">

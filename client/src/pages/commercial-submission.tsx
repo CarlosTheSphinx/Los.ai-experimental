@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   Select,
   SelectContent,
@@ -1163,7 +1164,7 @@ export default function CommercialSubmissionPage() {
             <FormItem>
               <FormLabel>Property Address</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="123 Main St" data-testid="input-property-address" />
+                <AddressAutocomplete {...field} placeholder="123 Main St" />
               </FormControl>
               <FormMessage />
             </FormItem>

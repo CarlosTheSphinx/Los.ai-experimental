@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -218,12 +219,10 @@ export default function NewDeal() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="propertyAddress">Property Address</Label>
-              <Input
-                id="propertyAddress"
+              <AddressAutocomplete
                 value={formData.propertyAddress}
-                onChange={(e) => updateField("propertyAddress", e.target.value)}
+                onChange={(val) => updateField("propertyAddress", val)}
                 placeholder="123 Main St, City, State 12345"
-                data-testid="input-property-address"
               />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">

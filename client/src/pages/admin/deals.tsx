@@ -39,7 +39,6 @@ import {
   FileText,
   DollarSign,
   TrendingUp,
-  Wallet,
   Search,
   Plus,
   User,
@@ -893,12 +892,6 @@ export default function AdminDeals() {
             value={formatCurrency(stats?.totalRevenue || 0)}
             subtitle="Points + TPO Premium"
             icon={TrendingUp}
-          />
-          <StatsCard
-            title="Total Commission"
-            value={formatCurrency(stats?.totalCommission || 0)}
-            subtitle="30% of revenue"
-            icon={Wallet}
           />
         </div>
       )}
