@@ -10,16 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Users, FolderKanban, FileCheck, ClipboardList, DollarSign, TrendingUp,
   ChevronLeft, ChevronRight, CalendarDays, Pencil, Circle, CheckCircle2,
-  MapPin, Loader2, AlertCircle, ArrowUpRight, ArrowDownRight, Plus, Calculator, FolderUp
+  MapPin, Loader2, AlertCircle, ArrowUpRight, ArrowDownRight, Plus, Calculator, FolderUp,
+  LayoutDashboard, FileText
 } from "lucide-react";
 import { format, addDays, subDays, isToday, isBefore, startOfDay, parseISO, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import AdminDeals from "./deals";
 
 interface DashboardStats {
   totalActiveUsers: number;
@@ -572,7 +575,43 @@ function TaskRow({ task, onComplete, onEdit, priorityColor, isCompleting }: {
   );
 }
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ defaultTab = "overview" }: { defaultTab?: string }) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-admin-dashboard-title">Command Center</h1>
+          <p className="text-sm text-muted-foreground mt-1">Overview of your lending operations</p>
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList data-testid="tabs-dashboard">
+          <TabsTrigger value="overview" data-testid="tab-overview" className="gap-1.5">
+            <LayoutDashboard className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="pipeline" data-testid="tab-pipeline" className="gap-1.5">
+            <FileText className="h-4 w-4" />
+            Pipeline
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4">
+          <DashboardOverview />
+        </TabsContent>
+
+        <TabsContent value="pipeline" className="mt-4">
+          <AdminDeals embedded />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function DashboardOverview() {
   const { data, isLoading } = useQuery<{ stats: DashboardStats; recentActivity: AdminActivityItem[] }>({
     queryKey: ["/api/admin/dashboard"],
   });
@@ -587,8 +626,7 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+      <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
@@ -609,13 +647,7 @@ export default function AdminDashboard() {
   const activity = data?.recentActivity || [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-admin-dashboard-title">Admin Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Overview of your lending operations</p>
-        </div>
-      </div>
+    <div className="space-y-6">
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Active Users Card */}

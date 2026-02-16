@@ -40,19 +40,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const commands: CommandItem[] = [
     {
       id: 'dashboard',
-      label: 'Dashboard',
-      description: 'View admin dashboard',
+      label: 'Command Center',
+      description: 'View dashboard and pipeline',
       icon: LayoutDashboard,
       href: '/admin',
       shortcut: '⌘1',
-    },
-    {
-      id: 'pipeline',
-      label: 'Pipeline',
-      description: 'View pipeline deals',
-      icon: FileText,
-      href: '/admin/deals',
-      shortcut: '⌘2',
     },
     {
       id: 'users',
@@ -60,7 +52,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       description: 'Manage users',
       icon: Users,
       href: '/admin/users',
-      shortcut: '⌘3',
+      shortcut: '⌘2',
     },
     ...(isAdmin
       ? [

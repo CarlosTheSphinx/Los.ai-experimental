@@ -549,7 +549,7 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
   );
 }
 
-export default function AdminDeals() {
+export default function AdminDeals({ embedded = false }: { embedded?: boolean }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("grid");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "amount-high" | "amount-low">("newest");
@@ -726,12 +726,14 @@ export default function AdminDeals() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={embedded ? "space-y-6" : "p-6 space-y-6"}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Loan Pipeline</h1>
-          <p className="text-muted-foreground text-sm">Manage your active loan pipeline</p>
-        </div>
+        {!embedded && (
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Loan Pipeline</h1>
+            <p className="text-muted-foreground text-sm">Manage your active loan pipeline</p>
+          </div>
+        )}
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-deal">
