@@ -13,7 +13,8 @@ import {
   projects,
   creditPolicies,
   documentReviewResults,
-  programReviewRules
+  programReviewRules,
+  documentReviewRules
 } from '@shared/schema';
 
 export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
@@ -213,6 +214,44 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
               stepId: doc.stepIndex !== null && doc.stepIndex !== undefined && doc.stepIndex >= 0 && doc.stepIndex < createdStepIds.length && createdStepIds[doc.stepIndex] > 0 ? createdStepIds[doc.stepIndex] : null,
             }));
             await tx.insert(programDocumentTemplates).values(documentEntries);
+
+            const docNames = validDocs.map((d: any) => d.documentName.trim());
+            const existingRules = await tx.select()
+              .from(documentReviewRules)
+              .where(
+                and(
+                  inArray(documentReviewRules.documentName, docNames),
+                  inArray(
+                    documentReviewRules.programId,
+                    tx.select({ id: loanPrograms.id }).from(loanPrograms).where(eq(loanPrograms.createdBy, req.user!.id))
+                  )
+                )
+              );
+
+            if (existingRules.length > 0) {
+              const seenRules = new Set<string>();
+              const rulesToInsert = [];
+              for (const rule of existingRules) {
+                const key = `${rule.documentName}::${rule.ruleName}`;
+                if (!seenRules.has(key)) {
+                  seenRules.add(key);
+                  rulesToInsert.push({
+                    programId: program.id,
+                    documentCategory: rule.documentCategory,
+                    documentName: rule.documentName,
+                    ruleName: rule.ruleName,
+                    ruleDescription: rule.ruleDescription,
+                    ruleConfig: rule.ruleConfig,
+                    severity: rule.severity,
+                    isActive: rule.isActive,
+                    createdBy: req.user!.id,
+                  });
+                }
+              }
+              if (rulesToInsert.length > 0) {
+                await tx.insert(documentReviewRules).values(rulesToInsert);
+              }
+            }
           }
         }
 
@@ -346,6 +385,85 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
 
   // ==================== PROGRAM DOCUMENT TEMPLATES ROUTES ====================
 
+  // Get lender's document library (all unique documents across their programs, with AI rules)
+  app.get('/api/admin/document-library', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
+
+      const userProgramsQuery = db.select({ id: loanPrograms.id }).from(loanPrograms);
+      const userPrograms = isSuperAdmin
+        ? await userProgramsQuery
+        : await userProgramsQuery.where(eq(loanPrograms.createdBy, req.user!.id));
+      const programIds = userPrograms.map(p => p.id);
+
+      if (programIds.length === 0) {
+        return res.json({ documents: [] });
+      }
+
+      const allDocs = await db.select({
+        documentName: programDocumentTemplates.documentName,
+        documentCategory: programDocumentTemplates.documentCategory,
+        assignedTo: programDocumentTemplates.assignedTo,
+        visibility: programDocumentTemplates.visibility,
+        isRequired: programDocumentTemplates.isRequired,
+      })
+        .from(programDocumentTemplates)
+        .where(inArray(programDocumentTemplates.programId, programIds));
+
+      const uniqueDocsMap = new Map<string, {
+        documentName: string;
+        documentCategory: string;
+        assignedTo: string | null;
+        visibility: string | null;
+        isRequired: boolean;
+      }>();
+
+      for (const doc of allDocs) {
+        if (!uniqueDocsMap.has(doc.documentName)) {
+          uniqueDocsMap.set(doc.documentName, {
+            documentName: doc.documentName,
+            documentCategory: doc.documentCategory,
+            assignedTo: doc.assignedTo,
+            visibility: doc.visibility,
+            isRequired: doc.isRequired,
+          });
+        }
+      }
+
+      const allRules = await db.select()
+        .from(documentReviewRules)
+        .where(inArray(documentReviewRules.programId, programIds));
+
+      const rulesByDocName = new Map<string, any[]>();
+      for (const rule of allRules) {
+        const existing = rulesByDocName.get(rule.documentName) || [];
+        const alreadyHas = existing.some(r => r.ruleName === rule.ruleName);
+        if (!alreadyHas) {
+          existing.push({
+            ruleName: rule.ruleName,
+            ruleDescription: rule.ruleDescription,
+            ruleConfig: rule.ruleConfig,
+            severity: rule.severity,
+            documentCategory: rule.documentCategory,
+            isActive: rule.isActive,
+          });
+          rulesByDocName.set(rule.documentName, existing);
+        }
+      }
+
+      const documents = Array.from(uniqueDocsMap.values()).map(doc => ({
+        ...doc,
+        rules: rulesByDocName.get(doc.documentName) || [],
+      }));
+
+      res.json({ documents });
+    } catch (error) {
+      console.error('Get document library error:', error);
+      res.status(500).json({ error: 'Failed to load document library' });
+    }
+  });
+
   // Add document template to program
   app.post('/api/admin/programs/:programId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
@@ -357,8 +475,9 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         return res.status(400).json({ error: 'Document name and category are required' });
       }
 
+      const pid = parseInt(programId);
       const [doc] = await db.insert(programDocumentTemplates).values({
-        programId: parseInt(programId),
+        programId: pid,
         documentName,
         documentCategory,
         documentDescription,
@@ -367,9 +486,46 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepId: stepId || null,
       }).returning();
 
+      const existingRules = await db.select()
+        .from(documentReviewRules)
+        .where(
+          and(
+            eq(documentReviewRules.documentName, documentName),
+            inArray(
+              documentReviewRules.programId,
+              db.select({ id: loanPrograms.id }).from(loanPrograms).where(eq(loanPrograms.createdBy, req.user!.id))
+            )
+          )
+        );
+
+      if (existingRules.length > 0) {
+        const seenRules = new Set<string>();
+        const rulesToInsert = [];
+        for (const rule of existingRules) {
+          const key = `${rule.documentName}::${rule.ruleName}`;
+          if (!seenRules.has(key) && rule.programId !== pid) {
+            seenRules.add(key);
+            rulesToInsert.push({
+              programId: pid,
+              documentCategory: rule.documentCategory,
+              documentName: rule.documentName,
+              ruleName: rule.ruleName,
+              ruleDescription: rule.ruleDescription,
+              ruleConfig: rule.ruleConfig,
+              severity: rule.severity,
+              isActive: rule.isActive,
+              createdBy: req.user!.id,
+            });
+          }
+        }
+        if (rulesToInsert.length > 0) {
+          await db.insert(documentReviewRules).values(rulesToInsert);
+        }
+      }
+
       res.json({ document: doc });
       const { syncProgramToProjects } = await import('../services/projectPipeline');
-      syncProgramToProjects(parseInt(programId)).catch(err => console.error('Sync error:', err));
+      syncProgramToProjects(pid).catch(err => console.error('Sync error:', err));
     } catch (error) {
       console.error('Add program document error:', error);
       res.status(500).json({ error: 'Failed to add document template' });

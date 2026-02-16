@@ -403,6 +403,18 @@ export default function AdminPrograms() {
     queryKey: ["/api/admin/workflow-steps"],
   });
 
+  type LibraryDocument = {
+    documentName: string;
+    documentCategory: string;
+    assignedTo: string | null;
+    visibility: string | null;
+    isRequired: boolean;
+    rules: any[];
+  };
+  const { data: documentLibrary } = useQuery<{ documents: LibraryDocument[] }>({
+    queryKey: ["/api/admin/document-library"],
+  });
+
   const { data: programDetails, isLoading: loadingDetails } = useQuery<{
     program: LoanProgram;
     documents: ProgramDocument[];
@@ -689,6 +701,51 @@ export default function AdminPrograms() {
     );
   };
 
+  const handleDocumentNameChange = (docId: string, name: string) => {
+    const libraryDoc = documentLibrary?.documents?.find(
+      (d) => d.documentName.toLowerCase() === name.toLowerCase()
+    );
+    if (libraryDoc) {
+      setInlineDocuments(
+        inlineDocuments.map((doc) =>
+          doc.id === docId
+            ? {
+                ...doc,
+                documentName: libraryDoc.documentName,
+                documentCategory: libraryDoc.documentCategory || doc.documentCategory,
+                assignedTo: libraryDoc.assignedTo || doc.assignedTo,
+                visibility: libraryDoc.visibility || doc.visibility,
+                isRequired: libraryDoc.isRequired,
+              }
+            : doc
+        )
+      );
+      return;
+    }
+    const stdGroup = standardDocuments.find((cat) =>
+      cat.documents.some((d) => d.name.toLowerCase() === name.toLowerCase())
+    );
+    if (stdGroup) {
+      const stdDoc = stdGroup.documents.find((d) => d.name.toLowerCase() === name.toLowerCase());
+      setInlineDocuments(
+        inlineDocuments.map((doc) =>
+          doc.id === docId
+            ? {
+                ...doc,
+                documentName: stdDoc?.name || name,
+                documentCategory: stdGroup.category,
+                assignedTo: "borrower",
+                visibility: "all",
+                isRequired: true,
+              }
+            : doc
+        )
+      );
+      return;
+    }
+    updateInlineDocument(docId, "documentName", name);
+  };
+
   const removeInlineDocument = (id: string) => {
     setInlineDocuments(inlineDocuments.filter((doc) => doc.id !== id));
   };
@@ -936,6 +993,29 @@ export default function AdminPrograms() {
 
   return (
     <div className="p-6 space-y-6">
+      <datalist id="doc-library-list">
+        {(() => {
+          const names = new Set<string>();
+          const options: { name: string; label: string }[] = [];
+          for (const cat of standardDocuments) {
+            for (const doc of cat.documents) {
+              if (!names.has(doc.name)) {
+                names.add(doc.name);
+                options.push({ name: doc.name, label: `${doc.name} (${cat.categoryLabel})` });
+              }
+            }
+          }
+          for (const doc of documentLibrary?.documents || []) {
+            if (!names.has(doc.documentName)) {
+              names.add(doc.documentName);
+              options.push({ name: doc.documentName, label: doc.documentName });
+            }
+          }
+          return options.map((o) => (
+            <option key={o.name} value={o.name} label={o.label} />
+          ));
+        })()}
+      </datalist>
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">
           Customize Platform
@@ -1422,8 +1502,9 @@ export default function AdminPrograms() {
                                             <Input
                                               className="text-sm border-0 bg-transparent focus-visible:ring-0"
                                               placeholder="Document name"
+                                              list="doc-library-list"
                                               value={doc.documentName}
-                                              onChange={(e) => updateInlineDocument(doc.id, "documentName", e.target.value)}
+                                              onChange={(e) => handleDocumentNameChange(doc.id, e.target.value)}
                                               data-testid={`input-stage-doc-name-${index}-${doc.id}`}
                                             />
                                             {doc.isRequired && <Badge variant="secondary" className="text-xs flex-shrink-0">Req</Badge>}
@@ -1580,8 +1661,9 @@ export default function AdminPrograms() {
                                       <Input
                                         className="text-sm border-0 bg-transparent focus-visible:ring-0"
                                         placeholder="Document name"
+                                        list="doc-library-list"
                                         value={doc.documentName}
-                                        onChange={(e) => updateInlineDocument(doc.id, "documentName", e.target.value)}
+                                        onChange={(e) => handleDocumentNameChange(doc.id, e.target.value)}
                                         data-testid={`input-unassigned-doc-${doc.id}`}
                                       />
                                       <Button type="button" variant="ghost" size="sm" className="flex-shrink-0" onClick={() => removeInlineDocument(doc.id)} data-testid={`button-remove-unassigned-doc-${doc.id}`}>
@@ -2522,8 +2604,9 @@ export default function AdminPrograms() {
                                       <Input
                                         className="text-sm border-0 bg-transparent focus-visible:ring-0"
                                         placeholder="Document name"
+                                        list="doc-library-list"
                                         value={doc.documentName}
-                                        onChange={(e) => updateInlineDocument(doc.id, "documentName", e.target.value)}
+                                        onChange={(e) => handleDocumentNameChange(doc.id, e.target.value)}
                                         data-testid={`input-edit-stage-doc-name-${index}-${doc.id}`}
                                       />
                                       {doc.isRequired && <Badge variant="secondary" className="text-xs flex-shrink-0">Req</Badge>}
@@ -2592,8 +2675,9 @@ export default function AdminPrograms() {
                                 <Input
                                   className="text-sm border-0 bg-transparent focus-visible:ring-0"
                                   placeholder="Document name"
+                                  list="doc-library-list"
                                   value={doc.documentName}
-                                  onChange={(e) => updateInlineDocument(doc.id, "documentName", e.target.value)}
+                                  onChange={(e) => handleDocumentNameChange(doc.id, e.target.value)}
                                   data-testid={`input-edit-unassigned-doc-${doc.id}`}
                                 />
                                 {inlineSteps.length > 0 && (
