@@ -227,6 +227,21 @@ function StatsCard({
   );
 }
 
+const STAGE_PALETTES = [
+  ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#eab308'],
+  ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316'],
+  ['#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'],
+  ['#14b8a6', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'],
+];
+
+function getStageColor(programIdx: number, stageIdx: number, totalStages: number): string {
+  const palette = STAGE_PALETTES[programIdx % STAGE_PALETTES.length];
+  if (totalStages <= 1) return palette[0];
+  const position = stageIdx / (totalStages - 1);
+  const paletteIdx = Math.round(position * (palette.length - 1));
+  return palette[paletteIdx];
+}
+
 function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
   const totalDeals = programs.reduce((sum, p) => sum + p.totalDeals, 0);
 
@@ -240,7 +255,7 @@ function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
         {programs.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No deals in pipeline</p>
         ) : (
-          programs.map((program) => (
+          programs.map((program, programIdx) => (
             <div key={program.programId} className="space-y-3" data-testid={`pipeline-program-${program.programId}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-foreground">{program.programName}</span>
@@ -250,30 +265,33 @@ function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
               </div>
               {program.stages.length > 0 ? (
                 <div className="flex items-stretch gap-0 overflow-x-auto">
-                  {program.stages.map((stage, idx) => (
-                    <div
-                      key={idx}
-                      className="flex-1 min-w-0 flex flex-col items-center text-center relative"
-                      data-testid={`pipeline-stage-${program.programId}-${idx}`}
-                    >
+                  {program.stages.map((stage, idx) => {
+                    const color = getStageColor(programIdx, idx, program.stages.length);
+                    return (
                       <div
-                        className="w-full py-3 px-2 flex flex-col items-center justify-center gap-1"
-                        style={{
-                          backgroundColor: stage.color || 'hsl(212 67% 51%)',
-                          opacity: stage.count > 0 ? 1 : 0.4,
-                          borderTopLeftRadius: idx === 0 ? '0.375rem' : 0,
-                          borderBottomLeftRadius: idx === 0 ? '0.375rem' : 0,
-                          borderTopRightRadius: idx === program.stages.length - 1 ? '0.375rem' : 0,
-                          borderBottomRightRadius: idx === program.stages.length - 1 ? '0.375rem' : 0,
-                        }}
+                        key={idx}
+                        className="flex-1 min-w-0 flex flex-col items-center text-center relative"
+                        data-testid={`pipeline-stage-${program.programId}-${idx}`}
                       >
-                        <span className="text-lg font-bold text-white drop-shadow-sm">{stage.count}</span>
+                        <div
+                          className="w-full py-3 px-2 flex flex-col items-center justify-center gap-1"
+                          style={{
+                            backgroundColor: color,
+                            opacity: stage.count > 0 ? 1 : 0.5,
+                            borderTopLeftRadius: idx === 0 ? '0.375rem' : 0,
+                            borderBottomLeftRadius: idx === 0 ? '0.375rem' : 0,
+                            borderTopRightRadius: idx === program.stages.length - 1 ? '0.375rem' : 0,
+                            borderBottomRightRadius: idx === program.stages.length - 1 ? '0.375rem' : 0,
+                          }}
+                        >
+                          <span className="text-lg font-bold text-white drop-shadow-sm">{stage.count}</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground mt-1.5 leading-tight px-0.5 truncate w-full">
+                          {stage.label}
+                        </span>
                       </div>
-                      <span className="text-[11px] text-muted-foreground mt-1.5 leading-tight px-0.5 truncate w-full">
-                        {stage.label}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">No workflow stages configured</p>
