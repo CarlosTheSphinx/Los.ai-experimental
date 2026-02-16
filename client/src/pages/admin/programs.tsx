@@ -44,6 +44,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Info,
+  ArrowLeft,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -622,14 +623,47 @@ export default function AdminPrograms() {
                   Add Program
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+              <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background/95 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setShowAddProgram(false); resetProgramForm(); }}
+                      data-testid="button-back-add-program"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    <div>
+                      <h2 className="text-lg font-semibold leading-tight">Add New Loan Program</h2>
+                      <p className="text-xs text-muted-foreground">Configure a new loan program for your borrowers</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowAddProgram(false); resetProgramForm(); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => createProgram.mutate(programForm)}
+                      disabled={createProgram.isPending || !programForm.name}
+                      data-testid="button-save-program-top"
+                    >
+                      {createProgram.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                      Create Program
+                    </Button>
+                  </div>
+                </div>
+                <div className="max-w-3xl mx-auto p-6 md:p-10">
+                <DialogHeader className="sr-only">
                   <DialogTitle>Add New Loan Program</DialogTitle>
-                  <DialogDescription>
-                    Configure a new loan program for your borrowers.
-                  </DialogDescription>
+                  <DialogDescription>Configure a new loan program</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Program Name</Label>
                     <Input
@@ -1206,7 +1240,7 @@ export default function AdminPrograms() {
                   </div>
 
                 </div>
-                <DialogFooter>
+                <div className="flex items-center justify-end gap-3 pt-6 pb-10 border-t mt-8">
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1226,7 +1260,8 @@ export default function AdminPrograms() {
                     )}
                     Create Program
                   </Button>
-                </DialogFooter>
+                </div>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
@@ -1491,12 +1526,47 @@ export default function AdminPrograms() {
 
       {/* Edit Program Dialog */}
       <Dialog open={showEditProgram} onOpenChange={setShowEditProgram}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background/95 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { setShowEditProgram(false); setSelectedProgram(null); resetProgramForm(); }}
+                data-testid="button-back-edit-program"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h2 className="text-lg font-semibold leading-tight">Edit Loan Program</h2>
+                <p className="text-xs text-muted-foreground">Update the loan program settings</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowEditProgram(false); setSelectedProgram(null); resetProgramForm(); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => updateProgram.mutate({ ...programForm, id: selectedProgram!.id })}
+                disabled={updateProgram.isPending || !programForm.name}
+                data-testid="button-save-edit-program-top"
+              >
+                {updateProgram.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                Save Changes
+              </Button>
+            </div>
+          </div>
+          <div className="max-w-3xl mx-auto p-6 md:p-10">
+          <DialogHeader className="sr-only">
             <DialogTitle>Edit Loan Program</DialogTitle>
-            <DialogDescription>Update the loan program settings.</DialogDescription>
+            <DialogDescription>Update settings</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label>Program Name</Label>
               <Input
@@ -1739,7 +1809,7 @@ export default function AdminPrograms() {
               </p>
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex items-center justify-end gap-3 pt-6 pb-10 border-t mt-8">
             <Button
               variant="outline"
               onClick={() => {
@@ -1764,7 +1834,8 @@ export default function AdminPrograms() {
               )}
               Save Changes
             </Button>
-          </DialogFooter>
+          </div>
+          </div>
         </DialogContent>
       </Dialog>
 
