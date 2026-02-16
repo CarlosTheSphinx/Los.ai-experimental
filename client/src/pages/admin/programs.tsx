@@ -624,7 +624,7 @@ export default function AdminPrograms() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
-                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background/95 backdrop-blur-md">
+                <div className="sticky top-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background backdrop-blur-md">
                   <div className="flex items-center gap-3">
                     <Button
                       variant="ghost"
@@ -1443,7 +1443,7 @@ export default function AdminPrograms() {
       {/* Edit Program Dialog */}
       <Dialog open={showEditProgram} onOpenChange={setShowEditProgram}>
         <DialogContent className="fixed inset-0 max-w-none w-screen h-screen rounded-none translate-x-0 translate-y-0 top-0 left-0 overflow-y-auto p-0 border-none [&>button]:hidden" style={{ transform: 'none' }}>
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background/95 backdrop-blur-md">
+          <div className="sticky top-0 z-50 flex items-center justify-between gap-3 px-6 py-3 border-b bg-background backdrop-blur-md">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
