@@ -118,7 +118,7 @@ export const SAMPLE_RTL_RULESET: PricingRules = {
   },
   points: { default: 2.0 },
   adjusters: [
-    { id: "mff", label: "Multifamily", when: { propertyType: "multifamily" }, rateAdd: 1.0 },
+    { id: "mff", label: "Multifamily", when: { propertyType: "multifamily-5-plus" }, rateAdd: 1.0 },
     { id: "fico_lt_700", label: "FICO < 700", when: { ficoLt: 700 }, rateAdd: 0.25 },
     { id: "fico_lt_660", label: "FICO < 660", when: { ficoLt: 660 }, rateAdd: 0.5 },
     { id: "midstream", label: "Midstream", when: { isMidstream: true }, rateAdd: 0.25 },

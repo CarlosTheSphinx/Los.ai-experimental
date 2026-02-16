@@ -59,7 +59,7 @@ export function calculateRTLPricing(input: RTLPricingFormData): RTLPricingRespon
     appliedAdjusters.push({ id: "ADJ-CASHOUT", label: "Cash-Out", rateAdd: 0.50 });
   }
 
-  if (input.propertyType === "multifamily") {
+  if (input.propertyType === "multifamily-5-plus") {
     rate += 1.00;
     appliedAdjusters.push({ id: "ADJ-MULTIFAMILY", label: "Multifamily Property", rateAdd: 1.00 });
   }
@@ -208,7 +208,7 @@ function runDisqualifiers(input: RTLPricingFormData, disqualifiers: Disqualifier
   }
 
   // DQ-GUC-003: GUC Development Project requires institutional + FICO 700
-  if (input.loanType === "guc" && input.propertyUnits >= 10 && ["sfr_1_4", "condo"].includes(input.propertyType)) {
+  if (input.loanType === "guc" && input.propertyUnits >= 10 && ["single-family-residence", "2-4-unit"].includes(input.propertyType)) {
     if (input.experienceTier !== "institutional") {
       disqualifiers.push({ id: "DQ-GUC-003a", message: "GUC development projects (10+ units) require institutional experience." });
     }
@@ -227,13 +227,13 @@ function runFlags(input: RTLPricingFormData): Flag[] {
   const flags: Flag[] = [];
 
   // FLAG-001: Multifamily case-by-case
-  if (input.propertyType === "multifamily") {
+  if (input.propertyType === "multifamily-5-plus") {
     flags.push({ id: "FLAG-001", message: "Multifamily properties require case-by-case review." });
   }
 
-  // FLAG-002: Condo case-by-case
-  if (input.propertyType === "condo") {
-    flags.push({ id: "FLAG-002", message: "Condos require case-by-case review." });
+  // FLAG-002: Mixed-use / special purpose case-by-case
+  if (["mixed-use", "special-purpose"].includes(input.propertyType)) {
+    flags.push({ id: "FLAG-002", message: "This property type requires case-by-case review." });
   }
 
   // FLAG-003: Foreign national

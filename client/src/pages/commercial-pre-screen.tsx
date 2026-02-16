@@ -81,18 +81,20 @@ const US_STATES = [
 ];
 
 const ASSET_CLASSES = [
-  { value: "multifamily", label: "Multifamily (5+ units)" },
+  { value: "single-family-residence", label: "Single Family Residence" },
+  { value: "2-4-unit", label: "2-4 Unit" },
+  { value: "multifamily-5-plus", label: "Multifamily (5+ Units)" },
+  { value: "rental-portfolio", label: "Rental Portfolio" },
+  { value: "mixed-use", label: "Mixed-Use" },
+  { value: "infill-lot", label: "Infill Lot" },
+  { value: "land", label: "Land" },
   { value: "office", label: "Office" },
   { value: "retail", label: "Retail" },
-  { value: "industrial", label: "Industrial/Warehouse" },
-  { value: "self-storage", label: "Self-Storage" },
-  { value: "mixed-use", label: "Mixed-Use" },
-  { value: "hospitality", label: "Hospitality (Hotels)" },
-  { value: "senior-living", label: "Senior Living" },
-  { value: "gas-stations", label: "Gas Stations" },
-  { value: "churches", label: "Churches" },
+  { value: "hospitality", label: "Hospitality" },
+  { value: "industrial", label: "Industrial" },
+  { value: "medical", label: "Medical" },
+  { value: "agricultural", label: "Agricultural" },
   { value: "special-purpose", label: "Special Purpose" },
-  { value: "land-development", label: "Land/Development" },
 ];
 
 const DEAL_TYPES = [

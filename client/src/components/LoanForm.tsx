@@ -377,11 +377,20 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="Single Family">Single Family</SelectItem>
-                          <SelectItem value="2-4 Unit">2-4 Unit</SelectItem>
-                          <SelectItem value="Portfolio (1-4 Unit)">Portfolio (1-4 Unit)</SelectItem>
-                          <SelectItem value="Warrantable Condo">Warrantable Condo</SelectItem>
-                          <SelectItem value="Non-Warrantable Condo">Non-Warrantable Condo</SelectItem>
+                          <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                          <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                          <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                          <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                          <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                          <SelectItem value="infill-lot">Infill Lot</SelectItem>
+                          <SelectItem value="land">Land</SelectItem>
+                          <SelectItem value="office">Office</SelectItem>
+                          <SelectItem value="retail">Retail</SelectItem>
+                          <SelectItem value="hospitality">Hospitality</SelectItem>
+                          <SelectItem value="industrial">Industrial</SelectItem>
+                          <SelectItem value="medical">Medical</SelectItem>
+                          <SelectItem value="agricultural">Agricultural</SelectItem>
+                          <SelectItem value="special-purpose">Special Purpose</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

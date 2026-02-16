@@ -95,13 +95,20 @@ interface ProgramTask {
 }
 
 const propertyTypeOptions = [
-  { value: "single-family", label: "Single Family" },
-  { value: "multi-family", label: "Multi-Family" },
-  { value: "commercial", label: "Commercial" },
-  { value: "mixed-use", label: "Mixed Use" },
-  { value: "condo", label: "Condo" },
-  { value: "townhouse", label: "Townhouse" },
+  { value: "single-family-residence", label: "Single Family Residence" },
+  { value: "2-4-unit", label: "2-4 Unit" },
+  { value: "multifamily-5-plus", label: "Multifamily (5+ Units)" },
+  { value: "rental-portfolio", label: "Rental Portfolio" },
+  { value: "mixed-use", label: "Mixed-Use" },
+  { value: "infill-lot", label: "Infill Lot" },
+  { value: "land", label: "Land" },
+  { value: "office", label: "Office" },
+  { value: "retail", label: "Retail" },
+  { value: "hospitality", label: "Hospitality" },
   { value: "industrial", label: "Industrial" },
+  { value: "medical", label: "Medical" },
+  { value: "agricultural", label: "Agricultural" },
+  { value: "special-purpose", label: "Special Purpose" },
 ];
 
 const documentCategories = [

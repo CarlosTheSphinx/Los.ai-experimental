@@ -27,7 +27,16 @@ import {
   BotMessageSquare,
   Pin,
   PinOff,
+  Eye,
+  X,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Sidebar, 
   SidebarContent, 
@@ -104,6 +113,10 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
 ];
 
+type ViewAsMode = "super_admin" | "lender" | "borrower";
+
+const VIEW_AS_STORAGE_KEY = "lendry_view_as_mode";
+
 function AppLayoutContent({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
@@ -113,11 +126,28 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [viewAsMode, setViewAsMode] = useState<ViewAsMode>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(VIEW_AS_STORAGE_KEY);
+      if (stored === "lender" || stored === "borrower" || stored === "super_admin") return stored;
+    }
+    return "super_admin";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_AS_STORAGE_KEY, viewAsMode);
+  }, [viewAsMode]);
 
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin', 'processor'].includes(user.role);
   const isBorrower = user?.userType === 'borrower';
 
-  const navItems = isBorrower ? borrowerNavItems : brokerNavItems;
+  const isPreviewingOtherRole = isSuperAdmin && viewAsMode !== "super_admin";
+  const effectiveViewAsBorrower = isSuperAdmin && viewAsMode === "borrower";
+  const effectiveViewAsLender = isSuperAdmin && viewAsMode === "lender";
+
+  const navItems = (effectiveViewAsBorrower || isBorrower) ? borrowerNavItems : brokerNavItems;
+
+  const showAdminSection = isAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender;
 
   const filteredAdminItems = adminNavItems.filter(item => {
     if (!item.requiredPermission) return true;
@@ -208,7 +238,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
-              {isBorrower ? 'Lending' : 'Deals'}
+              {(effectiveViewAsBorrower || isBorrower) ? 'Lending' : 'Deals'}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -249,7 +279,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
             </SidebarGroupContent>
           </SidebarGroup>
           
-          {isAdmin && (
+          {showAdminSection && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
               <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Administration
@@ -296,6 +326,27 @@ function AppLayoutContent({ children }: AppLayoutProps) {
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border p-2">
           <div className="flex flex-col gap-2">
+            {isSuperAdmin && (
+              <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Eye className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">View As</span>
+                </div>
+                <Select
+                  value={viewAsMode}
+                  onValueChange={(value) => setViewAsMode(value as ViewAsMode)}
+                >
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-view-as-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                    <SelectItem value="lender">Lender / Broker</SelectItem>
+                    <SelectItem value="borrower">Borrower</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {user && (
               <div className="px-2 py-2 flex items-center gap-2 group-data-[collapsible=icon]:hidden">
                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold shrink-0">
@@ -329,6 +380,26 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       </Sidebar>
 
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        {isPreviewingOtherRole && (
+          <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/20 shrink-0">
+            <div className="flex items-center gap-2">
+              <Eye className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Previewing as {viewAsMode === "borrower" ? "Borrower" : "Lender / Broker"}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewAsMode("super_admin")}
+              className="h-6 text-xs text-amber-700 dark:text-amber-300"
+              data-testid="button-exit-preview"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Exit Preview
+            </Button>
+          </div>
+        )}
         <header className="flex items-center gap-2 p-2 md:p-3 border-b border-border bg-card/80 backdrop-blur-md shrink-0">
           <SidebarTrigger data-testid="button-toggle-sidebar" className="shrink-0" />
           <span className="text-sm font-medium text-muted-foreground truncate md:hidden">
@@ -342,11 +413,9 @@ function AppLayoutContent({ children }: AppLayoutProps) {
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
 
-      {/* Your Assistant - AI Panel for admin/processor users */}
-      {isAdmin && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
+      {isAdmin && !isPreviewingOtherRole && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
 
-      {/* Your Assistant FAB (Floating Action Button) */}
-      {isAdmin && !assistantOpen && (
+      {isAdmin && !assistantOpen && !isPreviewingOtherRole && (
         <button
           onClick={() => setAssistantOpen(true)}
           className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center group"

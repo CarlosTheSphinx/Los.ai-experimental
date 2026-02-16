@@ -2630,11 +2630,20 @@ export default function AdminDealDetail() {
                   <SelectValue placeholder="Select property type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sfr">Single Family Residence</SelectItem>
-                  <SelectItem value="2-4unit">2-4 Unit</SelectItem>
-                  <SelectItem value="condo">Condo</SelectItem>
-                  <SelectItem value="townhouse">Townhouse</SelectItem>
-                  <SelectItem value="multifamily">Multifamily (5+)</SelectItem>
+                  <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                  <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                  <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                  <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                  <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                  <SelectItem value="infill-lot">Infill Lot</SelectItem>
+                  <SelectItem value="land">Land</SelectItem>
+                  <SelectItem value="office">Office</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="hospitality">Hospitality</SelectItem>
+                  <SelectItem value="industrial">Industrial</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="agricultural">Agricultural</SelectItem>
+                  <SelectItem value="special-purpose">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -3103,13 +3112,20 @@ export default function AdminDealDetail() {
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="single-family">Single Family</SelectItem>
-                  <SelectItem value="multi-family">Multi Family</SelectItem>
-                  <SelectItem value="condo">Condo</SelectItem>
-                  <SelectItem value="townhouse">Townhouse</SelectItem>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                  <SelectItem value="mixed-use">Mixed Use</SelectItem>
+                  <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                  <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                  <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                  <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                  <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                  <SelectItem value="infill-lot">Infill Lot</SelectItem>
                   <SelectItem value="land">Land</SelectItem>
+                  <SelectItem value="office">Office</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="hospitality">Hospitality</SelectItem>
+                  <SelectItem value="industrial">Industrial</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="agricultural">Agricultural</SelectItem>
+                  <SelectItem value="special-purpose">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
             </div>

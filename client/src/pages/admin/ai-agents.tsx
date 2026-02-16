@@ -461,7 +461,7 @@ function RunHistoryTable({
   agentTypeFilter: string;
   onAgentTypeFilterChange: (type: string) => void;
 }) {
-  const filteredRuns = agentTypeFilter
+  const filteredRuns = agentTypeFilter && agentTypeFilter !== "all"
     ? runs.filter((run) => run.agentType === agentTypeFilter)
     : runs;
 
@@ -503,7 +503,7 @@ function RunHistoryTable({
             <SelectValue placeholder="Filter by agent type..." />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Agents</SelectItem>
+            <SelectItem value="all">All Agents</SelectItem>
             {Object.entries(AGENT_CONFIGS).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.name}

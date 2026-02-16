@@ -163,7 +163,7 @@ const formSchema = z.object({
   city: z.string().min(1, "City is required"),
   state: z.string().length(2, "Select a state"),
   zip: z.string().min(5, "ZIP code is required"),
-  propertyType: z.enum(["MULTIFAMILY", "INDUSTRIAL", "RETAIL", "OFFICE", "MIXED_USE", "HOSPITALITY", "SELF_STORAGE", "LAND", "OTHER"], { required_error: "Select property type" }),
+  propertyType: z.enum(["SINGLE_FAMILY_RESIDENCE", "TWO_FOUR_UNIT", "MULTIFAMILY", "RENTAL_PORTFOLIO", "MIXED_USE", "INFILL_LOT", "LAND", "OFFICE", "RETAIL", "HOSPITALITY", "INDUSTRIAL", "MEDICAL", "AGRICULTURAL", "SPECIAL_PURPOSE"], { required_error: "Select property type" }),
   occupancyType: z.enum(["STABILIZED", "VALUE_ADD", "LEASE_UP", "GROUND_UP", "OTHER"], { required_error: "Select occupancy type" }),
   unitsOrSqft: z.coerce.number().min(1, "Units/Sq Ft is required"),
   yearBuilt: z.coerce.number().optional().or(z.literal("")),
@@ -427,18 +427,24 @@ export default function CommercialSubmissionPage() {
 
       if (preScreenAssetClass) {
         const mapping: Record<string, string> = {
-          multifamily: "MULTIFAMILY",
-          industrial: "INDUSTRIAL",
-          retail: "RETAIL",
-          office: "OFFICE",
-          mixed_use: "MIXED_USE",
-          hospitality: "HOSPITALITY",
-          self_storage: "SELF_STORAGE",
+          "single-family-residence": "SINGLE_FAMILY_RESIDENCE",
+          "2-4-unit": "TWO_FOUR_UNIT",
+          "multifamily-5-plus": "MULTIFAMILY",
+          "rental-portfolio": "RENTAL_PORTFOLIO",
+          "mixed-use": "MIXED_USE",
+          "infill-lot": "INFILL_LOT",
           land: "LAND",
-          other: "OTHER",
+          office: "OFFICE",
+          retail: "RETAIL",
+          hospitality: "HOSPITALITY",
+          industrial: "INDUSTRIAL",
+          medical: "MEDICAL",
+          agricultural: "AGRICULTURAL",
+          "special-purpose": "SPECIAL_PURPOSE",
+          multifamily: "MULTIFAMILY",
         };
         const mapped = mapping[preScreenAssetClass.toLowerCase()] || preScreenAssetClass.toUpperCase();
-        if (["MULTIFAMILY", "INDUSTRIAL", "RETAIL", "OFFICE", "MIXED_USE", "HOSPITALITY", "SELF_STORAGE", "LAND", "OTHER"].includes(mapped)) {
+        if (["SINGLE_FAMILY_RESIDENCE", "TWO_FOUR_UNIT", "MULTIFAMILY", "RENTAL_PORTFOLIO", "MIXED_USE", "INFILL_LOT", "LAND", "OFFICE", "RETAIL", "HOSPITALITY", "INDUSTRIAL", "MEDICAL", "AGRICULTURAL", "SPECIAL_PURPOSE"].includes(mapped)) {
           form.setValue("propertyType", mapped as any);
         }
       }
@@ -1246,15 +1252,20 @@ export default function CommercialSubmissionPage() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="MULTIFAMILY">Multifamily</SelectItem>
-                  <SelectItem value="INDUSTRIAL">Industrial</SelectItem>
-                  <SelectItem value="RETAIL">Retail</SelectItem>
-                  <SelectItem value="OFFICE">Office</SelectItem>
-                  <SelectItem value="MIXED_USE">Mixed Use</SelectItem>
-                  <SelectItem value="HOSPITALITY">Hospitality</SelectItem>
-                  <SelectItem value="SELF_STORAGE">Self Storage</SelectItem>
+                  <SelectItem value="SINGLE_FAMILY_RESIDENCE">Single Family Residence</SelectItem>
+                  <SelectItem value="TWO_FOUR_UNIT">2-4 Unit</SelectItem>
+                  <SelectItem value="MULTIFAMILY">Multifamily (5+ Units)</SelectItem>
+                  <SelectItem value="RENTAL_PORTFOLIO">Rental Portfolio</SelectItem>
+                  <SelectItem value="MIXED_USE">Mixed-Use</SelectItem>
+                  <SelectItem value="INFILL_LOT">Infill Lot</SelectItem>
                   <SelectItem value="LAND">Land</SelectItem>
-                  <SelectItem value="OTHER">Other</SelectItem>
+                  <SelectItem value="OFFICE">Office</SelectItem>
+                  <SelectItem value="RETAIL">Retail</SelectItem>
+                  <SelectItem value="HOSPITALITY">Hospitality</SelectItem>
+                  <SelectItem value="INDUSTRIAL">Industrial</SelectItem>
+                  <SelectItem value="MEDICAL">Medical</SelectItem>
+                  <SelectItem value="AGRICULTURAL">Agricultural</SelectItem>
+                  <SelectItem value="SPECIAL_PURPOSE">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
