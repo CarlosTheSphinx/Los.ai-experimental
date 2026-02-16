@@ -734,6 +734,7 @@ export const loanPrograms = pgTable("loan_programs", {
   eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family-residence', '2-4-unit', 'multifamily-5-plus', etc.]
   
   isActive: boolean("is_active").default(true),
+  isTemplate: boolean("is_template").default(false),
   sortOrder: integer("sort_order").default(0),
   
   reviewGuidelines: text("review_guidelines"),
