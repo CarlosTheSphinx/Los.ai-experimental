@@ -45,6 +45,7 @@ import {
   User,
   Mic,
   MicOff,
+  Info,
 } from "lucide-react";
 
 type Rule = {
@@ -90,6 +91,7 @@ export default function CreditPoliciesTab() {
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [micPermission, setMicPermission] = useState<"granted" | "denied" | "prompt" | "unsupported" | "checking">("checking");
   const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -164,6 +166,7 @@ export default function CreditPoliciesTab() {
     setChatMessages([]);
     setChatInput("");
     setIsChatLoading(false);
+    setMicPermission("checking");
     stopRecording();
   }
 
@@ -199,12 +202,12 @@ export default function CreditPoliciesTab() {
     };
 
     recognition.onerror = (event: any) => {
-      if (event.error !== "aborted") {
+      if (event.error === "not-allowed") {
+        setMicPermission("denied");
+      } else if (event.error !== "aborted") {
         toast({
           title: "Voice recording error",
-          description: event.error === "not-allowed"
-            ? "Microphone access was denied. Please allow microphone access in your browser settings."
-            : "Something went wrong with voice recording. Please try again.",
+          description: "Something went wrong with voice recording. Please try again.",
           variant: "destructive",
         });
       }
@@ -220,6 +223,7 @@ export default function CreditPoliciesTab() {
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
+    setMicPermission("granted");
   }
 
   function stopRecording() {
@@ -241,6 +245,29 @@ export default function CreditPoliciesTab() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (!showChat) return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setMicPermission("unsupported");
+      return;
+    }
+
+    async function checkMicPermission() {
+      try {
+        const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+        setMicPermission(result.state as "granted" | "denied" | "prompt");
+        result.onchange = () => {
+          setMicPermission(result.state as "granted" | "denied" | "prompt");
+        };
+      } catch {
+        setMicPermission("prompt");
+      }
+    }
+    checkMicPermission();
+  }, [showChat]);
 
   useEffect(() => {
     return () => {
@@ -462,6 +489,33 @@ export default function CreditPoliciesTab() {
                   )}
                   <div ref={chatEndRef} />
                 </div>
+                {micPermission === "prompt" && (
+                  <div className="flex items-start gap-2 rounded-md bg-muted p-2.5" data-testid="mic-permission-prompt">
+                    <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p className="font-medium text-foreground">Enable voice input</p>
+                      <p>Click the microphone button below, then allow access when your browser asks. You only need to do this once.</p>
+                    </div>
+                  </div>
+                )}
+                {micPermission === "denied" && (
+                  <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-2.5" data-testid="mic-permission-denied">
+                    <MicOff className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p className="font-medium text-destructive">Microphone access blocked</p>
+                      <p>To enable voice input, click the lock/site-settings icon in your browser's address bar, set Microphone to "Allow", then refresh the page.</p>
+                    </div>
+                  </div>
+                )}
+                {micPermission === "unsupported" && (
+                  <div className="flex items-start gap-2 rounded-md bg-muted p-2.5" data-testid="mic-permission-unsupported">
+                    <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p className="font-medium text-foreground">Voice input unavailable</p>
+                      <p>Your browser doesn't support speech recognition. For voice input, please use Chrome or Edge.</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <Input
                     value={chatInput}
@@ -480,7 +534,7 @@ export default function CreditPoliciesTab() {
                     size="icon"
                     variant={isRecording ? "destructive" : "outline"}
                     onClick={toggleRecording}
-                    disabled={isChatLoading}
+                    disabled={isChatLoading || micPermission === "unsupported" || micPermission === "denied"}
                     data-testid="button-toggle-mic"
                   >
                     {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
