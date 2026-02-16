@@ -393,12 +393,20 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="sfr_1_4">SFR (1-4 units)</SelectItem>
-                            <SelectItem value="condo">Condo</SelectItem>
-                            <SelectItem value="multifamily">Multifamily (5+)</SelectItem>
-                            <SelectItem value="pud">PUD</SelectItem>
-                            <SelectItem value="modular">Modular</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                            <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                            <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                            <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                            <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                            <SelectItem value="infill-lot">Infill Lot</SelectItem>
+                            <SelectItem value="land">Land</SelectItem>
+                            <SelectItem value="office">Office</SelectItem>
+                            <SelectItem value="retail">Retail</SelectItem>
+                            <SelectItem value="hospitality">Hospitality</SelectItem>
+                            <SelectItem value="industrial">Industrial</SelectItem>
+                            <SelectItem value="medical">Medical</SelectItem>
+                            <SelectItem value="agricultural">Agricultural</SelectItem>
+                            <SelectItem value="special-purpose">Special Purpose</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

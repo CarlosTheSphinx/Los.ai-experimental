@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Upload, Search, Edit2, Trash2, Mail, MessageSquare, Sparkles, Target } from 'lucide-react';
-import { api } from '@shared/routes';
+import { apiRequest } from '@/lib/queryClient';
 
 interface Contact {
   id: number;
@@ -103,7 +103,7 @@ export default function BrokerContactsPage() {
       if (isActive) params.append('isActive', isActive);
       params.append('limit', '100');
 
-      const response = await fetch(`${api.baseUrl}/api/broker/contacts?${params}`);
+      const response = await fetch(`/api/broker/contacts?${params}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch contacts');
       return response.json();
     },
@@ -117,12 +117,13 @@ export default function BrokerContactsPage() {
     mutationFn: async (data: FormData) => {
       const method = editingId ? 'PUT' : 'POST';
       const url = editingId
-        ? `${api.baseUrl}/api/broker/contacts/${editingId}`
-        : `${api.baseUrl}/api/broker/contacts`;
+        ? `/api/broker/contacts/${editingId}`
+        : `/api/broker/contacts`;
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(data),
       });
 
@@ -157,8 +158,9 @@ export default function BrokerContactsPage() {
   // Delete contact mutation
   const { mutate: deleteContact, isPending: isDeleting } = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`${api.baseUrl}/api/broker/contacts/${id}`, {
+      const response = await fetch(`/api/broker/contacts/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -188,9 +190,10 @@ export default function BrokerContactsPage() {
   // Import CSV mutation
   const { mutate: importCsv, isPending: isImporting } = useMutation({
     mutationFn: async (csvContent: string) => {
-      const response = await fetch(`${api.baseUrl}/api/broker/contacts/import`, {
+      const response = await fetch(`/api/broker/contacts/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ csvContent }),
       });
 

@@ -137,7 +137,7 @@ export type PricingResponse = z.infer<typeof pricingResponseSchema>;
 // RTL (Fix and Flip / Ground Up Construction) Pricing Schema
 export const rtlLoanTypeEnum = z.enum(["light_rehab", "heavy_rehab", "bridge_no_rehab", "guc"]);
 export const rtlPurposeEnum = z.enum(["purchase", "refi", "cash_out"]);
-export const rtlPropertyTypeEnum = z.enum(["sfr_1_4", "condo", "multifamily", "pud", "modular", "other"]);
+export const rtlPropertyTypeEnum = z.enum(["single-family-residence", "2-4-unit", "multifamily-5-plus", "rental-portfolio", "mixed-use", "infill-lot", "land", "office", "retail", "hospitality", "industrial", "medical", "agricultural", "special-purpose"]);
 export const rtlExperienceTierEnum = z.enum(["no_experience", "experienced", "institutional"]);
 export const rtlExitStrategyEnum = z.enum(["sell", "rent"]);
 export const rtlEntityTypeEnum = z.enum([
@@ -731,9 +731,10 @@ export const loanPrograms = pgTable("loan_programs", {
   maxUnits: integer("max_units"),
   
   termOptions: text("term_options"), // comma-separated: "6, 12, 18, 24"
-  eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family', 'multi-family', 'commercial']
+  eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family-residence', '2-4-unit', 'multifamily-5-plus', etc.]
   
   isActive: boolean("is_active").default(true),
+  isTemplate: boolean("is_template").default(false),
   sortOrder: integer("sort_order").default(0),
   
   reviewGuidelines: text("review_guidelines"),
@@ -762,7 +763,10 @@ export const programDocumentTemplates = pgTable("program_document_templates", {
   assignedTo: varchar("assigned_to", { length: 50 }).default("borrower"), // borrower, broker, admin
   visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
   sortOrder: integer("sort_order").default(0),
-  
+
+  templateUrl: varchar("template_url", { length: 500 }), // stores the URL/path to the uploaded template file
+  templateFileName: varchar("template_file_name", { length: 255 }), // stores the original filename
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 

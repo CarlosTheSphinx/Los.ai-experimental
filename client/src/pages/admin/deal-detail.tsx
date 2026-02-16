@@ -1,12 +1,14 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   Dialog,
   DialogContent,
@@ -108,6 +110,7 @@ interface Deal {
   commission: number;
   stage: string;
   createdAt: string;
+  targetCloseDate?: string;
   userName: string | null;
   userEmail: string | null;
   programId?: number | null;
@@ -893,6 +896,27 @@ export default function AdminDealDetail() {
 
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState<string>("");
+  const [editTargetCloseDateOpen, setEditTargetCloseDateOpen] = useState(false);
+  const [targetCloseDateValue, setTargetCloseDateValue] = useState<string>("");
+
+  const updateTargetCloseDateMutation = useMutation({
+    mutationFn: async (targetCloseDate: string) => {
+      return apiRequest("PATCH", `/api/admin/projects/${linkedProjectId}`, { targetCloseDate });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setEditTargetCloseDateOpen(false);
+      toast({
+        title: "Target close date updated",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update target close date",
+        variant: "destructive",
+      });
+    },
+  });
 
   const copyBorrowerPortalLink = async () => {
     if (!linkedProjectId) {
@@ -1086,6 +1110,15 @@ export default function AdminDealDetail() {
 
   const deal = data?.deal;
   const documents = projectDetailData?.documents || data?.documents || [];
+
+  // Initialize target close date value when dialog opens
+  useEffect(() => {
+    if (editTargetCloseDateOpen && deal?.targetCloseDate) {
+      const date = new Date(deal.targetCloseDate);
+      const isoString = date.toISOString().split('T')[0];
+      setTargetCloseDateValue(isoString);
+    }
+  }, [editTargetCloseDateOpen, deal?.targetCloseDate]);
 
   if (isLoading) {
     return (
@@ -1345,6 +1378,29 @@ export default function AdminDealDetail() {
                   <div className="text-xs text-muted-foreground">Property</div>
                   <div className="font-semibold truncate" data-testid="text-property-type">{deal.loanData?.propertyType || '\u2014'}</div>
                 </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                    <CalendarDays className="h-5 w-5 text-accent" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Target Close</div>
+                    <div className="font-semibold" data-testid="text-target-close-date">
+                      {deal.targetCloseDate ? format(new Date(deal.targetCloseDate), 'MMM d, yyyy') : '\u2014'}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditTargetCloseDateOpen(true)}
+                  data-testid="button-edit-target-close-date"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
             </Card>
           </div>
@@ -2497,11 +2553,9 @@ export default function AdminDealDetail() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="propertyAddress">Property Address</Label>
-              <Input
-                id="propertyAddress"
+              <AddressAutocomplete
                 value={editForm.propertyAddress}
-                onChange={(e) => setEditForm({ ...editForm, propertyAddress: e.target.value })}
-                data-testid="input-property-address"
+                onChange={(val) => setEditForm({ ...editForm, propertyAddress: val })}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -2576,11 +2630,20 @@ export default function AdminDealDetail() {
                   <SelectValue placeholder="Select property type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sfr">Single Family Residence</SelectItem>
-                  <SelectItem value="2-4unit">2-4 Unit</SelectItem>
-                  <SelectItem value="condo">Condo</SelectItem>
-                  <SelectItem value="townhouse">Townhouse</SelectItem>
-                  <SelectItem value="multifamily">Multifamily (5+)</SelectItem>
+                  <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                  <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                  <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                  <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                  <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                  <SelectItem value="infill-lot">Infill Lot</SelectItem>
+                  <SelectItem value="land">Land</SelectItem>
+                  <SelectItem value="office">Office</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="hospitality">Hospitality</SelectItem>
+                  <SelectItem value="industrial">Industrial</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="agricultural">Agricultural</SelectItem>
+                  <SelectItem value="special-purpose">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2601,6 +2664,53 @@ export default function AdminDealDetail() {
                 </>
               ) : (
                 "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Target Close Date Dialog */}
+      <Dialog open={editTargetCloseDateOpen} onOpenChange={setEditTargetCloseDateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Target Close Date</DialogTitle>
+            <DialogDescription>
+              Update the target close date for this deal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="targetCloseDate">Target Close Date</Label>
+              <Input
+                id="targetCloseDate"
+                type="date"
+                value={targetCloseDateValue}
+                onChange={(e) => setTargetCloseDateValue(e.target.value)}
+                data-testid="input-target-close-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTargetCloseDateOpen(false)} data-testid="button-cancel-target-close-date">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (targetCloseDateValue) {
+                  updateTargetCloseDateMutation.mutate(targetCloseDateValue);
+                }
+              }}
+              disabled={updateTargetCloseDateMutation.isPending || !targetCloseDateValue}
+              data-testid="button-save-target-close-date"
+            >
+              {updateTargetCloseDateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
               )}
             </Button>
           </DialogFooter>
@@ -2957,12 +3067,10 @@ export default function AdminDealDetail() {
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="property-address">Address</Label>
-              <Input
-                id="property-address"
+              <AddressAutocomplete
                 value={propertyForm.address}
-                onChange={(e) => setPropertyForm(prev => ({ ...prev, address: e.target.value }))}
+                onChange={(val) => setPropertyForm(prev => ({ ...prev, address: val }))}
                 placeholder="123 Main St"
-                data-testid="input-property-address"
               />
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -3004,13 +3112,20 @@ export default function AdminDealDetail() {
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="single-family">Single Family</SelectItem>
-                  <SelectItem value="multi-family">Multi Family</SelectItem>
-                  <SelectItem value="condo">Condo</SelectItem>
-                  <SelectItem value="townhouse">Townhouse</SelectItem>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                  <SelectItem value="mixed-use">Mixed Use</SelectItem>
+                  <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                  <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                  <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                  <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                  <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                  <SelectItem value="infill-lot">Infill Lot</SelectItem>
                   <SelectItem value="land">Land</SelectItem>
+                  <SelectItem value="office">Office</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="hospitality">Hospitality</SelectItem>
+                  <SelectItem value="industrial">Industrial</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="agricultural">Agricultural</SelectItem>
+                  <SelectItem value="special-purpose">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
             </div>

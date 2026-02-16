@@ -256,6 +256,16 @@ export default function RegisterPage() {
                       </FormItem>
                     )}
                   />
+                  <div className="text-xs text-muted-foreground space-y-0.5 mb-4">
+                    <p className="font-medium text-foreground/80">Password must contain:</p>
+                    <ul className="list-disc list-inside space-y-0">
+                      <li>At least 8 characters</li>
+                      <li>One uppercase letter (A-Z)</li>
+                      <li>One lowercase letter (a-z)</li>
+                      <li>One number (0-9)</li>
+                      <li>One special character (!@#$%^&*)</li>
+                    </ul>
+                  </div>
                   <FormField
                     control={form.control}
                     name="password"

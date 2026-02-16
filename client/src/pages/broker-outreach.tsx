@@ -39,7 +39,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Send, Mail, MessageSquare, Copy, Check } from 'lucide-react';
-import { api } from '@shared/routes';
 
 interface Contact {
   id: number;
@@ -106,7 +105,7 @@ export default function BrokerOutreachPage() {
   const { data: contactsData } = useQuery({
     queryKey: ['broker-contacts-all'],
     queryFn: async () => {
-      const response = await fetch(`${api.baseUrl}/api/broker/contacts?limit=1000`);
+      const response = await fetch(`/api/broker/contacts?limit=1000`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch contacts');
       return response.json();
     },
@@ -118,7 +117,7 @@ export default function BrokerOutreachPage() {
   const { data: suggestionsData } = useQuery({
     queryKey: ['broker-suggestions'],
     queryFn: async () => {
-      const response = await fetch(`${api.baseUrl}/api/broker/suggestions`);
+      const response = await fetch(`/api/broker/suggestions`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch suggestions');
       return response.json();
     },
@@ -131,7 +130,8 @@ export default function BrokerOutreachPage() {
     queryKey: ['broker-outreach-messages', messageTab],
     queryFn: async () => {
       const response = await fetch(
-        `${api.baseUrl}/api/broker/outreach/messages?status=${messageTab}`
+        `/api/broker/outreach/messages?status=${messageTab}`,
+        { credentials: 'include' }
       );
       if (!response.ok) throw new Error('Failed to fetch messages');
       return response.json();
@@ -143,8 +143,9 @@ export default function BrokerOutreachPage() {
   // Generate messages mutation
   const { mutate: generateMessages, isPending: isGenerating } = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`${api.baseUrl}/api/broker/outreach/generate`, {
+      const response = await fetch(`/api/broker/outreach/generate`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contactIds: selectedContacts,
@@ -182,8 +183,9 @@ export default function BrokerOutreachPage() {
   // Send batch messages mutation
   const { mutate: sendBatchMessages, isPending: isSending } = useMutation({
     mutationFn: async (messageIds: number[]) => {
-      const response = await fetch(`${api.baseUrl}/api/broker/outreach/send-batch`, {
+      const response = await fetch(`/api/broker/outreach/send-batch`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messageIds }),
       });
@@ -222,8 +224,8 @@ export default function BrokerOutreachPage() {
   const { mutate: executeSuggestion, isPending: isExecuting } = useMutation({
     mutationFn: async (suggestionId: string) => {
       const response = await fetch(
-        `${api.baseUrl}/api/broker/suggestions/${suggestionId}/execute`,
-        { method: 'POST' }
+        `/api/broker/suggestions/${suggestionId}/execute`,
+        { method: 'POST', credentials: 'include' }
       );
 
       if (!response.ok) {

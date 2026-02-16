@@ -123,7 +123,7 @@ export default function PipelineWorkflowConfig() {
         <section className="space-y-4">
           <div className="flex items-center gap-2">
             <GitBranch className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Approval Steps</h3>
+            <h3 className="text-sm font-medium">Approval Stages</h3>
           </div>
           <div className="grid gap-3">
             {config.approvalSteps.map((step: ApprovalStep, index: number) => (
@@ -162,7 +162,7 @@ export default function PipelineWorkflowConfig() {
                       data-testid={`input-approval-desc-${index}`}
                       value={step.description}
                       onChange={(e) => updateApprovalStep(index, "description", e.target.value)}
-                      placeholder="Description of this approval step"
+                      placeholder="Description of this approval stage"
                     />
                   </div>
                 </div>
@@ -183,7 +183,7 @@ export default function PipelineWorkflowConfig() {
             onClick={addApprovalStep}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Approval Step
+            Add Approval Stage
           </Button>
         </section>
 

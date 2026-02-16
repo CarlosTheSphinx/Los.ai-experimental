@@ -150,7 +150,7 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
     requireAdmin,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { agentType, name, description, systemPrompt, tools, modelId, maxTokens, temperature } = req.body;
+        const { agentType, name, systemPrompt, toolDefinitions, modelProvider, modelName, maxTokens, temperature } = req.body;
 
         if (!agentType || !name) {
           return res.status(400).json({ error: 'agentType and name are required' });
@@ -161,10 +161,10 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           .values({
             agentType,
             name,
-            description: description || null,
-            systemPrompt: systemPrompt || null,
-            tools: tools ? JSON.stringify(tools) : null,
-            modelId: modelId || 'claude-opus-4-6',
+            systemPrompt: systemPrompt || '',
+            toolDefinitions: toolDefinitions || null,
+            modelProvider: modelProvider || 'openai',
+            modelName: modelName || 'gpt-4o',
             maxTokens: maxTokens || 4096,
             temperature: temperature || 0.7,
             isActive: true,
@@ -193,16 +193,16 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
     async (req: AuthRequest, res: Response) => {
       try {
         const configId = parseInt(req.params.id);
-        const { name, description, systemPrompt, tools, modelId, maxTokens, temperature, isActive } = req.body;
+        const { name, systemPrompt, toolDefinitions, modelProvider, modelName, maxTokens, temperature, isActive } = req.body;
 
         const [config] = await db
           .update(agentConfigurations)
           .set({
             ...(name && { name }),
-            ...(description !== undefined && { description }),
             ...(systemPrompt !== undefined && { systemPrompt }),
-            ...(tools && { tools: JSON.stringify(tools) }),
-            ...(modelId && { modelId }),
+            ...(toolDefinitions !== undefined && { toolDefinitions }),
+            ...(modelProvider && { modelProvider }),
+            ...(modelName && { modelName }),
             ...(maxTokens !== undefined && { maxTokens }),
             ...(temperature !== undefined && { temperature }),
             ...(isActive !== undefined && { isActive }),
@@ -297,16 +297,14 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           return res.status(404).json({ error: 'No active agent configuration found for this agent type' });
         }
 
-        // Create run record
         const [run] = await db
           .insert(agentRuns)
           .values({
             agentType,
-            configId: config.id,
+            configurationId: config.id,
             projectId: parseInt(projectId),
             status: 'running',
-            startedAt: new Date(),
-            createdAt: new Date(),
+            triggerType: 'manual',
             triggeredBy: req.user?.id
           })
           .returning();

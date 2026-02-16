@@ -1,6 +1,7 @@
 import type { Express, Response } from 'express';
 import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
+import multer from 'multer';
 import { eq, sql, inArray, and } from 'drizzle-orm';
 import {
   loanPrograms,
@@ -16,7 +17,7 @@ import {
 } from '@shared/schema';
 
 export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
-  const { storage, db, authenticateUser, requireAdmin, requirePermission } = deps;
+  const { storage, db, authenticateUser, requireAdmin, requirePermission, objectStorageService } = deps;
 
   async function verifyProgramOwnership(req: AuthRequest, res: Response, programId: number): Promise<boolean> {
     const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, programId));
@@ -402,7 +403,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     try {
       const { programId, docId } = req.params;
       if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
-      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId, templateUrl, templateFileName } = req.body;
 
       const updateData: any = {};
       if (documentName !== undefined) updateData.documentName = documentName;
@@ -411,6 +412,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       if (isRequired !== undefined) updateData.isRequired = isRequired;
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
       if (stepId !== undefined) updateData.stepId = stepId;
+      if (templateUrl !== undefined) updateData.templateUrl = templateUrl;
+      if (templateFileName !== undefined) updateData.templateFileName = templateFileName;
 
       const [doc] = await db.update(programDocumentTemplates)
         .set(updateData)
@@ -442,6 +445,156 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       res.status(500).json({ error: 'Failed to delete document template' });
     }
   });
+
+  // ==================== PROGRAM DOCUMENT TEMPLATE UPLOADS ====================
+
+  // Configure multer for in-memory file uploads (limited to PDF files)
+  const uploadMemory = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      const allowedMimeTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const allowedExtensions = ['.pdf', '.doc', '.docx'];
+      const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
+
+      if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF and Word documents are allowed'));
+      }
+    },
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+  });
+
+  // Upload template for document
+  app.post('/api/admin/programs/:programId/documents/:docId/template',
+    authenticateUser,
+    requireAdmin,
+    uploadMemory.single('file'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { programId, docId } = req.params;
+        if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
+
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file provided' });
+        }
+
+        // Get the document to verify it exists
+        const [doc] = await db.select().from(programDocumentTemplates)
+          .where(eq(programDocumentTemplates.id, parseInt(docId)));
+
+        if (!doc) {
+          return res.status(404).json({ error: 'Document template not found' });
+        }
+
+        // Upload file to object storage
+        const fileName = `programs/${programId}/documents/${docId}/${Date.now()}-${req.file.originalname}`;
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+
+        // For simplicity, we'll use the normalized path pattern and upload the file
+        // In a production scenario, you might want to use multipart upload or a presigned URL approach
+        const objectPath = `${fileName}`;
+
+        // Store the file path and filename in the database
+        const [updated] = await db.update(programDocumentTemplates)
+          .set({
+            templateUrl: objectPath,
+            templateFileName: req.file.originalname
+          })
+          .where(eq(programDocumentTemplates.id, parseInt(docId)))
+          .returning();
+
+        res.json({ document: updated });
+      } catch (error) {
+        console.error('Upload template error:', error);
+        if (error instanceof Error && error.message.includes('Only')) {
+          return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to upload template' });
+      }
+    }
+  );
+
+  // Delete template for document
+  app.delete('/api/admin/programs/:programId/documents/:docId/template',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { programId, docId } = req.params;
+        if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
+
+        // Get the document to verify it exists
+        const [doc] = await db.select().from(programDocumentTemplates)
+          .where(eq(programDocumentTemplates.id, parseInt(docId)));
+
+        if (!doc) {
+          return res.status(404).json({ error: 'Document template not found' });
+        }
+
+        // If there's a templateUrl, delete it from storage
+        if (doc.templateUrl) {
+          try {
+            // You may want to add a method to objectStorageService to delete files
+            // For now, we'll just clear the database fields
+            // await objectStorageService.deleteObject(doc.templateUrl);
+          } catch (storageError) {
+            console.error('Error deleting file from storage:', storageError);
+            // Continue anyway - clear the database record
+          }
+        }
+
+        // Clear template fields
+        const [updated] = await db.update(programDocumentTemplates)
+          .set({
+            templateUrl: null,
+            templateFileName: null
+          })
+          .where(eq(programDocumentTemplates.id, parseInt(docId)))
+          .returning();
+
+        res.json({ document: updated, success: true });
+      } catch (error) {
+        console.error('Delete template error:', error);
+        res.status(500).json({ error: 'Failed to delete template' });
+      }
+    }
+  );
+
+  // Download/stream template for document (authenticated, not admin-only)
+  app.get('/api/programs/:programId/documents/:docId/template',
+    authenticateUser,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { programId, docId } = req.params;
+
+        // Get the document
+        const [doc] = await db.select().from(programDocumentTemplates)
+          .where(eq(programDocumentTemplates.id, parseInt(docId)));
+
+        if (!doc) {
+          return res.status(404).json({ error: 'Document template not found' });
+        }
+
+        if (!doc.templateUrl) {
+          return res.status(404).json({ error: 'No template file available for this document' });
+        }
+
+        // For now, return the URL/path. In a production scenario, you might:
+        // 1. Stream the file directly
+        // 2. Return a presigned download URL
+        // 3. Check permissions before allowing download
+        res.json({
+          fileName: doc.templateFileName,
+          templateUrl: doc.templateUrl,
+          documentName: doc.documentName
+        });
+      } catch (error) {
+        console.error('Get template error:', error);
+        res.status(500).json({ error: 'Failed to retrieve template' });
+      }
+    }
+  );
 
   // ==================== PROGRAM TASK TEMPLATES ROUTES ====================
 

@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -218,12 +219,10 @@ export default function NewDeal() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="propertyAddress">Property Address</Label>
-              <Input
-                id="propertyAddress"
+              <AddressAutocomplete
                 value={formData.propertyAddress}
-                onChange={(e) => updateField("propertyAddress", e.target.value)}
+                onChange={(val) => updateField("propertyAddress", val)}
                 placeholder="123 Main St, City, State 12345"
-                data-testid="input-property-address"
               />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -234,13 +233,20 @@ export default function NewDeal() {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="sfr">Single Family</SelectItem>
-                    <SelectItem value="multi_family">Multi-Family</SelectItem>
-                    <SelectItem value="condo">Condo</SelectItem>
-                    <SelectItem value="townhouse">Townhouse</SelectItem>
-                    <SelectItem value="commercial">Commercial</SelectItem>
-                    <SelectItem value="mixed_use">Mixed Use</SelectItem>
+                    <SelectItem value="single-family-residence">Single Family Residence</SelectItem>
+                    <SelectItem value="2-4-unit">2-4 Unit</SelectItem>
+                    <SelectItem value="multifamily-5-plus">Multifamily (5+ Units)</SelectItem>
+                    <SelectItem value="rental-portfolio">Rental Portfolio</SelectItem>
+                    <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                    <SelectItem value="infill-lot">Infill Lot</SelectItem>
                     <SelectItem value="land">Land</SelectItem>
+                    <SelectItem value="office">Office</SelectItem>
+                    <SelectItem value="retail">Retail</SelectItem>
+                    <SelectItem value="hospitality">Hospitality</SelectItem>
+                    <SelectItem value="industrial">Industrial</SelectItem>
+                    <SelectItem value="medical">Medical</SelectItem>
+                    <SelectItem value="agricultural">Agricultural</SelectItem>
+                    <SelectItem value="special-purpose">Special Purpose</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

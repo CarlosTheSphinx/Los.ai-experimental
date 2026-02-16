@@ -217,14 +217,14 @@ export default function ProgramWorkflowEditor({
             Configure Workflow: {programName}
           </DialogTitle>
           <DialogDescription>
-            Manage workflow steps, required documents, and tasks for this loan program.
+            Manage workflow stages, required documents, and tasks for this loan program.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3" data-testid="tabs-workflow">
-            <TabsTrigger value="steps" data-testid="tab-steps">
-              <GripVertical className="mr-1" /> Steps
+            <TabsTrigger value="steps" data-testid="tab-stages">
+              <GripVertical className="mr-1" /> Stages
             </TabsTrigger>
             <TabsTrigger value="documents" data-testid="tab-documents">
               <FileText className="mr-1" /> Documents
@@ -327,10 +327,10 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId, "workflow-steps"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
-      toast({ title: "Workflow steps saved" });
+      toast({ title: "Workflow stages saved" });
     },
     onError: () => {
-      toast({ title: "Failed to save workflow steps", variant: "destructive" });
+      toast({ title: "Failed to save workflow stages", variant: "destructive" });
     },
   });
 
@@ -350,10 +350,10 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
       setCustomStepName("");
       setCustomStepDescription("");
       setCustomStepColor("#3b82f6");
-      toast({ title: "Custom step created" });
+      toast({ title: "Custom stage created" });
     },
     onError: () => {
-      toast({ title: "Failed to create custom step", variant: "destructive" });
+      toast({ title: "Failed to create custom stage", variant: "destructive" });
     },
   });
 
@@ -406,7 +406,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
     <div className="flex gap-4 mt-2">
       <div className="w-1/2 space-y-3">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Step Library
+          Stage Library
         </h3>
         <div className="space-y-1">
           {allSteps?.map((def) => {
@@ -435,7 +435,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
           <Card className="mt-3">
             <CardContent className="p-4 space-y-3">
               <div>
-                <Label htmlFor="custom-step-name">Step Name</Label>
+                <Label htmlFor="custom-step-name">Stage Name</Label>
                 <Input
                   id="custom-step-name"
                   value={customStepName}
@@ -450,7 +450,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
                   id="custom-step-desc"
                   value={customStepDescription}
                   onChange={(e) => setCustomStepDescription(e.target.value)}
-                  placeholder="Describe this step"
+                  placeholder="Describe this stage"
                   className="resize-none"
                   data-testid="input-custom-step-description"
                 />
@@ -490,7 +490,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
                   data-testid="button-save-custom-step"
                 >
                   {createCustomStepMutation.isPending && <Loader2 className="animate-spin" />}
-                  Create Step
+                  Create Stage
                 </Button>
                 <Button
                   size="sm"
@@ -511,18 +511,18 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
             className="w-full"
             data-testid="button-add-custom-step"
           >
-            <Plus className="mr-1" /> Add Custom Step
+            <Plus className="mr-1" /> Add Custom Stage
           </Button>
         )}
       </div>
 
       <div className="w-1/2 space-y-3">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Program Workflow ({configuredSteps.length} steps)
+          Program Workflow ({configuredSteps.length} stages)
         </h3>
         {configuredSteps.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            Click steps from the library to add them to this program's workflow.
+            Click stages from the library to add them to this program's workflow.
           </p>
         ) : (
           <div className="space-y-1">
@@ -582,7 +582,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
           data-testid="button-save-steps"
         >
           {saveStepsMutation.isPending && <Loader2 className="animate-spin" />}
-          <Save className="mr-1" /> Save Step Configuration
+          <Save className="mr-1" /> Save Stage Configuration
         </Button>
       </div>
     </div>
@@ -834,7 +834,7 @@ function DocumentsTab({ programId }: { programId: number }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Assign to Step (optional)</Label>
+                <Label>Assign to Stage (optional)</Label>
                 <Select
                   value={docForm.stepId !== null ? String(docForm.stepId) : "none"}
                   onValueChange={(v) =>
@@ -1495,7 +1495,7 @@ function TasksTab({ programId }: { programId: number }) {
                 </Select>
               </div>
               <div>
-                <Label>Assign to Step</Label>
+                <Label>Assign to Stage</Label>
                 <Select
                   value={taskForm.stepId !== null ? String(taskForm.stepId) : "none"}
                   onValueChange={(v) =>
