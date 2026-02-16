@@ -44,6 +44,8 @@ export default function BorrowerQuote() {
 
   const [borrowerFirstName, setBorrowerFirstName] = useState(user?.firstName || "");
   const [borrowerLastName, setBorrowerLastName] = useState(user?.lastName || "");
+  const [borrowerEmail, setBorrowerEmail] = useState("");
+  const [borrowerPhone, setBorrowerPhone] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
   const [additionalProperties, setAdditionalProperties] = useState<string[]>([]);
 
@@ -115,6 +117,8 @@ export default function BorrowerQuote() {
         customerFirstName: borrowerFirstName.trim(),
         customerLastName: borrowerLastName.trim(),
         customerCompanyName: "",
+        customerEmail: borrowerEmail || undefined,
+        customerPhone: borrowerPhone || undefined,
         propertyAddress,
         loanData: enrichedLoanData,
         interestRate: formattedRate,
@@ -139,6 +143,14 @@ export default function BorrowerQuote() {
   const handleSaveQuote = () => {
     if (!borrowerFirstName.trim() || !borrowerLastName.trim()) {
       toast({ title: "Missing Information", description: "Please enter your first and last name.", variant: "destructive" });
+      return;
+    }
+    if (borrowerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(borrowerEmail)) {
+      toast({ title: "Invalid Email", description: "Please enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    if (borrowerPhone && borrowerPhone.length > 0 && borrowerPhone.length < 10) {
+      toast({ title: "Invalid Phone", description: "Phone number must be 10 digits.", variant: "destructive" });
       return;
     }
     if (!propertyAddress.trim()) {
@@ -291,6 +303,38 @@ export default function BorrowerQuote() {
                         placeholder="Last name"
                         data-testid="input-borrower-last-name"
                       />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="borrower-email">Email Address</Label>
+                      <Input
+                        id="borrower-email"
+                        type="email"
+                        value={borrowerEmail}
+                        onChange={(e) => setBorrowerEmail(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                      {borrowerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(borrowerEmail) && (
+                        <p className="text-xs text-destructive">Please enter a valid email address</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="borrower-phone">Phone Number</Label>
+                      <Input
+                        id="borrower-phone"
+                        type="tel"
+                        value={borrowerPhone}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setBorrowerPhone(digits);
+                        }}
+                        placeholder="(555) 123-4567"
+                        maxLength={14}
+                      />
+                      {borrowerPhone && borrowerPhone.length > 0 && borrowerPhone.length < 10 && (
+                        <p className="text-xs text-destructive">Phone number must be 10 digits</p>
+                      )}
                     </div>
                   </div>
                   <div>

@@ -75,6 +75,7 @@ interface LoanProgram {
   maxInterestRate: number | null;
   termOptions: string | null;
   eligiblePropertyTypes: string[] | null;
+  quoteFormFields: any | null;
   isActive: boolean;
   isTemplate: boolean;
   sortOrder: number | null;
@@ -155,6 +156,46 @@ const priorityOptions = [
   { value: "critical", label: "Critical" },
 ];
 
+// Quote form fields configuration
+const DSCR_QUOTE_FIELDS = [
+  { fieldKey: "loanAmount", label: "Loan Amount", defaultRequired: true },
+  { fieldKey: "propertyValue", label: "Property Value", defaultRequired: true },
+  { fieldKey: "loanPurpose", label: "Loan Purpose", defaultRequired: true },
+  { fieldKey: "loanType", label: "Loan Type (Fixed/ARM)", defaultRequired: true },
+  { fieldKey: "propertyType", label: "Property Type", defaultRequired: true },
+  { fieldKey: "ficoScore", label: "FICO Score", defaultRequired: true },
+  { fieldKey: "grossMonthlyRent", label: "Gross Monthly Rent", defaultRequired: false },
+  { fieldKey: "annualTaxes", label: "Annual Taxes", defaultRequired: false },
+  { fieldKey: "annualInsurance", label: "Annual Insurance", defaultRequired: false },
+  { fieldKey: "interestOnly", label: "Interest Only", defaultRequired: false },
+  { fieldKey: "prepaymentPenalty", label: "Prepayment Penalty", defaultRequired: false },
+  { fieldKey: "appraisalValue", label: "Appraisal Value", defaultRequired: false },
+];
+
+const RTL_QUOTE_FIELDS = [
+  { fieldKey: "loanType", label: "Loan Type (Light/Heavy Rehab)", defaultRequired: true },
+  { fieldKey: "purpose", label: "Purpose (Purchase/Refi)", defaultRequired: true },
+  { fieldKey: "asIsValue", label: "As-Is Value", defaultRequired: true },
+  { fieldKey: "arv", label: "After Repair Value (ARV)", defaultRequired: true },
+  { fieldKey: "rehabBudget", label: "Rehab Budget", defaultRequired: true },
+  { fieldKey: "propertyType", label: "Property Type", defaultRequired: true },
+  { fieldKey: "ficoScore", label: "FICO Score", defaultRequired: true },
+  { fieldKey: "propertyUnits", label: "Property Units", defaultRequired: false },
+  { fieldKey: "isMidstream", label: "Is Midstream", defaultRequired: false },
+  { fieldKey: "borrowingEntityType", label: "Borrowing Entity Type", defaultRequired: false },
+  { fieldKey: "completedProjects", label: "Completed Projects", defaultRequired: false },
+  { fieldKey: "hasFullGuaranty", label: "Has Full Guaranty", defaultRequired: false },
+  { fieldKey: "exitStrategy", label: "Exit Strategy", defaultRequired: false },
+  { fieldKey: "appraisalValue", label: "Appraisal Value", defaultRequired: false },
+];
+
+interface QuoteFormField {
+  fieldKey: string;
+  label: string;
+  required: boolean;
+  visible: boolean;
+}
+
 const standardDocuments = [
   {
     category: "borrower_docs",
@@ -231,6 +272,16 @@ function getLoanTypeLabel(type: string): string {
   }
 }
 
+function getDefaultQuoteFields(loanType: string): QuoteFormField[] {
+  const baseFields = loanType.toLowerCase() === "dscr" ? DSCR_QUOTE_FIELDS : RTL_QUOTE_FIELDS;
+  return baseFields.map((field) => ({
+    fieldKey: field.fieldKey,
+    label: field.label,
+    required: field.defaultRequired,
+    visible: true,
+  }));
+}
+
 export default function AdminPrograms() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("programs");
@@ -305,6 +356,7 @@ export default function AdminPrograms() {
     maxUnits: "",
     termOptions: "12, 24",
     eligiblePropertyTypes: [] as string[],
+    quoteFormFields: [] as QuoteFormField[],
     reviewGuidelines: "",
     creditPolicyId: null as number | null,
   });
@@ -604,6 +656,7 @@ export default function AdminPrograms() {
       maxUnits: "",
       termOptions: "12, 24",
       eligiblePropertyTypes: [],
+      quoteFormFields: [],
       reviewGuidelines: "",
       creditPolicyId: null,
     });
@@ -747,6 +800,7 @@ export default function AdminPrograms() {
       maxUnits: program.maxUnits != null ? String(program.maxUnits) : "",
       termOptions: program.termOptions || "",
       eligiblePropertyTypes: program.eligiblePropertyTypes || [],
+      quoteFormFields: (program.quoteFormFields as QuoteFormField[]) || [],
       reviewGuidelines: program.reviewGuidelines || "",
       creditPolicyId: (program as any).creditPolicyId || null,
     });
@@ -807,6 +861,19 @@ export default function AdminPrograms() {
     }
   }, [showEditProgram, programDetails]);
 
+  // Update quote form fields when loan type changes
+  useEffect(() => {
+    if (showAddProgram || showEditProgram) {
+      // If no quote fields are set yet, or if we're changing loan type, initialize with defaults
+      if (!programForm.quoteFormFields || programForm.quoteFormFields.length === 0) {
+        setProgramForm((prev) => ({
+          ...prev,
+          quoteFormFields: getDefaultQuoteFields(prev.loanType),
+        }));
+      }
+    }
+  }, [programForm.loanType, showAddProgram, showEditProgram]);
+
   const [customLoanType, setCustomLoanType] = useState("");
   const [customPropertyType, setCustomPropertyType] = useState("");
 
@@ -844,6 +911,28 @@ export default function AdminPrograms() {
   };
 
   const isCustomLoanType = programForm.loanType && !loanTypeOptions.some((o) => o.value === programForm.loanType);
+
+  const handleToggleFieldVisibility = (fieldKey: string) => {
+    setProgramForm((prev) => ({
+      ...prev,
+      quoteFormFields: prev.quoteFormFields.map((field) =>
+        field.fieldKey === fieldKey
+          ? { ...field, visible: !field.visible, required: field.visible ? false : field.required }
+          : field
+      ),
+    }));
+  };
+
+  const handleToggleFieldRequired = (fieldKey: string) => {
+    setProgramForm((prev) => ({
+      ...prev,
+      quoteFormFields: prev.quoteFormFields.map((field) =>
+        field.fieldKey === fieldKey
+          ? { ...field, required: !field.required }
+          : field
+      ),
+    }));
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -1187,6 +1276,45 @@ export default function AdminPrograms() {
                     <p className="text-xs text-muted-foreground">
                       Assign a credit policy to enable AI document review for this program.
                     </p>
+                  </div>
+
+                  <div className="border-t pt-6 mt-6 space-y-4">
+                    <Label className="text-base font-semibold flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Quote Form Fields
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Configure which fields appear in quotes for this {getLoanTypeLabel(programForm.loanType)} program
+                    </p>
+                    <div className="space-y-2 max-h-80 overflow-y-auto border rounded-md p-3">
+                      {programForm.quoteFormFields.map((field) => (
+                        <div
+                          key={field.fieldKey}
+                          className="flex items-center justify-between p-2 rounded hover:bg-muted"
+                        >
+                          <span className="text-sm font-medium flex-1">{field.label}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Visible</Label>
+                              <Switch
+                                checked={field.visible}
+                                onCheckedChange={() => handleToggleFieldVisibility(field.fieldKey)}
+                                data-testid={`switch-field-visible-${field.fieldKey}`}
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Required</Label>
+                              <Switch
+                                checked={field.required}
+                                onCheckedChange={() => handleToggleFieldRequired(field.fieldKey)}
+                                disabled={!field.visible}
+                                data-testid={`switch-field-required-${field.fieldKey}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
                   </div>

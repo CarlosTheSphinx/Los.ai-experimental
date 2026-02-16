@@ -8,7 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
-import Quotes from "@/pages/quotes";
+import Quotes from "@/pages/quotes-unified";
 import SignPage from "@/pages/sign";
 import Agreements from "@/pages/agreements";
 import AgreementDetail from "@/pages/agreement-detail";
@@ -147,7 +147,7 @@ function MainRoutes() {
         <Switch>
           <Route path="/" component={() => <ProtectedRoute component={Home} />} />
           <Route path="/quotes" component={() => <ProtectedRoute component={Quotes} />} />
-          <Route path="/agreements" component={() => <ProtectedRoute component={Agreements} />} />
+          <Route path="/agreements" component={() => <Redirect to="/quotes?tab=term-sheets" />} />
           <Route path="/agreements/:id" component={() => <ProtectedRoute component={AgreementDetail} />} />
           <Route path="/commissions" component={() => <ProtectedRoute component={CommissionsPage} />} />
           <Route path="/deals" component={() => <ProtectedRoute component={Deals} />} />
@@ -158,8 +158,8 @@ function MainRoutes() {
           <Route path="/projects/:id">{(params) => <Redirect to={`/deals/${params.id}`} />}</Route>
           <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
           <Route path="/resources" component={() => <ProtectedRoute component={ResourcesPage} />} />
-          <Route path="/borrower-quote" component={() => <ProtectedRoute component={BorrowerQuote} />} />
-          <Route path="/borrower-quotes" component={() => <ProtectedRoute component={BorrowerQuotes} />} />
+          <Route path="/borrower-quote" component={() => <Redirect to="/quotes" />} />
+          <Route path="/borrower-quotes" component={() => <Redirect to="/quotes" />} />
           <Route path="/commercial/dashboard" component={() => <ProtectedRoute component={CommercialDashboard} />} />
           <Route path="/commercial/pre-screen" component={() => <ProtectedRoute component={CommercialPreScreenPage} />} />
           <Route path="/commercial-submission/new" component={() => <ProtectedRoute component={CommercialSubmissionPage} />} />

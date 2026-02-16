@@ -732,15 +732,17 @@ export const loanPrograms = pgTable("loan_programs", {
   
   termOptions: text("term_options"), // comma-separated: "6, 12, 18, 24"
   eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family-residence', '2-4-unit', 'multifamily-5-plus', etc.]
-  
+
+  quoteFormFields: jsonb("quote_form_fields"), // JSON array of field configs for quote form
+
   isActive: boolean("is_active").default(true),
   isTemplate: boolean("is_template").default(false),
   sortOrder: integer("sort_order").default(0),
-  
+
   reviewGuidelines: text("review_guidelines"),
   creditPolicyId: integer("credit_policy_id"),
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

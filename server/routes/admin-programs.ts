@@ -125,6 +125,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         minUnits, maxUnits,
         termOptions, eligiblePropertyTypes,
         isActive,
+        quoteFormFields,
         documents,
         tasks,
         steps,
@@ -151,6 +152,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           maxUnits: maxUnits ? parseInt(maxUnits) : null,
           termOptions,
           eligiblePropertyTypes: eligiblePropertyTypes || [],
+          quoteFormFields: quoteFormFields ? JSON.stringify(quoteFormFields) : null,
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
           createdBy: req.user!.id,
@@ -260,7 +262,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         minInterestRate, maxInterestRate,
         minUnits, maxUnits,
         termOptions, eligiblePropertyTypes,
-        isActive, reviewGuidelines, creditPolicyId
+        isActive, quoteFormFields, reviewGuidelines, creditPolicyId
       } = req.body;
 
       const updateData: any = { updatedAt: new Date() };
@@ -277,6 +279,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       if (maxUnits !== undefined) updateData.maxUnits = maxUnits ? parseInt(maxUnits) : null;
       if (termOptions !== undefined) updateData.termOptions = termOptions;
       if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
+      if (quoteFormFields !== undefined) updateData.quoteFormFields = quoteFormFields ? JSON.stringify(quoteFormFields) : null;
       if (isActive !== undefined) updateData.isActive = isActive;
       if (reviewGuidelines !== undefined) updateData.reviewGuidelines = reviewGuidelines;
       if (creditPolicyId !== undefined) updateData.creditPolicyId = creditPolicyId ? parseInt(creditPolicyId) : null;
@@ -1012,6 +1015,64 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     } catch (error: any) {
       console.error('Delete review rule error:', error);
       res.status(500).json({ error: 'Failed to delete review rule' });
+    }
+  });
+
+  // Get quote form fields for a program
+  app.get('/api/programs/:programId/quote-fields', async (req: AuthRequest, res: Response) => {
+    try {
+      const { programId } = req.params;
+      const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, parseInt(programId)));
+
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+
+      // If program has configured quote form fields, return them
+      if (program.quoteFormFields) {
+        const fields = typeof program.quoteFormFields === 'string'
+          ? JSON.parse(program.quoteFormFields)
+          : program.quoteFormFields;
+        return res.json({ quoteFormFields: fields });
+      }
+
+      // Otherwise, return default fields based on loan type
+      const defaultFields = program.loanType?.toLowerCase() === 'dscr'
+        ? [
+            { fieldKey: "loanAmount", label: "Loan Amount", required: true, visible: true },
+            { fieldKey: "propertyValue", label: "Property Value", required: true, visible: true },
+            { fieldKey: "loanPurpose", label: "Loan Purpose", required: true, visible: true },
+            { fieldKey: "loanType", label: "Loan Type (Fixed/ARM)", required: true, visible: true },
+            { fieldKey: "propertyType", label: "Property Type", required: true, visible: true },
+            { fieldKey: "ficoScore", label: "FICO Score", required: true, visible: true },
+            { fieldKey: "grossMonthlyRent", label: "Gross Monthly Rent", required: false, visible: true },
+            { fieldKey: "annualTaxes", label: "Annual Taxes", required: false, visible: true },
+            { fieldKey: "annualInsurance", label: "Annual Insurance", required: false, visible: true },
+            { fieldKey: "interestOnly", label: "Interest Only", required: false, visible: true },
+            { fieldKey: "prepaymentPenalty", label: "Prepayment Penalty", required: false, visible: true },
+            { fieldKey: "appraisalValue", label: "Appraisal Value", required: false, visible: true },
+          ]
+        : [
+            { fieldKey: "loanType", label: "Loan Type (Light/Heavy Rehab)", required: true, visible: true },
+            { fieldKey: "purpose", label: "Purpose (Purchase/Refi)", required: true, visible: true },
+            { fieldKey: "asIsValue", label: "As-Is Value", required: true, visible: true },
+            { fieldKey: "arv", label: "After Repair Value (ARV)", required: true, visible: true },
+            { fieldKey: "rehabBudget", label: "Rehab Budget", required: true, visible: true },
+            { fieldKey: "propertyType", label: "Property Type", required: true, visible: true },
+            { fieldKey: "ficoScore", label: "FICO Score", required: true, visible: true },
+            { fieldKey: "propertyUnits", label: "Property Units", required: false, visible: true },
+            { fieldKey: "isMidstream", label: "Is Midstream", required: false, visible: true },
+            { fieldKey: "borrowingEntityType", label: "Borrowing Entity Type", required: false, visible: true },
+            { fieldKey: "completedProjects", label: "Completed Projects", required: false, visible: true },
+            { fieldKey: "hasFullGuaranty", label: "Has Full Guaranty", required: false, visible: true },
+            { fieldKey: "exitStrategy", label: "Exit Strategy", required: false, visible: true },
+            { fieldKey: "appraisalValue", label: "Appraisal Value", required: false, visible: true },
+          ];
+
+      res.json({ quoteFormFields: defaultFields });
+    } catch (error) {
+      console.error('Get quote fields error:', error);
+      res.status(500).json({ error: 'Failed to get quote fields' });
     }
   });
 }

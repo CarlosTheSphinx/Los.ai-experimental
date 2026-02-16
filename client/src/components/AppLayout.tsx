@@ -76,9 +76,7 @@ interface NavItem {
 }
 
 const brokerNavItems: NavItem[] = [
-  { href: "/", label: "New Quote", icon: Calculator, shortcut: undefined },
-  { href: "/quotes", label: "Saved Quotes", icon: FileText, shortcut: undefined },
-  { href: "/agreements", label: "Term Sheets", icon: ClipboardList, shortcut: undefined },
+  { href: "/quotes", label: "Quotes", icon: FileText, shortcut: undefined },
   { href: "/deals", label: "Deals", icon: FolderKanban, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
@@ -90,8 +88,7 @@ const brokerNavItems: NavItem[] = [
 
 const borrowerNavItems: NavItem[] = [
   { href: "/", label: "My Deals", icon: FolderKanban },
-  { href: "/borrower-quote", label: "Get a Quote", icon: Calculator },
-  { href: "/borrower-quotes", label: "My Quotes", icon: FileText },
+  { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
   { href: "/resources", label: "Resources", icon: BookOpen },
 ];
@@ -100,6 +97,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/processor", label: "One-Click Processing", icon: Zap, requiredPermission: "processor.view" },
   { href: "/admin/deals", label: "Pipeline", icon: FileText, requiredPermission: "pipeline.view", shortcut: "⌘2" },
+  { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
