@@ -465,8 +465,25 @@ export default function AdminPrograms() {
       creditPolicyId: (program as any).creditPolicyId || null,
     });
     setSelectedProgram(program);
+    setCustomLoanType("");
+    setCustomPropertyType("");
     setShowEditProgram(true);
   };
+
+  const [customLoanType, setCustomLoanType] = useState("");
+  const [customPropertyType, setCustomPropertyType] = useState("");
+
+  const loanTypeOptions = [
+    { value: "dscr", label: "DSCR (Rental)" },
+    { value: "rtl", label: "RTL (Fix & Flip)" },
+  ];
+
+  const allPropertyTypeOptions = [
+    ...propertyTypeOptions,
+    ...programForm.eligiblePropertyTypes
+      .filter((t) => !propertyTypeOptions.some((p) => p.value === t))
+      .map((t) => ({ value: t, label: t })),
+  ];
 
   const handlePropertyTypeToggle = (type: string) => {
     setProgramForm((prev) => ({
@@ -476,6 +493,20 @@ export default function AdminPrograms() {
         : [...prev.eligiblePropertyTypes, type],
     }));
   };
+
+  const handleAddCustomPropertyType = () => {
+    const trimmed = customPropertyType.trim();
+    if (!trimmed) return;
+    if (!programForm.eligiblePropertyTypes.includes(trimmed)) {
+      setProgramForm((prev) => ({
+        ...prev,
+        eligiblePropertyTypes: [...prev.eligiblePropertyTypes, trimmed],
+      }));
+    }
+    setCustomPropertyType("");
+  };
+
+  const isCustomLoanType = programForm.loanType && !loanTypeOptions.some((o) => o.value === programForm.loanType);
 
   return (
     <div className="p-6 space-y-6">
@@ -552,20 +583,55 @@ export default function AdminPrograms() {
                   </div>
                   <div className="space-y-2">
                     <Label>Loan Type</Label>
-                    <Select
-                      value={programForm.loanType}
-                      onValueChange={(v) =>
-                        setProgramForm({ ...programForm, loanType: v })
-                      }
-                    >
-                      <SelectTrigger data-testid="select-loan-type">
-                        <SelectValue placeholder="Select loan type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="rtl">RTL (Fix & Flip)</SelectItem>
-                        <SelectItem value="dscr">DSCR (Rental)</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {loanTypeOptions.map((opt) => (
+                        <Badge
+                          key={opt.value}
+                          variant={programForm.loanType === opt.value ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setProgramForm({ ...programForm, loanType: opt.value });
+                            setCustomLoanType("");
+                          }}
+                          data-testid={`badge-loan-type-${opt.value}`}
+                        >
+                          {opt.label}
+                        </Badge>
+                      ))}
+                      {isCustomLoanType && (
+                        <Badge variant="default" data-testid="badge-loan-type-custom">
+                          {programForm.loanType}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Or type a custom loan type..."
+                        value={customLoanType}
+                        onChange={(e) => setCustomLoanType(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && customLoanType.trim()) {
+                            e.preventDefault();
+                            setProgramForm({ ...programForm, loanType: customLoanType.trim() });
+                            setCustomLoanType("");
+                          }
+                        }}
+                        data-testid="input-custom-loan-type"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!customLoanType.trim()}
+                        onClick={() => {
+                          setProgramForm({ ...programForm, loanType: customLoanType.trim() });
+                          setCustomLoanType("");
+                        }}
+                        data-testid="button-add-custom-loan-type"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -655,7 +721,7 @@ export default function AdminPrograms() {
                   <div className="space-y-2">
                     <Label>Eligible Property Types</Label>
                     <div className="flex flex-wrap gap-2">
-                      {propertyTypeOptions.map((type) => (
+                      {allPropertyTypeOptions.map((type) => (
                         <Badge
                           key={type.value}
                           variant={
@@ -670,6 +736,30 @@ export default function AdminPrograms() {
                           {type.label}
                         </Badge>
                       ))}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        placeholder="Add custom property type..."
+                        value={customPropertyType}
+                        onChange={(e) => setCustomPropertyType(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddCustomPropertyType();
+                          }
+                        }}
+                        data-testid="input-custom-property-type"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!customPropertyType.trim()}
+                        onClick={handleAddCustomPropertyType}
+                        data-testid="button-add-custom-property-type"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
@@ -1192,18 +1282,55 @@ export default function AdminPrograms() {
             </div>
             <div className="space-y-2">
               <Label>Loan Type</Label>
-              <Select
-                value={programForm.loanType}
-                onValueChange={(v) => setProgramForm({ ...programForm, loanType: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rtl">RTL (Fix & Flip)</SelectItem>
-                  <SelectItem value="dscr">DSCR (Rental)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {loanTypeOptions.map((opt) => (
+                  <Badge
+                    key={opt.value}
+                    variant={programForm.loanType === opt.value ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setProgramForm({ ...programForm, loanType: opt.value });
+                      setCustomLoanType("");
+                    }}
+                    data-testid={`badge-edit-loan-type-${opt.value}`}
+                  >
+                    {opt.label}
+                  </Badge>
+                ))}
+                {isCustomLoanType && (
+                  <Badge variant="default" data-testid="badge-edit-loan-type-custom">
+                    {programForm.loanType}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Or type a custom loan type..."
+                  value={customLoanType}
+                  onChange={(e) => setCustomLoanType(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && customLoanType.trim()) {
+                      e.preventDefault();
+                      setProgramForm({ ...programForm, loanType: customLoanType.trim() });
+                      setCustomLoanType("");
+                    }
+                  }}
+                  data-testid="input-edit-custom-loan-type"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!customLoanType.trim()}
+                  onClick={() => {
+                    setProgramForm({ ...programForm, loanType: customLoanType.trim() });
+                    setCustomLoanType("");
+                  }}
+                  data-testid="button-edit-add-custom-loan-type"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1285,7 +1412,7 @@ export default function AdminPrograms() {
             <div className="space-y-2">
               <Label>Eligible Property Types</Label>
               <div className="flex flex-wrap gap-2">
-                {propertyTypeOptions.map((type) => (
+                {allPropertyTypeOptions.map((type) => (
                   <Badge
                     key={type.value}
                     variant={
@@ -1295,10 +1422,35 @@ export default function AdminPrograms() {
                     }
                     className="cursor-pointer"
                     onClick={() => handlePropertyTypeToggle(type.value)}
+                    data-testid={`badge-edit-property-${type.value}`}
                   >
                     {type.label}
                   </Badge>
                 ))}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  placeholder="Add custom property type..."
+                  value={customPropertyType}
+                  onChange={(e) => setCustomPropertyType(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCustomPropertyType();
+                    }
+                  }}
+                  data-testid="input-edit-custom-property-type"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!customPropertyType.trim()}
+                  onClick={handleAddCustomPropertyType}
+                  data-testid="button-edit-add-custom-property-type"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
             </div>
             <div className="space-y-2">
