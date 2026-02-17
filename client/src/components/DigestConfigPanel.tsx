@@ -33,7 +33,9 @@ import {
   SkipForward,
   Eye,
   Save,
-  X
+  X,
+  Sparkles,
+  Copy
 } from 'lucide-react';
 
 interface DigestConfig {
@@ -170,6 +172,14 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const { data: draftsData } = useQuery<{ drafts: DigestDraft[] }>({
     queryKey: ['/api/admin/deals', dealId, 'digest/drafts'],
   });
+
+  // Fetch approved AI communications for this deal
+  const { data: agentCommsData } = useQuery<any[]>({
+    queryKey: ['/api/projects', dealId, 'agent-communications'],
+  });
+  const approvedComms = (agentCommsData || []).filter(
+    (c: any) => c.status === 'approved' && !c.sentAt
+  );
 
   // Save config mutation
   const saveConfigMutation = useMutation({
@@ -972,6 +982,61 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
             </div>
           )}
         </div>
+
+        {approvedComms.length > 0 && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Approved AI Communications ({approvedComms.length})
+              </h4>
+              {approvedComms.map((comm: any) => {
+                let displayBody = comm.editedBody || comm.body || '';
+                let displaySubject = comm.subject || 'Deal Update';
+                try {
+                  const trimmed = displayBody.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+                  const parsed = JSON.parse(trimmed);
+                  if (parsed.subject) displaySubject = parsed.subject;
+                  if (parsed.body) displayBody = parsed.body;
+                } catch {}
+
+                return (
+                  <div key={comm.id} className="border rounded-lg p-3 space-y-2" data-testid={`approved-comm-deal-${comm.id}`}>
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium truncate">{displaySubject}</span>
+                          <Badge variant="default" className="text-[10px]">Approved</Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                          <span>To: {comm.recipientType || 'borrower'}</span>
+                          {comm.approvedAt && (
+                            <span>{new Date(comm.approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          navigator.clipboard.writeText(displayBody);
+                          toast({ title: 'Copied to clipboard' });
+                        }}
+                        data-testid={`button-copy-comm-${comm.id}`}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/30 rounded-md p-2.5 max-h-36 overflow-y-auto">
+                      {displayBody.length > 250 ? displayBody.substring(0, 250) + '...' : displayBody}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <Separator />
 
