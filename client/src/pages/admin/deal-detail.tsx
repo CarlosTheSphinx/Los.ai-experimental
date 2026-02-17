@@ -120,6 +120,10 @@ interface Deal {
   userEmail: string | null;
   programId?: number | null;
   programName?: string | null;
+  borrowerPortalToken?: string | null;
+  borrowerPortalEnabled?: boolean;
+  brokerPortalToken?: string | null;
+  brokerPortalEnabled?: boolean;
 }
 
 interface DealDocument {
@@ -242,6 +246,9 @@ interface ProjectDetailResponse {
     propertyAddress: string | null;
     propertyType: string | null;
     borrowerPortalToken: string | null;
+    borrowerPortalEnabled: boolean;
+    brokerPortalToken: string | null;
+    brokerPortalEnabled: boolean;
   };
   stages: ProjectStage[];
   tasks: ProjectTask[];
@@ -1616,28 +1623,28 @@ export default function AdminDealDetail() {
                   >
                     {generateBorrowerLinkMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    ) : data?.borrowerPortalToken ? (
+                    ) : deal?.borrowerPortalToken ? (
                       <RefreshCw className="h-3.5 w-3.5 mr-1" />
                     ) : (
                       <Plus className="h-3.5 w-3.5 mr-1" />
                     )}
-                    {data?.borrowerPortalToken ? 'Regenerate' : 'Generate Link'}
+                    {deal?.borrowerPortalToken ? 'Regenerate' : 'Generate Link'}
                   </Button>
-                  {data?.borrowerPortalToken && (
+                  {deal?.borrowerPortalToken && (
                     <>
                       <input
                         type="text"
                         readOnly
-                        value={`${window.location.origin}/portal/${data.borrowerPortalToken}`}
+                        value={`${window.location.origin}/portal/${deal.borrowerPortalToken}`}
                         className="flex-1 min-w-0 px-3 py-1.5 text-xs border rounded-md bg-muted/50 cursor-pointer"
-                        onClick={() => copyToClipboard(`${window.location.origin}/portal/${data.borrowerPortalToken}`, "Borrower link")}
+                        onClick={() => copyToClipboard(`${window.location.origin}/portal/${deal.borrowerPortalToken}`, "Borrower link")}
                         data-testid="input-borrower-link"
                       />
                       <Button
                         size="icon"
                         variant="ghost"
                         onClick={() =>
-                          copyToClipboard(`${window.location.origin}/portal/${data.borrowerPortalToken}`, "Borrower link")
+                          copyToClipboard(`${window.location.origin}/portal/${deal.borrowerPortalToken}`, "Borrower link")
                         }
                         className="flex-shrink-0"
                         data-testid="button-copy-borrower-link"
@@ -1653,13 +1660,13 @@ export default function AdminDealDetail() {
                         variant="outline"
                         onClick={() =>
                           updatePortalSettingsMutation.mutate({
-                            borrowerPortalEnabled: !data?.borrowerPortalEnabled,
+                            borrowerPortalEnabled: !deal?.borrowerPortalEnabled,
                           })
                         }
                         disabled={updatePortalSettingsMutation.isPending}
                         data-testid="button-toggle-borrower-portal"
                       >
-                        {data?.borrowerPortalEnabled ? "Disable" : "Enable"}
+                        {deal?.borrowerPortalEnabled ? "Disable" : "Enable"}
                       </Button>
                     </>
                   )}
@@ -1681,28 +1688,28 @@ export default function AdminDealDetail() {
                   >
                     {generateBrokerLinkMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    ) : data?.brokerPortalToken ? (
+                    ) : deal?.brokerPortalToken ? (
                       <RefreshCw className="h-3.5 w-3.5 mr-1" />
                     ) : (
                       <Plus className="h-3.5 w-3.5 mr-1" />
                     )}
-                    {data?.brokerPortalToken ? 'Regenerate' : 'Generate Link'}
+                    {deal?.brokerPortalToken ? 'Regenerate' : 'Generate Link'}
                   </Button>
-                  {data?.brokerPortalToken && (
+                  {deal?.brokerPortalToken && (
                     <>
                       <input
                         type="text"
                         readOnly
-                        value={`${window.location.origin}/broker-portal/${data.brokerPortalToken}`}
+                        value={`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`}
                         className="flex-1 min-w-0 px-3 py-1.5 text-xs border rounded-md bg-muted/50 cursor-pointer"
-                        onClick={() => copyToClipboard(`${window.location.origin}/broker-portal/${data.brokerPortalToken}`, "Broker link")}
+                        onClick={() => copyToClipboard(`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`, "Broker link")}
                         data-testid="input-broker-link"
                       />
                       <Button
                         size="icon"
                         variant="ghost"
                         onClick={() =>
-                          copyToClipboard(`${window.location.origin}/broker-portal/${data.brokerPortalToken}`, "Broker link")
+                          copyToClipboard(`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`, "Broker link")
                         }
                         className="flex-shrink-0"
                         data-testid="button-copy-broker-link"
@@ -1718,13 +1725,13 @@ export default function AdminDealDetail() {
                         variant="outline"
                         onClick={() =>
                           updatePortalSettingsMutation.mutate({
-                            brokerPortalEnabled: !data?.brokerPortalEnabled,
+                            brokerPortalEnabled: !deal?.brokerPortalEnabled,
                           })
                         }
                         disabled={updatePortalSettingsMutation.isPending}
                         data-testid="button-toggle-broker-portal"
                       >
-                        {data?.brokerPortalEnabled ? "Disable" : "Enable"}
+                        {deal?.brokerPortalEnabled ? "Disable" : "Enable"}
                       </Button>
                     </>
                   )}

@@ -5534,6 +5534,9 @@ export async function registerRoutes(
         targetCloseDate: projects.targetCloseDate,
         quoteId: projects.quoteId,
         borrowerPortalToken: projects.borrowerPortalToken,
+        borrowerPortalEnabled: projects.borrowerPortalEnabled,
+        brokerPortalToken: projects.brokerPortalToken,
+        brokerPortalEnabled: projects.brokerPortalEnabled,
         userName: users.fullName,
         userEmail: users.email,
       })
@@ -5631,6 +5634,9 @@ export async function registerRoutes(
         userEmail: project.userEmail,
         quoteId: project.quoteId,
         borrowerPortalToken: project.borrowerPortalToken,
+        borrowerPortalEnabled: project.borrowerPortalEnabled,
+        brokerPortalToken: project.brokerPortalToken,
+        brokerPortalEnabled: project.brokerPortalEnabled,
         programId: project.programId,
         programName,
       };
