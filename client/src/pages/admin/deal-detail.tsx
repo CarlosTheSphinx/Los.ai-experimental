@@ -87,7 +87,7 @@ import { DealMemoryPanel } from "@/components/admin/DealMemoryPanel";
 
 interface Deal {
   id: number;
-  userId: number;
+  userId: number | null;
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string | null;
@@ -457,6 +457,10 @@ export default function AdminDealDetail() {
   const linkedProjectId = dealId ? parseInt(dealId) : null;
   const [showAddProcessor, setShowAddProcessor] = useState(false);
   const [selectedProcessorId, setSelectedProcessorId] = useState<string>("");
+  const [showEditBorrower, setShowEditBorrower] = useState(false);
+  const [borrowerForm, setBorrowerForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [showEditBroker, setShowEditBroker] = useState(false);
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
 
   const { data: projectDetailData, isLoading: projectLoading } = useQuery<ProjectDetailResponse>({
     queryKey: ['/api/admin/projects', linkedProjectId],
@@ -503,6 +507,21 @@ export default function AdminDealDetail() {
     },
     onError: () => {
       toast({ title: "Failed to remove processor", variant: "destructive" });
+    },
+  });
+
+  const updatePeopleMutation = useMutation({
+    mutationFn: async (payload: { borrowerName?: string; borrowerEmail?: string; borrowerPhone?: string; brokerId?: number | null }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/people`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setShowEditBorrower(false);
+      setShowEditBroker(false);
+      toast({ title: "People updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update", variant: "destructive" });
     },
   });
   
@@ -1671,7 +1690,21 @@ export default function AdminDealDetail() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div>
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Borrower</div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Borrower</div>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setBorrowerForm({
+                    firstName: deal.customerFirstName || "",
+                    lastName: deal.customerLastName || "",
+                    email: deal.customerEmail || "",
+                    phone: deal.customerPhone || "",
+                  });
+                  setShowEditBorrower(true);
+                }} data-testid="button-edit-borrower">
+                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                  Edit
+                </Button>
+              </div>
               <div className="flex items-center gap-2">
                 <div className="h-7 w-7 rounded-full bg-info/10 flex items-center justify-center flex-shrink-0">
                   <User className="h-3.5 w-3.5 text-info" />
@@ -1715,7 +1748,16 @@ export default function AdminDealDetail() {
               )}
             </div>
             <div className="border-t pt-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Broker</div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Broker</div>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setSelectedBrokerId(deal.userId ? String(deal.userId) : "");
+                  setShowEditBroker(true);
+                }} data-testid="button-edit-broker">
+                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                  {deal.userName ? "Edit" : "Assign"}
+                </Button>
+              </div>
               {deal.userName ? (
                 <div className="flex items-center gap-2">
                   <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -1786,6 +1828,112 @@ export default function AdminDealDetail() {
             <Button onClick={() => selectedProcessorId && addProcessorMutation.mutate(parseInt(selectedProcessorId))} disabled={!selectedProcessorId || addProcessorMutation.isPending} data-testid="button-confirm-add-processor">
               {addProcessorMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Add Processor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Borrower Dialog */}
+      <Dialog open={showEditBorrower} onOpenChange={setShowEditBorrower}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Borrower</DialogTitle>
+            <DialogDescription>Update the borrower's contact information.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>First Name</Label>
+                <Input
+                  value={borrowerForm.firstName}
+                  onChange={(e) => setBorrowerForm(f => ({ ...f, firstName: e.target.value }))}
+                  data-testid="input-borrower-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Last Name</Label>
+                <Input
+                  value={borrowerForm.lastName}
+                  onChange={(e) => setBorrowerForm(f => ({ ...f, lastName: e.target.value }))}
+                  data-testid="input-borrower-last-name"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={borrowerForm.email}
+                onChange={(e) => setBorrowerForm(f => ({ ...f, email: e.target.value }))}
+                data-testid="input-borrower-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input
+                type="tel"
+                value={borrowerForm.phone}
+                onChange={(e) => setBorrowerForm(f => ({ ...f, phone: e.target.value }))}
+                data-testid="input-borrower-phone"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditBorrower(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const fullName = `${borrowerForm.firstName} ${borrowerForm.lastName}`.trim();
+                updatePeopleMutation.mutate({
+                  borrowerName: fullName,
+                  borrowerEmail: borrowerForm.email,
+                  borrowerPhone: borrowerForm.phone,
+                });
+              }}
+              disabled={!borrowerForm.firstName.trim() || updatePeopleMutation.isPending}
+              data-testid="button-save-borrower"
+            >
+              {updatePeopleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Broker Dialog */}
+      <Dialog open={showEditBroker} onOpenChange={setShowEditBroker}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Broker</DialogTitle>
+            <DialogDescription>Select a broker for this deal.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Broker</Label>
+              <Select value={selectedBrokerId} onValueChange={setSelectedBrokerId}>
+                <SelectTrigger data-testid="select-broker">
+                  <SelectValue placeholder="Choose a broker..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No broker (unassign)</SelectItem>
+                  {(availableProcessors || []).map((p: any) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.fullName || p.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditBroker(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const brokerId = selectedBrokerId === "none" ? null : parseInt(selectedBrokerId);
+                updatePeopleMutation.mutate({ brokerId });
+              }}
+              disabled={!selectedBrokerId || updatePeopleMutation.isPending}
+              data-testid="button-save-broker"
+            >
+              {updatePeopleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4564,6 +4564,58 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Update deal people (borrower info, broker assignment)
+  app.patch('/api/admin/deals/:dealId/people', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { borrowerName, borrowerEmail, borrowerPhone, brokerId } = req.body;
+
+      const updateData: Record<string, any> = {};
+
+      if (borrowerName !== undefined) updateData.borrowerName = borrowerName;
+      if (borrowerEmail !== undefined) updateData.borrowerEmail = borrowerEmail || null;
+      if (borrowerPhone !== undefined) updateData.borrowerPhone = borrowerPhone || null;
+      if (brokerId !== undefined) updateData.userId = brokerId;
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      const [updated] = await db.update(projects)
+        .set(updateData)
+        .where(eq(projects.id, dealId))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      let userName: string | null = null;
+      let userEmail: string | null = null;
+      if (updated.userId) {
+        const [broker] = await db.select({ fullName: users.fullName, email: users.email })
+          .from(users)
+          .where(eq(users.id, updated.userId))
+          .limit(1);
+        userName = broker?.fullName || null;
+        userEmail = broker?.email || null;
+      }
+
+      res.json({
+        success: true,
+        borrowerName: updated.borrowerName,
+        borrowerEmail: updated.borrowerEmail,
+        borrowerPhone: updated.borrowerPhone,
+        brokerId: updated.userId,
+        brokerName: userName,
+        brokerEmail: userEmail,
+      });
+    } catch (error) {
+      console.error('Admin update deal people error:', error);
+      res.status(500).json({ error: 'Failed to update deal people' });
+    }
+  });
+
   // Admin - Rebuild project pipeline from linked program
   app.post('/api/admin/projects/:id/rebuild-pipeline', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
