@@ -6253,7 +6253,7 @@ export async function registerRoutes(
       const docId = parseInt(req.params.docId);
       const { status, reviewNotes } = req.body;
       
-      const validStatuses = ['pending', 'uploaded', 'approved', 'rejected', 'not_applicable'];
+      const validStatuses = ['pending', 'uploaded', 'ai_reviewed', 'approved', 'rejected', 'not_applicable'];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
@@ -6391,6 +6391,59 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin update document error:', error);
       res.status(500).json({ error: 'Failed to update document' });
+    }
+  });
+
+  // Bulk approve all ai_reviewed documents for a deal
+  app.post('/api/admin/deals/:dealId/documents/approve-all', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      
+      const aiReviewedDocs = await db.select()
+        .from(dealDocuments)
+        .where(
+          and(
+            eq(dealDocuments.dealId, dealId),
+            eq(dealDocuments.status, 'ai_reviewed')
+          )
+        );
+      
+      if (aiReviewedDocs.length === 0) {
+        return res.json({ approved: 0, message: 'No documents to approve' });
+      }
+      
+      await db.update(dealDocuments)
+        .set({ 
+          status: 'approved',
+          reviewedBy: req.user!.id,
+          reviewedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(dealDocuments.dealId, dealId),
+            eq(dealDocuments.status, 'ai_reviewed')
+          )
+        );
+      
+      // Trigger Google Drive sync for each approved document
+      try {
+        const { isDriveIntegrationEnabled, syncDealDocumentToDrive } = await import('./services/googleDrive');
+        const driveEnabled = await isDriveIntegrationEnabled();
+        if (driveEnabled) {
+          for (const doc of aiReviewedDocs) {
+            syncDealDocumentToDrive(doc.id).catch((err: any) => {
+              console.error(`Drive sync failed for bulk-approved doc ${doc.id}:`, err.message);
+            });
+          }
+        }
+      } catch (driveErr: any) {
+        console.error('Drive sync check error on bulk approval:', driveErr.message);
+      }
+      
+      res.json({ approved: aiReviewedDocs.length, message: `${aiReviewedDocs.length} documents approved` });
+    } catch (error: any) {
+      console.error('Bulk approve error:', error);
+      res.status(500).json({ error: 'Failed to approve documents' });
     }
   });
 

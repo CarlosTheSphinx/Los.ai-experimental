@@ -321,6 +321,8 @@ function getDocumentStatusIcon(status: string) {
   switch (status) {
     case "approved":
       return <Check className="h-4 w-4 text-success" />;
+    case "ai_reviewed":
+      return <FileCheck className="h-4 w-4 text-info" />;
     case "uploaded":
       return <FileCheck className="h-4 w-4 text-info" />;
     case "rejected":
@@ -336,6 +338,7 @@ function getDocumentStatusBadge(status: string) {
   const styles: Record<string, string> = {
     pending: "bg-warning/10 text-warning",
     uploaded: "bg-info/10 text-info",
+    ai_reviewed: "bg-info/15 text-info",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
     not_applicable: "bg-muted text-muted-foreground",
@@ -343,6 +346,7 @@ function getDocumentStatusBadge(status: string) {
   const labels: Record<string, string> = {
     pending: "Pending",
     uploaded: "Uploaded",
+    ai_reviewed: "AI Reviewed",
     approved: "Approved",
     rejected: "Rejected",
     not_applicable: "N/A",
@@ -619,7 +623,7 @@ export default function AdminDealDetail() {
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const totalTasks = tasks.length;
     const stageDocs = getStageDocuments(stage);
-    const completedDocs = stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+    const completedDocs = stageDocs.filter(d => d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded').length;
     const totalItems = totalTasks + stageDocs.length;
     const completedItems = completedTasks + completedDocs;
     const percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
@@ -635,7 +639,7 @@ export default function AdminDealDetail() {
       completedItems += progress.completedItems;
     });
     const unassigned = getUnassignedDocuments();
-    const unassignedCompleted = unassigned.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+    const unassignedCompleted = unassigned.filter(d => d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded').length;
     totalItems += unassigned.length;
     completedItems += unassignedCompleted;
     return {
@@ -664,6 +668,24 @@ export default function AdminDealDetail() {
         title: "Document updated",
         description: "The document status has been updated.",
       });
+    },
+  });
+
+  const approveAllDocsMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/documents/approve-all`);
+    },
+    onSuccess: async (response: any) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
+      const data = await response.json();
+      toast({
+        title: "Documents approved",
+        description: data.message || "All AI-reviewed documents have been approved.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Failed to approve documents", variant: "destructive" });
     },
   });
 
@@ -1972,6 +1994,22 @@ export default function AdminDealDetail() {
                   </span>
                 );
               })()}
+              {(() => {
+                const allDocs = projectStages.flatMap(s => getStageDocuments(s)).concat(getUnassignedDocuments());
+                const aiReviewedCount = allDocs.filter(d => d.status === 'ai_reviewed').length;
+                return aiReviewedCount > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={(e) => { e.stopPropagation(); approveAllDocsMutation.mutate(); }}
+                    disabled={approveAllDocsMutation.isPending}
+                    data-testid="button-approve-all-docs"
+                  >
+                    {approveAllDocsMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />}
+                    Approve All ({aiReviewedCount})
+                  </Button>
+                ) : null;
+              })()}
               {linkedProjectId && (
                 <Button
                   size="sm"
@@ -2024,7 +2062,7 @@ export default function AdminDealDetail() {
                 return true;
               });
               const stageDocs = allStageDocs.filter(d => {
-                const isDocCompleted = d.status === 'approved' || d.status === 'uploaded';
+                const isDocCompleted = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                 if (activeFilter === 'completed') return isDocCompleted;
                 if (activeFilter === 'todo') return !isDocCompleted;
                 return true;
@@ -2190,7 +2228,7 @@ export default function AdminDealDetail() {
                           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                             <h4 className="text-sm font-semibold flex items-center gap-2">
                               <FileText className="h-4 w-4 text-muted-foreground" />
-                              Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{stageDocs.length})
+                              Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded').length}/{stageDocs.length})
                             </h4>
                             {linkedProjectId && (
                               <Button
@@ -2212,25 +2250,26 @@ export default function AdminDealDetail() {
                               <div
                                 className={cn(
                                   "flex items-center justify-between gap-3 p-3 rounded-lg border",
-                                  (doc.status === 'approved' || doc.status === 'uploaded') && "bg-success/10 border-success/30 opacity-80",
+                                  doc.status === 'approved' && "bg-success/10 border-success/30 opacity-80",
+                                  doc.status === 'ai_reviewed' && "bg-info/5 border-info/30",
                                   doc.status === 'rejected' && "bg-destructive/10 border-destructive/30"
                                 )}
                                 data-testid={`doc-row-${doc.id}`}
                               >
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                   <Checkbox
-                                    checked={doc.status === 'approved' || doc.status === 'uploaded'}
+                                    checked={doc.status === 'approved'}
                                     onCheckedChange={(checked) => {
                                       updateDocumentStatus.mutate({
                                         docId: doc.id,
-                                        status: checked ? 'uploaded' : 'pending'
+                                        status: checked ? 'approved' : 'pending'
                                       });
                                     }}
                                     data-testid={`checkbox-doc-${doc.id}`}
                                   />
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className={cn("text-sm font-medium", (doc.status === 'approved' || doc.status === 'uploaded') && "line-through text-muted-foreground")}>
+                                      <span className={cn("text-sm font-medium", doc.status === 'approved' && "line-through text-muted-foreground")}>
                                         {doc.documentName}
                                       </span>
                                       {doc.isRequired && (
@@ -2295,7 +2334,7 @@ export default function AdminDealDetail() {
                                   {doc.status === 'pending' && (
                                     <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'not_applicable' }); }} disabled={updateDocumentStatus.isPending || uploadingDocId === doc.id} data-testid={`button-na-${doc.id}`}>N/A</Button>
                                   )}
-                                  {doc.status === 'uploaded' && (
+                                  {(doc.status === 'uploaded' || doc.status === 'ai_reviewed') && (
                                     <>
                                       <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'rejected' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-reject-${doc.id}`}>
                                         <XCircle className="h-3 w-3 mr-1" />Reject
@@ -2390,7 +2429,7 @@ export default function AdminDealDetail() {
           {/* Show unassigned documents that aren't linked to any stage */}
           {(subFilter === 'all' || subFilter === 'documents') && (() => {
             const unassigned = getUnassignedDocuments().filter(d => {
-              const isDocCompleted = d.status === 'approved' || d.status === 'uploaded';
+              const isDocCompleted = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
               if (activeFilter === 'completed') return isDocCompleted;
               if (activeFilter === 'todo') return !isDocCompleted;
               return true;
@@ -2403,12 +2442,12 @@ export default function AdminDealDetail() {
                   <FileText className="h-4 w-4" />
                   General Documents ({(() => {
                     const filtered = getUnassignedDocuments().filter(d => {
-                      const isDocCompleted = d.status === 'approved' || d.status === 'uploaded';
+                      const isDocCompleted = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                       if (activeFilter === 'completed') return isDocCompleted;
                       if (activeFilter === 'todo') return !isDocCompleted;
                       return true;
                     });
-                    const completed = filtered.filter(d => d.status === 'approved' || d.status === 'uploaded').length;
+                    const completed = filtered.filter(d => d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded').length;
                     return `${completed}/${filtered.length}`;
                   })()})
                 </CardTitle>
@@ -2416,7 +2455,7 @@ export default function AdminDealDetail() {
               <CardContent>
                 <div className="space-y-2">
                   {getUnassignedDocuments().filter(d => {
-                    const isDocCompleted = d.status === 'approved' || d.status === 'uploaded';
+                    const isDocCompleted = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                     if (activeFilter === 'completed') return isDocCompleted;
                     if (activeFilter === 'todo') return !isDocCompleted;
                     return true;
@@ -2425,18 +2464,19 @@ export default function AdminDealDetail() {
                       key={doc.id}
                       className={cn(
                         "flex items-center justify-between gap-3 p-3 rounded-lg border",
-                        (doc.status === 'approved' || doc.status === 'uploaded') && "bg-success/10 border-success/30 opacity-80",
+                        doc.status === 'approved' && "bg-success/10 border-success/30 opacity-80",
+                        doc.status === 'ai_reviewed' && "bg-info/5 border-info/30",
                         doc.status === 'rejected' && "bg-destructive/10 border-destructive/30"
                       )}
                       data-testid={`doc-row-${doc.id}`}
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <Checkbox
-                          checked={doc.status === 'approved' || doc.status === 'uploaded'}
+                          checked={doc.status === 'approved'}
                           onCheckedChange={(checked) => {
                             updateDocumentStatus.mutate({
                               docId: doc.id,
-                              status: checked ? 'uploaded' : 'pending'
+                              status: checked ? 'approved' : 'pending'
                             });
                           }}
                           data-testid={`checkbox-doc-${doc.id}`}
@@ -2444,7 +2484,7 @@ export default function AdminDealDetail() {
                         <div className="min-w-0 flex-1">
                           <p className={cn(
                             "text-sm font-medium truncate",
-                            (doc.status === 'approved' || doc.status === 'uploaded') && "line-through text-muted-foreground"
+                            doc.status === 'approved' && "line-through text-muted-foreground"
                           )}>
                             {doc.documentName}
                           </p>
@@ -2454,13 +2494,7 @@ export default function AdminDealDetail() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge variant={
-                          doc.status === 'approved' ? 'default' :
-                          doc.status === 'uploaded' ? 'secondary' :
-                          doc.status === 'rejected' ? 'destructive' : 'outline'
-                        }>
-                          {doc.status}
-                        </Badge>
+                        {getDocumentStatusBadge(doc.status)}
                       </div>
                     </div>
                   ))}
@@ -2475,7 +2509,7 @@ export default function AdminDealDetail() {
               const allDocs = getStageDocuments(stage);
               const filteredTasks = allTasks.filter(t => activeFilter === 'completed' ? t.status === 'completed' : t.status !== 'completed');
               const filteredDocs = allDocs.filter(d => {
-                const done = d.status === 'approved' || d.status === 'uploaded';
+                const done = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                 return activeFilter === 'completed' ? done : !done;
               });
               const visT = (subFilter === 'all' || subFilter === 'tasks') ? filteredTasks.length : 0;
@@ -2483,7 +2517,7 @@ export default function AdminDealDetail() {
               return visT + visD > 0;
             });
             const hasUnassigned = (subFilter === 'all' || subFilter === 'documents') && getUnassignedDocuments().some(d => {
-              const done = d.status === 'approved' || d.status === 'uploaded';
+              const done = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
               return activeFilter === 'completed' ? done : !done;
             });
             return !hasVisibleStages && !hasUnassigned;

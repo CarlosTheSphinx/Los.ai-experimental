@@ -332,7 +332,7 @@ async function compileContextForAgent(
       .from(dealDocuments)
       .where(eq(dealDocuments.dealId, projectId));
 
-    const received = allDocs.filter(d => d.status === 'uploaded' || d.status === 'approved' || d.status === 'reviewed');
+    const received = allDocs.filter(d => d.status === 'uploaded' || d.status === 'approved' || d.status === 'ai_reviewed');
     const outstanding = allDocs.filter(d => d.status === 'pending');
     const rejected = allDocs.filter(d => d.status === 'rejected');
 
@@ -472,6 +472,20 @@ async function storeAgentOutput(
           classificationMatch: doc.classification_match ?? true,
           confirmedDocType: doc.confirmed_doc_type || null,
         });
+      }
+
+      // Mark successfully extracted documents as 'ai_reviewed'
+      for (const doc of docs) {
+        if (doc.deal_document_id) {
+          await db.update(dealDocuments)
+            .set({ status: 'ai_reviewed' })
+            .where(
+              and(
+                eq(dealDocuments.id, doc.deal_document_id),
+                eq(dealDocuments.status, 'uploaded')
+              )
+            );
+        }
       }
     } else if (agentType === "processor") {
       const docRules = output.documentRules || output.document_rules || null;

@@ -82,6 +82,8 @@ interface LoanChecklistProps {
   onReviewDoc?: (docId: number, decision: "approved" | "rejected", notes?: string) => void;
   pollingInterval?: number;
   showTasks?: boolean;
+  onApproveAll?: () => void;
+  isApprovingAll?: boolean;
 }
 
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -104,6 +106,8 @@ function getStatusBadge(status: string, type: "document" | "task") {
     switch (status) {
       case "approved":
         return <Badge variant="default" className="bg-success">Approved</Badge>;
+      case "ai_reviewed":
+        return <Badge variant="secondary" className="bg-info/15 text-info border-info/30">AI Reviewed</Badge>;
       case "uploaded":
       case "submitted":
         return <Badge variant="secondary">Under Review</Badge>;
@@ -134,6 +138,8 @@ function getStatusIcon(status: string, type: "document" | "task") {
     switch (status) {
       case "approved":
         return <CheckCircle2 className="h-5 w-5 text-success shrink-0" />;
+      case "ai_reviewed":
+        return <CheckSquare className="h-5 w-5 text-info shrink-0" />;
       case "uploaded":
       case "submitted":
         return <Clock className="h-5 w-5 text-info shrink-0" />;
@@ -164,6 +170,8 @@ export function LoanChecklist({
   onReviewDoc,
   pollingInterval = 0,
   showTasks = true,
+  onApproveAll,
+  isApprovingAll = false,
 }: LoanChecklistProps) {
   const { toast } = useToast();
   const [expandedStages, setExpandedStages] = useState<Set<number | string>>(new Set());
@@ -221,6 +229,7 @@ export function LoanChecklist({
   const docItems = filteredItems.filter(i => i.type === "document");
   const totalDocs = docItems.filter(i => i.isRequired).length;
   const approvedDocs = docItems.filter(i => i.status === "approved").length;
+  const aiReviewedCount = docItems.filter(i => i.status === "ai_reviewed").length;
 
   const taskItems = filteredItems.filter(i => i.type === "task");
   const totalTasks = taskItems.length;
@@ -277,7 +286,25 @@ export function LoanChecklist({
             </span>
           </div>
           <Progress value={(approvedDocs / totalDocs) * 100} className="h-2" />
-          <p className="text-xs text-muted-foreground">{Math.round((approvedDocs / totalDocs) * 100)}% complete</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{Math.round((approvedDocs / totalDocs) * 100)}% complete</p>
+            {mode === "admin" && aiReviewedCount > 0 && onApproveAll && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onApproveAll}
+                disabled={isApprovingAll}
+                data-testid="button-approve-all-docs"
+              >
+                {isApprovingAll ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                )}
+                Approve All ({aiReviewedCount})
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -389,13 +416,15 @@ function ChecklistItemRow({
 }) {
   const isDocument = item.type === "document";
   const canUpload = isDocument && (item.status === "pending" || item.status === "rejected");
-  const canReview = isDocument && mode === "admin" && (item.status === "uploaded" || item.status === "submitted");
+  const canReview = isDocument && mode === "admin" && (item.status === "uploaded" || item.status === "submitted" || item.status === "ai_reviewed");
   const showUploadButton = canUpload && (mode === "borrower" || mode === "broker" || (mode === "admin" && item.assignedTo !== "admin"));
 
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-md border transition-colors ${
-        item.status === "rejected" ? "border-destructive/50 bg-destructive/5" : "border-border"
+        item.status === "rejected" ? "border-destructive/50 bg-destructive/5" :
+        item.status === "ai_reviewed" ? "border-info/30 bg-info/5" :
+        "border-border"
       } ${item.status === "approved" ? "border-success/30 bg-success/5" : ""}`}
       data-testid={`checklist-item-${item.id}`}
     >
@@ -405,6 +434,7 @@ function ChecklistItemRow({
           <span className={`text-sm font-medium ${
             item.status === "approved" ? "text-success" :
             item.status === "rejected" ? "text-destructive" :
+            item.status === "ai_reviewed" ? "text-info" :
             (item.status === "uploaded" || item.status === "submitted") ? "text-info" :
             "text-foreground"
           }`}>
