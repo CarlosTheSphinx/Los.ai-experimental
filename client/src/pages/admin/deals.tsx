@@ -279,9 +279,7 @@ function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
                           data-testid={`pipeline-stage-${program.programId}-${idx}`}
                         >
                           <div className="flex items-center w-full">
-                            {idx > 0 && (
-                              <div className="flex-1 h-[2px] bg-border" />
-                            )}
+                            <div className={`flex-1 h-[2px] ${idx > 0 ? 'bg-border' : 'bg-transparent'}`} />
                             <div
                               className="relative flex items-center justify-center flex-shrink-0 rounded-full"
                               style={{
@@ -293,9 +291,7 @@ function PipelineByProgram({ programs }: { programs: ProgramPipeline[] }) {
                             >
                               <Check className="h-5 w-5 text-white" strokeWidth={3} />
                             </div>
-                            {!isLast && (
-                              <div className="flex-1 h-[2px] bg-border" />
-                            )}
+                            <div className={`flex-1 h-[2px] ${!isLast ? 'bg-border' : 'bg-transparent'}`} />
                           </div>
 
                           <span
