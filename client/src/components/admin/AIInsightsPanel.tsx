@@ -28,6 +28,14 @@ import {
   XCircle,
   Copy,
   Check,
+  Bug,
+  ArrowRight,
+  ArrowDown,
+  Timer,
+  CircleDot,
+  Brain,
+  MessageSquare,
+  ScanSearch,
 } from "lucide-react";
 
 interface AIInsightsPanelProps {
@@ -99,12 +107,100 @@ interface AgentCommunication {
   createdAt: string;
 }
 
+interface PipelineStepLog {
+  id: number;
+  pipelineRunId: number;
+  agentType: string;
+  agentRunId: number | null;
+  sequenceIndex: number;
+  status: string;
+  outputSummary: any | null;
+  inputContext: any | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  executedAt: string | null;
+  completedAt: string | null;
+}
+
+interface PipelineRun {
+  id: number;
+  projectId: number;
+  status: string;
+  agentSequence: string[];
+  currentAgentIndex: number;
+  triggerType: string | null;
+  triggeredBy: number | null;
+  errorMessage: string | null;
+  totalDurationMs: number | null;
+  startedAt: string;
+  completedAt: string | null;
+  steps: PipelineStepLog[];
+}
+
+const AGENT_LABELS: Record<string, { label: string; icon: typeof Brain }> = {
+  document_intelligence: { label: "Document Intelligence", icon: ScanSearch },
+  processor: { label: "Processor (Policy Check)", icon: Brain },
+  communication: { label: "Communication Drafter", icon: MessageSquare },
+};
+
+function JsonViewer({ data, label }: { data: any; label: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  const preview = jsonStr.length > 200 ? jsonStr.slice(0, 200) + "..." : jsonStr;
+
+  const copyJson = () => {
+    navigator.clipboard.writeText(jsonStr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setExpanded(!expanded)}
+          className="px-2"
+          data-testid={`button-toggle-${label.toLowerCase().replace(/\s/g, '-')}`}
+        >
+          {expanded ? <ArrowDown className="h-3 w-3 mr-1" /> : <ArrowRight className="h-3 w-3 mr-1" />}
+          <span className="text-xs">{label}</span>
+          <Badge variant="secondary" className="ml-1.5 text-[9px] px-1 py-0 font-normal">
+            {typeof data === 'object' && data !== null ? `${Object.keys(data).length} keys` : `${jsonStr.length} chars`}
+          </Badge>
+        </Button>
+        <Button size="icon" variant="ghost" onClick={copyJson} data-testid={`button-copy-${label.toLowerCase().replace(/\s/g, '-')}`}>
+          {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+        </Button>
+      </div>
+      <pre className={`text-xs bg-muted/50 rounded-md p-3 overflow-x-auto ${expanded ? 'max-h-[500px]' : 'max-h-24'} overflow-y-auto font-mono whitespace-pre-wrap break-all`}>
+        {expanded ? jsonStr : preview}
+      </pre>
+    </div>
+  );
+}
+
 export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPanelProps) {
   const { toast } = useToast();
   const [storyOpen, setStoryOpen] = useState(true);
   const [findingsOpen, setFindingsOpen] = useState(true);
   const [commsOpen, setCommsOpen] = useState(true);
   const [copiedCommId, setCopiedCommId] = useState<number | null>(null);
+  const [debugOpen, setDebugOpen] = useState(true);
+  const [selectedRunIndex, setSelectedRunIndex] = useState(0);
+
+  const pipelineRunsQuery = useQuery<PipelineRun[]>({
+    queryKey: ["/api/projects", projectId, "pipeline-runs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/pipeline-runs`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch pipeline runs");
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
 
   const storyQuery = useQuery<DealStoryData>({
     queryKey: ["/api/projects", projectId, "story"],
@@ -177,6 +273,9 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
   const communications = commsQuery.data || [];
   const latestFinding = findings.length > 0 ? findings[0] : null;
   const draftComms = communications.filter(c => c.status === 'draft');
+  const pipelineRuns = pipelineRunsQuery.data || [];
+  const clampedRunIndex = pipelineRuns.length > 0 ? Math.min(selectedRunIndex, pipelineRuns.length - 1) : 0;
+  const selectedRun = pipelineRuns[clampedRunIndex] || null;
   const isLoading = storyQuery.isLoading || findingsQuery.isLoading || commsQuery.isLoading;
 
   const parseCommBody = (comm: AgentCommunication): { subject: string; body: string } => {
@@ -575,6 +674,144 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
                     </div>
                   );
                 })}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
+
+      {/* Pipeline Debug Section - Agent Inputs & Outputs */}
+      {pipelineRuns.length > 0 && (
+        <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
+          <Card data-testid="card-insights-debug">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0 pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Bug className="h-4 w-4" />
+                  Pipeline Debug
+                  <Badge variant="secondary" className="text-[10px]">{pipelineRuns.length} run{pipelineRuns.length !== 1 ? 's' : ''}</Badge>
+                </CardTitle>
+                {debugOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0 space-y-4">
+                {/* Run selector */}
+                {pipelineRuns.length > 1 && (
+                  <div className="flex items-center gap-2 flex-wrap" data-testid="pipeline-run-selector">
+                    {pipelineRuns.map((run, idx) => (
+                      <Button
+                        key={run.id}
+                        size="sm"
+                        variant={clampedRunIndex === idx ? 'default' : 'outline'}
+                        onClick={() => setSelectedRunIndex(idx)}
+                        data-testid={`button-select-run-${run.id}`}
+                      >
+                        Run #{run.id}
+                        <Badge
+                          variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'secondary'}
+                          className={`ml-1.5 text-[9px] ${run.status === 'completed' ? 'bg-success/10 text-success' : ''}`}
+                        >
+                          {run.status}
+                        </Badge>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedRun && (
+                  <div className="space-y-2">
+                    {/* Run summary bar */}
+                    <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground p-2 bg-muted/30 rounded-md" data-testid="pipeline-run-summary">
+                      <span className="flex items-center gap-1">
+                        <CircleDot className="h-3 w-3" />
+                        Status: <span className="font-medium text-foreground">{selectedRun.status}</span>
+                      </span>
+                      {selectedRun.totalDurationMs && (
+                        <span className="flex items-center gap-1">
+                          <Timer className="h-3 w-3" />
+                          {(selectedRun.totalDurationMs / 1000).toFixed(1)}s total
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(selectedRun.startedAt).toLocaleString()}
+                      </span>
+                      <span>{selectedRun.agentSequence.length} agents</span>
+                    </div>
+
+                    {selectedRun.errorMessage && (
+                      <div className="p-2 rounded-md bg-destructive/10 text-destructive text-xs">
+                        Pipeline Error: {selectedRun.errorMessage}
+                      </div>
+                    )}
+
+                    {/* Agent Steps */}
+                    <div className="space-y-3">
+                      {selectedRun.steps.map((step, stepIdx) => {
+                        const agentInfo = AGENT_LABELS[step.agentType] || { label: step.agentType, icon: Brain };
+                        const AgentIcon = agentInfo.icon;
+                        return (
+                          <div
+                            key={step.id}
+                            className="border rounded-lg overflow-visible"
+                            data-testid={`pipeline-step-${step.agentType}`}
+                          >
+                            {/* Step header */}
+                            <div className="flex items-center justify-between gap-3 p-3 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+                                  {stepIdx + 1}
+                                </span>
+                                <AgentIcon className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium">{agentInfo.label}</span>
+                                <Badge
+                                  variant={step.status === 'completed' ? 'default' : step.status === 'failed' ? 'destructive' : step.status === 'running' ? 'secondary' : 'outline'}
+                                  className={`text-[10px] ${step.status === 'completed' ? 'bg-success/10 text-success' : ''}`}
+                                >
+                                  {step.status}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                {step.durationMs && (
+                                  <span className="flex items-center gap-1">
+                                    <Timer className="h-3 w-3" />
+                                    {(step.durationMs / 1000).toFixed(1)}s
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {step.errorMessage && (
+                              <div className="mx-3 mb-3 p-2 rounded-md bg-destructive/10 text-destructive text-xs">
+                                {step.errorMessage}
+                              </div>
+                            )}
+
+                            {/* Input & Output */}
+                            <div className="px-3 pb-3 space-y-3">
+                              {step.inputContext && (
+                                <JsonViewer data={step.inputContext} label={`Step ${stepIdx + 1} Input Context`} />
+                              )}
+                              {step.outputSummary && (
+                                <JsonViewer data={step.outputSummary} label={`Step ${stepIdx + 1} Output`} />
+                              )}
+                              {!step.inputContext && !step.outputSummary && step.status !== 'pending' && step.status !== 'running' && (
+                                <p className="text-xs text-muted-foreground italic px-1">No input/output data captured for this step.</p>
+                              )}
+                              {(step.status === 'pending' || step.status === 'running') && (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground italic px-1">
+                                  {step.status === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}
+                                  {step.status === 'running' ? 'Agent is currently running...' : 'Waiting for previous steps to complete'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </CollapsibleContent>
           </Card>

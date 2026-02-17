@@ -496,6 +496,51 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
   );
 
   /**
+   * GET /api/projects/:id/pipeline-runs
+   * Get pipeline runs with step logs (input/output) for debugging agent prompts
+   */
+  app.get(
+    '/api/projects/:id/pipeline-runs',
+    authenticateUser,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const projectId = parseInt(req.params.id);
+
+        const [project] = await db
+          .select()
+          .from(projects)
+          .where(eq(projects.id, projectId));
+
+        if (!project) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const runs = await db
+          .select()
+          .from(agentPipelineRuns)
+          .where(eq(agentPipelineRuns.projectId, projectId))
+          .orderBy(desc(agentPipelineRuns.startedAt));
+
+        const runsWithSteps = await Promise.all(
+          runs.map(async (run) => {
+            const steps = await db
+              .select()
+              .from(pipelineStepLogs)
+              .where(eq(pipelineStepLogs.pipelineRunId, run.id))
+              .orderBy(asc(pipelineStepLogs.sequenceIndex));
+            return { ...run, steps };
+          })
+        );
+
+        res.json(runsWithSteps);
+      } catch (error) {
+        console.error('Error fetching pipeline runs:', error);
+        res.status(500).json({ error: 'Failed to fetch pipeline runs' });
+      }
+    }
+  );
+
+  /**
    * GET /api/projects/:id/findings
    * Get agent findings for a deal
    */
