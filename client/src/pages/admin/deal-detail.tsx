@@ -71,6 +71,8 @@ import {
   ShieldAlert,
   ShieldQuestion,
   LinkIcon,
+  BookOpen,
+  Zap,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -86,6 +88,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DigestConfigPanel } from "@/components/DigestConfigPanel";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { AIReviewTab } from "@/components/admin/AIReviewTab";
+import { DealStoryPanel } from "@/components/admin/DealStoryPanel";
 
 interface Deal {
   id: number;
@@ -552,7 +555,7 @@ export default function AdminDealDetail() {
   );
   const project = projectDetailData?.project;
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests' | 'checklist' | 'ai_review'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'documents' | 'activity' | 'digests' | 'checklist' | 'ai_review' | 'deal_story'>('all');
   const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
   const [stageExpandInitialized, setStageExpandInitialized] = useState(false);
 
@@ -783,6 +786,25 @@ export default function AdminDealDetail() {
     onError: (error: any) => {
       setReviewingDocId(null);
       toast({ title: "AI Review Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const triggerPipeline = useMutation({
+    mutationFn: async () => {
+      setPipelineRunning(true);
+      const res = await apiRequest('POST', '/api/admin/agents/pipeline/start', { projectId: linkedProjectId });
+      return res.json();
+    },
+    onSuccess: () => {
+      setPipelineRunning(false);
+      toast({ title: "AI Pipeline Started", description: "The AI agents are analyzing this deal. Check the Deal Story tab for updates." });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", linkedProjectId, "story"] });
+    },
+    onError: (error: any) => {
+      setPipelineRunning(false);
+      const msg = error?.message?.includes("already running") ? "A pipeline is already running for this deal." : error?.message || "Failed to start pipeline";
+      toast({ title: "Pipeline Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -1876,6 +1898,7 @@ export default function AdminDealDetail() {
                 { key: 'activity' as const, label: 'Activity', icon: Activity },
                 { key: 'digests' as const, label: 'Digests', icon: BarChart3 },
                 { key: 'ai_review' as const, label: 'AI Review', icon: Sparkles },
+                { key: 'deal_story' as const, label: 'Deal Story', icon: BookOpen },
               ]).map(filter => (
                 <Button
                   key={filter.key}
@@ -1898,6 +1921,17 @@ export default function AdminDealDetail() {
                   </span>
                 );
               })()}
+              {linkedProjectId && (
+                <Button
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); triggerPipeline.mutate(); }}
+                  disabled={pipelineRunning}
+                  data-testid="button-trigger-pipeline"
+                >
+                  {pipelineRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1.5" />}
+                  {pipelineRunning ? 'Running...' : 'AI Agents'}
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -2691,6 +2725,11 @@ export default function AdminDealDetail() {
         <div data-testid="ai-review-container">
           <AIReviewTab dealId={deal.id} projectId={linkedProjectId} />
         </div>
+      )}
+
+      {/* Deal Story view */}
+      {activeFilter === 'deal_story' && linkedProjectId && (
+        <DealStoryPanel projectId={linkedProjectId} />
       )}
 
       <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>

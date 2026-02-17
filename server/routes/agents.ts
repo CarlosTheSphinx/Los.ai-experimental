@@ -771,6 +771,26 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
     }
   );
 
+  app.post(
+    '/api/projects/:id/story/refresh',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        const { updateDealStory } = await import('../agents/dealStory');
+        const story = await updateDealStory({
+          projectId,
+          updateSource: 'manual_refresh',
+        });
+        res.json(story);
+      } catch (error) {
+        console.error('Error refreshing deal story:', error);
+        res.status(500).json({ error: 'Failed to refresh deal story' });
+      }
+    }
+  );
+
   /**
    * POST /api/projects/:id/findings/:findingId/override
    * Override a finding (stores correction)
