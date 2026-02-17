@@ -233,49 +233,15 @@
   background: hsl(210 35% 35%);
 }
 
-/* Sidebar hover-expand: when collapsed (icon mode), expand overlay on hover */
+/* Sidebar hover-expand: overlay behavior.
+   When hovering (not pinned), setOpen(true) expands the sidebar natively.
+   The gap spacer must stay at icon width so main content doesn't shift.
+   The sidebar-container overlays on top with a shadow. */
+[data-sidebar-hovered="true"] [data-slot="sidebar-gap"] {
+  width: var(--sidebar-width-icon) !important;
+  transition: none !important;
+}
 [data-sidebar-hovered="true"] [data-slot="sidebar-container"] {
-  width: var(--sidebar-width) !important;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
   z-index: 50;
-}
-[data-sidebar-hovered="true"] [data-sidebar="group-label"] {
-  margin-top: 0 !important;
-  opacity: 1 !important;
-}
-[data-sidebar-hovered="true"] [data-sidebar="menu-button"] {
-  width: auto !important;
-  height: auto !important;
-  padding: 0.5rem !important;
-}
-[data-sidebar-hovered="true"] [data-sidebar="menu-button"] > svg {
-  width: 1rem !important;
-  height: 1rem !important;
-}
-[data-sidebar-hovered="true"] [data-sidebar="menu-sub"],
-[data-sidebar-hovered="true"] [data-sidebar="group-action"],
-[data-sidebar-hovered="true"] [data-sidebar="menu-badge"] {
-  display: flex !important;
-}
-[data-sidebar-hovered="true"] [data-sidebar="content"] {
-  overflow: auto !important;
-}
-[data-sidebar-hovered="true"] .group-data-\[collapsible\=icon\]\:hidden {
-  display: initial !important;
-}
-[data-sidebar-hovered="true"] .hidden.group-data-\[collapsible\=icon\]\:flex {
-  display: none !important;
-}
-[data-sidebar-hovered="true"] .group-data-\[collapsible\=icon\]\:overflow-hidden {
-  overflow: auto !important;
-}
-[data-sidebar-hovered="true"] .group-data-\[collapsible\=icon\]\:\!size-5 {
-  width: 1rem !important;
-  height: 1rem !important;
-}
-[data-sidebar-hovered="true"] .group-data-\[collapsible\=icon\]\:\!w-10 {
-  width: auto !important;
-}
-[data-sidebar-hovered="true"] .group-data-\[collapsible\=icon\]\:\!h-10 {
-  height: auto !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
 }

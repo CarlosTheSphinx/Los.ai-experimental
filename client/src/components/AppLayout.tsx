@@ -136,12 +136,17 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    setOpen(sidebarPinned);
+  }, [sidebarPinned, setOpen]);
+
   const handleSidebarMouseEnter = () => {
     if (isMobile || sidebarPinned) return;
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
       setSidebarHovered(true);
-    }, 200);
+      setOpen(true);
+    }, 150);
   };
 
   const handleSidebarMouseLeave = () => {
@@ -149,6 +154,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
       setSidebarHovered(false);
+      setOpen(false);
     }, 300);
   };
 
@@ -495,8 +501,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <SidebarProvider
       defaultOpen={pinned}
-      open={pinned}
-      onOpenChange={setPinned}
       style={style as React.CSSProperties}
     >
       <AppLayoutContent
