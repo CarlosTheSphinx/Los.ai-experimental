@@ -400,28 +400,22 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
         const pageLimit = parseInt(limit as string) || 50;
         const pageOffset = parseInt(offset as string) || 0;
 
-        let query = db.select().from(agentRuns);
+        const whereClause = agentType
+          ? eq(agentRuns.agentType, agentType as string)
+          : undefined;
 
-        if (agentType) {
-          query = query.where(eq(agentRuns.agentType, agentType as string));
-        }
+        const runs = whereClause
+          ? await db.select().from(agentRuns).where(whereClause).orderBy(desc(agentRuns.startedAt)).limit(pageLimit).offset(pageOffset)
+          : await db.select().from(agentRuns).orderBy(desc(agentRuns.startedAt)).limit(pageLimit).offset(pageOffset);
 
-        const runs = await query
-          .orderBy(desc(agentRuns.createdAt))
-          .limit(pageLimit)
-          .offset(pageOffset);
-
-        // Get total count
-        let countQuery = db.select().from(agentRuns);
-        if (agentType) {
-          countQuery = countQuery.where(eq(agentRuns.agentType, agentType as string));
-        }
-        const countResult = await countQuery;
+        const countResult = whereClause
+          ? await db.select({ count: sql<number>`count(*)` }).from(agentRuns).where(whereClause)
+          : await db.select({ count: sql<number>`count(*)` }).from(agentRuns);
 
         res.json({
           runs,
           pagination: {
-            total: countResult.length,
+            total: countResult[0]?.count || 0,
             limit: pageLimit,
             offset: pageOffset
           }

@@ -1176,13 +1176,16 @@ export default function AIAgentsPage() {
     },
   });
 
+  const [activeTab, setActiveTab] = useState("runs");
+
   // Fetch runs
   const { data: runs, isLoading: runsLoading } = useQuery({
     queryKey: ["/api/admin/agents/runs"],
     queryFn: async () => {
       const response = await fetch("/api/admin/agents/runs");
       if (!response.ok) throw new Error("Failed to fetch runs");
-      return response.json() as Promise<AgentRun[]>;
+      const data = await response.json();
+      return (data.runs || data) as AgentRun[];
     },
   });
 
@@ -1301,6 +1304,10 @@ export default function AIAgentsPage() {
             }}
             onViewRuns={() => {
               setRunHistoryAgentFilter(config.type);
+              setActiveTab("runs");
+              setTimeout(() => {
+                document.getElementById("run-history-section")?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
             }}
           />
         ))}
@@ -1333,7 +1340,7 @@ export default function AIAgentsPage() {
       )}
 
       {/* Run History Tabs */}
-      <Tabs defaultValue="runs" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" id="run-history-section">
         <TabsList>
           <TabsTrigger value="runs">Run History</TabsTrigger>
           <TabsTrigger value="dealstory">Deal Story</TabsTrigger>
