@@ -341,14 +341,24 @@ export default function ProjectDetail() {
         });
         const urlData = await urlRes.json();
 
-        await fetch(urlData.uploadURL, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        });
+        let objectPath: string;
+        if (urlData.useDirectUpload) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const dr = await fetch(urlData.uploadURL, { method: 'POST', body: fd, credentials: 'include' });
+          if (!dr.ok) throw new Error('Upload failed');
+          objectPath = (await dr.json()).objectPath;
+        } else {
+          await fetch(urlData.uploadURL, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          });
+          objectPath = urlData.objectPath;
+        }
 
         await apiRequest('POST', `/api/deals/${projectId}/documents/upload-complete`, {
-          objectPath: urlData.objectPath,
+          objectPath,
           fileName: file.name,
           fileSize: file.size,
           mimeType: file.type,
@@ -375,14 +385,24 @@ export default function ProjectDetail() {
       });
       const urlData = await urlRes.json();
 
-      await fetch(urlData.uploadURL, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      });
+      let objectPath: string;
+      if (urlData.useDirectUpload) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const dr = await fetch(urlData.uploadURL, { method: 'POST', body: fd, credentials: 'include' });
+        if (!dr.ok) throw new Error('Upload failed');
+        objectPath = (await dr.json()).objectPath;
+      } else {
+        await fetch(urlData.uploadURL, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        });
+        objectPath = urlData.objectPath;
+      }
 
       await apiRequest('POST', `/api/deals/${projectId}/deal-documents/${docId}/upload-complete`, {
-        objectPath: urlData.objectPath,
+        objectPath,
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type,

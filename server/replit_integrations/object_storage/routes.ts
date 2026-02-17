@@ -1,40 +1,12 @@
 import type { Express } from "express";
+import multer from "multer";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 
-/**
- * Register object storage routes for file uploads.
- *
- * This provides example routes for the presigned URL upload flow:
- * 1. POST /api/uploads/request-url - Get a presigned URL for uploading
- * 2. The client then uploads directly to the presigned URL
- *
- * IMPORTANT: These are example routes. Customize based on your use case:
- * - Add authentication middleware for protected uploads
- * - Add file metadata storage (save to database after upload)
- * - Add ACL policies for access control
- */
+const uploadMemory = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
 export function registerObjectStorageRoutes(app: Express): void {
   const objectStorageService = new ObjectStorageService();
 
-  /**
-   * Request a presigned URL for file upload.
-   *
-   * Request body (JSON):
-   * {
-   *   "name": "filename.jpg",
-   *   "size": 12345,
-   *   "contentType": "image/jpeg"
-   * }
-   *
-   * Response:
-   * {
-   *   "uploadURL": "https://storage.googleapis.com/...",
-   *   "objectPath": "/objects/uploads/uuid"
-   * }
-   *
-   * IMPORTANT: The client should NOT send the file to this endpoint.
-   * Send JSON metadata only, then upload the file directly to uploadURL.
-   */
   app.post("/api/uploads/request-url", async (req, res) => {
     try {
       const { name, size, contentType } = req.body;
@@ -47,13 +19,22 @@ export function registerObjectStorageRoutes(app: Express): void {
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
 
-      // Extract object path from the presigned URL for later reference
+      if (uploadURL.startsWith("__local__:")) {
+        const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+        return res.json({
+          uploadURL: "/api/uploads/direct",
+          objectPath,
+          useDirectUpload: true,
+          metadata: { name, size, contentType },
+        });
+      }
+
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
       res.json({
         uploadURL,
         objectPath,
-        // Echo back the metadata for client convenience
+        useDirectUpload: false,
         metadata: { name, size, contentType },
       });
     } catch (error) {
@@ -62,14 +43,28 @@ export function registerObjectStorageRoutes(app: Express): void {
     }
   });
 
-  /**
-   * Serve uploaded objects.
-   *
-   * GET /objects/uploads/:objectId
-   *
-   * This serves files from object storage. For public files, no auth needed.
-   * For protected files, add authentication middleware and ACL checks.
-   */
+  app.post("/api/uploads/direct", uploadMemory.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      const result = await objectStorageService.uploadFile(
+        req.file.buffer,
+        `uploads/${req.file.originalname}`,
+        req.file.mimetype || "application/octet-stream"
+      );
+
+      res.json({
+        objectPath: result.objectPath,
+        url: result.url,
+      });
+    } catch (error) {
+      console.error("Error uploading file directly:", error);
+      res.status(500).json({ error: "Failed to upload file" });
+    }
+  });
+
   app.get("/objects/uploads/:objectId", async (req, res) => {
     try {
       const objectPath = `/objects/uploads/${req.params.objectId}`;
@@ -85,4 +80,3 @@ export function registerObjectStorageRoutes(app: Express): void {
     }
   });
 }
-

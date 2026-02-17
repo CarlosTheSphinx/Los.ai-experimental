@@ -656,15 +656,13 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           return res.status(404).json({ error: 'Document template not found' });
         }
 
-        // Upload file to object storage
-        const fileName = `programs/${programId}/documents/${docId}/${Date.now()}-${req.file.originalname}`;
-        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        const result = await objectStorageService.uploadFile(
+          req.file.buffer,
+          `programs/${programId}/documents/${docId}/${Date.now()}-${req.file.originalname}`,
+          req.file.mimetype || 'application/octet-stream'
+        );
+        const objectPath = result.objectPath;
 
-        // For simplicity, we'll use the normalized path pattern and upload the file
-        // In a production scenario, you might want to use multipart upload or a presigned URL approach
-        const objectPath = `${fileName}`;
-
-        // Store the file path and filename in the database
         const [updated] = await db.update(programDocumentTemplates)
           .set({
             templateUrl: objectPath,

@@ -1067,26 +1067,41 @@ export default function AdminDealDetail() {
     setUploadProgress(10);
 
     try {
-      // Step 1: Get presigned URL
       const urlResponse = await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${docId}/upload-url`, {
         name: file.name,
         size: file.size,
         contentType: file.type || "application/octet-stream",
       });
-      const { uploadURL, objectPath } = await urlResponse.json();
+      const urlData = await urlResponse.json();
       setUploadProgress(30);
 
-      // Step 2: Upload directly to storage
-      await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-      });
+      let objectPath: string;
+
+      if (urlData.useDirectUpload) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const directResponse = await fetch(urlData.uploadURL, {
+          method: "POST",
+          body: formData,
+          credentials: 'include',
+        });
+        if (!directResponse.ok) {
+          throw new Error('Direct upload failed');
+        }
+        const directResult = await directResponse.json();
+        objectPath = directResult.objectPath;
+      } else {
+        await fetch(urlData.uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        });
+        objectPath = urlData.objectPath;
+      }
       setUploadProgress(70);
 
-      // Step 3: Update database record
       await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${docId}/upload-complete`, {
         objectPath,
         fileName: file.name,
@@ -2589,13 +2604,23 @@ export default function AdminDealDetail() {
               const file = (e.target as HTMLInputElement).files?.[0];
               if (file) {
                 try {
-                  const urlRes = await apiRequest('POST', `/api/admin/deals/${dealId}/documents/upload-url`, {
+                  const urlRes = await apiRequest('POST', `/api/admin/deals/${dealId}/documents/${docId}/upload-url`, {
                     name: file.name, size: file.size, contentType: file.type
                   });
-                  const { uploadURL, objectPath } = urlRes as any;
-                  await fetch(uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+                  const urlData = await urlRes.json();
+                  let objPath: string;
+                  if (urlData.useDirectUpload) {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const dr = await fetch(urlData.uploadURL, { method: 'POST', body: fd, credentials: 'include' });
+                    if (!dr.ok) throw new Error('Upload failed');
+                    objPath = (await dr.json()).objectPath;
+                  } else {
+                    await fetch(urlData.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+                    objPath = urlData.objectPath;
+                  }
                   await apiRequest('POST', `/api/admin/deals/${dealId}/documents/${docId}/upload-complete`, {
-                    objectPath, fileName: file.name, fileSize: file.size, mimeType: file.type
+                    objectPath: objPath, fileName: file.name, fileSize: file.size, mimeType: file.type
                   });
                   queryClient.invalidateQueries({ queryKey: ['/api/checklist', linkedProjectId, 'admin'] });
                   toast({ title: "Document uploaded" });

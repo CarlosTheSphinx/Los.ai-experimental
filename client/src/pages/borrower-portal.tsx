@@ -135,14 +135,24 @@ export default function BorrowerPortal() {
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
       if (!urlRes.ok) throw new Error('Failed to get upload URL');
-      const { uploadURL, objectPath } = await urlRes.json();
+      const urlData = await urlRes.json();
 
-      const uploadRes = await fetch(uploadURL, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error('Failed to upload file');
+      let objectPath: string;
+      if (urlData.useDirectUpload) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const dr = await fetch(urlData.uploadURL, { method: 'POST', body: fd });
+        if (!dr.ok) throw new Error('Upload failed');
+        objectPath = (await dr.json()).objectPath;
+      } else {
+        const uploadRes = await fetch(urlData.uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        objectPath = urlData.objectPath;
+      }
 
       const completeRes = await fetch(`/api/portal/${token}/documents/${docId}/upload-complete`, {
         method: 'POST',

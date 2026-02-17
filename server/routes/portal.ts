@@ -2,6 +2,10 @@ import type { Express, Request, Response } from 'express';
 import type { RouteDeps } from './types';
 import { eq, asc, and } from 'drizzle-orm';
 import { dealDocuments, dealDocumentFiles, projectStages, loanPrograms, projectActivity, platformSettings } from '@shared/schema';
+import multer from 'multer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 export function registerPortalRoutes(app: Express, deps: RouteDeps) {
   const { storage, db, objectStorageService } = deps;
@@ -234,12 +238,53 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
       if (!name) return res.status(400).json({ error: 'File name is required' });
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const isLocal = uploadURL.startsWith('__local__:');
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
-      res.json({ uploadURL, objectPath, docId, metadata: { name, size, contentType } });
+      res.json({
+        uploadURL: isLocal ? `/api/portal/${token}/documents/${docId}/upload-direct` : uploadURL,
+        objectPath,
+        docId,
+        useDirectUpload: isLocal,
+        metadata: { name, size, contentType },
+      });
     } catch (error) {
       console.error('Portal upload URL error:', error);
       res.status(500).json({ error: 'Failed to generate upload URL' });
+    }
+  });
+
+  const portalMulterUpload = multer({ dest: path.join(process.cwd(), 'uploads', 'temp') });
+  app.post('/api/portal/:token/documents/:docId/upload-direct', portalMulterUpload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+
+      if (!req.file) return res.status(400).json({ error: 'No file provided' });
+
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+      const objectId = randomUUID();
+      const destPath = path.join(uploadsDir, objectId);
+      fs.renameSync(req.file.path, destPath);
+      fs.writeFileSync(destPath + '.meta', JSON.stringify({
+        fileName: req.file.originalname,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+      }));
+
+      res.json({
+        objectPath: `/objects/uploads/${objectId}`,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      });
+    } catch (error) {
+      console.error('Portal direct upload error:', error);
+      res.status(500).json({ error: 'Failed to upload file' });
     }
   });
 

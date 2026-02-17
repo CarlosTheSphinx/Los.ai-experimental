@@ -571,19 +571,33 @@ export default function CommercialSubmissionPage() {
       });
 
       if (!urlRes.ok) throw new Error("Failed to get upload URL");
-      const { uploadURL, objectPath } = await urlRes.json();
+      const { uploadURL, objectPath, useDirectUpload } = await urlRes.json();
 
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
+      let finalObjectPath = objectPath;
 
-      if (!putRes.ok) throw new Error("Failed to upload file");
+      if (useDirectUpload) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const directRes = await fetch("/api/uploads/direct", {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+        if (!directRes.ok) throw new Error("Failed to upload file");
+        const directData = await directRes.json();
+        finalObjectPath = directData.objectPath;
+      } else {
+        const putRes = await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
+        if (!putRes.ok) throw new Error("Failed to upload file");
+      }
 
       setUploadedDocs((prev) =>
         prev.map((d) =>
-          d.docType === activeDocType ? { ...d, objectPath, uploaded: true, uploading: false } : d
+          d.docType === activeDocType ? { ...d, objectPath: finalObjectPath, uploaded: true, uploading: false } : d
         )
       );
 

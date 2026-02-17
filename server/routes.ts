@@ -36,6 +36,10 @@ import {
 import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents } from '@shared/schema';
 import { sendPartnerBroadcast, handleIncomingSms, getInboundMessages, markMessageRead, getBroadcastHistory } from './broadcastService';
 import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
+import multer from 'multer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { encryptToken } from './utils/encryption';
 import { registerAuthRoutes } from './routes/auth';
 import { registerMessagingRoutes } from './routes/messaging';
@@ -3191,7 +3195,7 @@ export async function registerRoutes(
     }
   });
 
-  // Project document upload - get presigned URL
+  // Project document upload - get presigned URL or direct upload
   app.post('/api/projects/:id/documents/upload-url', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -3208,16 +3212,51 @@ export async function registerRoutes(
       }
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const isLocal = uploadURL.startsWith('__local__:');
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
       res.json({
-        uploadURL,
+        uploadURL: isLocal ? `/api/projects/${projectId}/documents/upload-direct` : uploadURL,
         objectPath,
+        useDirectUpload: isLocal,
         metadata: { name, size, contentType, documentType, documentCategory },
       });
     } catch (error) {
       console.error('Project doc upload URL error:', error);
       res.status(500).json({ error: 'Failed to generate upload URL' });
+    }
+  });
+
+  // Project document direct upload (local storage fallback)
+  const projectMulterUpload = multer({ dest: path.join(process.cwd(), 'uploads', 'temp') });
+  app.post('/api/projects/:id/documents/upload-direct', authenticateUser, projectMulterUpload.single('file'), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const objectId = randomUUID();
+      const destPath = path.join(uploadsDir, objectId);
+      fs.renameSync(req.file.path, destPath);
+      const metaPath = destPath + '.meta';
+      fs.writeFileSync(metaPath, JSON.stringify({
+        fileName: req.file.originalname,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+      }));
+      const objectPath = `/objects/uploads/${objectId}`;
+      res.json({
+        objectPath,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      });
+    } catch (error) {
+      console.error('Direct upload error:', error);
+      res.status(500).json({ error: 'Failed to upload file' });
     }
   });
 
@@ -6254,7 +6293,7 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Upload document file (request presigned URL)
+  // Admin - Upload document file (request presigned URL or direct upload)
   app.post('/api/admin/deals/:dealId/documents/:docId/upload-url', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const docId = parseInt(req.params.docId);
@@ -6264,19 +6303,58 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'File name is required' });
       }
       
-      // Get presigned URL for upload
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const isLocal = uploadURL.startsWith('__local__:');
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
       
       res.json({
-        uploadURL,
+        uploadURL: isLocal ? `/api/admin/deals/${req.params.dealId}/documents/${docId}/upload-direct` : uploadURL,
         objectPath,
         docId,
+        useDirectUpload: isLocal,
         metadata: { name, size, contentType },
       });
     } catch (error) {
       console.error('Admin upload URL error:', error);
       res.status(500).json({ error: 'Failed to generate upload URL' });
+    }
+  });
+
+  // Admin - Direct file upload (local storage fallback)
+  const multerUpload = multer({ dest: path.join(process.cwd(), 'uploads', 'temp') });
+  app.post('/api/admin/deals/:dealId/documents/:docId/upload-direct', authenticateUser, requireAdmin, multerUpload.single('file'), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+      
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const objectId = randomUUID();
+      const destPath = path.join(uploadsDir, objectId);
+      fs.renameSync(req.file.path, destPath);
+      
+      const metaPath = destPath + '.meta';
+      fs.writeFileSync(metaPath, JSON.stringify({
+        fileName: req.file.originalname,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+      }));
+      
+      const objectPath = `/objects/uploads/${objectId}`;
+      
+      res.json({
+        objectPath,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      });
+    } catch (error) {
+      console.error('Direct upload error:', error);
+      res.status(500).json({ error: 'Failed to upload file' });
     }
   });
 
@@ -10087,16 +10165,49 @@ If the user provides specific criteria, extract as many rules as you can from th
       }
       
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const isLocal = uploadURL.startsWith('__local__:');
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
       
       res.json({
-        uploadURL,
+        uploadURL: isLocal ? '/api/admin/onboarding/upload-direct' : uploadURL,
         objectPath,
+        useDirectUpload: isLocal,
         metadata: { name, contentType },
       });
     } catch (error) {
       console.error('Get onboarding upload URL error:', error);
       res.status(500).json({ error: 'Failed to get upload URL' });
+    }
+  });
+
+  // Onboarding direct upload (local storage fallback)
+  const onboardingMulterUpload = multer({ dest: path.join(process.cwd(), 'uploads', 'temp') });
+  app.post('/api/admin/onboarding/upload-direct', authenticateUser, requireAdmin, onboardingMulterUpload.single('file'), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const objectId = randomUUID();
+      const destPath = path.join(uploadsDir, objectId);
+      fs.renameSync(req.file.path, destPath);
+      fs.writeFileSync(destPath + '.meta', JSON.stringify({
+        fileName: req.file.originalname,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+      }));
+      res.json({
+        objectPath: `/objects/uploads/${objectId}`,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      });
+    } catch (error) {
+      console.error('Direct onboarding upload error:', error);
+      res.status(500).json({ error: 'Failed to upload file' });
     }
   });
 
