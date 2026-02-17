@@ -46,6 +46,7 @@ import { registerProcessorRoutes } from './routes/processor';
 import { registerBrokerSdrRoutes } from './routes/broker-sdr';
 import { registerAiAssistantRoutes } from './routes/ai-assistant';
 import { registerAgentRoutes } from './routes/agents';
+import { registerLenderTrainingRoutes } from './routes/lenderTraining';
 
 // Initialize Apify client
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
@@ -3547,6 +3548,9 @@ export async function registerRoutes(
 
   // ==================== AI AGENT SYSTEM ROUTES ====================
   registerAgentRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
+
+  // ==================== LENDER TRAINING ROUTES ====================
+  registerLenderTrainingRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // ==================== ADMIN ROUTES ====================
 

@@ -30,6 +30,7 @@ import {
   Eye,
   X,
   Globe,
+  GraduationCap,
 } from "lucide-react";
 import {
   Select,
@@ -61,6 +62,7 @@ import { useBranding } from "@/hooks/use-branding";
 import { InboxBadge } from "@/components/InboxBadge";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
+import { TrainingChecklist } from "@/components/TrainingChecklist";
 import type { PermissionKey } from "@shared/schema";
 
 interface AppLayoutProps {
@@ -108,6 +110,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/ai-agents", label: "AI Agents", icon: Sparkles, requiredPermission: "agents.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },
+  { href: "/admin/training-config", label: "Training", icon: GraduationCap, superAdminOnly: true },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
@@ -416,6 +419,8 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
 
       {isAdmin && !isPreviewingOtherRole && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
+
+      {isAdmin && !isPreviewingOtherRole && <TrainingChecklist />}
 
       {isAdmin && !assistantOpen && !isPreviewingOtherRole && (
         <button
