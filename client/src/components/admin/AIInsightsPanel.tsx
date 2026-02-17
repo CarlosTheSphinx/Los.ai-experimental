@@ -623,6 +623,71 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
                   </div>
                 )}
 
+                {/* Document Rules - per-document validation checks */}
+                {latestFinding.documentRequirementFindings && Array.isArray(latestFinding.documentRequirementFindings) && latestFinding.documentRequirementFindings.length > 0 && (
+                  <div data-testid="findings-document-rules">
+                    <h4 className="text-sm font-medium flex items-center gap-2 mb-3">
+                      <FileSearch className="h-3.5 w-3.5 text-muted-foreground" />
+                      Document Rules
+                      <Badge variant="secondary" className="text-[10px]">{latestFinding.documentRequirementFindings.length} docs</Badge>
+                    </h4>
+                    <div className="space-y-3">
+                      {latestFinding.documentRequirementFindings.map((docGroup: any, gi: number) => {
+                        const rules = docGroup.rules || [];
+                        const hasRules = Array.isArray(rules) && rules.length > 0;
+                        const passCount = hasRules ? rules.filter((r: any) => r.status === 'pass').length : 0;
+                        const failCount = hasRules ? rules.filter((r: any) => r.status === 'fail').length : 0;
+                        const warnCount = hasRules ? rules.filter((r: any) => r.status === 'warning').length : 0;
+                        const docLabel = docGroup.documentName || (docGroup.documentType || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || `Document ${gi + 1}`;
+                        const overallDocStatus = failCount > 0 ? 'fail' : warnCount > 0 ? 'warning' : 'pass';
+
+                        if (!hasRules && !docGroup.document && !docGroup.status) return null;
+
+                        if (!hasRules) {
+                          const flatStatus = docGroup.status || 'received';
+                          return (
+                            <div key={gi} className="flex items-center gap-2 p-2.5 rounded-md bg-muted/30 text-sm">
+                              <StatusIcon status={flatStatus} />
+                              <span className="font-medium flex-1">{docGroup.document || docLabel}</span>
+                              {docGroup.notes && <span className="text-xs text-muted-foreground">{docGroup.notes}</span>}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Collapsible key={gi} defaultOpen={failCount > 0 || warnCount > 0}>
+                            <CollapsibleTrigger asChild>
+                              <div className="flex items-center gap-2 p-2.5 rounded-md bg-muted/30 cursor-pointer group" data-testid={`doc-rules-${gi}`}>
+                                <StatusIcon status={overallDocStatus} />
+                                <span className="font-medium text-sm flex-1">{docLabel}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {passCount > 0 && <Badge variant="secondary" className="text-[10px] bg-success/10 text-success">{passCount} pass</Badge>}
+                                  {warnCount > 0 && <Badge variant="secondary" className="text-[10px] bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">{warnCount} warn</Badge>}
+                                  {failCount > 0 && <Badge variant="destructive" className="text-[10px]">{failCount} fail</Badge>}
+                                </div>
+                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:rotate-90 transition-transform" />
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="ml-6 mt-1 space-y-1">
+                                {rules.map((rule: any, ri: number) => (
+                                  <div key={ri} className="flex items-start gap-2 px-2 py-1.5 rounded text-sm">
+                                    <StatusIcon status={rule.status || 'pass'} className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="font-medium">{rule.rule || rule.name || `Rule ${ri + 1}`}</span>
+                                      {(rule.detail || rule.details) && <p className="text-xs text-muted-foreground mt-0.5">{rule.detail || rule.details}</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Missing Documents */}
                 {latestFinding.missingDocuments && Array.isArray(latestFinding.missingDocuments) && latestFinding.missingDocuments.length > 0 && (
                   <div data-testid="findings-missing-docs">

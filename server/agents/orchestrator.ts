@@ -361,12 +361,14 @@ async function storeAgentOutput(
         });
       }
     } else if (agentType === "processor") {
+      const docRules = output.documentRules || output.document_rules || null;
+      const docReqFindings = output.documentRequirementFindings || output.document_requirement_findings || null;
       await db.insert(agentFindings).values({
         projectId,
         agentRunId,
         overallStatus: output.overallStatus || output.overall_status || "incomplete_data",
         policyFindings: output.policyFindings || output.policy_findings || null,
-        documentRequirementFindings: output.documentRequirementFindings || output.document_requirement_findings || null,
+        documentRequirementFindings: docRules || docReqFindings || null,
         crossDocumentConsistency: output.crossDocumentConsistency || output.cross_document_consistency || null,
         missingDocuments: output.missingDocuments || output.missing_documents || null,
         dealHealthSummary: output.dealHealthSummary || output.deal_health_summary || null,
