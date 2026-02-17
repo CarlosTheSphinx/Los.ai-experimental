@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
@@ -1382,75 +1383,49 @@ export default function AdminDealDetail() {
       {/* People + Metrics Row */}
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 text-success" />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Loan Amount</div>
-                  <div className="font-semibold" data-testid="text-loan-amount">{formatCurrency(deal.loanData?.loanAmount || 0)}</div>
-                </div>
+          <Card className="p-4">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-success" />
+                <span className="text-xs text-muted-foreground">Loan Amount</span>
+                <span className="font-semibold text-sm" data-testid="text-loan-amount">{formatCurrency(deal.loanData?.loanAmount || 0)}</span>
               </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
-                  <span className="text-info font-semibold text-sm">%</span>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Interest Rate</div>
-                  <div className="font-semibold" data-testid="text-interest-rate">{deal.interestRate || '\u2014'}</div>
-                </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <span className="text-info font-semibold text-xs">%</span>
+                <span className="text-xs text-muted-foreground">Rate</span>
+                <span className="font-semibold text-sm" data-testid="text-interest-rate">{deal.interestRate || '\u2014'}</span>
               </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Calendar className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Term</div>
-                  <div className="font-semibold" data-testid="text-loan-term">{deal.loanData?.loanTerm || '12 months'}</div>
-                </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                <span className="text-xs text-muted-foreground">Term</span>
+                <span className="font-semibold text-sm" data-testid="text-loan-term">{deal.loanData?.loanTerm || '12 months'}</span>
               </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
-                  <Building2 className="h-5 w-5 text-warning" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs text-muted-foreground">Property</div>
-                  <div className="font-semibold text-sm break-words" data-testid="text-property-type">{deal.loanData?.propertyType || '\u2014'}</div>
-                </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-warning" />
+                <span className="text-xs text-muted-foreground">Property</span>
+                <span className="font-semibold text-sm" data-testid="text-property-type">{deal.loanData?.propertyType || '\u2014'}</span>
               </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                    <CalendarDays className="h-5 w-5 text-accent" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Target Close</div>
-                    <div className="font-semibold" data-testid="text-target-close-date">
-                      {deal.targetCloseDate ? format(new Date(deal.targetCloseDate), 'MMM d, yyyy') : '\u2014'}
-                    </div>
-                  </div>
-                </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Target Close</span>
+                <span className="font-semibold text-sm" data-testid="text-target-close-date">
+                  {deal.targetCloseDate ? format(new Date(deal.targetCloseDate), 'MMM d, yyyy') : '\u2014'}
+                </span>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon"
                   onClick={() => setEditTargetCloseDateOpen(true)}
                   data-testid="button-edit-target-close-date"
                 >
-                  <Pencil className="h-4 w-4" />
+                  <Pencil className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            </Card>
-          </div>
+            </div>
+          </Card>
           <Card className="mt-4">
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base flex items-center gap-2">
