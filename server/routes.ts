@@ -12253,6 +12253,81 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
+  // Create an ad-hoc communication draft for a specific deal on a specific date
+  app.post('/api/admin/deals/:dealId/digest/drafts', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { date, emailSubject, emailBody, smsBody } = req.body;
+      
+      if (!date) {
+        return res.status(400).json({ error: 'Date is required' });
+      }
+
+      const config = await db
+        .select()
+        .from(loanDigestConfigs)
+        .where(eq(loanDigestConfigs.dealId, dealId));
+
+      if (!config[0]) {
+        return res.status(404).json({ error: 'No communication config found for this deal. Please enable communications first.' });
+      }
+
+      const targetDate = new Date(date + 'T12:00:00');
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existing = await db.select()
+        .from(scheduledDigestDrafts)
+        .where(and(
+          eq(scheduledDigestDrafts.configId, config[0].id),
+          gte(scheduledDigestDrafts.scheduledDate, startOfDay),
+          lte(scheduledDigestDrafts.scheduledDate, endOfDay),
+          sql`${scheduledDigestDrafts.status} NOT IN ('superseded', 'skipped')`
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return res.status(409).json({ error: 'A communication already exists for this date. Edit or skip the existing one first.' });
+      }
+
+      const recipients = await db.select({
+        id: loanDigestRecipients.id,
+        recipientName: loanDigestRecipients.recipientName,
+        recipientEmail: loanDigestRecipients.recipientEmail,
+        recipientPhone: loanDigestRecipients.recipientPhone,
+        deliveryMethod: loanDigestRecipients.deliveryMethod,
+        userId: loanDigestRecipients.userId,
+      })
+        .from(loanDigestRecipients)
+        .where(and(
+          eq(loanDigestRecipients.configId, config[0].id),
+          eq(loanDigestRecipients.isActive, true)
+        ));
+
+      const [draft] = await db.insert(scheduledDigestDrafts).values({
+        configId: config[0].id,
+        projectId: config[0].projectId,
+        scheduledDate: targetDate,
+        timeOfDay: config[0].timeOfDay,
+        emailSubject: emailSubject || config[0].emailSubject || 'Loan Update',
+        emailBody: emailBody || config[0].emailBody || '',
+        smsBody: smsBody || config[0].smsBody || null,
+        documentsCount: 0,
+        updatesCount: 0,
+        recipients: JSON.stringify(recipients),
+        status: 'draft',
+        source: 'digest',
+      }).returning();
+
+      res.json({ draft });
+    } catch (error: any) {
+      console.error('Create ad-hoc digest draft error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get potential recipients for a deal (borrower and partner)
   app.get('/api/admin/deals/:dealId/potential-recipients', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

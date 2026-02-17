@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Calendar as CalendarWidget } from '@/components/ui/calendar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBranding } from '@/hooks/use-branding';
 import { apiRequest } from '@/lib/queryClient';
@@ -143,6 +152,10 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [previewDraftId, setPreviewDraftId] = useState<number | null>(null);
   const [draftEdits, setDraftEdits] = useState<{ emailSubject: string; emailBody: string; smsBody: string }>({ emailSubject: '', emailBody: '', smsBody: '' });
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+  const [addCommDialogOpen, setAddCommDialogOpen] = useState(false);
+  const [newCommForm, setNewCommForm] = useState({ emailSubject: '', emailBody: '', smsBody: '' });
   const [newRecipient, setNewRecipient] = useState({
     userId: null as number | null,
     recipientName: '',
@@ -298,12 +311,72 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
     },
   });
 
+  const createAdHocDraftMutation = useMutation({
+    mutationFn: async (data: { date: string; emailSubject?: string; emailBody?: string; smsBody?: string }) => {
+      const response = await apiRequest('POST', `/api/admin/deals/${dealId}/digest/drafts`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'digest/drafts'] });
+      setAddCommDialogOpen(false);
+      setNewCommForm({ emailSubject: '', emailBody: '', smsBody: '' });
+      toast({ title: 'Communication created', description: 'A new draft has been added for the selected date.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const config = digestData?.config;
   const recipients = digestData?.recipients || [];
   const potentialRecipients = potentialRecipientsData?.recipients || [];
   const history = historyData?.history || [];
   const outstandingDocs = outstandingDocsData?.documents || [];
   const drafts = draftsData?.drafts || [];
+
+  const scheduledDates = useMemo(() => {
+    if (!config || !config.isEnabled) return { scheduled: new Map<string, string>(), draftDates: new Map<string, DigestDraft>() };
+
+    const scheduled = new Map<string, string>();
+    const draftDates = new Map<string, DigestDraft>();
+
+    drafts.forEach(draft => {
+      const d = new Date(draft.scheduledDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      draftDates.set(key, draft);
+    });
+
+    const configCreated = new Date(config.isEnabled ? (digestData?.config as any)?.createdAt || new Date() : new Date());
+    configCreated.setHours(0, 0, 0, 0);
+
+    let interval = 1;
+    switch (config.frequency) {
+      case 'daily': interval = 1; break;
+      case 'every_2_days': interval = 2; break;
+      case 'every_3_days': interval = 3; break;
+      case 'weekly': interval = 7; break;
+      case 'custom': interval = Math.max(1, Math.min(30, config.customDays || 2)); break;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + 90);
+
+    const cursor = new Date(today);
+    while (cursor <= endDate) {
+      const daysSince = Math.floor((cursor.getTime() - configCreated.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince >= 0 && daysSince % interval === 0) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+        if (!draftDates.has(key)) {
+          scheduled.set(key, 'scheduled');
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return { scheduled, draftDates };
+  }, [config, drafts, digestData]);
 
   // Handle enabling digest (creates config if doesn't exist)
   const handleEnableDigest = async () => {
@@ -914,18 +987,160 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
 
         <Separator />
 
-        {/* Upcoming Communications / Schedule View */}
+        {/* Communications Calendar */}
         <div className="space-y-4">
           <h4 className="font-medium flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Upcoming Communications ({drafts.filter(d => d.status === 'draft' || d.status === 'approved').length + approvedComms.length})
+            Communications Calendar
+          </h4>
+
+          {(() => {
+            const { scheduled, draftDates } = scheduledDates;
+
+            const getDateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+            const calendarModifiers: Record<string, Date[]> = {
+              scheduledFuture: [] as Date[],
+              hasDraft: [] as Date[],
+              hasApproved: [] as Date[],
+              hasSent: [] as Date[],
+              hasSkipped: [] as Date[],
+            };
+
+            scheduled.forEach((_status, key) => {
+              const [y, m, d] = key.split('-').map(Number);
+              calendarModifiers.scheduledFuture.push(new Date(y, m - 1, d));
+            });
+
+            draftDates.forEach((draft, key) => {
+              const [y, m, d] = key.split('-').map(Number);
+              const date = new Date(y, m - 1, d);
+              if (draft.status === 'draft') calendarModifiers.hasDraft.push(date);
+              else if (draft.status === 'approved') calendarModifiers.hasApproved.push(date);
+              else if (draft.status === 'sent') calendarModifiers.hasSent.push(date);
+              else if (draft.status === 'skipped' || draft.status === 'superseded') calendarModifiers.hasSkipped.push(date);
+            });
+
+            const modifiersStyles: Record<string, React.CSSProperties> = {
+              scheduledFuture: { position: 'relative' },
+              hasDraft: { position: 'relative' },
+              hasApproved: { position: 'relative' },
+              hasSent: { position: 'relative' },
+              hasSkipped: { position: 'relative' },
+            };
+
+            const handleDayClick = (day: Date) => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const clickedDate = new Date(day);
+              clickedDate.setHours(0, 0, 0, 0);
+
+              if (clickedDate < today) return;
+
+              const key = getDateKey(clickedDate);
+              const existingDraft = draftDates.get(key);
+
+              if (existingDraft && existingDraft.status === 'draft') {
+                if (editingDraftId === existingDraft.id) {
+                  setEditingDraftId(null);
+                } else {
+                  setEditingDraftId(existingDraft.id);
+                  setPreviewDraftId(null);
+                  setDraftEdits({
+                    emailSubject: existingDraft.emailSubject || '',
+                    emailBody: existingDraft.emailBody || '',
+                    smsBody: existingDraft.smsBody || '',
+                  });
+                }
+              } else if (existingDraft && existingDraft.status === 'approved') {
+                setPreviewDraftId(existingDraft.id);
+                setEditingDraftId(null);
+              } else if (existingDraft && existingDraft.status === 'sent') {
+                toast({ title: 'Already sent', description: 'This communication was already sent on this date.' });
+              } else if (!existingDraft || existingDraft.status === 'skipped' || existingDraft.status === 'superseded') {
+                setSelectedCalendarDate(clickedDate);
+                setNewCommForm({ emailSubject: config?.emailSubject || '', emailBody: config?.emailBody || '', smsBody: config?.smsBody || '' });
+                setAddCommDialogOpen(true);
+              }
+            };
+
+            return (
+              <div className="border rounded-lg p-3">
+                <CalendarWidget
+                  mode="single"
+                  month={calendarMonth}
+                  onMonthChange={setCalendarMonth}
+                  modifiers={calendarModifiers}
+                  modifiersStyles={modifiersStyles}
+                  onDayClick={handleDayClick}
+                  disabled={{ before: new Date() }}
+                  className="w-full"
+                  components={{
+                    DayContent: ({ date }: { date: Date }) => {
+                      const key = getDateKey(date);
+                      const draft = draftDates.get(key);
+                      const isScheduled = scheduled.has(key);
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const dateNorm = new Date(date);
+                      dateNorm.setHours(0, 0, 0, 0);
+                      const isPast = dateNorm < today;
+
+                      let dotColor = '';
+                      let dotTitle = '';
+                      if (draft) {
+                        if (draft.status === 'sent') { dotColor = 'bg-blue-500'; dotTitle = 'Sent'; }
+                        else if (draft.status === 'approved') { dotColor = 'bg-green-500'; dotTitle = 'Approved'; }
+                        else if (draft.status === 'draft') { dotColor = 'bg-amber-500'; dotTitle = 'Draft - needs review'; }
+                        else if (draft.status === 'skipped' || draft.status === 'superseded') { dotColor = 'bg-muted-foreground/40'; dotTitle = draft.status === 'superseded' ? 'Superseded by AI' : 'Skipped'; }
+                      } else if (isScheduled && !isPast) {
+                        dotColor = 'bg-primary/40'; dotTitle = 'Scheduled';
+                      }
+
+                      return (
+                        <div className="relative flex flex-col items-center" title={dotTitle}>
+                          <span>{date.getDate()}</span>
+                          {dotColor && (
+                            <span className={`absolute -bottom-0.5 h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                          )}
+                        </div>
+                      );
+                    },
+                  }}
+                />
+                <div className="flex flex-wrap gap-3 mt-2 px-1">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full bg-primary/40" /> Scheduled
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full bg-amber-500" /> Draft
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full bg-green-500" /> Approved
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" /> Sent
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 px-1">Click any future date to add or edit a communication.</p>
+              </div>
+            );
+          })()}
+        </div>
+
+        <Separator />
+
+        {/* Upcoming Communications list */}
+        <div className="space-y-4">
+          <h4 className="font-medium flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            Upcoming ({drafts.filter(d => d.status === 'draft' || d.status === 'approved').length + approvedComms.length})
           </h4>
 
           {drafts.filter(d => d.status !== 'superseded').length === 0 && approvedComms.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground text-sm border rounded-lg">
-              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p>No upcoming communications scheduled.</p>
-              <p className="text-xs mt-1">Communications are created automatically based on your schedule, or when AI communications are approved.</p>
+            <div className="text-center py-4 text-muted-foreground text-sm border rounded-lg">
+              <p>No upcoming communications.</p>
+              <p className="text-xs mt-1">Click a date on the calendar above to add one.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1238,6 +1453,75 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
           )}
         </div>
       </CardContent>
+
+      <Dialog open={addCommDialogOpen} onOpenChange={setAddCommDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Communication</DialogTitle>
+            <DialogDescription>
+              {selectedCalendarDate && `Schedule a message for ${selectedCalendarDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-comm-subject">Email Subject</Label>
+              <Input
+                id="new-comm-subject"
+                value={newCommForm.emailSubject}
+                onChange={(e) => setNewCommForm({ ...newCommForm, emailSubject: e.target.value })}
+                placeholder="Loan Update..."
+                className="font-mono text-sm"
+                data-testid="input-new-comm-subject"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-comm-body">Email Body</Label>
+              <Textarea
+                id="new-comm-body"
+                value={newCommForm.emailBody}
+                onChange={(e) => setNewCommForm({ ...newCommForm, emailBody: e.target.value })}
+                placeholder="Write your message..."
+                rows={8}
+                className="font-mono text-sm"
+                data-testid="input-new-comm-body"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-comm-sms">SMS Message (optional)</Label>
+              <Textarea
+                id="new-comm-sms"
+                value={newCommForm.smsBody}
+                onChange={(e) => setNewCommForm({ ...newCommForm, smsBody: e.target.value })}
+                placeholder="Short SMS version..."
+                rows={2}
+                className="font-mono text-sm"
+                data-testid="input-new-comm-sms"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddCommDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (selectedCalendarDate) {
+                  const dateStr = `${selectedCalendarDate.getFullYear()}-${String(selectedCalendarDate.getMonth() + 1).padStart(2, '0')}-${String(selectedCalendarDate.getDate()).padStart(2, '0')}`;
+                  createAdHocDraftMutation.mutate({
+                    date: dateStr,
+                    emailSubject: newCommForm.emailSubject || undefined,
+                    emailBody: newCommForm.emailBody || undefined,
+                    smsBody: newCommForm.smsBody || undefined,
+                  });
+                }
+              }}
+              disabled={createAdHocDraftMutation.isPending}
+              data-testid="button-create-comm"
+            >
+              {createAdHocDraftMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Create Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
