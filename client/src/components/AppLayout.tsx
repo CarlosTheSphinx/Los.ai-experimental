@@ -32,7 +32,7 @@ import {
   Eye,
   X,
   Globe,
-  GraduationCap,
+
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -116,7 +116,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/ai-agents", label: "AI Orchestration Layer", icon: Sparkles, requiredPermission: "agents.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/digests", label: "Digests", icon: CalendarDays, requiredPermission: "digests.view" },
-  { href: "/admin/training-config", label: "Training", icon: GraduationCap, superAdminOnly: true },
+
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },

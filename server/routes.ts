@@ -45,12 +45,12 @@ import { registerAuthRoutes } from './routes/auth';
 import { registerMessagingRoutes } from './routes/messaging';
 import { registerPortalRoutes } from './routes/portal';
 import { registerAdminProgramsRoutes } from './routes/admin-programs';
-import { registerAiReviewRoutes } from './routes/ai-review';
+
 import { registerProcessorRoutes } from './routes/processor';
 import { registerBrokerSdrRoutes } from './routes/broker-sdr';
 import { registerAiAssistantRoutes } from './routes/ai-assistant';
 import { registerAgentRoutes } from './routes/agents';
-import { registerLenderTrainingRoutes } from './routes/lenderTraining';
+
 
 /**
  * Auto-trigger pipeline when documents are uploaded to a deal.
@@ -3601,8 +3601,6 @@ export async function registerRoutes(
   // ==================== PROCESSOR ROUTES ====================
   registerProcessorRoutes(app);
 
-  // ==================== AI REVIEW ROUTES ====================
-  registerAiReviewRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // ==================== BROKER SDR ROUTES ====================
   registerBrokerSdrRoutes(app);
@@ -3610,8 +3608,6 @@ export async function registerRoutes(
   // ==================== AI AGENT SYSTEM ROUTES ====================
   registerAgentRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
-  // ==================== LENDER TRAINING ROUTES ====================
-  registerLenderTrainingRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // ==================== ADMIN ROUTES ====================
 
@@ -6529,61 +6525,6 @@ export async function registerRoutes(
     }
   });
 
-  // AI Document Review - Trigger review for a specific document
-  app.post('/api/admin/documents/:docId/ai-review', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const docId = parseInt(req.params.docId);
-      const { projectId } = req.body;
-
-      if (!projectId) {
-        return res.status(400).json({ error: 'projectId is required' });
-      }
-
-      const { reviewDocument } = await import('./services/documentReview');
-      const result = await reviewDocument(docId, parseInt(projectId), req.user!.id);
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-
-      res.json(result.result);
-    } catch (error: any) {
-      console.error('AI review error:', error);
-      res.status(500).json({ error: 'Failed to perform AI review' });
-    }
-  });
-
-  // Get AI review results for a document
-  app.get('/api/admin/documents/:docId/ai-reviews', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const docId = parseInt(req.params.docId);
-      const reviews = await storage.getDocumentReviewsByDocumentId(docId);
-      const parsed = reviews.map(r => ({
-        ...r,
-        findings: r.findings ? JSON.parse(r.findings) : [],
-      }));
-      res.json({ reviews: parsed });
-    } catch (error: any) {
-      console.error('Get AI reviews error:', error);
-      res.status(500).json({ error: 'Failed to fetch reviews' });
-    }
-  });
-
-  // Get all AI review results for a project
-  app.get('/api/admin/projects/:projectId/ai-reviews', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const projectId = parseInt(req.params.projectId);
-      const reviews = await storage.getDocumentReviewsByProjectId(projectId);
-      const parsed = reviews.map(r => ({
-        ...r,
-        findings: r.findings ? JSON.parse(r.findings) : [],
-      }));
-      res.json({ reviews: parsed });
-    } catch (error: any) {
-      console.error('Get project AI reviews error:', error);
-      res.status(500).json({ error: 'Failed to fetch project reviews' });
-    }
-  });
 
   // Override/action on a specific AI review finding
   app.patch('/api/admin/reviews/:reviewId/findings/:findingIndex/override', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {

@@ -480,20 +480,11 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
   const daysInStage = getDaysInStage(deal.createdAt);
   const stageColorInfo = getSemanticStageColor(deal.stage);
 
-  // Mock Lane confidence calculation based on progress percentage
-  const laneConfidence = Math.min(95, Math.max(60, progress + 20));
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'bg-green-100 text-green-700';
-    if (confidence >= 50) return 'bg-yellow-100 text-yellow-700';
-    return 'bg-red-100 text-red-700';
-  };
-
   return (
     <Card data-testid={`card-deal-${deal.id}`} className="overflow-hidden hover-elevate">
       <Link href={`/admin/deals/${deal.id}`} data-testid={`link-deal-${deal.id}`}>
         <div className="p-5">
-          {/* Top row: Project number, status badge, Lane confidence, arrow */}
+          {/* Top row: Project number, status badge, arrow */}
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 flex-wrap">
               {deal.projectNumber && (
@@ -511,9 +502,6 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
                 <Clock className="h-3 w-3" />
                 {daysInStage}d
               </Badge>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${getConfidenceColor(laneConfidence)}`} data-testid={`lane-confidence-deal-${deal.id}`}>
-                Lane: {laneConfidence}%
-              </span>
             </div>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </div>

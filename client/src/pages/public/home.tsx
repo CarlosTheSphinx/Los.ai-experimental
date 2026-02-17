@@ -285,9 +285,9 @@ export default function PublicHomePage() {
             {[
               {
                 icon: FileText,
-                title: 'Lane™',
+                title: 'Smart Review',
                 subtitle: 'Document Review',
-                tagline: 'Lane reads every document so you don\'t have to',
+                tagline: 'AI reads every document so you don\'t have to',
                 description: 'Automatically analyze and extract key information from loan documents, saving hours of manual review.'
               },
               {

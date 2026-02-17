@@ -419,7 +419,7 @@ export default function OnboardingPage() {
                       <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                         <FileText className="h-5 w-5 text-green-600 dark:text-green-400" />
                       </div>
-                      <h3 className="font-semibold text-lg">Lane™ Document Review</h3>
+                      <h3 className="font-semibold text-lg">AI Document Review</h3>
                       <p className="text-sm text-muted-foreground">AI reads and verifies documents for accuracy</p>
                     </div>
 

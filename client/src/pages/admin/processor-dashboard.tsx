@@ -366,7 +366,7 @@ export default function ProcessorDashboard() {
               <Zap className="h-8 w-8 text-blue-600" />
               One-Click Processing
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">Powered by Lane — AI Document Review</p>
+            <p className="text-sm text-muted-foreground mt-1">AI-Powered Document Review</p>
             <p className="text-xs text-muted-foreground mt-1">
               {format(selectedDate, 'EEEE, MMMM d, yyyy')}
             </p>

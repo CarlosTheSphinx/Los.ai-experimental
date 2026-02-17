@@ -405,7 +405,7 @@ export function BorrowerDashboard() {
             </div>
             <Progress value={data.stats.completionPercentage} className="h-3 mt-4" />
             <p className="text-xs text-muted-foreground mt-3 text-center">
-              Lane has reviewed {data.stats.approvedDocuments} of {data.stats.totalDocuments} documents
+              {data.stats.approvedDocuments} of {data.stats.totalDocuments} documents reviewed
             </p>
           </CardContent>
         </Card>
@@ -717,7 +717,7 @@ function DocumentCard({ doc, expanded, onToggleExpanded }: DocumentCardProps) {
           )}
           {doc.status === 'uploaded' && (
             <div className="flex-shrink-0">
-              <p className="text-xs text-amber-600 font-medium">Lane is reviewing your document...</p>
+              <p className="text-xs text-amber-600 font-medium">Your document is being reviewed...</p>
             </div>
           )}
         </div>

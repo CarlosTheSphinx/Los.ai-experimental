@@ -53,7 +53,7 @@ import AdminCommercialConfig from "@/pages/admin/commercial-config";
 
 import ProcessorDashboard from "@/pages/admin/processor-dashboard";
 import AIAgentsPage from "@/pages/admin/ai-agents";
-import TrainingConfigPage from "@/pages/admin/training-config";
+
 import SuperAdminDashboard from "@/pages/admin/super-admin-dashboard";
 import AdminCreditPolicies from "@/pages/admin/credit-policies";
 
@@ -230,7 +230,7 @@ function MainRoutes() {
           <Route path="/admin/processor" component={() => <AdminProtectedRoute component={ProcessorDashboard} />} />
           <Route path="/admin/ai-agents" component={() => <AdminProtectedRoute component={AIAgentsPage} />} />
           <Route path="/admin/credit-policies" component={() => <AdminProtectedRoute component={AdminCreditPolicies} />} />
-          <Route path="/admin/training-config" component={() => <SuperAdminProtectedRoute component={TrainingConfigPage} />} />
+
 
           <Route component={NotFound} />
         </Switch>
