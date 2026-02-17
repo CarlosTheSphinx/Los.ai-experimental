@@ -2103,10 +2103,24 @@ export default function AdminDealDetail() {
 
                       {showDocs && stageDocs.length > 0 && (
                         <div className={cn("mt-5", showTasks && stageTasks.length > 0 && "pt-5 border-t")}>
-                          <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{stageDocs.length})
-                          </h4>
+                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                            <h4 className="text-sm font-semibold flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                              Documents ({stageDocs.filter(d => d.status === 'approved' || d.status === 'uploaded').length}/{stageDocs.length})
+                            </h4>
+                            {linkedProjectId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => { e.stopPropagation(); triggerPipeline.mutate(); }}
+                                disabled={pipelineRunning}
+                                data-testid={`button-ai-agents-stage-${stage.id}`}
+                              >
+                                {pipelineRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1.5" />}
+                                {pipelineRunning ? 'Running...' : 'AI Agents'}
+                              </Button>
+                            )}
+                          </div>
                           <div className="space-y-2">
                             {stageDocs.map((doc) => {
                               const docReview = aiReviewsByDocId[doc.id];
