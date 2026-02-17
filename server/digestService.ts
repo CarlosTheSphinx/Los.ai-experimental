@@ -376,27 +376,50 @@ function escapeHtml(str: string): string {
 }
 
 // Apply template variables to custom message templates
-function applyTemplateVariables(template: string, content: DigestContent, portalLink: string): string {
+function applyTemplateVariables(template: string, content: DigestContent, portalLink: string, extraVars?: Record<string, string>): string {
   const recipientName = content.project.borrowerName || 'Valued Customer';
   const propertyAddress = content.project.propertyAddress || 'your property';
   
-  // Generate documents section text
   const documentsSection = content.outstandingDocs.length > 0
     ? `Documents Needed:\n${content.outstandingDocs.map(d => `- ${d.name}${d.status === 'rejected' ? ' (Needs Revision)' : ''}`).join('\n')}`
     : 'All documents are up to date.';
   
-  // Generate updates section text
   const updatesSection = content.recentUpdates.length > 0
     ? `Recent Updates:\n${content.recentUpdates.map(u => `- ${u.summary}`).join('\n')}`
     : '';
+
+  const loanAmount = content.project.loanAmount
+    ? `$${Number(content.project.loanAmount).toLocaleString('en-US', { minimumFractionDigits: 0 })}`
+    : 'N/A';
+  const loanType = content.project.loanType || 'N/A';
+  const currentStage = content.project.currentStage
+    ? content.project.currentStage.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    : 'N/A';
+  const dealId = `DEAL-${content.project.id}`;
+  const targetCloseDate = content.project.targetCloseDate
+    ? new Date(content.project.targetCloseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'TBD';
   
-  return template
+  let result = template
     .replace(/\{\{recipientName\}\}/g, recipientName)
     .replace(/\{\{propertyAddress\}\}/g, propertyAddress)
     .replace(/\{\{documentsSection\}\}/g, documentsSection)
     .replace(/\{\{updatesSection\}\}/g, updatesSection)
     .replace(/\{\{documentsCount\}\}/g, String(content.outstandingDocs.length))
-    .replace(/\{\{portalLink\}\}/g, portalLink);
+    .replace(/\{\{portalLink\}\}/g, portalLink)
+    .replace(/\{\{loanAmount\}\}/g, loanAmount)
+    .replace(/\{\{loanType\}\}/g, loanType)
+    .replace(/\{\{currentStage\}\}/g, currentStage)
+    .replace(/\{\{dealId\}\}/g, dealId)
+    .replace(/\{\{targetCloseDate\}\}/g, targetCloseDate);
+
+  if (extraVars) {
+    for (const [key, value] of Object.entries(extraVars)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+  }
+
+  return result;
 }
 
 // Generate custom email HTML from template

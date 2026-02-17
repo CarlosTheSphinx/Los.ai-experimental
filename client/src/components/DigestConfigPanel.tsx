@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,6 +136,10 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [showAddRecipient, setShowAddRecipient] = useState(false);
   const [showMessageTemplate, setShowMessageTemplate] = useState(false);
+  const [activeTemplateField, setActiveTemplateField] = useState<'subject' | 'emailBody' | 'smsBody'>('emailBody');
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const emailBodyRef = useRef<HTMLTextAreaElement>(null);
+  const smsBodyRef = useRef<HTMLTextAreaElement>(null);
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [previewDraftId, setPreviewDraftId] = useState<number | null>(null);
   const [draftEdits, setDraftEdits] = useState<{ emailSubject: string; emailBody: string; smsBody: string }>({ emailSubject: '', emailBody: '', smsBody: '' });
@@ -310,6 +314,41 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
   const handleConfigChange = (field: keyof DigestConfig, value: any) => {
     saveConfigMutation.mutate({ [field]: value });
   };
+
+  const insertMergeTag = useCallback((tag: string) => {
+    const tagText = `{{${tag}}}`;
+    if (activeTemplateField === 'subject' && subjectRef.current) {
+      const el = subjectRef.current;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? start;
+      const newVal = el.value.substring(0, start) + tagText + el.value.substring(end);
+      handleConfigChange('emailSubject', newVal);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start + tagText.length, start + tagText.length);
+      }, 0);
+    } else if (activeTemplateField === 'emailBody' && emailBodyRef.current) {
+      const el = emailBodyRef.current;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? start;
+      const newVal = el.value.substring(0, start) + tagText + el.value.substring(end);
+      handleConfigChange('emailBody', newVal);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start + tagText.length, start + tagText.length);
+      }, 0);
+    } else if (activeTemplateField === 'smsBody' && smsBodyRef.current) {
+      const el = smsBodyRef.current;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? start;
+      const newVal = el.value.substring(0, start) + tagText + el.value.substring(end);
+      handleConfigChange('smsBody', newVal);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start + tagText.length, start + tagText.length);
+      }, 0);
+    }
+  }, [activeTemplateField, handleConfigChange]);
 
   // Handle adding recipient from potential list
   const handleSelectPotentialRecipient = (recipient: PotentialRecipient) => {
@@ -572,32 +611,112 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
           </Button>
 
           {showMessageTemplate && (
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
-              <div className="bg-muted/50 p-3 rounded text-xs text-muted-foreground">
-                <p className="font-medium mb-1">Available placeholders:</p>
-                <p>{"{{recipientName}}"} - Recipient's name</p>
-                <p>{"{{propertyAddress}}"} - Property address</p>
-                <p>{"{{documentsSection}}"} - List of outstanding documents</p>
-                <p>{"{{updatesSection}}"} - Recent updates</p>
-                <p>{"{{documentsCount}}"} - Number of documents needed</p>
-                <p>{"{{portalLink}}"} - Link to borrower portal</p>
+            <div className="space-y-5 border rounded-lg p-4 bg-muted/30">
+              <div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Click a merge tag to insert it at your cursor position in the active field below.
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Borrower</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { tag: 'recipientName', label: 'Recipient Name' },
+                        { tag: 'portalLink', label: 'Portal Link' },
+                      ].map(({ tag, label }) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="cursor-pointer font-mono text-xs"
+                          onClick={() => insertMergeTag(tag)}
+                          data-testid={`merge-tag-${tag}`}
+                        >
+                          <Copy className="h-3 w-3 mr-1 opacity-60" />
+                          {`{{${tag}}}`}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Deal Info</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { tag: 'dealId', label: 'Deal ID' },
+                        { tag: 'propertyAddress', label: 'Property Address' },
+                        { tag: 'loanAmount', label: 'Loan Amount' },
+                        { tag: 'loanType', label: 'Loan Type' },
+                        { tag: 'currentStage', label: 'Current Stage' },
+                        { tag: 'targetCloseDate', label: 'Target Close Date' },
+                      ].map(({ tag, label }) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="cursor-pointer font-mono text-xs"
+                          onClick={() => insertMergeTag(tag)}
+                          data-testid={`merge-tag-${tag}`}
+                        >
+                          <Copy className="h-3 w-3 mr-1 opacity-60" />
+                          {`{{${tag}}}`}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Content Blocks</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { tag: 'documentsSection', label: 'Documents List' },
+                        { tag: 'updatesSection', label: 'Updates List' },
+                        { tag: 'documentsCount', label: 'Documents Count' },
+                      ].map(({ tag, label }) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="cursor-pointer font-mono text-xs"
+                          onClick={() => insertMergeTag(tag)}
+                          data-testid={`merge-tag-${tag}`}
+                        >
+                          <Copy className="h-3 w-3 mr-1 opacity-60" />
+                          {`{{${tag}}}`}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
+              <Separator />
+
               <div className="space-y-2">
-                <Label>Email Subject</Label>
+                <Label className="flex items-center gap-2">
+                  Email Subject
+                  {activeTemplateField === 'subject' && (
+                    <Badge variant="outline" className="text-[10px] font-normal">Active</Badge>
+                  )}
+                </Label>
                 <Input 
+                  ref={subjectRef}
                   value={config.emailSubject || 'Loan Update: Action Required'}
                   onChange={(e) => handleConfigChange('emailSubject', e.target.value)}
+                  onFocus={() => setActiveTemplateField('subject')}
                   placeholder="Loan Update: Action Required"
+                  className="font-mono text-sm"
                   data-testid="input-email-subject"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Email Body</Label>
+                <Label className="flex items-center gap-2">
+                  Email Body
+                  {activeTemplateField === 'emailBody' && (
+                    <Badge variant="outline" className="text-[10px] font-normal">Active</Badge>
+                  )}
+                </Label>
                 <Textarea
+                  ref={emailBodyRef}
                   value={config.emailBody || `Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\n${branding.emailSignature}`}
                   onChange={(e) => handleConfigChange('emailBody', e.target.value)}
+                  onFocus={() => setActiveTemplateField('emailBody')}
                   className="min-h-[200px] font-mono text-sm"
                   placeholder="Enter email body template..."
                   data-testid="input-email-body"
@@ -605,10 +724,17 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>SMS Message</Label>
+                <Label className="flex items-center gap-2">
+                  SMS Message
+                  {activeTemplateField === 'smsBody' && (
+                    <Badge variant="outline" className="text-[10px] font-normal">Active</Badge>
+                  )}
+                </Label>
                 <Textarea
+                  ref={smsBodyRef}
                   value={config.smsBody || `${branding.smsSignature}: {{documentsCount}} docs needed for your loan. Log in to your portal for details.`}
                   onChange={(e) => handleConfigChange('smsBody', e.target.value)}
+                  onFocus={() => setActiveTemplateField('smsBody')}
                   className="min-h-[80px] font-mono text-sm"
                   placeholder="Enter SMS template..."
                   data-testid="input-sms-body"
