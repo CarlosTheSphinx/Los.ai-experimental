@@ -315,17 +315,17 @@ export function ProgramCreationWizard({
   // Credit policy
   const [selectedCreditPolicyId, setSelectedCreditPolicyId] = useState<number | null>(null);
 
-  // Program basics — pre-populated with DSCR example
-  const [programName, setProgramName] = useState('DSCR Rental Program');
-  const [programDescription, setProgramDescription] = useState('Standard DSCR loan program for investment rental properties. Loan qualification based on property cash flow rather than borrower income.');
+  // Program basics — empty with placeholder examples
+  const [programName, setProgramName] = useState('');
+  const [programDescription, setProgramDescription] = useState('');
   const [loanType, setLoanType] = useState('dscr');
-  const [minLoanAmount, setMinLoanAmount] = useState('150000');
-  const [maxLoanAmount, setMaxLoanAmount] = useState('2000000');
-  const [minLtv, setMinLtv] = useState('50');
-  const [maxLtv, setMaxLtv] = useState('80');
-  const [minInterestRate, setMinInterestRate] = useState('7');
-  const [maxInterestRate, setMaxInterestRate] = useState('12');
-  const [termOptions, setTermOptions] = useState('12, 24, 36, 60');
+  const [minLoanAmount, setMinLoanAmount] = useState('');
+  const [maxLoanAmount, setMaxLoanAmount] = useState('');
+  const [minLtv, setMinLtv] = useState('');
+  const [maxLtv, setMaxLtv] = useState('');
+  const [minInterestRate, setMinInterestRate] = useState('');
+  const [maxInterestRate, setMaxInterestRate] = useState('');
+  const [termOptions, setTermOptions] = useState('');
   const [eligiblePropertyTypes, setEligiblePropertyTypes] = useState<string[]>([
     'single-family-residence', '2-4-unit', 'multifamily-5-plus', 'rental-portfolio', 'mixed-use',
   ]);
@@ -1020,7 +1020,7 @@ function ProgramDetailsStep({
           <div className="space-y-1 sm:col-span-2">
             <Label className="text-xs">Program Name *</Label>
             <Input
-              placeholder="e.g., Fix & Flip Express"
+              placeholder="ex. DSCR Rental Program"
               value={programName}
               onChange={(e) => setProgramName(e.target.value)}
             />
@@ -1028,7 +1028,7 @@ function ProgramDetailsStep({
           <div className="space-y-1 sm:col-span-2">
             <Label className="text-xs">Description</Label>
             <Textarea
-              placeholder="Brief description of this loan program..."
+              placeholder="ex. Standard DSCR loan program for investment rental properties"
               value={programDescription}
               onChange={(e) => setProgramDescription(e.target.value)}
               rows={2}
@@ -1050,7 +1050,7 @@ function ProgramDetailsStep({
           <div className="space-y-1">
             <Label className="text-xs">Term Options</Label>
             <Input
-              placeholder="6, 12, 18, 24"
+              placeholder="ex. 12, 24, 36, 60"
               value={termOptions}
               onChange={(e) => setTermOptions(e.target.value)}
             />
@@ -1064,27 +1064,27 @@ function ProgramDetailsStep({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Min Loan ($)</Label>
-              <Input value={minLoanAmount} onChange={(e) => setMinLoanAmount(e.target.value)} />
+              <Input placeholder="ex. 150000" value={minLoanAmount} onChange={(e) => setMinLoanAmount(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Max Loan ($)</Label>
-              <Input value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} />
+              <Input placeholder="ex. 2000000" value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Min LTV (%)</Label>
-              <Input value={minLtv} onChange={(e) => setMinLtv(e.target.value)} />
+              <Input placeholder="ex. 50%" value={minLtv} onChange={(e) => setMinLtv(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Max LTV (%)</Label>
-              <Input value={maxLtv} onChange={(e) => setMaxLtv(e.target.value)} />
+              <Input placeholder="ex. 80%" value={maxLtv} onChange={(e) => setMaxLtv(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Min Rate (%)</Label>
-              <Input value={minInterestRate} onChange={(e) => setMinInterestRate(e.target.value)} />
+              <Input placeholder="ex. 7%" value={minInterestRate} onChange={(e) => setMinInterestRate(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Max Rate (%)</Label>
-              <Input value={maxInterestRate} onChange={(e) => setMaxInterestRate(e.target.value)} />
+              <Input placeholder="ex. 12%" value={maxInterestRate} onChange={(e) => setMaxInterestRate(e.target.value)} />
             </div>
           </div>
         </div>
