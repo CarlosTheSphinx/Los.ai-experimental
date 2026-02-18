@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { ProgramCreationWizard } from '@/components/onboarding/ProgramCreationWizard';
 import { useAuth } from '@/hooks/use-auth';
 import { useTenantConfig } from '@/hooks/use-tenant-config';
 import {
@@ -1068,25 +1069,26 @@ function StepProgramsWorkflow({
   onBack: () => void;
   onNavigate: (path: string) => void;
 }) {
+  const [showWizard, setShowWizard] = useState(false);
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" />
-            Loan Programs
-          </CardTitle>
-          <CardDescription>
-            Programs are the foundation of your lending operations. Each program defines a loan type with its own workflow, stages, and requirements.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {isLoading ? (
-            <div className="flex items-center gap-3 p-4">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Checking your loan programs...</span>
-            </div>
-          ) : hasPrograms ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Checking your loan programs...</span>
+          </CardContent>
+        </Card>
+      ) : hasPrograms && !showWizard ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              Loan Programs
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-800">
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
               <div>
@@ -1094,93 +1096,78 @@ function StepProgramsWorkflow({
                   You have {programCount} loan program{programCount !== 1 ? 's' : ''} configured
                 </p>
                 <p className="text-sm text-green-700 dark:text-green-400">
-                  You can manage them anytime from Loan Products in the sidebar
+                  You can manage them anytime from Loan Products in the sidebar.
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
-              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-amber-800 dark:text-amber-300">No programs yet</p>
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  Create your first loan program to start processing deals
-                </p>
-              </div>
-            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowWizard(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Another Program
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {!showWizard && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="h-5 w-5" />
+                  Create Your First Loan Program
+                </CardTitle>
+                <CardDescription>
+                  Programs are the foundation of your lending operations. Each program defines a loan type with its own workflow, stages, documents, and AI review rules. Quotes your borrowers request are directly tied to the program you configure here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-card border border-border rounded-md p-3 space-y-1.5">
+                    <div className="h-8 w-8 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <h4 className="font-medium text-sm">Stages</h4>
+                    <p className="text-xs text-muted-foreground">
+                      The phases each deal moves through — from application to closing.
+                    </p>
+                  </div>
+                  <div className="bg-card border border-border rounded-md p-3 space-y-1.5">
+                    <div className="h-8 w-8 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                      <ListChecks className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <h4 className="font-medium text-sm">Tasks & Documents</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Action items and required documents linked to each stage.
+                    </p>
+                  </div>
+                  <div className="bg-card border border-border rounded-md p-3 space-y-1.5">
+                    <div className="h-8 w-8 rounded-md bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <h4 className="font-medium text-sm">AI Rules</h4>
+                    <p className="text-xs text-muted-foreground">
+                      The AI agent reviews documents against your rules automatically.
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowWizard(true)} data-testid="button-start-program-wizard">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Let's Build Your First Program
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
-          <div className="space-y-4">
-            <h3 className="font-medium">How Programs Work</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-card border border-border rounded-md p-4 space-y-2">
-                <div className="h-9 w-9 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h4 className="font-medium text-sm">Stages</h4>
-                <p className="text-sm text-muted-foreground">
-                  Define the phases each deal goes through — from application to closing. Each stage represents a milestone in the loan lifecycle.
-                </p>
-              </div>
-              <div className="bg-card border border-border rounded-md p-4 space-y-2">
-                <div className="h-9 w-9 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                  <ListChecks className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                </div>
-                <h4 className="font-medium text-sm">Tasks</h4>
-                <p className="text-sm text-muted-foreground">
-                  Assign tasks to each stage. These are the action items that need to be completed before a deal can move to the next stage.
-                </p>
-              </div>
-              <div className="bg-card border border-border rounded-md p-4 space-y-2">
-                <div className="h-9 w-9 rounded-md bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <FileText className="h-4 w-4 text-green-600 dark:text-green-400" />
-                </div>
-                <h4 className="font-medium text-sm">Documents</h4>
-                <p className="text-sm text-muted-foreground">
-                  Specify which documents are needed at each stage. Borrowers and brokers will see exactly what they need to upload.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <h3 className="font-medium">Building Your First Program</h3>
-            <div className="text-sm text-muted-foreground space-y-2">
-              <p>When creating a program, you'll configure:</p>
-              <ol className="space-y-2 ml-4 list-decimal">
-                <li><span className="text-foreground font-medium">Loan type</span> — DSCR, Fix & Flip, Ground Up Construction, or others</li>
-                <li><span className="text-foreground font-medium">Loan parameters</span> — min/max amounts, LTV ranges, rate ranges</li>
-                <li><span className="text-foreground font-medium">Workflow stages</span> — the steps a deal moves through (e.g., Application, Processing, Underwriting, Closing)</li>
-                <li><span className="text-foreground font-medium">Stage tasks</span> — what needs to happen at each stage</li>
-                <li><span className="text-foreground font-medium">Required documents</span> — what borrowers/brokers need to upload per stage</li>
-              </ol>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => onNavigate('/admin/programs')}
-              data-testid="button-go-to-programs"
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              {hasPrograms ? 'Manage Loan Programs' : 'Create Your First Program'}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <h3 className="font-medium flex items-center gap-2">
-              <Workflow className="h-4 w-4 text-primary" />
-              Program-to-Deal Sync
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              When you update a program's stages, tasks, or documents, those changes automatically sync to all existing deals using that program. You don't need to update each deal individually — the system handles it for you.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          {showWizard && (
+            <ProgramCreationWizard
+              onComplete={() => {
+                setShowWizard(false);
+                // Re-fetch programs so the count updates
+                queryClient.invalidateQueries({ queryKey: ['/api/admin/programs'] });
+              }}
+            />
+          )}
+        </>
+      )}
 
       <div className="flex items-center justify-between gap-4">
         <Button variant="outline" onClick={onBack} data-testid="button-back-step-3">
@@ -1189,7 +1176,7 @@ function StepProgramsWorkflow({
         </Button>
         <div className="flex items-center gap-3">
           <Button variant="ghost" onClick={onNext} className="text-muted-foreground" data-testid="button-skip-step-3">
-            Skip for now
+            {hasPrograms ? 'Continue' : 'Skip for now'}
           </Button>
           <Button onClick={onNext} data-testid="button-next-step-3">
             Next: Communications & AI
