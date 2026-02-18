@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { ProgramCreationWizard } from '@/components/onboarding/ProgramCreationWizard';
+import { PricingConfiguration } from '@/components/onboarding/PricingConfiguration';
 import { useAuth } from '@/hooks/use-auth';
 import { useTenantConfig } from '@/hooks/use-tenant-config';
 import {
@@ -53,6 +54,7 @@ import {
   Save,
   AlertTriangle,
   X,
+  DollarSign,
 } from 'lucide-react';
 import { PERMISSION_CATEGORIES, SCOPABLE_PERMISSIONS, type PermissionKey } from '@shared/schema';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -94,9 +96,10 @@ const GUIDE_STEPS = [
   { id: 1, label: 'Company Profile', icon: Building2 },
   { id: 2, label: 'Integrations', icon: Plug },
   { id: 3, label: 'Loan Programs', icon: Layers },
-  { id: 4, label: 'Communications & AI', icon: MessageSquare },
-  { id: 5, label: 'Team Setup', icon: Users },
-  { id: 6, label: 'Role Permissions', icon: Shield },
+  { id: 4, label: 'Pricing', icon: DollarSign },
+  { id: 5, label: 'Communications & AI', icon: MessageSquare },
+  { id: 6, label: 'Team Setup', icon: Users },
+  { id: 7, label: 'Role Permissions', icon: Shield },
 ];
 
 export default function AdminOnboarding() {
@@ -108,7 +111,7 @@ export default function AdminOnboarding() {
   const initialStep = (() => {
     const params = new URLSearchParams(window.location.search);
     const s = parseInt(params.get('step') || '1', 10);
-    return s >= 1 && s <= 6 ? s : 1;
+    return s >= 1 && s <= 7 ? s : 1;
   })();
   const [currentStep, setCurrentStep] = useState(initialStep);
 
@@ -270,6 +273,12 @@ export default function AdminOnboarding() {
                 />
               )}
               {currentStep === 4 && (
+                <PricingConfiguration
+                  onNext={handleNext}
+                  onBack={handleBack}
+                />
+              )}
+              {currentStep === 5 && (
                 <StepCommunicationsAI
                   emailConnected={emailConnected}
                   onNext={handleNext}
@@ -277,7 +286,7 @@ export default function AdminOnboarding() {
                   onNavigate={setLocation}
                 />
               )}
-              {currentStep === 5 && (
+              {currentStep === 6 && (
                 <StepTeamSetup
                   teamData={teamData?.users || []}
                   isLoading={teamLoading}
@@ -287,7 +296,7 @@ export default function AdminOnboarding() {
                   onNavigate={setLocation}
                 />
               )}
-              {currentStep === 6 && (
+              {currentStep === 7 && (
                 <StepRolePermissions
                   onboardingCompleted={!!user?.onboardingCompleted}
                   onBack={handleBack}
