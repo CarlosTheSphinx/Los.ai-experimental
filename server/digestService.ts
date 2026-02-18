@@ -486,7 +486,7 @@ async function sendEmailDigest(
       : generateDigestEmailHtml(content, portalLink);
     
     const result = await client.emails.send({
-      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: email,
       subject,
       html,

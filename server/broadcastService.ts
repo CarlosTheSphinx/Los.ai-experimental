@@ -120,7 +120,7 @@ export async function sendPartnerBroadcast(
 
         try {
           await resend.emails.send({
-            from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+            from: fromEmail || 'Lendry.AI <info@lendry.ai>',
             to: msg.email,
             subject: personalizeMessage(subject, {
               firstName: msg.firstName,

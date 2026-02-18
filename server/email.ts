@@ -50,7 +50,7 @@ export async function sendSigningInvitation(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: signerEmail,
       subject: `Document Ready for Signature: ${documentName}`,
       html: `
@@ -113,7 +113,7 @@ export async function sendTeamInviteEmail(
     const roleLabel = role === 'admin' ? 'Admin' : 'Processor';
     
     const result = await client.emails.send({
-      from: fromEmail || `${companyName} <onboarding@resend.dev>`,
+      from: fromEmail || `${companyName} <info@lendry.ai>`,
       to: recipientEmail,
       subject: `You've been invited to join ${companyName}`,
       html: `
@@ -175,7 +175,7 @@ export async function sendVoidNotification(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: signerEmail,
       subject: `Document Cancelled: ${documentName}`,
       html: `
@@ -229,7 +229,7 @@ export async function sendSigningReminder(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: signerEmail,
       subject: `Reminder: Document Waiting for Your Signature - ${documentName}`,
       html: `
@@ -289,7 +289,7 @@ export async function sendCompletedDocument(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: recipientEmail,
       subject: `Document Completed: ${documentName}`,
       html: `

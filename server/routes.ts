@@ -6799,7 +6799,7 @@ export async function registerRoutes(
                 const { getResendClient } = await import('./email');
                 const { client, fromEmail } = await getResendClient();
                 await client.emails.send({
-                  from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+                  from: fromEmail || 'Lendry.AI <info@lendry.ai>',
                   to: emailTo,
                   subject: `Action Required: Document Rejected - ${updated.documentName}`,
                   html: `
@@ -7234,7 +7234,7 @@ export async function registerRoutes(
                   const { getResendClient } = await import('./email');
                   const { client, fromEmail } = await getResendClient();
                   await client.emails.send({
-                    from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
+                    from: fromEmail || 'Lendry.AI <info@lendry.ai>',
                     to: emailTo,
                     subject: `Action Required: Document Rejected - ${doc.documentName}`,
                     html: `
