@@ -51,6 +51,7 @@ import {
   UserPlus,
   Save,
   AlertTriangle,
+  X,
 } from 'lucide-react';
 import { PERMISSION_CATEGORIES, SCOPABLE_PERMISSIONS, type PermissionKey } from '@shared/schema';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -453,8 +454,13 @@ function StepTeamSetup({
     role: 'processor',
   });
 
-  const teamRoles = new Set(['processor', 'staff', 'admin', 'super_admin']);
+  const { user: currentUser } = useAuth();
+
+  // Only show lender's own team roles — exclude super_admin (platform-level only)
+  const teamRoles = new Set(['processor', 'staff', 'admin']);
   const teamMembers = teamData.filter((u: any) => {
+    if (u.role === 'super_admin') return false;
+    if (u.isActive === false) return false;
     if (teamRoles.has(u.role)) return true;
     if (u.roles?.some((r: string) => teamRoles.has(r))) return true;
     return false;
@@ -477,6 +483,24 @@ function StepTeamSetup({
       toast({
         title: 'Failed to invite team member',
         description: error?.message || 'Please check the form and try again',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest('DELETE', `/api/admin/users/${userId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      toast({ title: 'Team member removed' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to remove team member',
+        description: error?.message || 'Please try again',
         variant: 'destructive',
       });
     },
@@ -525,21 +549,39 @@ function StepTeamSetup({
             </div>
           ) : (
             <div className="space-y-2">
-              {teamMembers.map((member: any) => (
-                <div
-                  key={member.id}
-                  className="flex items-center gap-3 p-3 bg-muted/50 rounded-md"
-                  data-testid={`team-member-${member.id}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{member.fullName || 'No name'}</p>
-                    <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+              {teamMembers.map((member: any) => {
+                const isCurrentUser = member.id === currentUser?.id;
+                return (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-3 p-3 bg-muted/50 rounded-md group"
+                    data-testid={`team-member-${member.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {member.fullName || 'No name'}
+                        {isCurrentUser && <span className="text-xs text-muted-foreground ml-1">(you)</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                    </div>
+                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} data-testid={`badge-role-${member.id}`}>
+                      {member.role}
+                    </Badge>
+                    {!isCurrentUser && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        onClick={() => removeMemberMutation.mutate(member.id)}
+                        disabled={removeMemberMutation.isPending}
+                        data-testid={`remove-member-${member.id}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
-                  <Badge variant={member.role === 'admin' || member.role === 'super_admin' ? 'default' : 'secondary'} data-testid={`badge-role-${member.id}`}>
-                    {member.role}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

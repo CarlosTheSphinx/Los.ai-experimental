@@ -4479,6 +4479,42 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - Remove team member
+  app.delete('/api/admin/users/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      // Prevent removing yourself
+      if (userId === req.user!.id) {
+        return res.status(400).json({ error: 'You cannot remove yourself' });
+      }
+
+      // Prevent removing super_admin users (only super admins manage super admins)
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (targetUser.role === 'super_admin') {
+        return res.status(403).json({ error: 'Cannot remove a super admin user' });
+      }
+
+      // Soft-delete: deactivate the user
+      await storage.updateUser(userId, { isActive: false });
+
+      await storage.createAdminActivity({
+        userId: req.user!.id,
+        actionType: 'user_removed',
+        actionDescription: `Removed team member ${targetUser.email}`,
+        metadata: { targetUserId: userId, targetEmail: targetUser.email }
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Admin remove user error:', error);
+      res.status(500).json({ error: 'Failed to remove user' });
+    }
+  });
+
   // Team Permissions - Get all permissions (super_admin only)
   app.get('/api/admin/permissions', authenticateUser, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
     try {
