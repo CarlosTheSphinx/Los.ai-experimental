@@ -490,8 +490,7 @@ function StepTeamSetup({
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: number) => {
-      const res = await apiRequest('DELETE', `/api/admin/users/${userId}`);
-      return res.json();
+      await apiRequest('DELETE', `/api/admin/users/${userId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
