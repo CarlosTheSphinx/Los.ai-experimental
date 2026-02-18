@@ -106,7 +106,7 @@ export function PricingConfiguration({
     queryKey: ['/api/admin/programs'],
   });
 
-  const programs = programsData?.programs?.filter((p: any) => p.isActive) || [];
+  const programs = programsData?.programs || [];
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
   const [pricingMode, setPricingMode] = useState<PricingMode>('none');
 
@@ -273,7 +273,10 @@ export function PricingConfiguration({
                   <SelectContent>
                     {programs.map((p: any) => (
                       <SelectItem key={p.id} value={p.id.toString()}>
-                        {p.name} ({p.loanType?.toUpperCase()})
+                        <span className="flex items-center gap-2">
+                          {p.name} ({p.loanType?.toUpperCase()})
+                          {!p.isActive && <span className="text-xs text-muted-foreground">(inactive)</span>}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -387,14 +390,101 @@ export function PricingConfiguration({
         </CardContent>
       </Card>
 
-      {/* Explainer card */}
-      <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-        <CardContent className="flex items-start gap-3 pt-4 pb-4">
-          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-blue-900 dark:text-blue-300">How pricing connects to quotes</p>
-            <p className="text-sm text-blue-700 dark:text-blue-400">
-              When a borrower fills out a quote form linked to this program, the pricing engine runs your rules against their inputs (FICO, LTV, property type, etc.) and returns a rate + points instantly. If PandaDoc is connected, the term sheet auto-generates and is sent for e-signature. You can refine pricing rules anytime from the program settings.
+      {/* Comprehensive explainer section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Info className="h-5 w-5 text-blue-600" />
+            Understanding the Pricing Engine
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Why pricing configuration matters</p>
+            <p className="text-sm text-muted-foreground">
+              Pricing is the core of your quote workflow. Without it, every quote request requires manual rate calculation.
+              With pricing rules configured, your borrowers get instant, consistent quotes the moment they submit a request &mdash;
+              no back-and-forth, no delays. This speeds up your pipeline and ensures every quote follows your underwriting guidelines.
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">What the pricing engine does</p>
+            <p className="text-sm text-muted-foreground">
+              When a borrower fills out a quote form linked to a program, the engine takes their inputs (FICO score,
+              loan amount, LTV, property type, loan purpose, etc.) and runs them against your pricing rules. It calculates:
+            </p>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
+              <li><strong>Interest rate</strong> &mdash; starting from your base rate, adjusted up or down based on risk factors</li>
+              <li><strong>Points / origination fees</strong> &mdash; automatically adjusted for loan characteristics</li>
+              <li><strong>Eligibility</strong> &mdash; disqualifies deals that fall outside your credit box (e.g., FICO too low, LTV too high)</li>
+            </ul>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Four ways to set up pricing</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-md bg-muted/50 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-medium">Rule-Based</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Define a base rate and add adjusters (e.g., +0.25% for FICO below 700). Best for straightforward pricing with clear rules.
+                </p>
+              </div>
+              <div className="p-3 rounded-md bg-muted/50 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-medium">AI Rate Sheet Upload</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Upload your existing rate sheet PDF. AI reads and extracts the rules automatically. You review before activating.
+                </p>
+              </div>
+              <div className="p-3 rounded-md bg-muted/50 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-medium">External Pricer</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Connect to a third-party pricing tool. We submit the borrower's data and pull back the rate automatically.
+                </p>
+              </div>
+              <div className="p-3 rounded-md bg-muted/50 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Manual / Skip</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  No automated pricing. Quotes come in and you manually assign a rate and terms for each deal.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">How pricing connects to your quote forms</p>
+            <p className="text-sm text-muted-foreground">
+              Each loan program has a quote form that borrowers fill out. The fields on that form (FICO, loan amount, property type, LTV, etc.)
+              are the same inputs the pricing engine uses. When a borrower submits the form:
+            </p>
+            <ol className="text-sm text-muted-foreground list-decimal pl-5 space-y-1">
+              <li>The form data is sent to the pricing engine for the selected program</li>
+              <li>The engine checks eligibility rules first &mdash; if the deal is disqualified, the borrower is notified immediately</li>
+              <li>If eligible, it calculates the rate and points using your base rate + adjusters</li>
+              <li>A quote is generated and saved. If PandaDoc is connected, a term sheet is auto-generated and sent for e-signature</li>
+              <li>The quote appears in your pipeline as a new deal, ready for you to review or follow up</li>
+            </ol>
+            <p className="text-sm text-muted-foreground mt-2">
+              You can customize the quote form fields in each program's settings to collect exactly the data your pricing rules need.
+              Any custom fields you add to the form can also be used as pricing adjuster conditions.
             </p>
           </div>
         </CardContent>
