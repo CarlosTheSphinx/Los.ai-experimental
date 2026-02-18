@@ -953,7 +953,7 @@ function StepIntegrations({
               <span className="text-sm text-muted-foreground">Checking integration status...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="divide-y">
               {externalIntegrations.map((integration) => {
                 const IntIcon = integration.icon;
                 const status = integrationsData?.[integration.key];
@@ -961,11 +961,13 @@ function StepIntegrations({
                 return (
                   <div
                     key={integration.key}
-                    className="flex items-center gap-3 p-3 bg-muted/50 rounded-md"
+                    className="flex items-center justify-between gap-4 py-3 px-1 flex-wrap"
                     data-testid={`integration-status-${integration.key}`}
                   >
-                    <IntIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm flex-1 min-w-0 truncate">{integration.label}</span>
+                    <div className="flex items-center gap-3">
+                      <IntIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium">{integration.label}</span>
+                    </div>
                     {isConnected ? (
                       <Badge variant="default" data-testid={`badge-connected-${integration.key}`}>
                         <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -973,7 +975,6 @@ function StepIntegrations({
                       </Badge>
                     ) : (
                       <Badge variant="secondary" data-testid={`badge-not-connected-${integration.key}`}>
-                        <XCircle className="h-3 w-3 mr-1" />
                         Not Connected
                       </Badge>
                     )}
