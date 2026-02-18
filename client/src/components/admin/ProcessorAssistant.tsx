@@ -13,12 +13,10 @@ import {
   Send,
   Mic,
   Square,
-  ChevronUp,
   Loader,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useVoiceRecorder } from "@/replit_integrations/audio/useVoiceRecorder";
@@ -258,21 +256,34 @@ export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: Proce
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Start new briefing conversation if none exists
-  const handleStartBriefing = () => {
-    if (conversations.length === 0) {
-      createConversationMutation.mutate("daily_briefing");
-    } else {
-      const briefingConv = conversations.find(
-        (c: Conversation) => c.conversationType === "daily_briefing"
-      );
-      if (briefingConv) {
-        setCurrentConversationId(briefingConv.id);
-        setMessages(briefingConv.messages || []);
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && !currentConversationId && !createConversationMutation.isPending && !hasInitialized.current) {
+      hasInitialized.current = true;
+      if (conversations.length > 0) {
+        const latest = conversations[conversations.length - 1] as Conversation;
+        setCurrentConversationId(latest.id);
+        setMessages(latest.messages || []);
       } else {
-        createConversationMutation.mutate("daily_briefing");
+        createConversationMutation.mutate("general");
       }
     }
+    if (!isOpen) {
+      hasInitialized.current = false;
+    }
+  }, [isOpen, conversations]);
+
+  const handleSuggestionClick = (text: string) => {
+    setInputValue(text);
+    const userMessage: Message = {
+      id: Date.now(),
+      role: "user",
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    sendMessageMutation.mutate(text);
   };
 
   const currentConversation = conversations.find(
@@ -332,90 +343,39 @@ export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: Proce
               </Button>
             </div>
 
-            {/* Main Content Area */}
-            {!currentConversationId ? (
-              // Initial state: show briefing
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {briefing ? (
-                  <>
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm">Daily Briefing</h4>
-                      <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                        <p className="text-sm text-slate-700 line-clamp-4">
-                          {briefing.summary}
-                        </p>
-                      </div>
-
-                      {briefing.deals.length > 0 && (
-                        <div className="space-y-2">
-                          <h5 className="text-xs font-semibold text-slate-600 uppercase">
-                            Active Deals ({briefing.deals.length})
-                          </h5>
-                          {briefing.deals.map((deal) => (
-                            <div
-                              key={deal.dealId}
-                              className="border rounded p-2 text-xs"
-                            >
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <p className="font-semibold">
-                                    #{deal.dealId}: {deal.dealName}
-                                  </p>
-                                  <p className="text-slate-600">
-                                    {deal.borrowerName} • {deal.stage}
-                                  </p>
-                                </div>
-                                <Badge variant="outline">
-                                  {deal.progress}%
-                                </Badge>
-                              </div>
-                              <div className="flex gap-2 mt-2 text-slate-600">
-                                {deal.pendingDocuments.count > 0 && (
-                                  <span>
-                                    📄 {deal.pendingDocuments.count} docs
-                                  </span>
-                                )}
-                                {deal.overdueTasks.count > 0 && (
-                                  <span>
-                                    ⚠️ {deal.overdueTasks.count} overdue
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <Button
-                        onClick={handleStartBriefing}
-                        className="w-full"
-                        size="sm"
-                      >
-                        <ChevronUp className="w-4 h-4 mr-2" />
-                        Start Chat
-                      </Button>
+            {/* Main Content Area - Always Chat */}
+            <>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {messages.length === 0 && (
+                  <div className="space-y-4 py-4">
+                    <div className="bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg rounded-bl-none max-w-xs text-sm text-slate-900 dark:text-slate-100">
+                      <p>Hi there! I'm your AI assistant. What would you like me to help you with?</p>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader className="w-6 h-6 text-slate-400 animate-spin" />
+                    <div className="space-y-2 pl-1">
+                      <button
+                        data-testid="suggestion-briefing"
+                        onClick={() => handleSuggestionClick("Give me a daily briefing on all my active deals")}
+                        className="w-full text-left text-sm px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 hover-elevate transition-colors"
+                      >
+                        Give me a daily briefing on my deals
+                      </button>
+                      <button
+                        data-testid="suggestion-draft"
+                        onClick={() => handleSuggestionClick("Draft a borrower update email for my most recent deal")}
+                        className="w-full text-left text-sm px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 hover-elevate transition-colors"
+                      >
+                        Draft a borrower update email
+                      </button>
+                      <button
+                        data-testid="suggestion-review"
+                        onClick={() => handleSuggestionClick("Review pending documents and tasks across all deals")}
+                        className="w-full text-left text-sm px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 hover-elevate transition-colors"
+                      >
+                        Review pending documents and tasks
+                      </button>
+                    </div>
                   </div>
                 )}
-              </div>
-            ) : (
-              // Chat state: show messages
-              <>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {messages.length === 0 && briefing && (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-slate-600">
-                        {currentConversation?.title}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-2">
-                        How can I help?
-                      </p>
-                    </div>
-                  )}
 
                   {messages.map((message) => (
                     <div
@@ -583,7 +543,6 @@ export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: Proce
                   </div>
                 </div>
               </>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
