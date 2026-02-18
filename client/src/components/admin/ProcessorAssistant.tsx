@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -76,6 +77,7 @@ interface ProcessorAssistantProps {
 }
 
 export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: ProcessorAssistantProps = {}) {
+  const [, setLocation] = useLocation();
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
   const setIsOpen = (val: boolean) => {
@@ -445,17 +447,42 @@ export function ProcessorAssistant({ isOpen: externalOpen, onOpenChange }: Proce
                             <div className="mt-2 space-y-1 border-t border-current opacity-80 pt-2">
                               {message.actionsTaken.map(
                                 (action, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={cn(
-                                      "text-xs",
-                                      action.status === "success"
-                                        ? "text-green-300"
-                                        : "text-red-300"
-                                    )}
-                                  >
-                                    {action.status === "success" ? "✓" : "✗"}{" "}
-                                    {action.type.replace(/_/g, " ")}
+                                  <div key={idx}>
+                                    <div
+                                      className={cn(
+                                        "text-xs",
+                                        action.status === "success"
+                                          ? "text-green-300"
+                                          : "text-red-300"
+                                      )}
+                                    >
+                                      {action.status === "success" ? "✓" : "✗"}{" "}
+                                      {action.type.replace(/_/g, " ")}
+                                      {action.details?.subject && (
+                                        <span className="opacity-70 ml-1">— {action.details.subject}</span>
+                                      )}
+                                    </div>
+                                    {/* Approve/Edit buttons for draft communications */}
+                                    {(action.type === "draft_email" || action.type === "draft_sms" || action.type === "send_communication") &&
+                                      action.status === "success" &&
+                                      action.details?.communicationId && (
+                                        <div className="flex gap-2 mt-1 ml-3">
+                                          <button
+                                            onClick={() => setLocation(`/admin/deals/${action.details.dealId}?tab=communications`)}
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded"
+                                          >
+                                            Review & Approve
+                                          </button>
+                                        </div>
+                                      )}
+                                    {/* Batch operation summary */}
+                                    {action.type.startsWith("batch_") &&
+                                      action.status === "success" &&
+                                      action.details?.total != null && (
+                                        <div className="text-xs opacity-70 ml-3">
+                                          {action.details.successful || action.details.created || action.details.updated || 0}/{action.details.total} completed
+                                        </div>
+                                      )}
                                   </div>
                                 )
                               )}
