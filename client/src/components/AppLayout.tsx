@@ -105,12 +105,12 @@ const borrowerNavItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-  { href: "/admin/platform", label: "Platform", icon: Globe, superAdminOnly: true },
-  { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
+  { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/digests", label: "Communications", icon: CalendarDays, requiredPermission: "digests.view" },
+  { href: "/admin/platform", label: "Platform", icon: Globe, superAdminOnly: true },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
