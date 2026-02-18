@@ -1116,43 +1116,113 @@ function ProgramDetailsStep({
               These are the input fields borrowers fill out when requesting a quote for this program.
             </p>
           </div>
-          <div className="space-y-1.5 max-h-52 overflow-y-auto">
-            {quoteFormFields.map((field, i) => (
-              <div key={field.fieldKey} className="flex items-center justify-between gap-3 py-1 px-2 bg-muted/40 rounded">
-                <span className="text-xs flex-1">{field.label}</span>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1 text-[11px]">
-                    <Switch
-                      checked={field.visible}
-                      onCheckedChange={() => {
-                        const updated = [...quoteFormFields];
-                        updated[i] = { ...field, visible: !field.visible, required: field.visible ? false : field.required };
-                        setQuoteFormFields(updated);
-                      }}
-                      className="scale-75"
-                    />
-                    Visible
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px]">
-                    <Switch
-                      checked={field.required}
-                      disabled={!field.visible}
-                      onCheckedChange={() => {
-                        const updated = [...quoteFormFields];
-                        updated[i] = { ...field, required: !field.required };
-                        setQuoteFormFields(updated);
-                      }}
-                      className="scale-75"
-                    />
-                    Required
-                  </label>
-                </div>
-              </div>
-            ))}
-          </div>
+          <QuoteFormFieldsList quoteFormFields={quoteFormFields} setQuoteFormFields={setQuoteFormFields} />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+const ALL_DEFAULT_FIELD_KEYS = new Set([
+  ...DSCR_QUOTE_FIELDS.map((f) => f.fieldKey),
+  ...RTL_QUOTE_FIELDS.map((f) => f.fieldKey),
+]);
+
+function QuoteFormFieldsList({
+  quoteFormFields,
+  setQuoteFormFields,
+}: {
+  quoteFormFields: { fieldKey: string; label: string; visible: boolean; required: boolean }[];
+  setQuoteFormFields: (v: any[]) => void;
+}) {
+  const [newFieldName, setNewFieldName] = useState('');
+
+  const addCustomField = () => {
+    const name = newFieldName.trim();
+    if (!name) return;
+    const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
+    setQuoteFormFields([
+      ...quoteFormFields,
+      { fieldKey, label: name, visible: true, required: false },
+    ]);
+    setNewFieldName('');
+  };
+
+  const removeField = (i: number) => {
+    setQuoteFormFields(quoteFormFields.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1.5 max-h-52 overflow-y-auto">
+        {quoteFormFields.map((field, i) => {
+          const isCustom = !ALL_DEFAULT_FIELD_KEYS.has(field.fieldKey);
+          return (
+            <div key={field.fieldKey} className="flex items-center justify-between gap-3 py-1 px-2 bg-muted/40 rounded">
+              <span className="text-xs flex-1">{field.label}</span>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1 text-[11px]">
+                  <Switch
+                    checked={field.visible}
+                    onCheckedChange={() => {
+                      const updated = [...quoteFormFields];
+                      updated[i] = { ...field, visible: !field.visible, required: field.visible ? false : field.required };
+                      setQuoteFormFields(updated);
+                    }}
+                    className="scale-75"
+                  />
+                  Visible
+                </label>
+                <label className="flex items-center gap-1 text-[11px]">
+                  <Switch
+                    checked={field.required}
+                    disabled={!field.visible}
+                    onCheckedChange={() => {
+                      const updated = [...quoteFormFields];
+                      updated[i] = { ...field, required: !field.required };
+                      setQuoteFormFields(updated);
+                    }}
+                    className="scale-75"
+                  />
+                  Required
+                </label>
+                {isCustom && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground"
+                    onClick={() => removeField(i)}
+                    data-testid={`button-remove-field-${field.fieldKey}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          className="h-8 text-sm flex-1"
+          placeholder="New field name..."
+          value={newFieldName}
+          onChange={(e) => setNewFieldName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }}
+          data-testid="input-new-quote-field"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={addCustomField}
+          disabled={!newFieldName.trim()}
+          data-testid="button-add-quote-field"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add Field
+        </Button>
+      </div>
+    </div>
   );
 }
 
