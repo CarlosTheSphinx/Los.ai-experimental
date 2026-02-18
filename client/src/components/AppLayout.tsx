@@ -35,6 +35,9 @@ import {
 
   ShieldCheck,
   Mail,
+  Plug,
+  Cpu,
+  Database,
 } from "lucide-react";
 import {
   Select,
@@ -104,23 +107,29 @@ const borrowerNavItems: NavItem[] = [
   { href: "/resources", label: "Resources", icon: BookOpen },
 ];
 
+// Lender admin items — visible to admin, staff, processor roles
 const adminNavItems: NavItem[] = [
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/digests", label: "Communications", icon: CalendarDays, requiredPermission: "digests.view" },
-  { href: "/admin/platform", label: "Platform", icon: Globe, superAdminOnly: true },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
   { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
   { href: "/admin/email", label: "Email Inbox", icon: Mail, requiredPermission: "messages.view" },
-  { href: "/admin/ai-agents", label: "AI Orchestration Layer", icon: Sparkles, requiredPermission: "agents.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/onboarding", label: "Getting Started", icon: BookOpen, requiredPermission: "onboarding.view" },
+];
+
+// Super admin items — only visible to super_admin role (Lendry platform team)
+const superAdminNavItems: NavItem[] = [
+  { href: "/admin/platform", label: "Platform Overview", icon: Globe },
+  { href: "/admin/ai-agents", label: "AI Orchestration", icon: Sparkles },
+  { href: "/admin/integrations", label: "Integrations", icon: Plug },
 ];
 
 type ViewAsMode = "super_admin" | "lender" | "borrower";
@@ -374,6 +383,46 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                                 {item.shortcut}
                               </span>
                             )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          {/* Super Admin section — only visible to Lendry platform team */}
+          {isSuperAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender && (
+            <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+                Super Admin (Lendry Only)
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {superAdminNavItems.map((item) => {
+                    const isActive = location === item.href ||
+                      (item.href !== "/admin" && location.startsWith(item.href));
+                    const Icon = item.icon;
+
+                    return (
+                      <SidebarMenuItem key={item.href} className="group relative">
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={item.label}
+                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                        >
+                          <Link
+                            href={item.href}
+                            data-testid={`nav-super-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            onClick={handleNavClick}
+                          >
+                            <Icon className="h-5 w-5 shrink-0" />
+                            <span className="flex items-center gap-1 flex-1">
+                              {item.label}
+                            </span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
