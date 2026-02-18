@@ -101,12 +101,17 @@ export function PricingConfiguration({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch programs to let user pick which one to configure pricing for
-  const { data: programsData, isLoading: programsLoading } = useQuery<{ programs: any[] }>({
+  const { data: programsData, isLoading: programsLoading } = useQuery<any>({
     queryKey: ['/api/admin/programs'],
   });
 
-  const programs = programsData?.programs || [];
+  const programs: any[] = Array.isArray(programsData)
+    ? programsData
+    : programsData?.programs
+      ? programsData.programs
+      : programsData
+        ? Object.values(programsData).filter((v: any) => v && typeof v === 'object' && v.id)
+        : [];
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
   const [pricingMode, setPricingMode] = useState<PricingMode>('none');
 
