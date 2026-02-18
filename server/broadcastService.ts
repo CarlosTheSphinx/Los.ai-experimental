@@ -113,14 +113,14 @@ export async function sendPartnerBroadcast(
 
     // Send emails
     if (sendEmail) {
-      const { client: resend } = await getResendClient();
+      const { client: resend, fromEmail } = await getResendClient();
       
       for (const msg of personalizedMessages) {
         if (!msg.email) continue;
 
         try {
           await resend.emails.send({
-            from: 'Lendry.AI <onboarding@resend.dev>',
+            from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
             to: msg.email,
             subject: personalizeMessage(subject, {
               firstName: msg.firstName,

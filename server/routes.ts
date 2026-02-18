@@ -6719,9 +6719,9 @@ export async function registerRoutes(
               const borrowerName = project.borrowerName || borrowerUser?.fullName || 'Borrower';
               if (emailTo) {
                 const { getResendClient } = await import('./email');
-                const { client } = await getResendClient();
+                const { client, fromEmail } = await getResendClient();
                 await client.emails.send({
-                  from: 'Lendry.AI <onboarding@resend.dev>',
+                  from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
                   to: emailTo,
                   subject: `Action Required: Document Rejected - ${updated.documentName}`,
                   html: `
@@ -7154,9 +7154,9 @@ export async function registerRoutes(
                 const borrowerName = project.borrowerName || borrowerUser?.fullName || 'Borrower';
                 if (emailTo) {
                   const { getResendClient } = await import('./email');
-                  const { client } = await getResendClient();
+                  const { client, fromEmail } = await getResendClient();
                   await client.emails.send({
-                    from: 'Lendry.AI <onboarding@resend.dev>',
+                    from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
                     to: emailTo,
                     subject: `Action Required: Document Rejected - ${doc.documentName}`,
                     html: `

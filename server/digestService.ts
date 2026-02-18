@@ -471,24 +471,22 @@ async function sendEmailDigest(
   config?: LoanDigestConfig
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
     const portalLink = content.project.borrowerPortalToken
       ? `${BASE_URL}/portal/${content.project.borrowerPortalToken}`
       : `${BASE_URL}/app/projects/${content.project.id}`;
     
-    // Use custom subject if provided
     const subject = config?.emailSubject 
       ? applyTemplateVariables(config.emailSubject, content, portalLink)
       : `Loan Update: ${content.project.projectName} - ${content.outstandingDocs.length} Document(s) Needed`;
     
-    // Use custom body if provided, otherwise use default HTML
     const html = config?.emailBody
       ? generateCustomEmailHtml(config.emailBody, content, portalLink)
       : generateDigestEmailHtml(content, portalLink);
     
     const result = await client.emails.send({
-      from: 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
       to: email,
       subject,
       html,

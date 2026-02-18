@@ -79,9 +79,9 @@ export async function sendCommercialNotification(type: string, submission: any, 
     switch (type) {
       case 'submission_received': {
         if (!(await isNotificationEnabled('commercial_notify_broker_submitted'))) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         await client.emails.send({
-          from: 'Lendry.AI <onboarding@resend.dev>',
+          from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Your Commercial Deal Submission Has Been Received - ${propertyLabel}`,
           html: emailWrapper('#1e40af', 'Submission Received', `
@@ -103,9 +103,9 @@ export async function sendCommercialNotification(type: string, submission: any, 
 
       case 'submission_approved': {
         if (!(await isNotificationEnabled('commercial_notify_broker_approved'))) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         await client.emails.send({
-          from: 'Lendry.AI <onboarding@resend.dev>',
+          from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Your Commercial Deal Has Been Approved - ${propertyLabel}`,
           html: emailWrapper('#16a34a', 'Deal Approved', `
@@ -128,10 +128,10 @@ export async function sendCommercialNotification(type: string, submission: any, 
 
       case 'submission_declined': {
         if (!(await isNotificationEnabled('commercial_notify_broker_declined'))) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         const reason = additionalData?.reason || additionalData?.adminNotes || 'No specific reason provided.';
         await client.emails.send({
-          from: 'Lendry.AI <onboarding@resend.dev>',
+          from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Commercial Deal Submission Update - ${propertyLabel}`,
           html: emailWrapper('#dc2626', 'Submission Declined', `
@@ -154,10 +154,10 @@ export async function sendCommercialNotification(type: string, submission: any, 
 
       case 'info_needed': {
         if (!(await isNotificationEnabled('commercial_notify_broker_info_needed'))) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         const message = additionalData?.message || additionalData?.adminNotes || 'Additional information is required to process your submission.';
         await client.emails.send({
-          from: 'Lendry.AI <onboarding@resend.dev>',
+          from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Additional Information Needed - ${propertyLabel}`,
           html: emailWrapper('#f59e0b', 'Information Needed', `
@@ -184,11 +184,11 @@ export async function sendCommercialNotification(type: string, submission: any, 
         if (!(await isNotificationEnabled('commercial_notify_admin_new_submission'))) return;
         const admins = await getAdminEmails();
         if (admins.length === 0) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         for (const admin of admins) {
           try {
             await client.emails.send({
-              from: 'Lendry.AI <onboarding@resend.dev>',
+              from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
               to: admin.email,
               subject: `New Commercial Submission - ${propertyLabel}`,
               html: emailWrapper('#1e40af', 'New Commercial Submission', `
@@ -218,12 +218,12 @@ export async function sendCommercialNotification(type: string, submission: any, 
         if (!(await isNotificationEnabled('commercial_notify_admin_needs_review'))) return;
         const admins = await getAdminEmails();
         if (admins.length === 0) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         const aiReason = additionalData?.reason || 'AI review flagged this deal for manual review.';
         for (const admin of admins) {
           try {
             await client.emails.send({
-              from: 'Lendry.AI <onboarding@resend.dev>',
+              from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
               to: admin.email,
               subject: `Manual Review Required - ${propertyLabel}`,
               html: emailWrapper('#f59e0b', 'Manual Review Required', `
@@ -252,9 +252,9 @@ export async function sendCommercialNotification(type: string, submission: any, 
 
       case 'submission_expired': {
         if (!(await isNotificationEnabled('commercial_notify_broker_expired'))) return;
-        const { client } = await getResendClient();
+        const { client, fromEmail } = await getResendClient();
         await client.emails.send({
-          from: 'Lendry.AI <onboarding@resend.dev>',
+          from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
           to: submission.email,
           subject: `Commercial Deal Submission Expired - ${propertyLabel}`,
           html: emailWrapper('#6b7280', 'Submission Expired', `
