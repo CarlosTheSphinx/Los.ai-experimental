@@ -984,16 +984,6 @@ function StepIntegrations({
             </div>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onNavigate('/admin/settings')}
-            data-testid="button-manage-settings"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Manage in Settings
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
         </CardContent>
       </Card>
 
