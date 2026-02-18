@@ -108,21 +108,19 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/platform", label: "Platform", icon: Globe, superAdminOnly: true },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/quotes", label: "Quotes", icon: FileText },
-  { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
-  { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
-  { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
-  { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
-
-  { href: "/admin/ai-agents", label: "AI Orchestration Layer", icon: Sparkles, requiredPermission: "agents.view" },
-  { href: "/admin/onboarding", label: "Getting Started", icon: BookOpen, requiredPermission: "onboarding.view" },
+  { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/admin/digests", label: "Communications", icon: CalendarDays, requiredPermission: "digests.view" },
-
+  { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
+  { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
+  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
+  { href: "/admin/email", label: "Email Inbox", icon: Mail, requiredPermission: "messages.view" },
+  { href: "/admin/ai-agents", label: "AI Orchestration Layer", icon: Sparkles, requiredPermission: "agents.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
-  { href: "/admin/email", label: "Email Inbox", icon: Mail, requiredPermission: "messages.view" },
-  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
+  { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
+  { href: "/admin/onboarding", label: "Getting Started", icon: BookOpen, requiredPermission: "onboarding.view" },
 ];
 
 type ViewAsMode = "super_admin" | "lender" | "borrower";
