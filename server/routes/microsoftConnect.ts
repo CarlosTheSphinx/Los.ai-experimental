@@ -141,7 +141,7 @@ export function registerMicrosoftConnectRoutes(app: Express, deps: RouteDeps) {
       const outlookConnected = !!emailAccount;
 
       res.json({
-        connected: oneDriveConnected && outlookConnected,
+        connected: oneDriveConnected || outlookConnected,
         outlook: {
           connected: outlookConnected,
           emailAddress: emailAccount?.emailAddress || null,
