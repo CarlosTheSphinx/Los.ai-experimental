@@ -408,7 +408,10 @@ function StepCompanyProfile({
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-4">
+        <Button variant="ghost" onClick={onNext} className="text-muted-foreground" data-testid="button-skip-step-1">
+          Skip for now
+        </Button>
         <Button onClick={onNext} data-testid="button-next-step-1">
           Next: Team Setup
           <ChevronRight className="ml-2 h-4 w-4" />
@@ -610,10 +613,15 @@ function StepTeamSetup({
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} data-testid="button-next-step-2">
-          Next: Integrations
-          <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={onNext} className="text-muted-foreground" data-testid="button-skip-step-2">
+            Skip for now
+          </Button>
+          <Button onClick={onNext} data-testid="button-next-step-2">
+            Next: Integrations
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -843,10 +851,15 @@ function StepIntegrations({
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} data-testid="button-next-step-3">
-          Next: Loan Programs
-          <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={onNext} className="text-muted-foreground" data-testid="button-skip-step-3">
+            Skip for now
+          </Button>
+          <Button onClick={onNext} data-testid="button-next-step-3">
+            Next: Loan Programs
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -986,10 +999,15 @@ function StepProgramsWorkflow({
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} data-testid="button-next-step-4">
-          Next: Communications & AI
-          <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={onNext} className="text-muted-foreground" data-testid="button-skip-step-4">
+            Skip for now
+          </Button>
+          <Button onClick={onNext} data-testid="button-next-step-4">
+            Next: Communications & AI
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1155,26 +1173,33 @@ function StepCommunicationsAI({
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        {onboardingCompleted ? (
-          <Button onClick={() => onNavigate('/admin/deals')} data-testid="button-go-to-dashboard">
-            Go to Deals
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        ) : (
-          <Button onClick={onCompleteOnboarding} disabled={isCompleting} data-testid="button-finish-setup">
-            {isCompleting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Finishing...
-              </>
-            ) : (
-              <>
-                Finish Setup & Go to Deals
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
-            )}
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {!onboardingCompleted && (
+            <Button variant="ghost" onClick={onCompleteOnboarding} disabled={isCompleting} className="text-muted-foreground" data-testid="button-skip-step-5">
+              Skip for now
+            </Button>
+          )}
+          {onboardingCompleted ? (
+            <Button onClick={() => onNavigate('/admin/deals')} data-testid="button-go-to-dashboard">
+              Go to Deals
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={onCompleteOnboarding} disabled={isCompleting} data-testid="button-finish-setup">
+              {isCompleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Finishing...
+                </>
+              ) : (
+                <>
+                  Finish Setup & Go to Deals
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
