@@ -873,16 +873,14 @@ function ExternalPricing({
               Connect to a third-party pricing platform. When a quote comes in, we'll fill out the external form with the borrower's data and extract the rate automatically using browser automation.
             </p>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Pricing Tool URL</Label>
-            <Input
-              placeholder="https://your-pricing-tool.com"
-              value={externalUrl}
-              onChange={(e) => setExternalUrl(e.target.value)}
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Enter the URL of your external pricing platform. Additional integrations can be configured after onboarding.
-            </p>
+          <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
+            <ShieldAlert className="h-5 w-5 text-blue-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-300">Contact Lendry Support to set up external pricing</p>
+              <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                External pricing integrations require custom configuration by our team. Please reach out to Lendry Support and we'll get your third-party pricing tool connected for you.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-800">
             <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
