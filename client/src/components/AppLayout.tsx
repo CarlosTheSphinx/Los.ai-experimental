@@ -107,7 +107,6 @@ const borrowerNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { href: "/admin/platform", label: "Platform", icon: Globe, superAdminOnly: true },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
-  { href: "/admin/processor", label: "One-Click Processing", icon: Zap, requiredPermission: "processor.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
