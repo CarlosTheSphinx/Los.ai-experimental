@@ -47,11 +47,10 @@ export async function sendSigningInvitation(
   signingLink: string
 ) {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
-    // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Document Ready for Signature: ${documentName}`,
       html: `
@@ -109,12 +108,12 @@ export async function sendTeamInviteEmail(
   inviteLink: string
 ) {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
     const roleLabel = role === 'admin' ? 'Admin' : 'Processor';
     
     const result = await client.emails.send({
-      from: `${companyName} <onboarding@resend.dev>`,
+      from: fromEmail || `${companyName} <onboarding@resend.dev>`,
       to: recipientEmail,
       subject: `You've been invited to join ${companyName}`,
       html: `
@@ -173,10 +172,10 @@ export async function sendVoidNotification(
   reason?: string
 ) {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Document Cancelled: ${documentName}`,
       html: `
@@ -227,10 +226,10 @@ export async function sendSigningReminder(
   signingLink: string
 ) {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
       to: signerEmail,
       subject: `Reminder: Document Waiting for Your Signature - ${documentName}`,
       html: `
@@ -287,11 +286,10 @@ export async function sendCompletedDocument(
   downloadLink: string
 ) {
   try {
-    const { client } = await getResendClient();
+    const { client, fromEmail } = await getResendClient();
     
-    // Use Resend's test domain - for production, verify your domain at https://resend.com/domains
     const result = await client.emails.send({
-      from: 'Lendry.AI <onboarding@resend.dev>',
+      from: fromEmail || 'Lendry.AI <onboarding@resend.dev>',
       to: recipientEmail,
       subject: `Document Completed: ${documentName}`,
       html: `

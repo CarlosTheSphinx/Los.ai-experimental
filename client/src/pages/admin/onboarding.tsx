@@ -491,8 +491,7 @@ function StepTeamSetup({
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: number) => {
-      const res = await apiRequest('DELETE', `/api/admin/users/${userId}`);
-      return res.json();
+      await apiRequest('DELETE', `/api/admin/users/${userId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
@@ -600,7 +599,7 @@ function StepTeamSetup({
                   id="team-add-firstname"
                   value={newMember.firstName}
                   onChange={(e) => setNewMember({ ...newMember, firstName: e.target.value })}
-                  placeholder="Jane"
+                  placeholder="First name"
                   data-testid="input-team-add-firstname"
                 />
               </div>
@@ -610,7 +609,7 @@ function StepTeamSetup({
                   id="team-add-lastname"
                   value={newMember.lastName}
                   onChange={(e) => setNewMember({ ...newMember, lastName: e.target.value })}
-                  placeholder="Smith"
+                  placeholder="Last name"
                   data-testid="input-team-add-lastname"
                 />
               </div>
@@ -621,7 +620,7 @@ function StepTeamSetup({
                   type="email"
                   value={newMember.email}
                   onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-                  placeholder="jane@company.com"
+                  placeholder="Email address"
                   data-testid="input-team-add-email"
                 />
               </div>

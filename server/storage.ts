@@ -691,8 +691,9 @@ export class DatabaseStorage implements IStorage {
 
   // Admin methods - Get all users (admin view)
   async getAllUsers(filters?: { role?: string; search?: string }): Promise<User[]> {
-    let query = db.select().from(users);
     const conditions = [];
+    
+    conditions.push(eq(users.isActive, true));
     
     if (filters?.role) {
       conditions.push(eq(users.role, filters.role));
@@ -704,10 +705,7 @@ export class DatabaseStorage implements IStorage {
       ));
     }
     
-    if (conditions.length > 0) {
-      return await db.select().from(users).where(and(...conditions)).orderBy(desc(users.createdAt));
-    }
-    return await db.select().from(users).orderBy(desc(users.createdAt));
+    return await db.select().from(users).where(and(...conditions)).orderBy(desc(users.createdAt));
   }
 
   // Admin methods - Get all projects (across all users)
