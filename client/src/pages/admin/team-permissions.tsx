@@ -6,14 +6,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Shield } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PERMISSION_CATEGORIES, TEAM_ROLES, type PermissionKey } from "@shared/schema";
+import { PERMISSION_CATEGORIES, SCOPABLE_PERMISSIONS, type PermissionKey } from "@shared/schema";
+
+interface PermissionValue {
+  enabled: boolean;
+  scope: string;
+}
 
 interface PermissionState {
   [role: string]: {
-    [key: string]: boolean;
+    [key: string]: PermissionValue;
   };
 }
 
@@ -25,7 +31,7 @@ function TeamPermissionsPage() {
     queryKey: ["team-permissions"],
     queryFn: async () => {
       const response = await apiRequest("GET", "/api/admin/team-permissions");
-      return response;
+      return response.json();
     },
   });
 
@@ -34,21 +40,20 @@ function TeamPermissionsPage() {
       role: string;
       permissionKey: string;
       enabled: boolean;
+      scope?: string;
     }) => {
       return await apiRequest("PUT", "/api/admin/team-permissions", payload);
     },
     onSuccess: () => {
       toast({
-        title: "Success",
-        description: "Permission updated successfully",
+        title: "Permission updated",
       });
       queryClient.invalidateQueries({ queryKey: ["team-permissions"] });
       refetch();
     },
-    onError: (error) => {
+    onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update permission",
+        title: "Failed to update permission",
         variant: "destructive",
       });
     },
@@ -62,8 +67,22 @@ function TeamPermissionsPage() {
     });
   };
 
+  const handleScopeChange = (role: string, permissionKey: string, scope: string) => {
+    const currentEnabled = data?.[role]?.[permissionKey]?.enabled ?? false;
+    updatePermissionMutation.mutate({
+      role,
+      permissionKey,
+      enabled: currentEnabled,
+      scope,
+    });
+  };
+
   const isEditableRole = (role: string) => {
-    return ["processor"].includes(role);
+    return role === "processor";
+  };
+
+  const isScopable = (key: string) => {
+    return SCOPABLE_PERMISSIONS.includes(key as PermissionKey);
   };
 
   if (isLoading) {
@@ -96,7 +115,7 @@ function TeamPermissionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-4xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="text-4xl font-bold tracking-tight flex items-center gap-2" data-testid="text-team-permissions-title">
           <Shield className="h-10 w-10" />
           Team Permissions
         </h1>
@@ -116,10 +135,10 @@ function TeamPermissionsPage() {
           <Tabs defaultValue="processor" value={selectedRole} onValueChange={setSelectedRole}>
             <TabsList className="grid w-full grid-cols-2">
               {roleOptions.map((role) => (
-                <TabsTrigger key={role.value} value={role.value}>
+                <TabsTrigger key={role.value} value={role.value} data-testid={`tab-role-${role.value}`}>
                   <div className="flex items-center gap-2">
                     {role.label}
-                    {["admin", "super_admin"].includes(role.value) && (
+                    {role.value === "admin" && (
                       <Badge variant="secondary" className="ml-1">
                         Full
                       </Badge>
@@ -152,49 +171,79 @@ function TeamPermissionsPage() {
                           </h3>
                           <Badge variant="outline">
                             {category.permissions.filter((p) => {
-                              const perms = data?.[role.value];
-                              return perms?.[p.key];
+                              const permValue = data?.[role.value]?.[p.key];
+                              return permValue?.enabled;
                             }).length} / {category.permissions.length}
                           </Badge>
                         </div>
 
                         <div className="space-y-3">
                           {category.permissions.map((permission) => {
-                            const isEnabled = data?.[role.value]?.[permission.key] || false;
+                            const permValue = data?.[role.value]?.[permission.key];
+                            const isEnabled = permValue?.enabled || false;
+                            const scope = permValue?.scope || "all";
                             const isEditable = isEditableRole(role.value);
+                            const showScope = isEditable && isScopable(permission.key) && isEnabled;
 
                             return (
                               <div
                                 key={permission.key}
-                                className="flex items-center justify-between p-3 bg-muted/50 rounded hover:bg-muted transition-colors"
+                                className="p-3 bg-muted/50 rounded"
                               >
-                                <div className="flex items-center gap-3 flex-1">
-                                  <Label
-                                    htmlFor={`${role.value}-${permission.key}`}
-                                    className="cursor-pointer flex-1 font-normal"
-                                  >
-                                    {permission.label}
-                                  </Label>
-                                  <code className="text-xs text-muted-foreground bg-background px-2 py-1 rounded">
-                                    {permission.key}
-                                  </code>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <Label
+                                      htmlFor={`${role.value}-${permission.key}`}
+                                      className="cursor-pointer flex-1 font-normal"
+                                    >
+                                      {permission.label}
+                                    </Label>
+                                    <code className="text-xs text-muted-foreground bg-background px-2 py-1 rounded">
+                                      {permission.key}
+                                    </code>
+                                  </div>
+
+                                  {isEditable ? (
+                                    <Switch
+                                      id={`${role.value}-${permission.key}`}
+                                      checked={isEnabled}
+                                      onCheckedChange={() =>
+                                        handleToggle(role.value, permission.key, isEnabled)
+                                      }
+                                      disabled={updatePermissionMutation.isPending}
+                                      data-testid={`switch-${role.value}-${permission.key}`}
+                                    />
+                                  ) : (
+                                    <Badge
+                                      variant={isEnabled ? "default" : "secondary"}
+                                    >
+                                      {isEnabled ? "Enabled" : "Disabled"}
+                                    </Badge>
+                                  )}
                                 </div>
 
-                                {isEditable ? (
-                                  <Switch
-                                    id={`${role.value}-${permission.key}`}
-                                    checked={isEnabled}
-                                    onCheckedChange={() =>
-                                      handleToggle(role.value, permission.key, isEnabled)
-                                    }
-                                    disabled={updatePermissionMutation.isPending}
-                                  />
-                                ) : (
-                                  <Badge
-                                    variant={isEnabled ? "default" : "secondary"}
-                                  >
-                                    {isEnabled ? "Enabled" : "Disabled"}
-                                  </Badge>
+                                {showScope && (
+                                  <div className="mt-3 flex items-center gap-3 pl-1">
+                                    <span className="text-xs text-muted-foreground">Scope:</span>
+                                    <Select
+                                      value={scope}
+                                      onValueChange={(val) => handleScopeChange(role.value, permission.key, val)}
+                                      disabled={updatePermissionMutation.isPending}
+                                    >
+                                      <SelectTrigger className="w-[180px] h-8 text-xs" data-testid={`select-scope-${permission.key}`}>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="all">All</SelectItem>
+                                        <SelectItem value="assigned_only">Assigned Only</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    {scope === "assigned_only" && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Only sees items on deals they are assigned to
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             );
@@ -216,7 +265,7 @@ function TeamPermissionsPage() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>
-            <span className="font-semibold">Processor:</span> Can be assigned to specific deals and tasks. Permissions are customizable above.
+            <span className="font-semibold">Processor:</span> Can be assigned to specific deals and tasks. Permissions are customizable above. Use "Assigned Only" scope to limit visibility to their assigned deals.
           </p>
           <p>
             <span className="font-semibold">Admin:</span> Has full access to all

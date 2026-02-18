@@ -932,19 +932,22 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(teamPermissions);
   }
 
-  async upsertPermission(role: string, permissionKey: string, enabled: boolean, updatedBy: number): Promise<TeamPermission> {
+  async upsertPermission(role: string, permissionKey: string, enabled: boolean, updatedBy: number, scope?: string): Promise<TeamPermission> {
     const existing = await db.select().from(teamPermissions)
       .where(and(eq(teamPermissions.role, role), eq(teamPermissions.permissionKey, permissionKey)));
     
+    const setData: Record<string, any> = { enabled, updatedBy, updatedAt: new Date() };
+    if (scope !== undefined) setData.scope = scope;
+
     if (existing.length > 0) {
       const [updated] = await db.update(teamPermissions)
-        .set({ enabled, updatedBy, updatedAt: new Date() })
+        .set(setData)
         .where(and(eq(teamPermissions.role, role), eq(teamPermissions.permissionKey, permissionKey)))
         .returning();
       return updated;
     } else {
       const [created] = await db.insert(teamPermissions)
-        .values({ role, permissionKey, enabled, updatedBy })
+        .values({ role, permissionKey, enabled, updatedBy, scope: scope || 'all' })
         .returning();
       return created;
     }

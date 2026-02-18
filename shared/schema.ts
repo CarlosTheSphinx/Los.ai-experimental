@@ -1630,9 +1630,10 @@ export type FieldBindingKey = typeof fieldBindingKeys[number];
 // Team Permissions - role-based permission configuration
 export const teamPermissions = pgTable("team_permissions", {
   id: serial("id").primaryKey(),
-  role: varchar("role", { length: 50 }).notNull(), // staff, admin
+  role: varchar("role", { length: 50 }).notNull(), // processor, admin
   permissionKey: varchar("permission_key", { length: 100 }).notNull(),
   enabled: boolean("enabled").default(false).notNull(),
+  scope: varchar("scope", { length: 50 }).default("all"), // all, assigned_only
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
 });
@@ -1699,6 +1700,13 @@ export const PERMISSION_KEYS = [
 ] as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[number];
+
+export const SCOPABLE_PERMISSIONS: PermissionKey[] = [
+  "quotes.view",
+  "agreements.view",
+  "projects.view",
+  "pipeline.view",
+];
 
 // Permission display metadata
 export const PERMISSION_CATEGORIES: Record<string, { label: string; permissions: { key: PermissionKey; label: string }[] }> = {

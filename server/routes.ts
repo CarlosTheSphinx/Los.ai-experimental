@@ -4356,13 +4356,16 @@ export async function registerRoutes(
       await storage.initializeDefaultPermissions();
       const allPermissions = await storage.getAllPermissions();
 
-      // Group permissions by role
-      const grouped: Record<string, Record<string, boolean>> = {};
+      // Group permissions by role with enabled + scope
+      const grouped: Record<string, Record<string, { enabled: boolean; scope: string }>> = {};
       for (const perm of allPermissions) {
         if (!grouped[perm.role]) {
           grouped[perm.role] = {};
         }
-        grouped[perm.role][perm.permissionKey] = perm.enabled;
+        grouped[perm.role][perm.permissionKey] = {
+          enabled: perm.enabled,
+          scope: perm.scope || 'all',
+        };
       }
 
       res.json(grouped);
@@ -4375,23 +4378,23 @@ export async function registerRoutes(
   // Team Permissions - Update a single permission (admin only)
   app.put('/api/admin/team-permissions', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { role, permissionKey, enabled } = req.body;
+      const { role, permissionKey, enabled, scope } = req.body;
 
       if (!role || !permissionKey || enabled === undefined) {
         return res.status(400).json({ error: 'Missing role, permissionKey, or enabled field' });
       }
 
-      if (!['staff', 'processor'].includes(role)) {
-        return res.status(400).json({ error: 'Can only configure permissions for staff and processor roles' });
+      if (!['processor'].includes(role)) {
+        return res.status(400).json({ error: 'Can only configure permissions for processor role' });
       }
 
-      await storage.upsertPermission(role, permissionKey, enabled, req.user!.id);
+      await storage.upsertPermission(role, permissionKey, enabled, req.user!.id, scope);
 
       await storage.createAdminActivity({
         userId: req.user!.id,
         actionType: 'permissions_updated',
         actionDescription: `Updated permission ${permissionKey} for role: ${role}`,
-        metadata: { role, permissionKey, enabled }
+        metadata: { role, permissionKey, enabled, scope }
       });
 
       res.json({ success: true });
