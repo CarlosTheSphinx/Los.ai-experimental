@@ -5326,6 +5326,10 @@ export async function registerRoutes(
     try {
       const { key } = req.params;
       const { value, description } = req.body;
+
+      if (key === 'pandadoc_api_key' && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only super admins can manage PandaDoc API keys' });
+      }
       
       if (!value) {
         return res.status(400).json({ error: 'Value is required' });
@@ -13720,7 +13724,7 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
-  // PandaDoc API key status - check if configured
+  // PandaDoc API key status - check if configured (super admin sees full details, regular admin sees connected/not)
   app.get('/api/admin/pandadoc/status', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       // Check env var first, then system setting
@@ -13729,11 +13733,15 @@ If the user provides specific criteria, extract as many rules as you can from th
         const setting = await storage.getSettingByKey('pandadoc_api_key');
         apiKey = setting?.settingValue || '';
       }
+      const isSuperAdmin = req.user?.role === 'super_admin';
       if (apiKey) {
-        const masked = apiKey.length > 8
-          ? apiKey.substring(0, 4) + '****' + apiKey.substring(apiKey.length - 4)
-          : '****';
-        res.json({ connected: true, maskedKey: masked });
+        const result: any = { connected: true };
+        if (isSuperAdmin) {
+          result.maskedKey = apiKey.length > 8
+            ? apiKey.substring(0, 4) + '****' + apiKey.substring(apiKey.length - 4)
+            : '****';
+        }
+        res.json(result);
       } else {
         res.json({ connected: false });
       }
@@ -13742,8 +13750,8 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
-  // PandaDoc API key test - verify the key works
-  app.get('/api/admin/pandadoc/test', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+  // PandaDoc API key test - verify the key works (super admin only)
+  app.get('/api/admin/pandadoc/test', authenticateUser, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
     try {
       let apiKey = process.env.PANDADOC_API_KEY;
       if (!apiKey) {

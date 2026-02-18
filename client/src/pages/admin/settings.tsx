@@ -954,39 +954,45 @@ export default function AdminSettings() {
                       </div>
                     </div>
                   )}
-                  <PandaDocApiKeySection />
+                  {isSuperAdmin ? (
+                    <>
+                      <PandaDocApiKeySection />
 
-                  <div className="mt-4 border rounded-lg p-4 space-y-3" data-testid="integration-pandadoc-webhook">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-5 w-5 text-primary" />
-                      <span className="font-medium">PandaDoc Webhook URL</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Set this URL in your PandaDoc account (Settings &rarr; Integrations &rarr; Webhooks) to automatically create loan deals when documents are signed.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        readOnly
-                        value={`${window.location.origin}/api/webhooks/pandadoc`}
-                        className="font-mono text-xs"
-                        data-testid="input-pandadoc-webhook-url"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/pandadoc`);
-                          toast({ title: "Copied", description: "Webhook URL copied to clipboard" });
-                        }}
-                        data-testid="button-copy-webhook-url"
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Subscribe to events: <strong>document.completed</strong>, <strong>document.viewed</strong>, <strong>document.sent</strong>
-                    </p>
-                  </div>
+                      <div className="mt-4 border rounded-lg p-4 space-y-3" data-testid="integration-pandadoc-webhook">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-primary" />
+                          <span className="font-medium">PandaDoc Webhook URL</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Set this URL in your PandaDoc account (Settings &rarr; Integrations &rarr; Webhooks) to automatically create loan deals when documents are signed.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            readOnly
+                            value={`${window.location.origin}/api/webhooks/pandadoc`}
+                            className="font-mono text-xs"
+                            data-testid="input-pandadoc-webhook-url"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/pandadoc`);
+                              toast({ title: "Copied", description: "Webhook URL copied to clipboard" });
+                            }}
+                            data-testid="button-copy-webhook-url"
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Subscribe to events: <strong>document.completed</strong>, <strong>document.viewed</strong>, <strong>document.sent</strong>
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <PandaDocStatusReadonly />
+                  )}
 
                   <div className="mt-4 flex justify-end">
                     <Button
@@ -1202,6 +1208,40 @@ function PandaDocApiKeySection() {
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+function PandaDocStatusReadonly() {
+  const { data: pandadocStatus, isLoading } = useQuery<{ connected: boolean }>({
+    queryKey: ['/api/admin/pandadoc/status'],
+  });
+
+  return (
+    <div className="mt-6 border rounded-lg p-4 space-y-3" data-testid="integration-pandadoc-readonly">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          <span className="font-medium">PandaDoc E-Signatures</span>
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-5 w-24" />
+        ) : pandadocStatus?.connected ? (
+          <Badge variant="default">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Connected
+          </Badge>
+        ) : (
+          <Badge variant="secondary">
+            <XCircle className="h-3 w-3 mr-1" />
+            Not Connected
+          </Badge>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">
+        E-signature service for term sheets, commitment letters, and closing documents.
+        {!pandadocStatus?.connected && " Contact your system administrator to configure this integration."}
+      </p>
     </div>
   );
 }
