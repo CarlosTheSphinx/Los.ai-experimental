@@ -5619,6 +5619,20 @@ export async function registerRoutes(
         status: process.env.GEOAPIFY_API_KEY ? 'Connected' : 'Not configured',
         details: process.env.GEOAPIFY_API_KEY ? { configured: true } : undefined
       };
+
+      // Check PandaDoc integration (env var or system setting)
+      let pandadocKey = process.env.PANDADOC_API_KEY;
+      if (!pandadocKey) {
+        try {
+          const setting = await storage.getSettingByKey('pandadoc_api_key');
+          pandadocKey = setting?.settingValue || '';
+        } catch {}
+      }
+      integrations.pandadoc = {
+        connected: !!pandadocKey,
+        status: pandadocKey ? 'Connected' : 'Not configured',
+        details: pandadocKey ? { configured: true } : undefined
+      };
       
       res.json({ integrations });
     } catch (error) {
