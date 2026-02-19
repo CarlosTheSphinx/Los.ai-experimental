@@ -1529,7 +1529,7 @@ function StepCommunications({
               <div className="h-9 w-9 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
                 <Send className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               </div>
-              <h4 className="font-medium text-sm">Loan Digests</h4>
+              <h4 className="font-medium text-sm">Automatic Loan Updates</h4>
               <p className="text-sm text-muted-foreground">
                 Automated email and SMS updates sent to borrowers and partners with loan status, next steps, and outstanding items.
               </p>
