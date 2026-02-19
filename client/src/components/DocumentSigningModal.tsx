@@ -1198,19 +1198,15 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                         data-testid="upload-area"
                       >
                         <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                        <p className="text-lg font-medium">Upload your Term Sheet PDF</p>
-                        <p className="text-sm text-muted-foreground">Click to select a PDF file</p>
+                        <p className="text-lg font-medium">Upload your Term Sheet</p>
+                        <p className="text-sm text-muted-foreground">PDF, Word, Excel, images, and more</p>
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept=".pdf"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.odt,.ods,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.tif,.webp,.svg,.heic"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
-                            if (file.type !== 'application/pdf') {
-                              toast({ title: "Invalid File", description: "Please upload a PDF file", variant: "destructive" });
-                              return;
-                            }
                             const reader = new FileReader();
                             reader.onload = (ev) => {
                               setPdfData(ev.target?.result as string);
@@ -1231,11 +1227,18 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                             <Check className="w-5 h-5" />
                             <span>{fileName}</span>
                           </div>
-                          <div className="border rounded-lg overflow-hidden max-h-[200px]">
-                            <PDFDocument file={pdfData} onLoadSuccess={onDocumentLoadSuccess}>
-                              <PDFPage pageNumber={1} width={400} />
-                            </PDFDocument>
-                          </div>
+                          {fileName?.toLowerCase().endsWith('.pdf') ? (
+                            <div className="border rounded-lg overflow-hidden max-h-[200px]">
+                              <PDFDocument file={pdfData} onLoadSuccess={onDocumentLoadSuccess}>
+                                <PDFPage pageNumber={1} width={400} />
+                              </PDFDocument>
+                            </div>
+                          ) : (
+                            <div className="border rounded-lg p-6 text-center bg-muted/30">
+                              <FileText className="w-10 h-10 mx-auto text-muted-foreground mb-2" />
+                              <p className="text-sm text-muted-foreground">Document uploaded successfully</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
