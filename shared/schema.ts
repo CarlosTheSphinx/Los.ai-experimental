@@ -2682,3 +2682,30 @@ export const emailThreadDealLinks = pgTable("email_thread_deal_links", {
 export const insertEmailThreadDealLinkSchema = createInsertSchema(emailThreadDealLinks).omit({ id: true, linkedAt: true });
 export type EmailThreadDealLink = typeof emailThreadDealLinks.$inferSelect;
 export type InsertEmailThreadDealLink = z.infer<typeof insertEmailThreadDealLinkSchema>;
+
+export const messageTemplates = pgTable("message_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  category: text("category").default("general"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
+
+export const MERGE_TAGS = [
+  { tag: "{{borrower_first_name}}", label: "Borrower First Name", description: "The borrower's first name" },
+  { tag: "{{borrower_last_name}}", label: "Borrower Last Name", description: "The borrower's last name" },
+  { tag: "{{borrower_email}}", label: "Borrower Email", description: "The borrower's email address" },
+  { tag: "{{loan_amount}}", label: "Loan Amount", description: "The loan amount" },
+  { tag: "{{property_address}}", label: "Property Address", description: "The property address" },
+  { tag: "{{loan_program}}", label: "Loan Program", description: "The loan program name" },
+  { tag: "{{deal_id}}", label: "Deal ID", description: "The deal identifier" },
+  { tag: "{{current_stage}}", label: "Current Stage", description: "The current deal stage" },
+  { tag: "{{company_name}}", label: "Company Name", description: "Your company name" },
+  { tag: "{{sender_name}}", label: "Sender Name", description: "Your name" },
+] as const;

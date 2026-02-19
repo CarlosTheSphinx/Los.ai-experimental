@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -16599,6 +16599,72 @@ Return JSON only:
     } catch (error) {
       console.error('Mark all read error:', error);
       res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+  });
+
+  // Message Templates CRUD
+  app.get('/api/message-templates', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const templates = await storage.getMessageTemplates(req.user!.id);
+      res.json({ templates });
+    } catch (error) {
+      console.error('Get templates error:', error);
+      res.status(500).json({ error: 'Failed to get templates' });
+    }
+  });
+
+  app.post('/api/message-templates', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const parsed = insertMessageTemplateSchema.safeParse({
+        ...req.body,
+        createdBy: req.user!.id,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid template data', details: parsed.error.flatten().fieldErrors });
+      }
+      const template = await storage.createMessageTemplate(parsed.data);
+      res.json({ template });
+    } catch (error) {
+      console.error('Create template error:', error);
+      res.status(500).json({ error: 'Failed to create template' });
+    }
+  });
+
+  app.put('/api/message-templates/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid template ID' });
+      }
+      const partial = insertMessageTemplateSchema.partial().safeParse(req.body);
+      if (!partial.success) {
+        return res.status(400).json({ error: 'Invalid template data', details: partial.error.flatten().fieldErrors });
+      }
+      const template = await storage.updateMessageTemplate(id, req.user!.id, partial.data);
+      if (!template) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      res.json({ template });
+    } catch (error) {
+      console.error('Update template error:', error);
+      res.status(500).json({ error: 'Failed to update template' });
+    }
+  });
+
+  app.delete('/api/message-templates/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid template ID' });
+      }
+      const deleted = await storage.deleteMessageTemplate(id, req.user!.id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete template error:', error);
+      res.status(500).json({ error: 'Failed to delete template' });
     }
   });
 
