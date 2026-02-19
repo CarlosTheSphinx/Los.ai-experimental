@@ -852,102 +852,106 @@ export default function AdminSettings() {
                         )}
                       </div>
 
-                      <div className="border rounded-lg p-4 space-y-3" data-testid="integration-resend">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-5 w-5 text-primary" />
-                            <span className="font-medium">Resend Email</span>
+                      {isSuperAdmin && (
+                        <>
+                          <div className="border rounded-lg p-4 space-y-3" data-testid="integration-resend">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Mail className="h-5 w-5 text-primary" />
+                                <span className="font-medium">Resend Email</span>
+                              </div>
+                              {integrationsData?.integrations.resend?.connected ? (
+                                <Badge variant="default">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Not Connected
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Send email notifications for loan digests and system alerts
+                            </p>
+                            {integrationsData?.integrations.resend?.details?.fromEmail && (
+                              <p className="text-xs text-muted-foreground">
+                                From: {integrationsData.integrations.resend.details.fromEmail}
+                              </p>
+                            )}
                           </div>
-                          {integrationsData?.integrations.resend?.connected ? (
-                            <Badge variant="default">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Connected
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Not Connected
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Send email notifications for loan digests and system alerts
-                        </p>
-                        {integrationsData?.integrations.resend?.details?.fromEmail && (
-                          <p className="text-xs text-muted-foreground">
-                            From: {integrationsData.integrations.resend.details.fromEmail}
-                          </p>
-                        )}
-                      </div>
 
-                      <div className="border rounded-lg p-4 space-y-3" data-testid="integration-openai">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Brain className="h-5 w-5 text-success" />
-                            <span className="font-medium">OpenAI</span>
+                          <div className="border rounded-lg p-4 space-y-3" data-testid="integration-openai">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Brain className="h-5 w-5 text-success" />
+                                <span className="font-medium">OpenAI</span>
+                              </div>
+                              {integrationsData?.integrations.openai?.connected ? (
+                                <Badge variant="default">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Not Connected
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              AI-powered features for document analysis and automation
+                            </p>
                           </div>
-                          {integrationsData?.integrations.openai?.connected ? (
-                            <Badge variant="default">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Connected
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Not Connected
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          AI-powered features for document analysis and automation
-                        </p>
-                      </div>
 
-                      <div className="border rounded-lg p-4 space-y-3" data-testid="integration-apify">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Bot className="h-5 w-5 text-warning" />
-                            <span className="font-medium">Apify Scraper</span>
+                          <div className="border rounded-lg p-4 space-y-3" data-testid="integration-apify">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Bot className="h-5 w-5 text-warning" />
+                                <span className="font-medium">Apify Scraper</span>
+                              </div>
+                              {integrationsData?.integrations.apify?.connected ? (
+                                <Badge variant="default">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Not Configured
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Automated quote scraping from external pricing providers
+                            </p>
                           </div>
-                          {integrationsData?.integrations.apify?.connected ? (
-                            <Badge variant="default">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Connected
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Not Configured
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Automated quote scraping from external pricing providers
-                        </p>
-                      </div>
 
-                      <div className="border rounded-lg p-4 space-y-3" data-testid="integration-geoapify">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-destructive" />
-                            <span className="font-medium">Geoapify</span>
+                          <div className="border rounded-lg p-4 space-y-3" data-testid="integration-geoapify">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-5 w-5 text-destructive" />
+                                <span className="font-medium">Geoapify</span>
+                              </div>
+                              {integrationsData?.integrations.geoapify?.connected ? (
+                                <Badge variant="default">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Not Connected
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Address autocomplete and geocoding for property locations
+                            </p>
                           </div>
-                          {integrationsData?.integrations.geoapify?.connected ? (
-                            <Badge variant="default">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Connected
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Not Connected
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Address autocomplete and geocoding for property locations
-                        </p>
-                      </div>
+                        </>
+                      )}
                     </div>
                   )}
                   {isSuperAdmin ? (
