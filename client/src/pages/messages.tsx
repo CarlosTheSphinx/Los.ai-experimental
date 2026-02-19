@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   MessageSquare,
   Send,
-  Bell,
   User,
   Clock,
   Plus,
@@ -432,8 +431,8 @@ export default function MessagesPage() {
                 >
                   <MessageSquare className="h-3 w-3 mr-1" />
                   In-App
-                  {threads.length > 0 && (
-                    <Badge variant={inboxTab === 'messages' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{threads.length}</Badge>
+                  {threads.filter((t: any) => t.isUnread).length > 0 && (
+                    <Badge variant={inboxTab === 'messages' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{threads.filter((t: any) => t.isUnread).length}</Badge>
                   )}
                 </Button>
                 <Button
@@ -445,8 +444,8 @@ export default function MessagesPage() {
                 >
                   <Mail className="h-3 w-3 mr-1" />
                   Email
-                  {emailThreads.length > 0 && (
-                    <Badge variant={inboxTab === 'email' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{emailThreads.length}</Badge>
+                  {emailThreads.filter((t: any) => t.unreadCount > 0).length > 0 && (
+                    <Badge variant={inboxTab === 'email' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{emailThreads.filter((t: any) => t.unreadCount > 0).length}</Badge>
                   )}
                 </Button>
               </div>
@@ -762,9 +761,8 @@ export default function MessagesPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {messages.map((msg) => {
+                    {messages.filter((msg) => msg.type !== "notification").map((msg) => {
                       const isOwnMessage = msg.senderId === user?.id;
-                      const isNotification = msg.type === "notification";
                       
                       return (
                         <div
@@ -774,15 +772,12 @@ export default function MessagesPage() {
                         >
                           <div
                             className={`max-w-[70%] rounded-lg p-3 ${
-                              isNotification
-                                ? "bg-warning/10 border border-warning/20"
-                                : isOwnMessage
+                              isOwnMessage
                                 ? "bg-primary text-primary-foreground"
                                 : "bg-muted"
                             }`}
                           >
                             <div className="flex items-center gap-2 mb-1">
-                              {isNotification && <Bell className="h-3 w-3 text-warning" />}
                               <span className="text-xs opacity-70">
                                 {msg.senderName || (msg.senderRole === 'system' ? 'System' : msg.senderRole)}
                                 {" · "}
