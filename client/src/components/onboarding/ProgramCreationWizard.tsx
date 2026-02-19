@@ -2021,18 +2021,18 @@ function ReviewRulesStep({
 
             return (
               <div key={docName} className="rounded-md border border-border/60" data-testid={`doc-rules-section-${docName}`}>
-                <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                <div className="flex items-center justify-between px-3 py-2 bg-blue-600 dark:bg-blue-700 rounded-t-md">
                   <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm font-medium truncate">{docName === 'General' ? 'General (all documents)' : docName}</span>
+                    <FileText className="h-3.5 w-3.5 text-white/80 flex-shrink-0" />
+                    <span className="text-sm font-medium truncate text-white">{docName === 'General' ? 'General (all documents)' : docName}</span>
                     {rulesForDoc.length > 0 && (
-                      <Badge variant="secondary" className="text-xs h-5 px-1.5">{rulesForDoc.length}</Badge>
+                      <Badge className="text-xs h-5 px-1.5 bg-white/20 text-white border-0">{rulesForDoc.length}</Badge>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 text-xs text-primary hover:text-primary"
+                    className="h-6 text-xs text-white hover:text-white hover:bg-white/10"
                     onClick={() => { setAddingForDoc(isAdding ? null : docName); setNewRuleTitle(''); setNewRuleSeverity('warning'); }}
                     data-testid={`button-add-rule-${docName}`}
                   >
