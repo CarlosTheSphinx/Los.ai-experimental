@@ -35,6 +35,10 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  ArrowUp,
+  ArrowDown,
+  Settings2,
+  FormInput,
 } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -135,46 +139,77 @@ const standardDocuments = [
   },
 ];
 
-const DSCR_QUOTE_FIELDS = [
-  { fieldKey: 'loanAmount', label: 'Loan Amount', defaultRequired: true },
-  { fieldKey: 'propertyValue', label: 'Property Value', defaultRequired: true },
-  { fieldKey: 'loanPurpose', label: 'Loan Purpose', defaultRequired: true },
-  { fieldKey: 'loanType', label: 'Loan Type (Fixed/ARM)', defaultRequired: true },
-  { fieldKey: 'propertyType', label: 'Property Type', defaultRequired: true },
-  { fieldKey: 'ficoScore', label: 'FICO Score', defaultRequired: true },
-  { fieldKey: 'grossMonthlyRent', label: 'Gross Monthly Rent', defaultRequired: false },
-  { fieldKey: 'annualTaxes', label: 'Annual Taxes', defaultRequired: false },
-  { fieldKey: 'annualInsurance', label: 'Annual Insurance', defaultRequired: false },
-  { fieldKey: 'interestOnly', label: 'Interest Only', defaultRequired: false },
-  { fieldKey: 'prepaymentPenalty', label: 'Prepayment Penalty', defaultRequired: false },
-  { fieldKey: 'appraisalValue', label: 'Appraisal Value', defaultRequired: false },
+// ─── Quote Form Field Types ─────────────────────────────────────
+
+type QuoteFormField = {
+  fieldKey: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'currency' | 'email' | 'phone' | 'select' | 'yes_no' | 'percentage';
+  required: boolean;
+  visible: boolean;
+  isDefault: boolean;
+  options?: string[];
+  conditionalOn?: string;
+  conditionalValue?: string;
+};
+
+const FIELD_TYPE_OPTIONS: { value: QuoteFormField['fieldType']; label: string }[] = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'currency', label: 'Currency ($)' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'percentage', label: 'Percentage (%)' },
+  { value: 'select', label: 'Dropdown' },
+  { value: 'yes_no', label: 'Yes / No' },
 ];
 
-const RTL_QUOTE_FIELDS = [
-  { fieldKey: 'loanType', label: 'Loan Type (Light/Heavy Rehab)', defaultRequired: true },
-  { fieldKey: 'purpose', label: 'Purpose (Purchase/Refi)', defaultRequired: true },
-  { fieldKey: 'asIsValue', label: 'As-Is Value', defaultRequired: true },
-  { fieldKey: 'arv', label: 'After Repair Value (ARV)', defaultRequired: true },
-  { fieldKey: 'rehabBudget', label: 'Rehab Budget', defaultRequired: true },
-  { fieldKey: 'propertyType', label: 'Property Type', defaultRequired: true },
-  { fieldKey: 'ficoScore', label: 'FICO Score', defaultRequired: true },
-  { fieldKey: 'propertyUnits', label: 'Property Units', defaultRequired: false },
-  { fieldKey: 'isMidstream', label: 'Is Midstream?', defaultRequired: false },
-  { fieldKey: 'borrowingEntityType', label: 'Borrowing Entity Type', defaultRequired: false },
-  { fieldKey: 'completedProjects', label: 'Completed Projects', defaultRequired: false },
-  { fieldKey: 'hasFullGuaranty', label: 'Full Guaranty?', defaultRequired: false },
-  { fieldKey: 'exitStrategy', label: 'Exit Strategy', defaultRequired: false },
-  { fieldKey: 'appraisalValue', label: 'Appraisal Value', defaultRequired: false },
+const CONTACT_FIELDS: QuoteFormField[] = [
+  { fieldKey: 'firstName', label: 'First Name', fieldType: 'text', required: true, visible: true, isDefault: true },
+  { fieldKey: 'lastName', label: 'Last Name', fieldType: 'text', required: true, visible: true, isDefault: true },
+  { fieldKey: 'email', label: 'Email', fieldType: 'email', required: true, visible: true, isDefault: true },
+  { fieldKey: 'phone', label: 'Phone Number', fieldType: 'phone', required: false, visible: true, isDefault: true },
+  { fieldKey: 'address', label: 'Address', fieldType: 'text', required: false, visible: true, isDefault: true },
 ];
 
-function getDefaultQuoteFields(loanType: string) {
+const DSCR_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
+  { fieldKey: 'loanAmount', label: 'Loan Amount', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'propertyValue', label: 'Property Value', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'loanPurpose', label: 'Loan Purpose', fieldType: 'select', required: true, visible: true, options: ['Purchase', 'Refinance', 'Cash-Out Refinance'] },
+  { fieldKey: 'loanType', label: 'Loan Type (Fixed/ARM)', fieldType: 'select', required: true, visible: true, options: ['Fixed', 'ARM'] },
+  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family', '2-4 Unit', 'Condo', 'Townhouse', 'Multifamily 5+'] },
+  { fieldKey: 'ficoScore', label: 'FICO Score', fieldType: 'number', required: true, visible: true },
+  { fieldKey: 'grossMonthlyRent', label: 'Gross Monthly Rent', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'annualTaxes', label: 'Annual Taxes', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'annualInsurance', label: 'Annual Insurance', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'interestOnly', label: 'Interest Only', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'prepaymentPenalty', label: 'Prepayment Penalty', fieldType: 'select', required: false, visible: true, options: ['None', '1 Year', '2 Years', '3 Years', '5 Years'] },
+  { fieldKey: 'appraisalValue', label: 'Appraisal Value', fieldType: 'currency', required: false, visible: true },
+];
+
+const RTL_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
+  { fieldKey: 'loanType', label: 'Loan Type (Light/Heavy Rehab)', fieldType: 'select', required: true, visible: true, options: ['Light Rehab', 'Heavy Rehab', 'Ground Up'] },
+  { fieldKey: 'purpose', label: 'Purpose (Purchase/Refi)', fieldType: 'select', required: true, visible: true, options: ['Purchase', 'Refinance'] },
+  { fieldKey: 'asIsValue', label: 'As-Is Value', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'arv', label: 'After Repair Value (ARV)', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'rehabBudget', label: 'Rehab Budget', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family', '2-4 Unit', 'Condo', 'Townhouse', 'Multifamily 5+'] },
+  { fieldKey: 'ficoScore', label: 'FICO Score', fieldType: 'number', required: true, visible: true },
+  { fieldKey: 'propertyUnits', label: 'Property Units', fieldType: 'number', required: false, visible: true },
+  { fieldKey: 'isMidstream', label: 'Is Midstream?', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'borrowingEntityType', label: 'Borrowing Entity Type', fieldType: 'select', required: false, visible: true, options: ['LLC', 'Corporation', 'Individual', 'Trust', 'Partnership'] },
+  { fieldKey: 'completedProjects', label: 'Completed Projects', fieldType: 'number', required: false, visible: true },
+  { fieldKey: 'hasFullGuaranty', label: 'Full Guaranty?', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'exitStrategy', label: 'Exit Strategy', fieldType: 'select', required: false, visible: true, options: ['Sell', 'Refinance', 'Hold'] },
+  { fieldKey: 'appraisalValue', label: 'Appraisal Value', fieldType: 'currency', required: false, visible: true },
+];
+
+function getDefaultQuoteFields(loanType: string): QuoteFormField[] {
   const baseFields = loanType.toLowerCase() === 'dscr' ? DSCR_QUOTE_FIELDS : RTL_QUOTE_FIELDS;
-  return baseFields.map((field) => ({
-    fieldKey: field.fieldKey,
-    label: field.label,
-    required: field.defaultRequired,
-    visible: true,
-  }));
+  return [
+    ...CONTACT_FIELDS,
+    ...baseFields.map((field) => ({ ...field, isDefault: true })),
+  ];
 }
 
 // ─── Default stages ────────────────────────────────────────────
@@ -218,16 +253,17 @@ interface RuleEntry {
 
 // ─── Wizard Steps ───────────────────────────────────────────────
 
-type WizardStep = 'credit-policy' | 'program-details' | 'stages' | 'documents' | 'tasks' | 'review-rules' | 'summary';
+type WizardStep = 'credit-policy' | 'program-details' | 'quote-form' | 'stages' | 'documents' | 'tasks' | 'review-rules' | 'summary';
 
 const wizardSteps: { key: WizardStep; label: string; number: number }[] = [
   { key: 'credit-policy', label: 'Credit Policy', number: 1 },
   { key: 'program-details', label: 'Program Details', number: 2 },
-  { key: 'stages', label: 'Stages', number: 3 },
-  { key: 'documents', label: 'Documents', number: 4 },
-  { key: 'tasks', label: 'Tasks', number: 5 },
-  { key: 'review-rules', label: 'AI Rules', number: 6 },
-  { key: 'summary', label: 'Review & Create', number: 7 },
+  { key: 'quote-form', label: 'Quote Form', number: 3 },
+  { key: 'stages', label: 'Stages', number: 4 },
+  { key: 'documents', label: 'Documents', number: 5 },
+  { key: 'tasks', label: 'Tasks', number: 6 },
+  { key: 'review-rules', label: 'AI Rules', number: 7 },
+  { key: 'summary', label: 'Review & Create', number: 8 },
 ];
 
 // ─── DSCR Example Defaults ───────────────────────────────────────
@@ -329,7 +365,7 @@ export function ProgramCreationWizard({
   const [eligiblePropertyTypes, setEligiblePropertyTypes] = useState<string[]>([
     'single-family-residence', '2-4-unit', 'multifamily-5-plus', 'rental-portfolio', 'mixed-use',
   ]);
-  const [quoteFormFields, setQuoteFormFields] = useState(getDefaultQuoteFields('dscr'));
+  const [quoteFormFields, setQuoteFormFields] = useState<QuoteFormField[]>(getDefaultQuoteFields('dscr'));
 
   // Stages — pre-populated
   const [stages, setStages] = useState<StageEntry[]>([...dscrDefaultStages]);
@@ -517,6 +553,11 @@ export function ProgramCreationWizard({
           setTermOptions={setTermOptions}
           eligiblePropertyTypes={eligiblePropertyTypes}
           onPropertyTypeToggle={handlePropertyTypeToggle}
+        />
+      )}
+
+      {wizardStep === 'quote-form' && (
+        <QuoteFormBuilderStep
           quoteFormFields={quoteFormFields}
           setQuoteFormFields={setQuoteFormFields}
         />
@@ -559,6 +600,7 @@ export function ProgramCreationWizard({
           documents={documents}
           tasks={tasks}
           reviewRules={reviewRules}
+          quoteFormFields={quoteFormFields}
           selectedCreditPolicyId={selectedCreditPolicyId}
           creditPolicies={creditPoliciesData?.policies || []}
         />
@@ -976,8 +1018,6 @@ function ProgramDetailsStep({
   setTermOptions,
   eligiblePropertyTypes,
   onPropertyTypeToggle,
-  quoteFormFields,
-  setQuoteFormFields,
 }: {
   programName: string;
   setProgramName: (v: string) => void;
@@ -1001,8 +1041,6 @@ function ProgramDetailsStep({
   setTermOptions: (v: string) => void;
   eligiblePropertyTypes: string[];
   onPropertyTypeToggle: (type: string) => void;
-  quoteFormFields: any[];
-  setQuoteFormFields: (v: any[]) => void;
 }) {
   return (
     <Card>
@@ -1012,7 +1050,7 @@ function ProgramDetailsStep({
           Program Details
         </CardTitle>
         <CardDescription>
-          Define your loan program type, parameters, and the quote fields borrowers will see.
+          Define your loan program type and parameters.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1106,17 +1144,6 @@ function ProgramDetailsStep({
           </div>
         </div>
 
-        <Separator />
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <Label className="text-xs font-medium">Quote Form Fields</Label>
-            <p className="text-[11px] text-muted-foreground">
-              These are the input fields borrowers fill out when requesting a quote for this program.
-            </p>
-          </div>
-          <QuoteFormFieldsList quoteFormFields={quoteFormFields} setQuoteFormFields={setQuoteFormFields} />
-        </div>
       </CardContent>
     </Card>
   );
@@ -1185,19 +1212,24 @@ function LoanTypeSelector({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-const ALL_DEFAULT_FIELD_KEYS = new Set([
-  ...DSCR_QUOTE_FIELDS.map((f) => f.fieldKey),
-  ...RTL_QUOTE_FIELDS.map((f) => f.fieldKey),
-]);
+// ─── Step 3: Quote Form Builder ─────────────────────────────────
 
-function QuoteFormFieldsList({
+const CONTACT_FIELD_KEYS = new Set(CONTACT_FIELDS.map((f) => f.fieldKey));
+
+function QuoteFormBuilderStep({
   quoteFormFields,
   setQuoteFormFields,
 }: {
-  quoteFormFields: { fieldKey: string; label: string; visible: boolean; required: boolean }[];
-  setQuoteFormFields: (v: any[]) => void;
+  quoteFormFields: QuoteFormField[];
+  setQuoteFormFields: (v: QuoteFormField[]) => void;
 }) {
   const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<QuoteFormField['fieldType']>('text');
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [configuringIndex, setConfiguringIndex] = useState<number | null>(null);
+
+  const contactFields = quoteFormFields.filter((f) => CONTACT_FIELD_KEYS.has(f.fieldKey));
+  const programFields = quoteFormFields.filter((f) => !CONTACT_FIELD_KEYS.has(f.fieldKey));
 
   const addCustomField = () => {
     const name = newFieldName.trim();
@@ -1205,90 +1237,382 @@ function QuoteFormFieldsList({
     const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
     setQuoteFormFields([
       ...quoteFormFields,
-      { fieldKey, label: name, visible: true, required: false },
+      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false },
     ]);
     setNewFieldName('');
+    setNewFieldType('text');
   };
 
-  const removeField = (i: number) => {
-    setQuoteFormFields(quoteFormFields.filter((_, idx) => idx !== i));
+  const removeField = (fieldKey: string) => {
+    const removed = quoteFormFields.find((f) => f.fieldKey === fieldKey);
+    let updated = quoteFormFields.filter((f) => f.fieldKey !== fieldKey);
+    if (removed) {
+      updated = updated.map((f) => f.conditionalOn === fieldKey ? { ...f, conditionalOn: undefined, conditionalValue: undefined } : f);
+    }
+    setQuoteFormFields(updated);
   };
+
+  const updateField = (fieldKey: string, changes: Partial<QuoteFormField>) => {
+    let updated = quoteFormFields.map((f) => (f.fieldKey === fieldKey ? { ...f, ...changes } : f));
+
+    const changedField = updated.find((f) => f.fieldKey === fieldKey);
+    if (changedField) {
+      const isNoLongerConditionalParent =
+        (changes.fieldType && changes.fieldType !== 'select' && changes.fieldType !== 'yes_no') ||
+        (changes.visible === false);
+      if (isNoLongerConditionalParent) {
+        updated = updated.map((f) =>
+          f.conditionalOn === fieldKey ? { ...f, conditionalOn: undefined, conditionalValue: undefined } : f
+        );
+      }
+      if (changes.fieldType && changes.fieldType !== 'select') {
+        const idx = updated.findIndex((f) => f.fieldKey === fieldKey);
+        if (idx !== -1) updated[idx] = { ...updated[idx], options: undefined };
+      }
+    }
+
+    setQuoteFormFields(updated);
+  };
+
+  const moveField = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const contactCount = contactFields.length;
+    const actualFrom = contactCount + fromIdx;
+    const actualTo = contactCount + toIdx;
+    const updated = [...quoteFormFields];
+    const [moved] = updated.splice(actualFrom, 1);
+    updated.splice(actualTo, 0, moved);
+    setQuoteFormFields(updated);
+  };
+
+  const handleDragStart = (idx: number) => setDragIndex(idx);
+  const handleDragOver = (e: DragEvent) => e.preventDefault();
+  const handleDrop = (targetIdx: number) => {
+    if (dragIndex !== null && dragIndex !== targetIdx) moveField(dragIndex, targetIdx);
+    setDragIndex(null);
+  };
+
+  const getFieldTypeLabel = (type: QuoteFormField['fieldType']) =>
+    FIELD_TYPE_OPTIONS.find((o) => o.value === type)?.label || type;
+
+  const availableConditionalFields = quoteFormFields.filter(
+    (f) => f.visible && (f.fieldType === 'select' || f.fieldType === 'yes_no')
+  );
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-1.5 max-h-52 overflow-y-auto">
-        {quoteFormFields.map((field, i) => {
-          const isCustom = !ALL_DEFAULT_FIELD_KEYS.has(field.fieldKey);
-          return (
-            <div key={field.fieldKey} className="flex items-center justify-between gap-3 py-1 px-2 bg-muted/40 rounded">
-              <span className="text-xs flex-1">{field.label}</span>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1 text-[11px]">
-                  <Switch
-                    checked={field.visible}
-                    onCheckedChange={() => {
-                      const updated = [...quoteFormFields];
-                      updated[i] = { ...field, visible: !field.visible, required: field.visible ? false : field.required };
-                      setQuoteFormFields(updated);
-                    }}
-                    className="scale-75"
-                  />
-                  Visible
-                </label>
-                <label className="flex items-center gap-1 text-[11px]">
-                  <Switch
-                    checked={field.required}
-                    disabled={!field.visible}
-                    onCheckedChange={() => {
-                      const updated = [...quoteFormFields];
-                      updated[i] = { ...field, required: !field.required };
-                      setQuoteFormFields(updated);
-                    }}
-                    className="scale-75"
-                  />
-                  Required
-                </label>
-                {isCustom && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground"
-                    onClick={() => removeField(i)}
-                    data-testid={`button-remove-field-${field.fieldKey}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FormInput className="h-4 w-4" />
+          Quote Form Fields
+        </CardTitle>
+        <CardDescription>
+          Configure the fields borrowers and brokers will fill out when requesting a quote for this program. Set field types, required status, and conditional logic.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Contact Information (always included)</Label>
+          <div className="space-y-1.5 mt-2">
+            {contactFields.map((field) => (
+              <div
+                key={field.fieldKey}
+                className="flex items-center justify-between gap-3 py-2 px-3 bg-muted/30 rounded-md border border-dashed"
+              >
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm">{field.label}</span>
+                  <Badge variant="outline" className="text-[10px]">{getFieldTypeLabel(field.fieldType)}</Badge>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Switch
+                      checked={field.visible}
+                      onCheckedChange={(checked) => updateField(field.fieldKey, { visible: checked, required: checked ? field.required : false })}
+                      className="scale-75"
+                      data-testid={`switch-visible-${field.fieldKey}`}
+                    />
+                    Visible
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Switch
+                      checked={field.required}
+                      disabled={!field.visible}
+                      onCheckedChange={(checked) => updateField(field.fieldKey, { required: checked })}
+                      className="scale-75"
+                      data-testid={`switch-required-${field.fieldKey}`}
+                    />
+                    Required
+                  </label>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex items-center gap-2">
-        <Input
-          className="h-8 text-sm flex-1"
-          placeholder="New field name..."
-          value={newFieldName}
-          onChange={(e) => setNewFieldName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }}
-          data-testid="input-new-quote-field"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={addCustomField}
-          disabled={!newFieldName.trim()}
-          data-testid="button-add-quote-field"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Field
-        </Button>
-      </div>
-    </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Program-Specific Fields (drag to reorder)</Label>
+          <div className="space-y-1.5 mt-2">
+            {programFields.map((field, pIdx) => {
+              const isConfiguring = configuringIndex === pIdx;
+              const condField = field.conditionalOn
+                ? quoteFormFields.find((f) => f.fieldKey === field.conditionalOn)
+                : null;
+              return (
+                <div key={field.fieldKey}>
+                  <div
+                    draggable
+                    onDragStart={() => handleDragStart(pIdx)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(pIdx)}
+                    className={`flex items-center gap-2 py-2 px-3 rounded-md border transition-colors ${
+                      dragIndex === pIdx ? 'border-primary bg-primary/5' : 'bg-muted/40'
+                    } ${field.conditionalOn ? 'ml-6 border-l-2 border-l-primary/40' : ''}`}
+                    data-testid={`field-row-${field.fieldKey}`}
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab flex-shrink-0" />
+
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm truncate">{field.label}</span>
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0">{getFieldTypeLabel(field.fieldType)}</Badge>
+                      {field.conditionalOn && condField && (
+                        <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                          if {condField.label} = {field.conditionalValue}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => pIdx > 0 && moveField(pIdx, pIdx - 1)}
+                          disabled={pIdx === 0}
+                          data-testid={`button-move-up-${field.fieldKey}`}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => pIdx < programFields.length - 1 && moveField(pIdx, pIdx + 1)}
+                          disabled={pIdx === programFields.length - 1}
+                          data-testid={`button-move-down-${field.fieldKey}`}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Switch
+                          checked={field.visible}
+                          onCheckedChange={(checked) => updateField(field.fieldKey, { visible: checked, required: checked ? field.required : false })}
+                          className="scale-75"
+                          data-testid={`switch-visible-${field.fieldKey}`}
+                        />
+                        Visible
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Switch
+                          checked={field.required}
+                          disabled={!field.visible}
+                          onCheckedChange={(checked) => updateField(field.fieldKey, { required: checked })}
+                          className="scale-75"
+                          data-testid={`switch-required-${field.fieldKey}`}
+                        />
+                        Required
+                      </label>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setConfiguringIndex(isConfiguring ? null : pIdx)}
+                        data-testid={`button-configure-${field.fieldKey}`}
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </Button>
+
+                      {!field.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeField(field.fieldKey)}
+                          data-testid={`button-remove-field-${field.fieldKey}`}
+                        >
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {isConfiguring && (
+                    <div className="ml-6 mt-1 p-3 bg-muted/20 rounded-md border space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Field Label</Label>
+                          <Input
+                            value={field.label}
+                            onChange={(e) => updateField(field.fieldKey, { label: e.target.value })}
+                            data-testid={`input-label-${field.fieldKey}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Field Type</Label>
+                          <Select
+                            value={field.fieldType}
+                            onValueChange={(v) => updateField(field.fieldKey, {
+                              fieldType: v as QuoteFormField['fieldType'],
+                              options: v === 'select' ? (field.options?.length ? field.options : ['Option 1']) : undefined,
+                            })}
+                          >
+                            <SelectTrigger data-testid={`select-field-type-${field.fieldKey}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FIELD_TYPE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {field.fieldType === 'select' && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Dropdown Options (one per line)</Label>
+                          <Textarea
+                            value={(field.options || []).join('\n')}
+                            onChange={(e) => updateField(field.fieldKey, { options: e.target.value.split('\n').filter(Boolean) })}
+                            rows={3}
+                            placeholder="Option 1&#10;Option 2&#10;Option 3"
+                            data-testid={`textarea-options-${field.fieldKey}`}
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Conditional Logic</Label>
+                        <p className="text-[11px] text-muted-foreground mb-1">
+                          Only show this field when another field has a specific answer.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <Select
+                            value={field.conditionalOn || '__none__'}
+                            onValueChange={(v) => updateField(field.fieldKey, {
+                              conditionalOn: v === '__none__' ? undefined : v,
+                              conditionalValue: v === '__none__' ? undefined : field.conditionalValue,
+                            })}
+                          >
+                            <SelectTrigger data-testid={`select-conditional-on-${field.fieldKey}`}>
+                              <SelectValue placeholder="Show when..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Always show</SelectItem>
+                              {availableConditionalFields
+                                .filter((f) => f.fieldKey !== field.fieldKey)
+                                .map((f) => (
+                                  <SelectItem key={f.fieldKey} value={f.fieldKey}>{f.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+
+                          {field.conditionalOn && (() => {
+                            const parentField = quoteFormFields.find((f) => f.fieldKey === field.conditionalOn);
+                            if (!parentField) return null;
+                            if (parentField.fieldType === 'yes_no') {
+                              return (
+                                <Select
+                                  value={field.conditionalValue || ''}
+                                  onValueChange={(v) => updateField(field.fieldKey, { conditionalValue: v })}
+                                >
+                                  <SelectTrigger data-testid={`select-conditional-value-${field.fieldKey}`}>
+                                    <SelectValue placeholder="equals..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Yes">Yes</SelectItem>
+                                    <SelectItem value="No">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              );
+                            }
+                            if (parentField.fieldType === 'select' && parentField.options) {
+                              return (
+                                <Select
+                                  value={field.conditionalValue || ''}
+                                  onValueChange={(v) => updateField(field.fieldKey, { conditionalValue: v })}
+                                >
+                                  <SelectTrigger data-testid={`select-conditional-value-${field.fieldKey}`}>
+                                    <SelectValue placeholder="equals..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {parentField.options.map((opt) => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            }
+                            return (
+                              <Input
+                                value={field.conditionalValue || ''}
+                                onChange={(e) => updateField(field.fieldKey, { conditionalValue: e.target.value })}
+                                placeholder="equals..."
+                                data-testid={`input-conditional-value-${field.fieldKey}`}
+                              />
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Add Custom Field</Label>
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              className="flex-1"
+              placeholder="Field name..."
+              value={newFieldName}
+              onChange={(e) => setNewFieldName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }}
+              data-testid="input-new-quote-field"
+            />
+            <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as QuoteFormField['fieldType'])}>
+              <SelectTrigger className="w-36" data-testid="select-new-field-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={addCustomField}
+              disabled={!newFieldName.trim()}
+              data-testid="button-add-quote-field"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add Field
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─── Step 3: Stages ─────────────────────────────────────────────
+// ─── Step 4: Stages ─────────────────────────────────────────────
 
 function StagesStep({
   stages,
@@ -1363,7 +1687,7 @@ function StagesStep({
   );
 }
 
-// ─── Step 4: Documents ──────────────────────────────────────────
+// ─── Step 5: Documents ──────────────────────────────────────────
 
 function DocumentsStep({
   documents,
@@ -1495,7 +1819,7 @@ function DocumentsStep({
   );
 }
 
-// ─── Step 5: Tasks ──────────────────────────────────────────────
+// ─── Step 6: Tasks ──────────────────────────────────────────────
 
 function TasksStep({
   tasks,
@@ -1606,7 +1930,7 @@ function TasksStep({
   );
 }
 
-// ─── Step 6: Review Rules (AI Rules) ────────────────────────────
+// ─── Step 7: Review Rules (AI Rules) ────────────────────────────
 
 function ReviewRulesStep({
   reviewRules,
@@ -1716,7 +2040,7 @@ function ReviewRulesStep({
   );
 }
 
-// ─── Step 7: Summary ────────────────────────────────────────────
+// ─── Step 8: Summary ────────────────────────────────────────────
 
 function SummaryStep({
   programName,
@@ -1725,6 +2049,7 @@ function SummaryStep({
   documents,
   tasks,
   reviewRules,
+  quoteFormFields,
   selectedCreditPolicyId,
   creditPolicies,
 }: {
@@ -1734,12 +2059,17 @@ function SummaryStep({
   documents: DocEntry[];
   tasks: TaskEntry[];
   reviewRules: RuleEntry[];
+  quoteFormFields: QuoteFormField[];
   selectedCreditPolicyId: number | null;
   creditPolicies: any[];
 }) {
   const policyName = selectedCreditPolicyId
     ? creditPolicies.find((p: any) => p.id === selectedCreditPolicyId)?.name || 'Unknown'
     : 'None';
+
+  const visibleFields = quoteFormFields.filter((f) => f.visible);
+  const requiredFields = quoteFormFields.filter((f) => f.required);
+  const conditionalFields = quoteFormFields.filter((f) => f.conditionalOn);
 
   return (
     <Card>
@@ -1770,7 +2100,11 @@ function SummaryStep({
 
         <Separator />
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="bg-muted/50 rounded-md p-3 text-center">
+            <p className="text-2xl font-bold">{visibleFields.length}</p>
+            <p className="text-xs text-muted-foreground">Form Fields</p>
+          </div>
           <div className="bg-muted/50 rounded-md p-3 text-center">
             <p className="text-2xl font-bold">{stages.filter((s) => s.stepName.trim()).length}</p>
             <p className="text-xs text-muted-foreground">Stages</p>
@@ -1788,6 +2122,20 @@ function SummaryStep({
             <p className="text-xs text-muted-foreground">AI Rules</p>
           </div>
         </div>
+
+        {visibleFields.length > 0 && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Quote Form ({requiredFields.length} required, {conditionalFields.length} conditional)</Label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {visibleFields.map((f) => (
+                <Badge key={f.fieldKey} variant={f.required ? 'default' : 'outline'} className="text-xs">
+                  {f.label}
+                  {f.conditionalOn && ' *'}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {stages.filter((s) => s.stepName.trim()).length > 0 && (
           <div>
