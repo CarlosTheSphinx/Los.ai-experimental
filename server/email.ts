@@ -105,15 +105,17 @@ export async function sendTeamInviteEmail(
   inviterName: string,
   companyName: string,
   role: string,
-  inviteLink: string
+  inviteLink: string,
+  inviterEmail?: string
 ) {
   try {
     const { client, fromEmail } = await getResendClient();
     
     const roleLabel = role === 'admin' ? 'Admin' : 'Processor';
+    const displayInviter = inviterEmail || inviterName;
     
     const result = await client.emails.send({
-      from: fromEmail || `${companyName} <info@lendry.ai>`,
+      from: fromEmail || `Lendry.AI <info@lendry.ai>`,
       to: recipientEmail,
       subject: `You've been invited to join ${companyName}`,
       html: `
@@ -122,33 +124,27 @@ export async function sendTeamInviteEmail(
         <head>
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-            .content { background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
-            .button { display: inline-block; background-color: #1e40af; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
-            .footer { text-align: center; color: #64748b; font-size: 12px; margin-top: 20px; }
-            .info-box { background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #1e40af; margin: 15px 0; }
           </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
-              <h1>Team Invitation</h1>
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: white; font-size: 24px;">Team Invitation</h1>
             </div>
-            <div class="content">
+            <div style="background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px;">
               <p>Hello ${recipientName},</p>
-              <p><strong>${inviterName}</strong> has invited you to join <strong>${companyName}</strong> as a <strong>${roleLabel}</strong>.</p>
-              <div class="info-box">
+              <p><strong>${displayInviter}</strong> has invited you to join <strong>${companyName}</strong> as a <strong>${roleLabel}</strong>.</p>
+              <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #1e40af; margin: 15px 0;">
                 <p style="margin: 0;"><strong>Role:</strong> ${roleLabel}</p>
                 <p style="margin: 5px 0 0 0;"><strong>Email:</strong> ${recipientEmail}</p>
               </div>
               <p>Click the button below to set up your password and get started:</p>
               <div style="text-align: center;">
-                <a href="${inviteLink}" class="button">Accept Invitation</a>
+                <a href="${inviteLink}" style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; font-size: 16px;">Accept Invitation</a>
               </div>
               <p style="color: #64748b; font-size: 14px;">This invitation link will expire in 7 days.</p>
             </div>
-            <div class="footer">
+            <div style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
               <p>Powered by ${companyName}</p>
             </div>
           </div>

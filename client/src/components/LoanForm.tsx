@@ -11,13 +11,26 @@ import { Loader2, Calculator, DollarSign, Building, Percent } from "lucide-react
 import { useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 
+interface QuoteFormField {
+  fieldKey: string;
+  label: string;
+  visible: boolean;
+  required: boolean;
+}
+
 interface LoanFormProps {
   onSubmit: (data: LoanPricingFormData) => void;
   isLoading: boolean;
   defaultData?: LoanPricingFormData | null;
+  visibleFields?: QuoteFormField[];
 }
 
-export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
+export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: LoanFormProps) {
+  const isFieldVisible = (fieldKey: string) => {
+    if (!visibleFields || visibleFields.length === 0) return true;
+    const field = visibleFields.find(f => f.fieldKey === fieldKey);
+    return field ? field.visible : false;
+  };
   const form = useForm<LoanPricingFormData>({
     resolver: zodResolver(loanPricingFormSchema),
     defaultValues: defaultData || {
@@ -116,13 +129,16 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             
             {/* Financial Details Section */}
+            {(isFieldVisible('loanAmount') || isFieldVisible('propertyValue') || isFieldVisible('ficoScore') || isFieldVisible('grossMonthlyRent') || isFieldVisible('annualTaxes') || isFieldVisible('annualInsurance')) && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-muted-foreground" />
                 Financials
               </h3>
               
+              {(isFieldVisible('loanAmount') || isFieldVisible('propertyValue')) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {isFieldVisible('loanAmount') && (
                 <FormField
                   control={form.control}
                   name="loanAmount"
@@ -142,7 +158,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('propertyValue') && (
                 <FormField
                   control={form.control}
                   name="propertyValue"
@@ -162,8 +180,11 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
               </div>
+              )}
 
+              {(isFieldVisible('loanAmount') && isFieldVisible('propertyValue')) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -182,6 +203,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                   )}
                 />
 
+                {isFieldVisible('ficoScore') && (
                 <FormField
                   control={form.control}
                   name="ficoScore"
@@ -204,9 +226,13 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
               </div>
+              )}
 
+              {(isFieldVisible('grossMonthlyRent') || isFieldVisible('annualTaxes') || isFieldVisible('annualInsurance')) && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {isFieldVisible('grossMonthlyRent') && (
                 <FormField
                   control={form.control}
                   name="grossMonthlyRent"
@@ -226,7 +252,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('annualTaxes') && (
                 <FormField
                   control={form.control}
                   name="annualTaxes"
@@ -246,7 +274,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('annualInsurance') && (
                 <FormField
                   control={form.control}
                   name="annualInsurance"
@@ -255,7 +285,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                       <FormLabel className="text-foreground">Annual Insurance ($)</FormLabel>
                       <FormControl>
                         <CurrencyInput
-                          className="h-11 bg-muted border-border focus:bg-white transition-all" 
+                          className="h-11 bg-muted border-border focus:bg-background transition-all" 
                           placeholder="Enter insurance" 
                           value={field.value}
                           onChange={field.onChange}
@@ -266,8 +296,11 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
               </div>
+              )}
 
+              {(isFieldVisible('grossMonthlyRent') || isFieldVisible('annualTaxes') || isFieldVisible('annualInsurance')) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -305,8 +338,12 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                   )}
                 />
               </div>
+              )}
             </div>
+            )}
 
+            {(isFieldVisible('loanType') || isFieldVisible('loanPurpose') || isFieldVisible('propertyType') || isFieldVisible('interestOnly') || isFieldVisible('prepaymentPenalty')) && (
+            <>
             <div className="h-px bg-border" />
 
             {/* Loan Specifics Section */}
@@ -317,6 +354,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {isFieldVisible('loanType') && (
                 <FormField
                   control={form.control}
                   name="loanType"
@@ -340,7 +378,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('loanPurpose') && (
                 <FormField
                   control={form.control}
                   name="loanPurpose"
@@ -363,7 +403,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('propertyType') && (
                 <FormField
                   control={form.control}
                   name="propertyType"
@@ -397,7 +439,9 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('interestOnly') && (
                 <FormField
                   control={form.control}
                   name="interestOnly"
@@ -419,8 +463,10 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
+                )}
               </div>
 
+              {isFieldVisible('prepaymentPenalty') && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                  <FormField
                   control={form.control}
@@ -446,10 +492,11 @@ export function LoanForm({ onSubmit, isLoading, defaultData }: LoanFormProps) {
                     </FormItem>
                   )}
                 />
-
-{/* TPO Premium is automatically set to 1% - hidden from user */}
               </div>
+              )}
             </div>
+            </>
+            )}
 
             <Button 
               type="submit" 

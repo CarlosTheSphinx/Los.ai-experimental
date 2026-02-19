@@ -275,6 +275,7 @@ export default function QuotesUnified() {
       quoteId: quote.id,
       isRTL: isRTLQuote,
       loanData: loanData,
+      programId: quote.programId,
       customerFirstName: quote.customerFirstName,
       customerLastName: quote.customerLastName,
       propertyAddress: quote.propertyAddress,
@@ -405,13 +406,33 @@ export default function QuotesUnified() {
                   </CardContent>
                 </Card>
 
+                {selectedProgramId && (
                 <div className="max-w-4xl mx-auto">
                   {loanProductType === "dscr" ? (
-                    <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
+                    <LoanForm
+                      onSubmit={handleDSCRSubmit}
+                      isLoading={dscrPending}
+                      defaultData={dscrFormData}
+                      visibleFields={allActivePrograms.find(p => p.id === selectedProgramId)?.quoteFormFields as any}
+                    />
                   ) : (
-                    <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
+                    <RTLLoanForm
+                      onSubmit={handleRTLSubmit}
+                      isLoading={rtlPricingMutation.isPending}
+                      defaultData={rtlFormData}
+                      visibleFields={allActivePrograms.find(p => p.id === selectedProgramId)?.quoteFormFields as any}
+                    />
                   )}
                 </div>
+                )}
+
+                {!selectedProgramId && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Calculator className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                    <p className="text-lg font-medium">Select a loan program above to get started</p>
+                    <p className="text-sm mt-1">The form fields will appear based on the program you choose</p>
+                  </div>
+                )}
               </>
             ) : (
               <div className="max-w-2xl mx-auto space-y-6">

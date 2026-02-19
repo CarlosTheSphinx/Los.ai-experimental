@@ -445,7 +445,7 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
         alignItems: 'center',
         justifyContent: 'center',
         pointerEvents: 'auto',
-        overflow: 'hidden'
+        overflow: 'visible'
       }}
       onMouseDown={handleMouseDownDrag}
       onDoubleClick={handleDoubleClick}
@@ -454,8 +454,8 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
       {displayContent()}
       
       <button
-        className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center hover:bg-destructive/90 transition-colors"
-        style={{ zIndex: 1001 }}
+        className="absolute -top-3 -right-3 w-6 h-6 bg-red-600 text-white rounded-full flex items-center justify-center shadow-md border-2 border-white transition-colors"
+        style={{ zIndex: 9999 }}
         onClick={(e) => {
           e.stopPropagation();
           onRemove(index);
@@ -463,7 +463,7 @@ function DraggableResizableField({ field, index, signer, onUpdate, onRemove, con
         onMouseDown={(e) => e.stopPropagation()}
         data-testid={`remove-field-${index}`}
       >
-        <X className="w-3 h-3" />
+        <X className="w-3.5 h-3.5" strokeWidth={3} />
       </button>
       
       <div
@@ -1198,8 +1198,8 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                         data-testid="upload-area"
                       >
                         <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                        <p className="text-lg font-medium">Upload your Term Sheet PDF</p>
-                        <p className="text-sm text-muted-foreground">Click to select a PDF file</p>
+                        <p className="text-lg font-medium">Upload your Term Sheet</p>
+                        <p className="text-sm text-muted-foreground">PDF format only</p>
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1207,10 +1207,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
-                            if (file.type !== 'application/pdf') {
-                              toast({ title: "Invalid File", description: "Please upload a PDF file", variant: "destructive" });
-                              return;
-                            }
                             const reader = new FileReader();
                             reader.onload = (ev) => {
                               setPdfData(ev.target?.result as string);

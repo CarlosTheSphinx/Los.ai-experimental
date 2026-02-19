@@ -4255,6 +4255,7 @@ export async function registerRoutes(
       const inviteLink = `${baseUrl}/accept-invite/${inviteToken}`;
       
       const inviterName = req.user!.fullName || req.user!.email;
+      const inviterEmail = req.user!.email;
       
       let companyName = 'Lendry.AI';
       try {
@@ -4271,7 +4272,8 @@ export async function registerRoutes(
         inviterName,
         companyName,
         assignedRole,
-        inviteLink
+        inviteLink,
+        inviterEmail
       );
       
       res.json({ 
@@ -4392,6 +4394,7 @@ export async function registerRoutes(
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const inviteLink = `${baseUrl}/accept-invite/${inviteToken}`;
       const inviterName = req.user!.fullName || req.user!.email;
+      const inviterEmail = req.user!.email;
       
       let companyName = 'Lendry.AI';
       try {
@@ -4408,7 +4411,8 @@ export async function registerRoutes(
         inviterName,
         companyName,
         user.role,
-        inviteLink
+        inviteLink,
+        inviterEmail
       );
       
       res.json({ success: true, emailSent: emailResult.success });

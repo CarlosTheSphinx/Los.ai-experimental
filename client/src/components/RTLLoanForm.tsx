@@ -12,13 +12,26 @@ import { Loader2, Calculator, DollarSign, Building, User, FileText, CreditCard, 
 import { useEffect } from "react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
+interface QuoteFormField {
+  fieldKey: string;
+  label: string;
+  visible: boolean;
+  required: boolean;
+}
+
 interface RTLLoanFormProps {
   onSubmit: (data: RTLPricingFormData) => void;
   isLoading: boolean;
   defaultData?: RTLPricingFormData | null;
+  visibleFields?: QuoteFormField[];
 }
 
-export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormProps) {
+export function RTLLoanForm({ onSubmit, isLoading, defaultData, visibleFields }: RTLLoanFormProps) {
+  const isFieldVisible = (fieldKey: string) => {
+    if (!visibleFields || visibleFields.length === 0) return true;
+    const field = visibleFields.find(f => f.fieldKey === fieldKey);
+    return field ? field.visible : false;
+  };
   const form = useForm<RTLPricingFormData>({
     resolver: zodResolver(rtlPricingFormSchema),
     defaultValues: defaultData || {
@@ -126,12 +139,14 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             {/* Loan Details Section */}
+            {(isFieldVisible('loanType') || isFieldVisible('purpose') || isFieldVisible('isMidstream')) && (
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-muted-foreground" />
                   Loan Details
                 </h3>
 
+                {isFieldVisible('loanType') && (
                 <FormField
                   control={form.control}
                   name="loanType"
@@ -154,7 +169,9 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     </FormItem>
                   )}
                 />
+                )}
 
+                {isFieldVisible('isMidstream') && (
                 <FormField
                   control={form.control}
                   name="isMidstream"
@@ -174,6 +191,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     </FormItem>
                   )}
                 />
+                )}
 
                 {loanType === "guc" && (
                   <div className="border-t pt-6 space-y-6">
@@ -239,14 +257,17 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                   </div>
                 )}
             </div>
+            )}
 
             {/* Borrower Information Section */}
+            {(isFieldVisible('completedProjects') || isFieldVisible('ficoScore') || isFieldVisible('borrowingEntityType') || isFieldVisible('hasFullGuaranty')) && (
             <div className="border-t pt-6 space-y-4">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <User className="w-5 h-5 text-muted-foreground" />
                 Borrower Information
               </h3>
 
+                {isFieldVisible('completedProjects') && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
@@ -280,8 +301,10 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     </div>
                   </div>
                 </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {isFieldVisible('ficoScore') && (
                   <FormField
                     control={form.control}
                     name="fico"
@@ -301,7 +324,9 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+                  )}
 
+                  {isFieldVisible('borrowingEntityType') && (
                   <FormField
                     control={form.control}
                     name="borrowingEntityType"
@@ -327,9 +352,11 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+                  )}
                 </div>
 
                 <div className="space-y-4">
+                  {isFieldVisible('hasFullGuaranty') && (
                   <FormField
                     control={form.control}
                     name="hasFullGuaranty"
@@ -349,6 +376,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+                  )}
 
                   <FormField
                     control={form.control}
@@ -371,8 +399,10 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                   />
                 </div>
             </div>
+            )}
 
             {/* Property Details Section */}
+            {(isFieldVisible('propertyType') || isFieldVisible('propertyUnits') || isFieldVisible('asIsValue') || isFieldVisible('arv') || isFieldVisible('rehabBudget')) && (
             <div className="border-t pt-6 space-y-4">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Building className="w-5 h-5 text-muted-foreground" />
@@ -380,6 +410,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
               </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {isFieldVisible('propertyType') && (
                   <FormField
                     control={form.control}
                     name="propertyType"
@@ -414,6 +445,9 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     )}
                   />
 
+                  )}
+
+                  {isFieldVisible('propertyUnits') && (
                   <FormField
                     control={form.control}
                     name="propertyUnits"
@@ -433,6 +467,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+                  )}
                 </div>
 
                 <FormField
@@ -455,6 +490,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                   )}
                 />
 
+                {isFieldVisible('asIsValue') && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
@@ -476,8 +512,10 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                     )}
                   />
                 </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {isFieldVisible('arv') && (
                   <FormField
                     control={form.control}
                     name="arv"
@@ -497,7 +535,9 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+                  )}
 
+                  {isFieldVisible('rehabBudget') && (
                   <FormField
                     control={form.control}
                     name="rehabBudget"
@@ -517,6 +557,8 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                       </FormItem>
                     )}
                   />
+
+                  )}
 
                   {loanType !== "guc" && asIsValue > 0 && (
                     <div className="flex items-end">
@@ -588,6 +630,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData }: RTLLoanFormPro
                   )}
                 </div>
             </div>
+            )}
 
             {/* Credit History Section */}
             <div className="border-t pt-6 space-y-4">

@@ -574,6 +574,7 @@ export default function Home() {
               </div>
             </motion.div>
           ) : !result ? (
+            selectedQuoteProgramId ? (
             <motion.div
               key="form"
               initial={{ opacity: 0, y: 20 }}
@@ -586,6 +587,7 @@ export default function Home() {
                   onSubmit={handleSubmit} 
                   isLoading={isPending} 
                   defaultData={lastFormData}
+                  visibleFields={allActivePrograms.find(p => p.id === selectedQuoteProgramId)?.quoteFormFields as any}
                 />
               ) : rtlResult ? (
                 <RTLPricingResult 
@@ -600,9 +602,17 @@ export default function Home() {
                   onSubmit={handleRTLSubmit} 
                   isLoading={rtlPricingMutation.isPending}
                   defaultData={rtlFormData}
+                  visibleFields={allActivePrograms.find(p => p.id === selectedQuoteProgramId)?.quoteFormFields as any}
                 />
               )}
             </motion.div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground" data-testid="text-select-program-prompt">
+                <Calculator className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                <p className="text-lg font-medium">Select a loan program above to get started</p>
+                <p className="text-sm mt-1">The form fields will appear based on the program you choose</p>
+              </div>
+            )
           ) : (
             <motion.div
               key="result"
