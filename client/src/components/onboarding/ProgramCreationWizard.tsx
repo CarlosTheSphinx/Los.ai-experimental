@@ -765,10 +765,10 @@ function CreditPolicyStep({
           <CardTitle className="text-base flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
             Credit Policy
-            <Badge variant="secondary" className="text-xs">Optional</Badge>
+            <Badge className="text-xs bg-blue-500 text-white hover:bg-blue-600">Optional</Badge>
           </CardTitle>
           <CardDescription>
-            A credit policy defines your lending guidelines — minimum FICO scores, maximum LTV ratios, allowed property types, and other underwriting criteria. Upload your policy document and the AI will automatically extract the rules.
+            A credit policy defines your lending guidelines — minimum FICO scores, maximum LTV ratios, allowed property types, and other underwriting criteria. This step is optional and can be added later from your program settings. Upload your policy document and the AI will automatically extract the rules.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
