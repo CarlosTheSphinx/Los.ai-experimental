@@ -1522,7 +1522,7 @@ function StepCommunications({
               <p className="text-sm text-muted-foreground">
                 {emailConnected
                   ? 'Your Gmail is connected. View, search, and link email threads to deals directly from your Email Inbox.'
-                  : 'Connect your Gmail to view and link email conversations to deals without leaving the platform.'}
+                  : 'Connect your email to view and link email conversations to deals without leaving the platform.'}
               </p>
             </div>
             <div className="bg-card border border-border rounded-md p-4 space-y-2">
