@@ -1900,13 +1900,13 @@ function TasksStep({
                 <span className="text-sm flex-1 min-w-0 truncate" title={task.taskName}>{task.taskName}</span>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <Select value={task.assignToRole} onValueChange={(v) => updateTask(i, 'assignToRole', v)}>
-                    <SelectTrigger className="h-7 text-xs w-32" data-testid={`select-task-assignee-${i}`}>
+                    <SelectTrigger className="h-7 text-xs w-44" data-testid={`select-task-assignee-${i}`}>
                       <SelectValue placeholder="Assign to..." />
                     </SelectTrigger>
                     <SelectContent>
                       {teamMembers.length > 0 ? (
                         teamMembers.map((m) => (
-                          <SelectItem key={m.id} value={`user_${m.id}`}>{m.fullName}</SelectItem>
+                          <SelectItem key={m.id} value={`user_${m.id}`}>{m.fullName} ({m.role})</SelectItem>
                         ))
                       ) : null}
                       <SelectItem value="admin">Admin (role)</SelectItem>
