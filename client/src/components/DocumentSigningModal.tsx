@@ -1199,11 +1199,11 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                       >
                         <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-lg font-medium">Upload your Term Sheet</p>
-                        <p className="text-sm text-muted-foreground">PDF, Word, Excel, images, and more</p>
+                        <p className="text-sm text-muted-foreground">PDF format only</p>
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.odt,.ods,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.tif,.webp,.svg,.heic"
+                          accept=".pdf"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
@@ -1227,18 +1227,11 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                             <Check className="w-5 h-5" />
                             <span>{fileName}</span>
                           </div>
-                          {fileName?.toLowerCase().endsWith('.pdf') ? (
-                            <div className="border rounded-lg overflow-hidden max-h-[200px]">
-                              <PDFDocument file={pdfData} onLoadSuccess={onDocumentLoadSuccess}>
-                                <PDFPage pageNumber={1} width={400} />
-                              </PDFDocument>
-                            </div>
-                          ) : (
-                            <div className="border rounded-lg p-6 text-center bg-muted/30">
-                              <FileText className="w-10 h-10 mx-auto text-muted-foreground mb-2" />
-                              <p className="text-sm text-muted-foreground">Document uploaded successfully</p>
-                            </div>
-                          )}
+                          <div className="border rounded-lg overflow-hidden max-h-[200px]">
+                            <PDFDocument file={pdfData} onLoadSuccess={onDocumentLoadSuccess}>
+                              <PDFPage pageNumber={1} width={400} />
+                            </PDFDocument>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1333,28 +1326,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
           </TabsContent>
 
           <TabsContent value="fields" className="flex-1 min-h-0 overflow-hidden p-4">
-            {fileName && !fileName.toLowerCase().endsWith('.pdf') ? (
-              <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                <FileText className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">Field placement is not available for this file type</h3>
-                <p className="text-sm text-muted-foreground mb-1 max-w-md">
-                  Signature and data fields can only be placed on PDF documents. Your {fileName.split('.').pop()?.toUpperCase()} file will be sent as-is to PandaDoc for signing.
-                </p>
-                <p className="text-sm text-muted-foreground mb-6 max-w-md">
-                  To use field placement, upload a PDF version of your document.
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={goBack} data-testid="button-fields-back-nonpdf">
-                    <ChevronLeft className="w-4 h-4 mr-2" />
-                    Back
-                  </Button>
-                  <Button onClick={() => setStep("send")} data-testid="button-skip-to-send">
-                    Skip to Send
-                    <ChevronRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
             <div className="flex gap-4 h-full">
               <div className="w-64 flex-shrink-0 flex flex-col max-h-full">
                 <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
@@ -1574,7 +1545,6 @@ export function DocumentSigningModal({ open, onClose, quote, existingDocumentId 
                 </div>
               </div>
             </div>
-            )}
           </TabsContent>
 
           <TabsContent value="send" className="flex-1 overflow-auto p-4">
