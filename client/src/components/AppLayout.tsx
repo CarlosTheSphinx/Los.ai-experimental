@@ -39,6 +39,7 @@ import {
   Cpu,
   Database,
   GraduationCap,
+  Inbox,
 } from "lucide-react";
 import {
   Select,
@@ -97,14 +98,14 @@ const brokerNavItems: NavItem[] = [
   { href: "/commercial/dashboard", label: "Commercial", icon: Building2, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
   { href: "/broker/outreach", label: "Smart Prospect", icon: Target, shortcut: undefined },
-  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, shortcut: undefined },
+  { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
 ];
 
 const borrowerNavItems: NavItem[] = [
   { href: "/", label: "My Loans", icon: FolderKanban },
   { href: "/quotes", label: "Quotes", icon: FileText },
-  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true },
+  { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
   { href: "/resources", label: "Resources", icon: BookOpen },
 ];
 
@@ -117,13 +118,12 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/digests", label: "Communications", icon: CalendarDays, requiredPermission: "digests.view" },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
   { href: "/admin/partners", label: "Partners", icon: Handshake, requiredPermission: "partners.view" },
-  { href: "/messages", label: "Messages", icon: MessageSquare, showBadge: true, requiredPermission: "messages.view" },
-  { href: "/admin/email", label: "Email Inbox", icon: Mail, requiredPermission: "messages.view" },
+  { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true, requiredPermission: "messages.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
-  { href: "/admin/onboarding", label: "Getting Started", icon: BookOpen, requiredPermission: "onboarding.view" },
+  { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
 ];
 
 // Super admin items — only visible to super_admin role (Lendry platform team)
@@ -513,7 +513,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           </div>
         )}
         <div className="flex items-center justify-end gap-1 px-3 py-1.5 border-b shrink-0">
-          <Link href="/messages">
+          <Link href="/inbox">
             <Button variant="ghost" size="icon" className="relative" data-testid="button-header-messages">
               <MessageSquare className="h-5 w-5" />
               <InboxBadge />

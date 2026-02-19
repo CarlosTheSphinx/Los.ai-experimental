@@ -844,6 +844,23 @@ export const insertProgramWorkflowStepSchema = createInsertSchema(programWorkflo
 export type ProgramWorkflowStep = typeof programWorkflowSteps.$inferSelect;
 export type InsertProgramWorkflowStep = z.infer<typeof insertProgramWorkflowStepSchema>;
 
+// Deal Statuses - configurable deal status options
+export const dealStatuses = pgTable("deal_statuses", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 100 }).unique().notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  color: varchar("color", { length: 50 }).default("#6b7280"),
+  description: text("description"),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDealStatusSchema = createInsertSchema(dealStatuses).omit({ id: true, createdAt: true });
+export type DealStatus = typeof dealStatuses.$inferSelect;
+export type InsertDealStatus = z.infer<typeof insertDealStatusSchema>;
+
 // Deal Processors - assigns processors to deals/projects
 export const dealProcessors = pgTable("deal_processors", {
   id: serial("id").primaryKey(),
@@ -1524,6 +1541,7 @@ export const esignEnvelopes = pgTable("esign_envelopes", {
   vendor: varchar("vendor", { length: 50 }).notNull(), // "pandadoc", "docusign", etc.
   quoteId: integer("quote_id").references(() => savedQuotes.id, { onDelete: 'set null' }),
   templateId: integer("template_id").references(() => documentTemplates.id, { onDelete: 'set null' }),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
   
   // External document reference
   externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
@@ -2664,3 +2682,30 @@ export const emailThreadDealLinks = pgTable("email_thread_deal_links", {
 export const insertEmailThreadDealLinkSchema = createInsertSchema(emailThreadDealLinks).omit({ id: true, linkedAt: true });
 export type EmailThreadDealLink = typeof emailThreadDealLinks.$inferSelect;
 export type InsertEmailThreadDealLink = z.infer<typeof insertEmailThreadDealLinkSchema>;
+
+export const messageTemplates = pgTable("message_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  category: text("category").default("general"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
+
+export const MERGE_TAGS = [
+  { tag: "{{borrower_first_name}}", label: "Borrower First Name", description: "The borrower's first name" },
+  { tag: "{{borrower_last_name}}", label: "Borrower Last Name", description: "The borrower's last name" },
+  { tag: "{{borrower_email}}", label: "Borrower Email", description: "The borrower's email address" },
+  { tag: "{{loan_amount}}", label: "Loan Amount", description: "The loan amount" },
+  { tag: "{{property_address}}", label: "Property Address", description: "The property address" },
+  { tag: "{{loan_program}}", label: "Loan Program", description: "The loan program name" },
+  { tag: "{{deal_id}}", label: "Deal ID", description: "The deal identifier" },
+  { tag: "{{current_stage}}", label: "Current Stage", description: "The current deal stage" },
+  { tag: "{{company_name}}", label: "Company Name", description: "Your company name" },
+  { tag: "{{sender_name}}", label: "Sender Name", description: "Your name" },
+] as const;

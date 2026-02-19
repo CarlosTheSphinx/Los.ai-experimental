@@ -30,12 +30,25 @@ import {
   type DealDocument,
 } from "@shared/schema";
 import { eq, and, or, desc, asc, lte, gte, isNull, ilike, sql } from "drizzle-orm";
+import { getOpenAIApiKey } from "../utils/getOpenAIKey";
 
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 if (!aiApiKey) {
   console.warn(
-    "⚠️  AI_INTEGRATIONS_OPENAI_API_KEY not set. AI Assistant features will be disabled."
+    "⚠️  AI_INTEGRATIONS_OPENAI_API_KEY not set. Will check system settings for manual key."
   );
+}
+
+let _openai: OpenAI | null = null;
+async function getOpenAI(): Promise<OpenAI> {
+  const key = await getOpenAIApiKey();
+  if (!_openai || (!aiApiKey && key)) {
+    _openai = new OpenAI({
+      apiKey: key || "disabled",
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
 }
 
 const openai = new OpenAI({

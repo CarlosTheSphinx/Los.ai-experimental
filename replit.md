@@ -19,6 +19,7 @@ The application is built on a modern web stack using React 18 with TypeScript fo
     -   **Borrower Quote Flow**: Allows borrowers to generate and accept loan quotes, which automatically create deals in the admin dashboard.
     -   **Admin Back Office**: Provides dashboards, user management, deal oversight, system settings, partner management, and loan program configuration with role-based access control.
     -   **Admin Onboarding / Getting Started**: 5-step guided setup wizard for new lenders covering: (1) Company Profile (name, support email, sender name via tenant_branding config), (2) Team Setup (view/add team members with roles), (3) Integrations (Gmail, Google Drive folder ID, external service status grid), (4) Loan Programs walkthrough, (5) Communications & AI configuration. New lenders are redirected here until they complete setup. Also includes Training Materials and User Status management tabs.
+    -   **Loan Program Creation Wizard**: 8-step wizard for creating loan programs: (1) Credit Policy, (2) Program Details, (3) Quote Form Builder, (4) Stages, (5) Documents, (6) Tasks, (7) AI Rules, (8) Review & Create. The Quote Form Builder (Step 3) configures which fields borrowers/brokers see when requesting quotes for the program, with drag-to-reorder, field type selection (text/number/currency/email/phone/percentage/select/yes-no), visible/required toggles, conditional logic (show field based on another field's value), and default contact fields (first name, last name, email, phone, address) that are always included. QuoteFormField data model: `{ fieldKey, label, fieldType, required, visible, isDefault, options?, conditionalOn?, conditionalValue? }`.
     -   **Commercial Deal Submission Module**: An independent system for commercial loan submissions, featuring:
         -   **Pre-Screener**: AI-powered quick deal check.
         -   **Multi-Step Submission Form**: Comprehensive data collection for commercial deals.
@@ -85,7 +86,7 @@ The database still uses `projects` as the table name, but the entire UI refers t
 
 -   **Apify**: Cloud-based web scraping for external pricing providers.
 -   **PostgreSQL**: Primary relational database.
--   **PandaDoc**: E-signing service for agreement management, including a comprehensive status synchronization system. Critical coordinate conversion (72 DPI to 96 DPI) is handled.
+-   **PandaDoc**: E-signing service for agreement management, including a comprehensive status synchronization system. Critical coordinate conversion (72 DPI to 96 DPI) is handled. Signed documents automatically return to the system: webhook handler and polling backstop detect completed documents, download the signed PDF, upload to object storage, and auto-insert into the deal's stage 1 document section with activity logging and optional Drive sync. The `esignEnvelopes` table tracks `projectId` to link documents to deals.
 -   **Resend**: Email sending service.
 -   **Twilio**: SMS messaging service.
 -   **Google OAuth 2.0**: For user authentication and Google Drive integration.

@@ -1,6 +1,7 @@
 import { db } from "../db";
-import { esignEnvelopes, esignEvents } from "@shared/schema";
-import { eq, inArray, and, isNull, lt } from "drizzle-orm";
+import { esignEnvelopes, esignEvents, dealDocuments, projectStages } from "@shared/schema";
+import { eq, inArray, and, isNull, lt, asc } from "drizzle-orm";
+import { ObjectStorageService } from "../replit_integrations/object_storage";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -185,6 +186,75 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
         }
       } catch (projErr: any) {
         console.error(`[PandaDoc Poll] Error creating deal from envelope ${envelope.id}:`, projErr);
+      }
+    }
+
+    // Download and insert signed PDF into existing deal's stage 1
+    if (newStatus === 'completed' && envelope.projectId) {
+      try {
+        const existingSignedDoc = await db.select({ id: dealDocuments.id })
+          .from(dealDocuments)
+          .where(and(
+            eq(dealDocuments.dealId, envelope.projectId),
+            eq(dealDocuments.documentDescription, `Signed PandaDoc document (${envelope.externalDocumentId}): ${envelope.documentName}`),
+          ))
+          .limit(1);
+
+        if (existingSignedDoc.length === 0) {
+          const pdfArrayBuffer = await pandadoc.downloadSignedPdf(envelope.externalDocumentId);
+          const pdfBuffer = Buffer.from(pdfArrayBuffer);
+          console.log(`[PandaDoc Poll] Downloaded signed PDF (${pdfBuffer.length} bytes) for envelope ${envelope.id}`);
+
+          const objectStorageService = new ObjectStorageService();
+          const { objectPath } = await objectStorageService.uploadFile(
+            pdfBuffer,
+            `${(envelope.documentName || 'signed-document').replace(/[^a-zA-Z0-9._-]/g, '_')}-signed.pdf`,
+            'application/pdf'
+          );
+
+          const [stage1] = await db.select()
+            .from(projectStages)
+            .where(eq(projectStages.projectId, envelope.projectId))
+            .orderBy(asc(projectStages.stageOrder))
+            .limit(1);
+
+          const signedFileName = `${envelope.documentName || 'Signed Document'} (Signed).pdf`;
+          await db.insert(dealDocuments).values({
+            dealId: envelope.projectId,
+            stageId: stage1?.id || null,
+            documentName: signedFileName,
+            documentCategory: 'closing_docs',
+            documentDescription: `Signed PandaDoc document (${envelope.externalDocumentId}): ${envelope.documentName}`,
+            status: 'approved',
+            isRequired: false,
+            assignedTo: 'admin',
+            visibility: 'all',
+            filePath: objectPath,
+            fileName: signedFileName,
+            fileSize: pdfBuffer.length,
+            mimeType: 'application/pdf',
+            uploadedAt: new Date(),
+            uploadedBy: envelope.createdBy,
+            sortOrder: 0,
+          });
+
+          await db.update(esignEnvelopes)
+            .set({ signedPdfUrl: objectPath })
+            .where(eq(esignEnvelopes.id, envelope.id));
+
+          const storage = (await import('../storage')).storage;
+          await storage.createProjectActivity({
+            projectId: envelope.projectId,
+            userId: envelope.createdBy!,
+            activityType: 'document_uploaded',
+            activityDescription: `Signed document "${envelope.documentName}" received from PandaDoc and added to ${stage1?.stageName || 'Stage 1'}`,
+            visibleToBorrower: true,
+          });
+
+          console.log(`[PandaDoc Poll] Signed PDF inserted into deal ${envelope.projectId} at ${stage1?.stageName || 'Stage 1'}`);
+        }
+      } catch (signedErr: any) {
+        console.error(`[PandaDoc Poll] Error inserting signed PDF for envelope ${envelope.id}:`, signedErr.message);
       }
     }
 

@@ -2,6 +2,7 @@ import type { DragEvent, ChangeEvent } from 'react';
 import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,10 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  ArrowUp,
+  ArrowDown,
+  Settings2,
+  FormInput,
 } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -135,62 +140,92 @@ const standardDocuments = [
   },
 ];
 
-const DSCR_QUOTE_FIELDS = [
-  { fieldKey: 'loanAmount', label: 'Loan Amount', defaultRequired: true },
-  { fieldKey: 'propertyValue', label: 'Property Value', defaultRequired: true },
-  { fieldKey: 'loanPurpose', label: 'Loan Purpose', defaultRequired: true },
-  { fieldKey: 'loanType', label: 'Loan Type (Fixed/ARM)', defaultRequired: true },
-  { fieldKey: 'propertyType', label: 'Property Type', defaultRequired: true },
-  { fieldKey: 'ficoScore', label: 'FICO Score', defaultRequired: true },
-  { fieldKey: 'grossMonthlyRent', label: 'Gross Monthly Rent', defaultRequired: false },
-  { fieldKey: 'annualTaxes', label: 'Annual Taxes', defaultRequired: false },
-  { fieldKey: 'annualInsurance', label: 'Annual Insurance', defaultRequired: false },
-  { fieldKey: 'interestOnly', label: 'Interest Only', defaultRequired: false },
-  { fieldKey: 'prepaymentPenalty', label: 'Prepayment Penalty', defaultRequired: false },
-  { fieldKey: 'appraisalValue', label: 'Appraisal Value', defaultRequired: false },
+// ─── Quote Form Field Types ─────────────────────────────────────
+
+type QuoteFormField = {
+  fieldKey: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'currency' | 'email' | 'phone' | 'select' | 'yes_no' | 'percentage';
+  required: boolean;
+  visible: boolean;
+  isDefault: boolean;
+  options?: string[];
+  conditionalOn?: string;
+  conditionalValue?: string;
+};
+
+const FIELD_TYPE_OPTIONS: { value: QuoteFormField['fieldType']; label: string }[] = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'currency', label: 'Currency ($)' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'percentage', label: 'Percentage (%)' },
+  { value: 'select', label: 'Dropdown' },
+  { value: 'yes_no', label: 'Yes / No' },
 ];
 
-const RTL_QUOTE_FIELDS = [
-  { fieldKey: 'loanType', label: 'Loan Type (Light/Heavy Rehab)', defaultRequired: true },
-  { fieldKey: 'purpose', label: 'Purpose (Purchase/Refi)', defaultRequired: true },
-  { fieldKey: 'asIsValue', label: 'As-Is Value', defaultRequired: true },
-  { fieldKey: 'arv', label: 'After Repair Value (ARV)', defaultRequired: true },
-  { fieldKey: 'rehabBudget', label: 'Rehab Budget', defaultRequired: true },
-  { fieldKey: 'propertyType', label: 'Property Type', defaultRequired: true },
-  { fieldKey: 'ficoScore', label: 'FICO Score', defaultRequired: true },
-  { fieldKey: 'propertyUnits', label: 'Property Units', defaultRequired: false },
-  { fieldKey: 'isMidstream', label: 'Is Midstream?', defaultRequired: false },
-  { fieldKey: 'borrowingEntityType', label: 'Borrowing Entity Type', defaultRequired: false },
-  { fieldKey: 'completedProjects', label: 'Completed Projects', defaultRequired: false },
-  { fieldKey: 'hasFullGuaranty', label: 'Full Guaranty?', defaultRequired: false },
-  { fieldKey: 'exitStrategy', label: 'Exit Strategy', defaultRequired: false },
-  { fieldKey: 'appraisalValue', label: 'Appraisal Value', defaultRequired: false },
+const CONTACT_FIELDS: QuoteFormField[] = [
+  { fieldKey: 'firstName', label: 'First Name', fieldType: 'text', required: true, visible: true, isDefault: true },
+  { fieldKey: 'lastName', label: 'Last Name', fieldType: 'text', required: true, visible: true, isDefault: true },
+  { fieldKey: 'email', label: 'Email', fieldType: 'email', required: true, visible: true, isDefault: true },
+  { fieldKey: 'phone', label: 'Phone Number', fieldType: 'phone', required: false, visible: true, isDefault: true },
+  { fieldKey: 'address', label: 'Address', fieldType: 'text', required: false, visible: true, isDefault: true },
 ];
 
-function getDefaultQuoteFields(loanType: string) {
+const DSCR_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
+  { fieldKey: 'loanAmount', label: 'Loan Amount', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'propertyValue', label: 'Property Value', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'loanPurpose', label: 'Loan Purpose', fieldType: 'select', required: true, visible: true, options: ['Purchase', 'Refinance', 'Cash-Out Refinance'] },
+  { fieldKey: 'loanType', label: 'Loan Type (Fixed/ARM)', fieldType: 'select', required: true, visible: true, options: ['Fixed', 'ARM'] },
+  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family', '2-4 Unit', 'Condo', 'Townhouse', 'Multifamily 5+'] },
+  { fieldKey: 'ficoScore', label: 'FICO Score', fieldType: 'number', required: true, visible: true },
+  { fieldKey: 'grossMonthlyRent', label: 'Gross Monthly Rent', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'annualTaxes', label: 'Annual Taxes', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'annualInsurance', label: 'Annual Insurance', fieldType: 'currency', required: false, visible: true },
+  { fieldKey: 'interestOnly', label: 'Interest Only', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'prepaymentPenalty', label: 'Prepayment Penalty', fieldType: 'select', required: false, visible: true, options: ['None', '1 Year', '2 Years', '3 Years', '5 Years'] },
+  { fieldKey: 'appraisalValue', label: 'Appraisal Value', fieldType: 'currency', required: false, visible: true },
+];
+
+const RTL_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
+  { fieldKey: 'loanType', label: 'Loan Type (Light/Heavy Rehab)', fieldType: 'select', required: true, visible: true, options: ['Light Rehab', 'Heavy Rehab', 'Ground Up'] },
+  { fieldKey: 'purpose', label: 'Purpose (Purchase/Refi)', fieldType: 'select', required: true, visible: true, options: ['Purchase', 'Refinance'] },
+  { fieldKey: 'asIsValue', label: 'As-Is Value', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'arv', label: 'After Repair Value (ARV)', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'rehabBudget', label: 'Rehab Budget', fieldType: 'currency', required: true, visible: true },
+  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family', '2-4 Unit', 'Condo', 'Townhouse', 'Multifamily 5+'] },
+  { fieldKey: 'ficoScore', label: 'FICO Score', fieldType: 'number', required: true, visible: true },
+  { fieldKey: 'propertyUnits', label: 'Property Units', fieldType: 'number', required: false, visible: true },
+  { fieldKey: 'isMidstream', label: 'Is Midstream?', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'borrowingEntityType', label: 'Borrowing Entity Type', fieldType: 'select', required: false, visible: true, options: ['LLC', 'Corporation', 'Individual', 'Trust', 'Partnership'] },
+  { fieldKey: 'completedProjects', label: 'Completed Projects', fieldType: 'number', required: false, visible: true },
+  { fieldKey: 'hasFullGuaranty', label: 'Full Guaranty?', fieldType: 'yes_no', required: false, visible: true },
+  { fieldKey: 'exitStrategy', label: 'Exit Strategy', fieldType: 'select', required: false, visible: true, options: ['Sell', 'Refinance', 'Hold'] },
+  { fieldKey: 'appraisalValue', label: 'Appraisal Value', fieldType: 'currency', required: false, visible: true },
+];
+
+function getDefaultQuoteFields(loanType: string): QuoteFormField[] {
   const baseFields = loanType.toLowerCase() === 'dscr' ? DSCR_QUOTE_FIELDS : RTL_QUOTE_FIELDS;
-  return baseFields.map((field) => ({
-    fieldKey: field.fieldKey,
-    label: field.label,
-    required: field.defaultRequired,
-    visible: true,
-  }));
+  return [
+    ...CONTACT_FIELDS,
+    ...baseFields.map((field) => ({ ...field, isDefault: true })),
+  ];
 }
 
 // ─── Default stages ────────────────────────────────────────────
 
 const defaultStages = [
-  { stepName: 'Application', estimatedDays: 3, isRequired: true },
-  { stepName: 'Processing', estimatedDays: 5, isRequired: true },
-  { stepName: 'Underwriting', estimatedDays: 7, isRequired: true },
-  { stepName: 'Closing', estimatedDays: 5, isRequired: true },
+  { stepName: 'Application', isRequired: true },
+  { stepName: 'Processing', isRequired: true },
+  { stepName: 'Underwriting', isRequired: true },
+  { stepName: 'Closing', isRequired: true },
 ];
 
 // ─── Types ──────────────────────────────────────────────────────
 
 interface StageEntry {
   stepName: string;
-  estimatedDays: number;
   isRequired: boolean;
 }
 
@@ -218,26 +253,27 @@ interface RuleEntry {
 
 // ─── Wizard Steps ───────────────────────────────────────────────
 
-type WizardStep = 'credit-policy' | 'program-details' | 'stages' | 'documents' | 'tasks' | 'review-rules' | 'summary';
+type WizardStep = 'credit-policy' | 'program-details' | 'quote-form' | 'stages' | 'documents' | 'tasks' | 'review-rules' | 'summary';
 
 const wizardSteps: { key: WizardStep; label: string; number: number }[] = [
   { key: 'credit-policy', label: 'Credit Policy', number: 1 },
   { key: 'program-details', label: 'Program Details', number: 2 },
-  { key: 'stages', label: 'Stages', number: 3 },
-  { key: 'documents', label: 'Documents', number: 4 },
-  { key: 'tasks', label: 'Tasks', number: 5 },
-  { key: 'review-rules', label: 'AI Rules', number: 6 },
-  { key: 'summary', label: 'Review & Create', number: 7 },
+  { key: 'quote-form', label: 'Quote Form', number: 3 },
+  { key: 'stages', label: 'Stages', number: 4 },
+  { key: 'documents', label: 'Documents', number: 5 },
+  { key: 'tasks', label: 'Tasks', number: 6 },
+  { key: 'review-rules', label: 'AI Rules', number: 7 },
+  { key: 'summary', label: 'Review & Create', number: 8 },
 ];
 
 // ─── DSCR Example Defaults ───────────────────────────────────────
 
 const dscrDefaultStages: StageEntry[] = [
-  { stepName: 'Application', estimatedDays: 3, isRequired: true },
-  { stepName: 'Processing', estimatedDays: 5, isRequired: true },
-  { stepName: 'Underwriting', estimatedDays: 7, isRequired: true },
-  { stepName: 'Appraisal & Title', estimatedDays: 10, isRequired: true },
-  { stepName: 'Closing', estimatedDays: 5, isRequired: true },
+  { stepName: 'Application', isRequired: true },
+  { stepName: 'Processing', isRequired: true },
+  { stepName: 'Underwriting', isRequired: true },
+  { stepName: 'Appraisal & Title', isRequired: true },
+  { stepName: 'Closing', isRequired: true },
 ];
 
 const dscrDefaultDocuments: DocEntry[] = [
@@ -329,7 +365,7 @@ export function ProgramCreationWizard({
   const [eligiblePropertyTypes, setEligiblePropertyTypes] = useState<string[]>([
     'single-family-residence', '2-4-unit', 'multifamily-5-plus', 'rental-portfolio', 'mixed-use',
   ]);
-  const [quoteFormFields, setQuoteFormFields] = useState(getDefaultQuoteFields('dscr'));
+  const [quoteFormFields, setQuoteFormFields] = useState<QuoteFormField[]>(getDefaultQuoteFields('dscr'));
 
   // Stages — pre-populated
   const [stages, setStages] = useState<StageEntry[]>([...dscrDefaultStages]);
@@ -347,6 +383,11 @@ export function ProgramCreationWizard({
   const { data: creditPoliciesData } = useQuery<{ policies: any[] }>({
     queryKey: ['/api/admin/credit-policies'],
   });
+
+  const { data: teamData } = useQuery<{ teamMembers: { id: number; fullName: string; role: string }[] }>({
+    queryKey: ['/api/admin/team-members'],
+  });
+  const teamMembers = teamData?.teamMembers || [];
 
   // Create program mutation
   const createProgramMutation = useMutation({
@@ -438,7 +479,6 @@ export function ProgramCreationWizard({
       isActive: true,
       steps: stages.map((s) => ({
         stepName: s.stepName,
-        estimatedDays: s.estimatedDays,
         isRequired: s.isRequired,
       })),
       documents: documents.map((d) => ({
@@ -517,6 +557,11 @@ export function ProgramCreationWizard({
           setTermOptions={setTermOptions}
           eligiblePropertyTypes={eligiblePropertyTypes}
           onPropertyTypeToggle={handlePropertyTypeToggle}
+        />
+      )}
+
+      {wizardStep === 'quote-form' && (
+        <QuoteFormBuilderStep
           quoteFormFields={quoteFormFields}
           setQuoteFormFields={setQuoteFormFields}
         />
@@ -539,6 +584,7 @@ export function ProgramCreationWizard({
           tasks={tasks}
           setTasks={setTasks}
           stages={stages}
+          teamMembers={teamMembers}
         />
       )}
 
@@ -559,6 +605,7 @@ export function ProgramCreationWizard({
           documents={documents}
           tasks={tasks}
           reviewRules={reviewRules}
+          quoteFormFields={quoteFormFields}
           selectedCreditPolicyId={selectedCreditPolicyId}
           creditPolicies={creditPoliciesData?.policies || []}
         />
@@ -718,10 +765,10 @@ function CreditPolicyStep({
           <CardTitle className="text-base flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
             Credit Policy
-            <Badge variant="secondary" className="text-xs">Optional</Badge>
+            <Badge className="text-xs bg-blue-500 text-white hover:bg-blue-600">Optional</Badge>
           </CardTitle>
           <CardDescription>
-            A credit policy defines your lending guidelines — minimum FICO scores, maximum LTV ratios, allowed property types, and other underwriting criteria. Upload your policy document and the AI will automatically extract the rules.
+            A credit policy defines your lending guidelines — minimum FICO scores, maximum LTV ratios, allowed property types, and other underwriting criteria. This step is optional and can be added later from your program settings. Upload your policy document and the AI will automatically extract the rules.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -976,8 +1023,6 @@ function ProgramDetailsStep({
   setTermOptions,
   eligiblePropertyTypes,
   onPropertyTypeToggle,
-  quoteFormFields,
-  setQuoteFormFields,
 }: {
   programName: string;
   setProgramName: (v: string) => void;
@@ -1001,8 +1046,6 @@ function ProgramDetailsStep({
   setTermOptions: (v: string) => void;
   eligiblePropertyTypes: string[];
   onPropertyTypeToggle: (type: string) => void;
-  quoteFormFields: any[];
-  setQuoteFormFields: (v: any[]) => void;
 }) {
   return (
     <Card>
@@ -1012,27 +1055,35 @@ function ProgramDetailsStep({
           Program Details
         </CardTitle>
         <CardDescription>
-          Define your loan program type, parameters, and the quote fields borrowers will see.
+          Define your loan program type and parameters.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1 sm:col-span-2">
-            <Label className="text-xs">Program Name *</Label>
+            <Label className="text-xs">Program Name (borrowers will see this) *</Label>
             <Input
-              placeholder="ex. DSCR Rental Program"
+              placeholder="ex. 30-Year Rental Loan"
               value={programName}
               onChange={(e) => setProgramName(e.target.value)}
+              data-testid="input-program-name"
             />
+            <p className="text-xs text-muted-foreground">
+              This name appears on quotes and borrower-facing pages. Choose something clear and professional.
+            </p>
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Label className="text-xs">Description</Label>
+            <Label className="text-xs">Internal Description</Label>
             <Textarea
-              placeholder="ex. Standard DSCR loan program for investment rental properties"
+              placeholder="ex. Standard DSCR program for investment rentals — internal team reference"
               value={programDescription}
               onChange={(e) => setProgramDescription(e.target.value)}
               rows={2}
+              data-testid="input-program-description"
             />
+            <p className="text-xs text-muted-foreground">
+              For your team only. Use this to note internal naming or guidelines.
+            </p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Loan Type *</Label>
@@ -1098,17 +1149,6 @@ function ProgramDetailsStep({
           </div>
         </div>
 
-        <Separator />
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <Label className="text-xs font-medium">Quote Form Fields</Label>
-            <p className="text-[11px] text-muted-foreground">
-              These are the input fields borrowers fill out when requesting a quote for this program.
-            </p>
-          </div>
-          <QuoteFormFieldsList quoteFormFields={quoteFormFields} setQuoteFormFields={setQuoteFormFields} />
-        </div>
       </CardContent>
     </Card>
   );
@@ -1177,19 +1217,24 @@ function LoanTypeSelector({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-const ALL_DEFAULT_FIELD_KEYS = new Set([
-  ...DSCR_QUOTE_FIELDS.map((f) => f.fieldKey),
-  ...RTL_QUOTE_FIELDS.map((f) => f.fieldKey),
-]);
+// ─── Step 3: Quote Form Builder ─────────────────────────────────
 
-function QuoteFormFieldsList({
+const CONTACT_FIELD_KEYS = new Set(CONTACT_FIELDS.map((f) => f.fieldKey));
+
+function QuoteFormBuilderStep({
   quoteFormFields,
   setQuoteFormFields,
 }: {
-  quoteFormFields: { fieldKey: string; label: string; visible: boolean; required: boolean }[];
-  setQuoteFormFields: (v: any[]) => void;
+  quoteFormFields: QuoteFormField[];
+  setQuoteFormFields: (v: QuoteFormField[]) => void;
 }) {
   const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<QuoteFormField['fieldType']>('text');
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [configuringIndex, setConfiguringIndex] = useState<number | null>(null);
+
+  const contactFields = quoteFormFields.filter((f) => CONTACT_FIELD_KEYS.has(f.fieldKey));
+  const programFields = quoteFormFields.filter((f) => !CONTACT_FIELD_KEYS.has(f.fieldKey));
 
   const addCustomField = () => {
     const name = newFieldName.trim();
@@ -1197,90 +1242,382 @@ function QuoteFormFieldsList({
     const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
     setQuoteFormFields([
       ...quoteFormFields,
-      { fieldKey, label: name, visible: true, required: false },
+      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false },
     ]);
     setNewFieldName('');
+    setNewFieldType('text');
   };
 
-  const removeField = (i: number) => {
-    setQuoteFormFields(quoteFormFields.filter((_, idx) => idx !== i));
+  const removeField = (fieldKey: string) => {
+    const removed = quoteFormFields.find((f) => f.fieldKey === fieldKey);
+    let updated = quoteFormFields.filter((f) => f.fieldKey !== fieldKey);
+    if (removed) {
+      updated = updated.map((f) => f.conditionalOn === fieldKey ? { ...f, conditionalOn: undefined, conditionalValue: undefined } : f);
+    }
+    setQuoteFormFields(updated);
   };
+
+  const updateField = (fieldKey: string, changes: Partial<QuoteFormField>) => {
+    let updated = quoteFormFields.map((f) => (f.fieldKey === fieldKey ? { ...f, ...changes } : f));
+
+    const changedField = updated.find((f) => f.fieldKey === fieldKey);
+    if (changedField) {
+      const isNoLongerConditionalParent =
+        (changes.fieldType && changes.fieldType !== 'select' && changes.fieldType !== 'yes_no') ||
+        (changes.visible === false);
+      if (isNoLongerConditionalParent) {
+        updated = updated.map((f) =>
+          f.conditionalOn === fieldKey ? { ...f, conditionalOn: undefined, conditionalValue: undefined } : f
+        );
+      }
+      if (changes.fieldType && changes.fieldType !== 'select') {
+        const idx = updated.findIndex((f) => f.fieldKey === fieldKey);
+        if (idx !== -1) updated[idx] = { ...updated[idx], options: undefined };
+      }
+    }
+
+    setQuoteFormFields(updated);
+  };
+
+  const moveField = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const contactCount = contactFields.length;
+    const actualFrom = contactCount + fromIdx;
+    const actualTo = contactCount + toIdx;
+    const updated = [...quoteFormFields];
+    const [moved] = updated.splice(actualFrom, 1);
+    updated.splice(actualTo, 0, moved);
+    setQuoteFormFields(updated);
+  };
+
+  const handleDragStart = (idx: number) => setDragIndex(idx);
+  const handleDragOver = (e: DragEvent) => e.preventDefault();
+  const handleDrop = (targetIdx: number) => {
+    if (dragIndex !== null && dragIndex !== targetIdx) moveField(dragIndex, targetIdx);
+    setDragIndex(null);
+  };
+
+  const getFieldTypeLabel = (type: QuoteFormField['fieldType']) =>
+    FIELD_TYPE_OPTIONS.find((o) => o.value === type)?.label || type;
+
+  const availableConditionalFields = quoteFormFields.filter(
+    (f) => f.visible && (f.fieldType === 'select' || f.fieldType === 'yes_no')
+  );
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-1.5 max-h-52 overflow-y-auto">
-        {quoteFormFields.map((field, i) => {
-          const isCustom = !ALL_DEFAULT_FIELD_KEYS.has(field.fieldKey);
-          return (
-            <div key={field.fieldKey} className="flex items-center justify-between gap-3 py-1 px-2 bg-muted/40 rounded">
-              <span className="text-xs flex-1">{field.label}</span>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1 text-[11px]">
-                  <Switch
-                    checked={field.visible}
-                    onCheckedChange={() => {
-                      const updated = [...quoteFormFields];
-                      updated[i] = { ...field, visible: !field.visible, required: field.visible ? false : field.required };
-                      setQuoteFormFields(updated);
-                    }}
-                    className="scale-75"
-                  />
-                  Visible
-                </label>
-                <label className="flex items-center gap-1 text-[11px]">
-                  <Switch
-                    checked={field.required}
-                    disabled={!field.visible}
-                    onCheckedChange={() => {
-                      const updated = [...quoteFormFields];
-                      updated[i] = { ...field, required: !field.required };
-                      setQuoteFormFields(updated);
-                    }}
-                    className="scale-75"
-                  />
-                  Required
-                </label>
-                {isCustom && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground"
-                    onClick={() => removeField(i)}
-                    data-testid={`button-remove-field-${field.fieldKey}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FormInput className="h-4 w-4" />
+          Quote Form Fields
+        </CardTitle>
+        <CardDescription>
+          Configure the fields borrowers and brokers will fill out when requesting a quote for this program. Set field types, required status, and conditional logic.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Contact Information (always included)</Label>
+          <div className="space-y-1.5 mt-2">
+            {contactFields.map((field) => (
+              <div
+                key={field.fieldKey}
+                className="flex items-center justify-between gap-3 py-2 px-3 bg-muted/30 rounded-md border border-dashed"
+              >
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm">{field.label}</span>
+                  <Badge variant="outline" className="text-[10px]">{getFieldTypeLabel(field.fieldType)}</Badge>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Switch
+                      checked={field.visible}
+                      onCheckedChange={(checked) => updateField(field.fieldKey, { visible: checked, required: checked ? field.required : false })}
+                      className="scale-75"
+                      data-testid={`switch-visible-${field.fieldKey}`}
+                    />
+                    Visible
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Switch
+                      checked={field.required}
+                      disabled={!field.visible}
+                      onCheckedChange={(checked) => updateField(field.fieldKey, { required: checked })}
+                      className="scale-75"
+                      data-testid={`switch-required-${field.fieldKey}`}
+                    />
+                    Required
+                  </label>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex items-center gap-2">
-        <Input
-          className="h-8 text-sm flex-1"
-          placeholder="New field name..."
-          value={newFieldName}
-          onChange={(e) => setNewFieldName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }}
-          data-testid="input-new-quote-field"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={addCustomField}
-          disabled={!newFieldName.trim()}
-          data-testid="button-add-quote-field"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Field
-        </Button>
-      </div>
-    </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Program-Specific Fields (drag to reorder)</Label>
+          <div className="space-y-1.5 mt-2">
+            {programFields.map((field, pIdx) => {
+              const isConfiguring = configuringIndex === pIdx;
+              const condField = field.conditionalOn
+                ? quoteFormFields.find((f) => f.fieldKey === field.conditionalOn)
+                : null;
+              return (
+                <div key={field.fieldKey}>
+                  <div
+                    draggable
+                    onDragStart={() => handleDragStart(pIdx)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(pIdx)}
+                    className={`flex items-center gap-2 py-2 px-3 rounded-md border transition-colors ${
+                      dragIndex === pIdx ? 'border-primary bg-primary/5' : 'bg-muted/40'
+                    } ${field.conditionalOn ? 'ml-6 border-l-2 border-l-primary/40' : ''}`}
+                    data-testid={`field-row-${field.fieldKey}`}
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab flex-shrink-0" />
+
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm truncate">{field.label}</span>
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0">{getFieldTypeLabel(field.fieldType)}</Badge>
+                      {field.conditionalOn && condField && (
+                        <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                          if {condField.label} = {field.conditionalValue}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => pIdx > 0 && moveField(pIdx, pIdx - 1)}
+                          disabled={pIdx === 0}
+                          data-testid={`button-move-up-${field.fieldKey}`}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => pIdx < programFields.length - 1 && moveField(pIdx, pIdx + 1)}
+                          disabled={pIdx === programFields.length - 1}
+                          data-testid={`button-move-down-${field.fieldKey}`}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Switch
+                          checked={field.visible}
+                          onCheckedChange={(checked) => updateField(field.fieldKey, { visible: checked, required: checked ? field.required : false })}
+                          className="scale-75"
+                          data-testid={`switch-visible-${field.fieldKey}`}
+                        />
+                        Visible
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Switch
+                          checked={field.required}
+                          disabled={!field.visible}
+                          onCheckedChange={(checked) => updateField(field.fieldKey, { required: checked })}
+                          className="scale-75"
+                          data-testid={`switch-required-${field.fieldKey}`}
+                        />
+                        Required
+                      </label>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setConfiguringIndex(isConfiguring ? null : pIdx)}
+                        data-testid={`button-configure-${field.fieldKey}`}
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </Button>
+
+                      {!field.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeField(field.fieldKey)}
+                          data-testid={`button-remove-field-${field.fieldKey}`}
+                        >
+                          <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {isConfiguring && (
+                    <div className="ml-6 mt-1 p-3 bg-muted/20 rounded-md border space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Field Label</Label>
+                          <Input
+                            value={field.label}
+                            onChange={(e) => updateField(field.fieldKey, { label: e.target.value })}
+                            data-testid={`input-label-${field.fieldKey}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Field Type</Label>
+                          <Select
+                            value={field.fieldType}
+                            onValueChange={(v) => updateField(field.fieldKey, {
+                              fieldType: v as QuoteFormField['fieldType'],
+                              options: v === 'select' ? (field.options?.length ? field.options : ['Option 1']) : undefined,
+                            })}
+                          >
+                            <SelectTrigger data-testid={`select-field-type-${field.fieldKey}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FIELD_TYPE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {field.fieldType === 'select' && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Dropdown Options (one per line)</Label>
+                          <Textarea
+                            value={(field.options || []).join('\n')}
+                            onChange={(e) => updateField(field.fieldKey, { options: e.target.value.split('\n').filter(Boolean) })}
+                            rows={3}
+                            placeholder="Option 1&#10;Option 2&#10;Option 3"
+                            data-testid={`textarea-options-${field.fieldKey}`}
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Conditional Logic</Label>
+                        <p className="text-[11px] text-muted-foreground mb-1">
+                          Only show this field when another field has a specific answer.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <Select
+                            value={field.conditionalOn || '__none__'}
+                            onValueChange={(v) => updateField(field.fieldKey, {
+                              conditionalOn: v === '__none__' ? undefined : v,
+                              conditionalValue: v === '__none__' ? undefined : field.conditionalValue,
+                            })}
+                          >
+                            <SelectTrigger data-testid={`select-conditional-on-${field.fieldKey}`}>
+                              <SelectValue placeholder="Show when..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Always show</SelectItem>
+                              {availableConditionalFields
+                                .filter((f) => f.fieldKey !== field.fieldKey)
+                                .map((f) => (
+                                  <SelectItem key={f.fieldKey} value={f.fieldKey}>{f.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+
+                          {field.conditionalOn && (() => {
+                            const parentField = quoteFormFields.find((f) => f.fieldKey === field.conditionalOn);
+                            if (!parentField) return null;
+                            if (parentField.fieldType === 'yes_no') {
+                              return (
+                                <Select
+                                  value={field.conditionalValue || ''}
+                                  onValueChange={(v) => updateField(field.fieldKey, { conditionalValue: v })}
+                                >
+                                  <SelectTrigger data-testid={`select-conditional-value-${field.fieldKey}`}>
+                                    <SelectValue placeholder="equals..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Yes">Yes</SelectItem>
+                                    <SelectItem value="No">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              );
+                            }
+                            if (parentField.fieldType === 'select' && parentField.options) {
+                              return (
+                                <Select
+                                  value={field.conditionalValue || ''}
+                                  onValueChange={(v) => updateField(field.fieldKey, { conditionalValue: v })}
+                                >
+                                  <SelectTrigger data-testid={`select-conditional-value-${field.fieldKey}`}>
+                                    <SelectValue placeholder="equals..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {parentField.options.map((opt) => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            }
+                            return (
+                              <Input
+                                value={field.conditionalValue || ''}
+                                onChange={(e) => updateField(field.fieldKey, { conditionalValue: e.target.value })}
+                                placeholder="equals..."
+                                data-testid={`input-conditional-value-${field.fieldKey}`}
+                              />
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Add Custom Field</Label>
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              className="flex-1"
+              placeholder="Field name..."
+              value={newFieldName}
+              onChange={(e) => setNewFieldName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }}
+              data-testid="input-new-quote-field"
+            />
+            <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as QuoteFormField['fieldType'])}>
+              <SelectTrigger className="w-36" data-testid="select-new-field-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={addCustomField}
+              disabled={!newFieldName.trim()}
+              data-testid="button-add-quote-field"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add Field
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─── Step 3: Stages ─────────────────────────────────────────────
+// ─── Step 4: Stages ─────────────────────────────────────────────
 
 function StagesStep({
   stages,
@@ -1289,8 +1626,10 @@ function StagesStep({
   stages: StageEntry[];
   setStages: (s: StageEntry[]) => void;
 }) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
   const addStage = () => {
-    setStages([...stages, { stepName: '', estimatedDays: 5, isRequired: true }]);
+    setStages([...stages, { stepName: '', isRequired: true }]);
   };
 
   const removeStage = (i: number) => {
@@ -1303,6 +1642,14 @@ function StagesStep({
     setStages(updated);
   };
 
+  const moveStage = (from: number, to: number) => {
+    if (from === to) return;
+    const updated = [...stages];
+    const [moved] = updated.splice(from, 1);
+    updated.splice(to, 0, moved);
+    setStages(updated);
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -1311,13 +1658,25 @@ function StagesStep({
           Workflow Stages
         </CardTitle>
         <CardDescription>
-          Define the stages each deal goes through from application to closing. The order below is the order deals will progress through your pipeline. Documents and tasks will be linked to these stages in the next steps.
+          Define the stages each deal goes through from application to closing. Drag to reorder. Documents and tasks will be linked to these stages in the next steps.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {stages.map((stage, i) => (
-          <div key={i} className="flex items-center gap-2 p-2 bg-muted/40 rounded-md">
-            <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <div
+            key={i}
+            className={cn(
+              "flex items-center gap-2 p-2 rounded-md border transition-colors",
+              dragIdx === i ? "border-primary bg-primary/5" : "border-transparent bg-muted/40"
+            )}
+            draggable
+            onDragStart={() => setDragIdx(i)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragIdx !== null) { moveStage(dragIdx, i); setDragIdx(null); } }}
+            onDragEnd={() => setDragIdx(null)}
+            data-testid={`stage-row-${i}`}
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
             <Badge variant="outline" className="text-xs w-6 h-6 flex items-center justify-center p-0 flex-shrink-0">
               {i + 1}
             </Badge>
@@ -1326,27 +1685,20 @@ function StagesStep({
               placeholder="Stage name"
               value={stage.stepName}
               onChange={(e) => updateStage(i, 'stepName', e.target.value)}
+              data-testid={`input-stage-name-${i}`}
             />
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <Input
-                className="h-8 text-sm w-16"
-                type="number"
-                value={stage.estimatedDays}
-                onChange={(e) => updateStage(i, 'estimatedDays', parseInt(e.target.value) || 0)}
-              />
-              <span className="text-xs text-muted-foreground">days</span>
-            </div>
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
               onClick={() => removeStage(i)}
+              data-testid={`button-remove-stage-${i}`}
             >
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addStage}>
+        <Button variant="outline" size="sm" onClick={addStage} data-testid="button-add-stage">
           <Plus className="h-3.5 w-3.5 mr-1" />
           Add Stage
         </Button>
@@ -1355,7 +1707,7 @@ function StagesStep({
   );
 }
 
-// ─── Step 4: Documents ──────────────────────────────────────────
+// ─── Step 5: Documents ──────────────────────────────────────────
 
 function DocumentsStep({
   documents,
@@ -1366,8 +1718,13 @@ function DocumentsStep({
   setDocuments: (d: DocEntry[]) => void;
   stages: StageEntry[];
 }) {
-  const addDocument = () => {
-    setDocuments([...documents, { documentName: '', documentCategory: 'borrower_docs', isRequired: true, stepIndex: null }]);
+  const [newDocName, setNewDocName] = useState('');
+
+  const addDocument = (name?: string) => {
+    const docName = name || newDocName.trim();
+    if (!docName) return;
+    setDocuments([...documents, { documentName: docName, documentCategory: 'borrower_docs', isRequired: true, stepIndex: null }]);
+    setNewDocName('');
   };
 
   const removeDocument = (i: number) => {
@@ -1405,101 +1762,95 @@ function DocumentsStep({
           Required Documents
         </CardTitle>
         <CardDescription>
-          Specify which documents borrowers need to upload. You can link each document to a specific stage so it shows up at the right time in the pipeline.
+          Configure which documents are required for this program. Toggle each document on/off and assign the stage it belongs to.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Quick add standard documents:</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {standardDocuments.map((cat) => (
-              <Button key={cat.category} variant="outline" size="sm" className="text-xs h-7" onClick={() => addStandardDocs(cat.category)}>
-                <Plus className="h-3 w-3 mr-1" />
-                {cat.categoryLabel}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
         {documents.length === 0 ? (
           <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No documents added yet. Use the quick-add buttons above or add documents manually below.
+            No documents added yet. Add one manually below.
           </div>
         ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="space-y-1 max-h-80 overflow-y-auto">
             {documents.map((doc, i) => (
-              <div key={i} className="flex items-start gap-2 p-2 bg-muted/40 rounded-md">
-                <div className="flex-1 space-y-1.5">
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Document name"
-                    value={doc.documentName}
-                    onChange={(e) => updateDocument(i, 'documentName', e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <Select value={doc.documentCategory} onValueChange={(v) => updateDocument(i, 'documentCategory', v)}>
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {documentCategories.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
-                      onValueChange={(v) => updateDocument(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
-                    >
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue placeholder="Link to stage..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No stage</SelectItem>
-                        {stages.map((s, si) => (
-                          <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/30 group" data-testid={`doc-row-${i}`}>
+                <span className="text-sm flex-1 min-w-0 truncate" title={doc.documentName}>{doc.documentName}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      checked={doc.isRequired}
+                      onCheckedChange={(v) => updateDocument(i, 'isRequired', v)}
+                      data-testid={`switch-doc-required-${i}`}
+                    />
+                    <span className="text-xs text-muted-foreground w-16">{doc.isRequired ? 'Required' : 'Optional'}</span>
                   </div>
+                  <Select
+                    value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
+                    onValueChange={(v) => updateDocument(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-doc-stage-${i}`}>
+                      <SelectValue placeholder="Select stage..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No stage</SelectItem>
+                      {stages.map((s, si) => (
+                        <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={() => removeDocument(i)}
+                    data-testid={`button-remove-doc-${i}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
-                  onClick={() => removeDocument(i)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
               </div>
             ))}
           </div>
         )}
 
-        <Button variant="outline" size="sm" onClick={addDocument}>
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Document Manually
-        </Button>
+        <div className="flex gap-2">
+          <Input
+            className="h-8 text-sm flex-1"
+            placeholder="Add a document..."
+            value={newDocName}
+            onChange={(e) => setNewDocName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDocument(); } }}
+            data-testid="input-new-document"
+          />
+          <Button variant="outline" size="sm" onClick={() => addDocument()} disabled={!newDocName.trim()} data-testid="button-add-document">
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Step 5: Tasks ──────────────────────────────────────────────
+// ─── Step 6: Tasks ──────────────────────────────────────────────
 
 function TasksStep({
   tasks,
   setTasks,
   stages,
+  teamMembers,
 }: {
   tasks: TaskEntry[];
   setTasks: (t: TaskEntry[]) => void;
   stages: StageEntry[];
+  teamMembers: { id: number; fullName: string; role: string }[];
 }) {
+  const [newTaskName, setNewTaskName] = useState('');
+
   const addTask = () => {
-    setTasks([...tasks, { taskName: '', taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex: null }]);
+    if (!newTaskName.trim()) return;
+    setTasks([...tasks, { taskName: newTaskName.trim(), taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex: null }]);
+    setNewTaskName('');
   };
 
   const removeTask = (i: number) => {
@@ -1520,85 +1871,92 @@ function TasksStep({
           Tasks
         </CardTitle>
         <CardDescription>
-          Define the action items that need to be completed at each stage. Tasks can be assigned to admins, processors, or borrowers.
+          Define the action items that need to be completed at each stage. Assign a team member and the stage each task belongs to.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {tasks.length === 0 ? (
           <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No tasks added yet. You can add them now or configure them later from the program settings.
+            No tasks added yet. Add tasks below or configure them later from the program settings.
           </div>
         ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            <div className="flex items-center gap-3 px-3 pb-1">
+              <span className="flex-1" />
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs font-medium text-muted-foreground w-44">Assigned To</span>
+                <span className="text-xs font-medium text-muted-foreground w-36">Stage Assigned</span>
+                <span className="w-5" />
+              </div>
+            </div>
             {tasks.map((task, i) => (
-              <div key={i} className="flex items-start gap-2 p-2 bg-muted/40 rounded-md">
-                <div className="flex-1 space-y-1.5">
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Task name"
-                    value={task.taskName}
-                    onChange={(e) => updateTask(i, 'taskName', e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <Select value={task.taskCategory} onValueChange={(v) => updateTask(i, 'taskCategory', v)}>
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {taskCategories.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={task.assignToRole} onValueChange={(v) => updateTask(i, 'assignToRole', v)}>
-                      <SelectTrigger className="h-7 text-xs w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="processor">Processor</SelectItem>
-                        <SelectItem value="user">Borrower</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={task.stepIndex !== null ? task.stepIndex.toString() : 'none'}
-                      onValueChange={(v) => updateTask(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
-                    >
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue placeholder="Link to stage..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No stage</SelectItem>
-                        {stages.map((s, si) => (
-                          <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/30 group" data-testid={`task-row-${i}`}>
+                <span className="text-sm flex-1 min-w-0 truncate" title={task.taskName}>{task.taskName}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Select value={task.assignToRole} onValueChange={(v) => updateTask(i, 'assignToRole', v)}>
+                    <SelectTrigger className="h-7 text-xs w-44" data-testid={`select-task-assignee-${i}`}>
+                      <SelectValue placeholder="Assign to..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teamMembers.length > 0 ? (
+                        teamMembers.map((m) => (
+                          <SelectItem key={m.id} value={`user_${m.id}`}>{m.fullName} ({m.role})</SelectItem>
+                        ))
+                      ) : null}
+                      <SelectItem value="admin">Admin (role)</SelectItem>
+                      <SelectItem value="processor">Processor (role)</SelectItem>
+                      <SelectItem value="user">Borrower</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={task.stepIndex !== null ? task.stepIndex.toString() : 'none'}
+                    onValueChange={(v) => updateTask(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-task-stage-${i}`}>
+                      <SelectValue placeholder="Select stage..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No stage</SelectItem>
+                      {stages.map((s, si) => (
+                        <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={() => removeTask(i)}
+                    data-testid={`button-remove-task-${i}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
-                  onClick={() => removeTask(i)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
               </div>
             ))}
           </div>
         )}
 
-        <Button variant="outline" size="sm" onClick={addTask}>
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Task
-        </Button>
+        <div className="flex gap-2">
+          <Input
+            className="h-8 text-sm flex-1"
+            placeholder="Add a task..."
+            value={newTaskName}
+            onChange={(e) => setNewTaskName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTask(); } }}
+            data-testid="input-new-task"
+          />
+          <Button variant="outline" size="sm" onClick={addTask} disabled={!newTaskName.trim()} data-testid="button-add-task">
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Step 6: Review Rules (AI Rules) ────────────────────────────
+// ─── Step 7: Review Rules (AI Rules) ────────────────────────────
 
 function ReviewRulesStep({
   reviewRules,
@@ -1611,8 +1969,16 @@ function ReviewRulesStep({
   stages: StageEntry[];
   documents: DocEntry[];
 }) {
-  const addRule = () => {
-    setReviewRules([...reviewRules, { ruleTitle: '', documentType: '', severity: 'warning', stepIndex: null }]);
+  const [addingForDoc, setAddingForDoc] = useState<string | null>(null);
+  const [newRuleTitle, setNewRuleTitle] = useState('');
+  const [newRuleSeverity, setNewRuleSeverity] = useState('warning');
+
+  const addRule = (docName: string) => {
+    if (!newRuleTitle.trim()) return;
+    setReviewRules([...reviewRules, { ruleTitle: newRuleTitle.trim(), documentType: docName, severity: newRuleSeverity, stepIndex: null }]);
+    setNewRuleTitle('');
+    setNewRuleSeverity('warning');
+    setAddingForDoc(null);
   };
 
   const removeRule = (i: number) => {
@@ -1625,8 +1991,13 @@ function ReviewRulesStep({
     setReviewRules(updated);
   };
 
-  // Get unique document names for linking
-  const docNames = [...new Set(documents.map((d) => d.documentName).filter(Boolean))];
+  const docNames = ['General', ...new Set(documents.map((d) => d.documentName).filter(Boolean))];
+
+  const severityConfig: Record<string, { label: string; color: string; desc: string }> = {
+    fail: { label: 'Fail', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', desc: 'Blocks the deal if not passed' },
+    warning: { label: 'Warning', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', desc: 'Alerts the internal team only' },
+    info: { label: 'Info', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', desc: 'Informational note for the team' },
+  };
 
   return (
     <Card>
@@ -1634,81 +2005,125 @@ function ReviewRulesStep({
         <CardTitle className="text-base flex items-center gap-2">
           <Sparkles className="h-4 w-4" />
           AI Review Rules
+          <Badge className="text-xs bg-blue-500 text-white hover:bg-blue-600">Optional</Badge>
         </CardTitle>
         <CardDescription>
-          Define what the AI agent should check when reviewing documents. Rules are tied to document types and can be flagged as failures, warnings, or informational notes. These rules power the automated document intelligence pipeline.
+          Define what the AI should check when reviewing each document type. Add rules to specific documents or general rules that apply to all. You can refine these later from program settings.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-start gap-2 p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-          <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-blue-700 dark:text-blue-300">
-            Example rules: "Verify borrower name matches across all documents", "Check that appraisal value is within 90 days", "Flag if FICO score is below 680". You can refine these later from the program settings.
-          </p>
-        </div>
+      <CardContent className="space-y-2">
+        <div className="space-y-1 max-h-[28rem] overflow-y-auto">
+          {docNames.map((docName) => {
+            const rulesForDoc = reviewRules
+              .map((r, origIdx) => ({ ...r, origIdx }))
+              .filter((r) => r.documentType === docName);
+            const isAdding = addingForDoc === docName;
 
-        {reviewRules.length === 0 ? (
-          <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No AI rules added yet. You can add them now or configure them later.
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">
-            {reviewRules.map((rule, i) => (
-              <div key={i} className="flex items-start gap-2 p-2 bg-muted/40 rounded-md">
-                <div className="flex-1 space-y-1.5">
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Rule description, e.g., 'Verify borrower ID is not expired'"
-                    value={rule.ruleTitle}
-                    onChange={(e) => updateRule(i, 'ruleTitle', e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <Select value={rule.documentType || 'general'} onValueChange={(v) => updateRule(i, 'documentType', v)}>
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue placeholder="Document type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="General">General (all documents)</SelectItem>
-                        {docNames.map((name) => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={rule.severity} onValueChange={(v) => updateRule(i, 'severity', v)}>
-                      <SelectTrigger className="h-7 text-xs w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fail">Fail</SelectItem>
-                        <SelectItem value="warning">Warning</SelectItem>
-                        <SelectItem value="info">Info</SelectItem>
-                      </SelectContent>
-                    </Select>
+            return (
+              <div key={docName} className="rounded-md border border-border/60" data-testid={`doc-rules-section-${docName}`}>
+                <div className="flex items-center justify-between px-3 py-2 bg-blue-600 dark:bg-blue-700 rounded-t-md">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-3.5 w-3.5 text-white/80 flex-shrink-0" />
+                    <span className="text-sm font-medium truncate text-white">{docName === 'General' ? 'General (all documents)' : docName}</span>
+                    {rulesForDoc.length > 0 && (
+                      <Badge className="text-xs h-5 px-1.5 bg-white/20 text-white border-0">{rulesForDoc.length}</Badge>
+                    )}
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs text-white hover:text-white hover:bg-white/10"
+                    onClick={() => { setAddingForDoc(isAdding ? null : docName); setNewRuleTitle(''); setNewRuleSeverity('warning'); }}
+                    data-testid={`button-add-rule-${docName}`}
+                  >
+                    {isAdding ? <X className="h-3 w-3 mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                    {isAdding ? 'Cancel' : 'Add Rule'}
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
-                  onClick={() => removeRule(i)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
 
-        <Button variant="outline" size="sm" onClick={addRule}>
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Rule
-        </Button>
+                {rulesForDoc.length > 0 && (
+                  <div className="px-3 py-1 space-y-1">
+                    {rulesForDoc.map((rule) => (
+                      <div key={rule.origIdx} className="flex items-center gap-2 py-1 group" data-testid={`rule-row-${rule.origIdx}`}>
+                        <span className="text-xs flex-1 min-w-0 truncate" title={rule.ruleTitle}>{rule.ruleTitle}</span>
+                        <Select value={rule.severity} onValueChange={(v) => updateRule(rule.origIdx, 'severity', v)}>
+                          <SelectTrigger className="h-6 text-xs w-24 flex-shrink-0" data-testid={`select-rule-severity-${rule.origIdx}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fail">
+                              <span className="text-red-600 font-medium">Fail</span>
+                            </SelectItem>
+                            <SelectItem value="warning">
+                              <span className="text-yellow-600 font-medium">Warning</span>
+                            </SelectItem>
+                            <SelectItem value="info">
+                              <span className="text-blue-600 font-medium">Info</span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                          onClick={() => removeRule(rule.origIdx)}
+                          data-testid={`button-remove-rule-${rule.origIdx}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isAdding && (
+                  <div className="px-3 py-2 border-t border-border/40 bg-muted/10 space-y-2">
+                    <Input
+                      className="h-8 text-sm"
+                      placeholder="Describe what the AI should check..."
+                      value={newRuleTitle}
+                      onChange={(e) => setNewRuleTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRule(docName); } }}
+                      autoFocus
+                      data-testid="input-new-rule-title"
+                    />
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1 flex-1">
+                        {Object.entries(severityConfig).map(([key, config]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            className={cn(
+                              "px-2 py-1 rounded text-xs font-medium transition-all",
+                              newRuleSeverity === key ? config.color + ' ring-1 ring-offset-1 ring-current' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                            )}
+                            onClick={() => setNewRuleSeverity(key)}
+                            data-testid={`button-severity-${key}`}
+                          >
+                            {config.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Button size="sm" className="h-7 text-xs" onClick={() => addRule(docName)} disabled={!newRuleTitle.trim()} data-testid="button-confirm-add-rule">
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {severityConfig[newRuleSeverity]?.desc}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Step 7: Summary ────────────────────────────────────────────
+// ─── Step 8: Summary ────────────────────────────────────────────
 
 function SummaryStep({
   programName,
@@ -1717,6 +2132,7 @@ function SummaryStep({
   documents,
   tasks,
   reviewRules,
+  quoteFormFields,
   selectedCreditPolicyId,
   creditPolicies,
 }: {
@@ -1726,12 +2142,17 @@ function SummaryStep({
   documents: DocEntry[];
   tasks: TaskEntry[];
   reviewRules: RuleEntry[];
+  quoteFormFields: QuoteFormField[];
   selectedCreditPolicyId: number | null;
   creditPolicies: any[];
 }) {
   const policyName = selectedCreditPolicyId
     ? creditPolicies.find((p: any) => p.id === selectedCreditPolicyId)?.name || 'Unknown'
     : 'None';
+
+  const visibleFields = quoteFormFields.filter((f) => f.visible);
+  const requiredFields = quoteFormFields.filter((f) => f.required);
+  const conditionalFields = quoteFormFields.filter((f) => f.conditionalOn);
 
   return (
     <Card>
@@ -1762,7 +2183,11 @@ function SummaryStep({
 
         <Separator />
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="bg-muted/50 rounded-md p-3 text-center">
+            <p className="text-2xl font-bold">{visibleFields.length}</p>
+            <p className="text-xs text-muted-foreground">Form Fields</p>
+          </div>
           <div className="bg-muted/50 rounded-md p-3 text-center">
             <p className="text-2xl font-bold">{stages.filter((s) => s.stepName.trim()).length}</p>
             <p className="text-xs text-muted-foreground">Stages</p>
@@ -1780,6 +2205,20 @@ function SummaryStep({
             <p className="text-xs text-muted-foreground">AI Rules</p>
           </div>
         </div>
+
+        {visibleFields.length > 0 && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Quote Form ({requiredFields.length} required, {conditionalFields.length} conditional)</Label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {visibleFields.map((f) => (
+                <Badge key={f.fieldKey} variant={f.required ? 'default' : 'outline'} className="text-xs">
+                  {f.label}
+                  {f.conditionalOn && ' *'}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {stages.filter((s) => s.stepName.trim()).length > 0 && (
           <div>

@@ -103,6 +103,7 @@ interface Deal {
     propertyType: string;
     loanTerm?: string;
   };
+  applicationData?: Record<string, any> | null;
   interestRate: string;
   pointsCharged: number;
   pointsAmount: number;
@@ -1309,49 +1310,6 @@ export default function AdminDealDetail() {
                 {deal.stage || 'No Stage'}
               </Badge>
             )}
-            <Select
-              value={deal.projectStatus || 'active'}
-              onValueChange={(value) => updateStatusMutation.mutate(value)}
-              disabled={updateStatusMutation.isPending}
-            >
-              <SelectTrigger
-                className="w-auto h-6 text-xs font-semibold px-2 rounded-md border-0"
-                style={{
-                  backgroundColor: {
-                    active: 'rgba(34, 197, 94, 0.15)',
-                    closed: 'rgba(59, 130, 246, 0.15)',
-                    on_hold: 'rgba(245, 158, 11, 0.15)',
-                    archived: 'rgba(107, 114, 128, 0.15)',
-                  }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.15)',
-                  color: {
-                    active: '#16a34a',
-                    closed: '#2563eb',
-                    on_hold: '#d97706',
-                    archived: '#6b7280',
-                  }[deal.projectStatus || 'active'] || '#6b7280',
-                }}
-                data-testid="select-deal-status"
-              >
-                <SelectValue>
-                  {{ active: 'Active', closed: 'Closed', on_hold: 'On Hold', archived: 'Archive' }[deal.projectStatus || 'active'] || deal.projectStatus}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {[
-                  { value: 'active', label: 'Active', color: '#16a34a' },
-                  { value: 'closed', label: 'Closed', color: '#2563eb' },
-                  { value: 'on_hold', label: 'On Hold', color: '#d97706' },
-                  { value: 'archived', label: 'Archive', color: '#6b7280' },
-                ].map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    <span className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                      {s.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-semibold" data-testid="text-borrower-name">{borrowerName}</h1>
@@ -1533,6 +1491,75 @@ export default function AdminDealDetail() {
               </div>
             </div>
           </Card>
+          <Card className="mt-4" data-testid="card-deal-status">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-3 w-3 rounded-full flex-shrink-0"
+                    style={{
+                      backgroundColor: {
+                        active: '#16a34a',
+                        closed: '#2563eb',
+                        on_hold: '#d97706',
+                        archived: '#6b7280',
+                      }[deal.projectStatus || 'active'] || '#6b7280',
+                    }}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">Deal Status</span>
+                </div>
+                <Select
+                  value={deal.projectStatus || 'active'}
+                  onValueChange={(value) => updateStatusMutation.mutate(value)}
+                  disabled={updateStatusMutation.isPending}
+                >
+                  <SelectTrigger
+                    className="w-[140px] font-semibold"
+                    style={{
+                      backgroundColor: {
+                        active: 'rgba(34, 197, 94, 0.1)',
+                        closed: 'rgba(59, 130, 246, 0.1)',
+                        on_hold: 'rgba(245, 158, 11, 0.1)',
+                        archived: 'rgba(107, 114, 128, 0.1)',
+                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.1)',
+                      borderColor: {
+                        active: 'rgba(34, 197, 94, 0.3)',
+                        closed: 'rgba(59, 130, 246, 0.3)',
+                        on_hold: 'rgba(245, 158, 11, 0.3)',
+                        archived: 'rgba(107, 114, 128, 0.3)',
+                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.3)',
+                      color: {
+                        active: '#16a34a',
+                        closed: '#2563eb',
+                        on_hold: '#d97706',
+                        archived: '#6b7280',
+                      }[deal.projectStatus || 'active'] || '#6b7280',
+                    }}
+                    data-testid="select-deal-status"
+                  >
+                    <SelectValue>
+                      {{ active: 'Active', closed: 'Closed', on_hold: 'On Hold', archived: 'Archive' }[deal.projectStatus || 'active'] || deal.projectStatus}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      { value: 'active', label: 'Active', color: '#16a34a' },
+                      { value: 'closed', label: 'Closed', color: '#2563eb' },
+                      { value: 'on_hold', label: 'On Hold', color: '#d97706' },
+                      { value: 'archived', label: 'Archive', color: '#6b7280' },
+                    ].map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        <span className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
           <Card className="mt-4">
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1628,6 +1655,78 @@ export default function AdminDealDetail() {
               )}
             </CardContent>
           </Card>
+
+          {(() => {
+            const FIELD_LABELS: Record<string, string> = {
+              loanAmount: 'Loan Amount', propertyValue: 'Property Value', loanType: 'Loan Type',
+              loanPurpose: 'Loan Purpose', propertyType: 'Property Type', interestOnly: 'Interest Only',
+              ltv: 'LTV', dscr: 'Est. DSCR', ficoScore: 'Credit Score', creditScore: 'Credit Score',
+              prepaymentPenalty: 'Prepayment Penalty', tpoPremium: 'TPO Premium', loanTerm: 'Loan Term',
+              loanTermMonths: 'Loan Term (Months)', asIsValue: 'As-Is Value', arv: 'ARV',
+              rehabBudget: 'Rehab Budget', exitStrategy: 'Exit Strategy', experience: 'Experience',
+              constructionBudget: 'Construction Budget', entityType: 'Entity Type', entityName: 'Entity Name',
+              occupancy: 'Occupancy', units: 'Units', annualTaxes: 'Annual Taxes',
+              annualInsurance: 'Annual Insurance', monthlyRent: 'Monthly Rent', monthlyHOA: 'Monthly HOA',
+              appraisalValue: 'Appraisal Value', cashOut: 'Cash Out Amount', citizenshipStatus: 'Citizenship',
+              grossMonthlyRent: 'Gross Monthly Rent', calculatedDscr: 'Calculated DSCR',
+              monthlyPITIA: 'Monthly PITIA', downPayment: 'Down Payment', reserveMonths: 'Reserve Months',
+              squareFootage: 'Square Footage', yearBuilt: 'Year Built', occupancyStatus: 'Occupancy Status',
+              borrowerExperience: 'Borrower Experience', numberOfUnits: 'Number of Units',
+              estimatedPropertyValue: 'Estimated Property Value', purchasePrice: 'Purchase Price',
+            };
+            const SKIP_KEYS = ['additionalProperties', 'propertyAddress', 'firstName', 'lastName', 'email', 'phone', 'address'];
+            const CURRENCY_KEYS = ['loanAmount', 'propertyValue', 'asIsValue', 'arv', 'rehabBudget', 'constructionBudget', 'cashOut', 'annualTaxes', 'annualInsurance', 'monthlyRent', 'monthlyHOA', 'appraisalValue', 'grossMonthlyRent', 'monthlyPITIA', 'downPayment', 'estimatedPropertyValue', 'purchasePrice', 'annualPropertyTax'];
+            const formatValue = (key: string, val: any): string => {
+              if (val === null || val === undefined || val === '') return '\u2014';
+              if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+              if (CURRENCY_KEYS.includes(key)) {
+                const n = typeof val === 'string' ? parseFloat(val) : val;
+                if (!isNaN(n)) return formatCurrency(n);
+              }
+              return String(val);
+            };
+
+            let sourceData: Record<string, any> = {};
+            if (deal.applicationData && Object.keys(deal.applicationData).length > 0) {
+              sourceData = { ...deal.applicationData };
+            } else {
+              if (deal.loanData?.loanAmount) sourceData.loanAmount = deal.loanData.loanAmount;
+              if (deal.loanData?.propertyValue) sourceData.propertyValue = deal.loanData.propertyValue;
+              if (deal.loanData?.loanType && deal.loanData.loanType !== 'unknown') sourceData.loanType = deal.loanData.loanType;
+              if (deal.loanData?.loanPurpose) sourceData.loanPurpose = deal.loanData.loanPurpose;
+              if (deal.loanData?.propertyType && deal.loanData.propertyType !== 'unknown') sourceData.propertyType = deal.loanData.propertyType;
+              if (deal.loanData?.loanTerm) sourceData.loanTerm = deal.loanData.loanTerm;
+              if (deal.loanData?.ltv) sourceData.ltv = deal.loanData.ltv;
+              if (deal.interestRate && deal.interestRate !== '—') sourceData.interestRate = deal.interestRate;
+            }
+
+            const entries = Object.entries(sourceData)
+              .filter(([key]) => !SKIP_KEYS.includes(key))
+              .map(([key, val]) => ({ label: FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim(), value: formatValue(key, val) }));
+
+            if (entries.length === 0) return null;
+
+            return (
+              <Card className="mt-4" data-testid="card-application-details">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Application Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {entries.map(({ label, value }) => (
+                      <div key={label} className="flex items-center justify-between gap-2 py-1 border-b border-border/50 last:border-0">
+                        <span className="text-xs text-muted-foreground">{label}</span>
+                        <span className="text-sm font-medium text-right" data-testid={`text-app-${label.toLowerCase().replace(/\s+/g, '-')}`}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Share Deal Links Card */}
           <Card>

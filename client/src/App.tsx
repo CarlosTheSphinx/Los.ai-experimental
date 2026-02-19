@@ -206,7 +206,8 @@ function MainRoutes() {
           <Route path="/projects" component={() => <Redirect to="/deals" />} />
           <Route path="/projects/new" component={() => <Redirect to="/deals/new" />} />
           <Route path="/projects/:id">{(params) => <Redirect to={`/deals/${params.id}`} />}</Route>
-          <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
+          <Route path="/inbox" component={() => <ProtectedRoute component={MessagesPage} />} />
+          <Route path="/messages" component={() => <Redirect to="/inbox" />} />
           <Route path="/resources" component={() => <ProtectedRoute component={ResourcesPage} />} />
           <Route path="/borrower-quote" component={() => <Redirect to="/quotes" />} />
           <Route path="/borrower-quotes" component={() => <Redirect to="/quotes" />} />

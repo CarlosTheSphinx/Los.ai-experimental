@@ -569,7 +569,7 @@ export function BorrowerDashboard() {
 
       {/* Support Section */}
       <div className="mt-8 grid gap-4 md:grid-cols-3">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setLocation('/messages')}>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setLocation('/inbox')}>
           <CardContent className="flex items-center gap-4 p-4">
             <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <MessageSquare className="h-5 w-5 text-primary" />

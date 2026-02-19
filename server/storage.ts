@@ -37,6 +37,8 @@ import {
   type SubmissionAiReview, type InsertSubmissionAiReview,
   type SubmissionNote, type InsertSubmissionNote,
   type SubmissionNotification, type InsertSubmissionNotification,
+  messageTemplates,
+  type MessageTemplate, type InsertMessageTemplate,
 } from "@shared/schema";
 import { desc, eq, and, gt, like, sql, asc, or, isNull, count, inArray } from "drizzle-orm";
 
@@ -162,6 +164,12 @@ export interface IStorage {
   // Enhanced commercial submission methods
   updateCommercialSubmission(id: number, data: Partial<CommercialSubmission>): Promise<CommercialSubmission | undefined>;
   getCommercialSubmissionsByStatus(statuses: string[]): Promise<CommercialSubmission[]>;
+
+  // Message Templates
+  getMessageTemplates(userId: number): Promise<MessageTemplate[]>;
+  createMessageTemplate(data: InsertMessageTemplate): Promise<MessageTemplate>;
+  updateMessageTemplate(id: number, userId: number, data: Partial<InsertMessageTemplate>): Promise<MessageTemplate | undefined>;
+  deleteMessageTemplate(id: number, userId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1389,6 +1397,32 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(commercialSubmissions)
       .where(inArray(commercialSubmissions.status, statuses))
       .orderBy(desc(commercialSubmissions.createdAt));
+  }
+
+  async getMessageTemplates(userId: number): Promise<MessageTemplate[]> {
+    return await db.select().from(messageTemplates)
+      .where(eq(messageTemplates.createdBy, userId))
+      .orderBy(desc(messageTemplates.createdAt));
+  }
+
+  async createMessageTemplate(data: InsertMessageTemplate): Promise<MessageTemplate> {
+    const [template] = await db.insert(messageTemplates).values(data).returning();
+    return template;
+  }
+
+  async updateMessageTemplate(id: number, userId: number, data: Partial<InsertMessageTemplate>): Promise<MessageTemplate | undefined> {
+    const [updated] = await db.update(messageTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(messageTemplates.id, id), eq(messageTemplates.createdBy, userId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteMessageTemplate(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(messageTemplates)
+      .where(and(eq(messageTemplates.id, id), eq(messageTemplates.createdBy, userId)))
+      .returning();
+    return result.length > 0;
   }
 }
 

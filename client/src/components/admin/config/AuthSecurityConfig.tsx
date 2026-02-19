@@ -55,7 +55,7 @@ export default function AuthSecurityConfig() {
       <CardHeader>
         <CardTitle data-testid="text-auth-security-title">Authentication & Security</CardTitle>
         <CardDescription data-testid="text-auth-security-description">
-          Configure login methods, password policies, and security settings for your tenant.
+          Configure login methods, password policies, and security settings.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">

@@ -326,8 +326,8 @@ export function PricingConfiguration({
                       />
                       <ModeCard
                         icon={Settings}
-                        title="Manual / Skip"
-                        description="No automated pricing. You'll price each deal manually when quotes come in."
+                        title="No Automated Pricing"
+                        description="You'll price each deal manually when quotes come in."
                         selected={pricingMode === 'none'}
                         onClick={() => setPricingMode('none')}
                       />

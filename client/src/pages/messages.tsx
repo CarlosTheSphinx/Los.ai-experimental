@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   MessageSquare,
   Send,
-  Bell,
   User,
   Clock,
   Plus,
@@ -25,6 +24,10 @@ import {
   Mail,
   Link2,
   Paperclip,
+  Inbox,
+  Save,
+  Trash2,
+  Tags,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBranding } from "@/hooks/use-branding";
@@ -62,29 +65,7 @@ import {
 } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 
-// Message templates
-const MESSAGE_TEMPLATES = [
-  {
-    name: "Document Request",
-    content: "Hi, could you please provide the following documents for your loan application:\n\n[list documents]"
-  },
-  {
-    name: "Status Update",
-    content: "I wanted to give you a quick update on your loan.\n\n[update details]"
-  },
-  {
-    name: "Missing Information",
-    content: "We noticed some information is missing from your application. Could you please provide:\n\n[details]"
-  },
-  {
-    name: "Approval Notice",
-    content: "Great news! Your loan has been conditionally approved. Here are the next steps:\n\n[steps]"
-  },
-  {
-    name: "Follow Up",
-    content: "I'm following up on our previous conversation.\n\n[details]"
-  }
-];
+import { MERGE_TAGS, type MessageTemplate } from "@shared/schema";
 
 const QUICK_REPLIES = [
   "Thanks, received!",
@@ -115,6 +96,11 @@ export default function MessagesPage() {
   const [activeEmailThreadId, setActiveEmailThreadId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState("");
+  const [isMergeTagPopoverOpen, setIsMergeTagPopoverOpen] = useState(false);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+  
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
 
   const toggleStarred = (threadId: number, e: React.MouseEvent) => {
@@ -143,6 +129,61 @@ export default function MessagesPage() {
     setIsTemplatePopoverOpen(false);
   };
 
+  const insertMergeTag = (tag: string) => {
+    const input = messageInputRef.current;
+    if (input) {
+      const start = input.selectionStart ?? draft.length;
+      const end = input.selectionEnd ?? draft.length;
+      const newDraft = draft.slice(0, start) + tag + draft.slice(end);
+      setDraft(newDraft);
+      setIsMergeTagPopoverOpen(false);
+      setTimeout(() => {
+        input.focus();
+        const newPos = start + tag.length;
+        input.setSelectionRange(newPos, newPos);
+      }, 0);
+    } else {
+      setDraft(draft + tag);
+      setIsMergeTagPopoverOpen(false);
+    }
+  };
+
+  const { data: templatesData, refetch: refetchTemplates } = useQuery<{ templates: MessageTemplate[] }>({
+    queryKey: ["/api/message-templates"],
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: async (data: { name: string; content: string; category?: string }) => {
+      const res = await fetch('/api/message-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchTemplates();
+      setIsSaveTemplateOpen(false);
+      setSaveTemplateName("");
+    },
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/message-templates/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchTemplates();
+    },
+  });
+
+  const savedTemplates = templatesData?.templates || [];
+
   const { data: threadsData, isLoading: threadsLoading, refetch: refetchThreads } = useQuery({
     queryKey: ["/api/messages/threads"],
     queryFn: listThreads,
@@ -169,7 +210,7 @@ export default function MessagesPage() {
       const res = await fetch('/api/email/threads?linked=true', { credentials: 'include' });
       return res.json();
     },
-    enabled: !!isAdmin && inboxTab === 'email',
+    enabled: !!isAdmin,
   });
 
   const { data: emailThreadDetail } = useQuery<{ thread: any; messages: any[]; dealLinks: any[] }>({
@@ -190,7 +231,7 @@ export default function MessagesPage() {
       setSelectedDealId(urlDealId);
       setIsNewThreadDialogOpen(true);
       // Clear URL params after handling
-      setLocation('/messages', { replace: true });
+      setLocation('/inbox', { replace: true });
     }
   }, [urlDealId, openNew, setLocation, quotesData]);
 
@@ -269,9 +310,9 @@ export default function MessagesPage() {
     <div className="p-6 h-full" data-testid="messages-page">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <MessageSquare className="h-8 w-8 text-primary" />
+          <Inbox className="h-8 w-8 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold">Messages</h1>
+            <h1 className="text-2xl font-bold">Inbox</h1>
             <p className="text-sm text-muted-foreground">
               {isAdmin ? "Communicate with borrowers and partners" : `Messages from ${branding.companyName}`}
             </p>
@@ -390,6 +431,9 @@ export default function MessagesPage() {
                 >
                   <MessageSquare className="h-3 w-3 mr-1" />
                   In-App
+                  {threads.filter((t: any) => t.isUnread).length > 0 && (
+                    <Badge variant={inboxTab === 'messages' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{threads.filter((t: any) => t.isUnread).length}</Badge>
+                  )}
                 </Button>
                 <Button
                   variant={inboxTab === 'email' ? 'default' : 'ghost'}
@@ -400,6 +444,9 @@ export default function MessagesPage() {
                 >
                   <Mail className="h-3 w-3 mr-1" />
                   Email
+                  {emailThreads.filter((t: any) => t.unreadCount > 0).length > 0 && (
+                    <Badge variant={inboxTab === 'email' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{emailThreads.filter((t: any) => t.unreadCount > 0).length}</Badge>
+                  )}
                 </Button>
               </div>
             )}
@@ -714,9 +761,8 @@ export default function MessagesPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {messages.map((msg) => {
+                    {messages.filter((msg) => msg.type !== "notification").map((msg) => {
                       const isOwnMessage = msg.senderId === user?.id;
-                      const isNotification = msg.type === "notification";
                       
                       return (
                         <div
@@ -726,15 +772,12 @@ export default function MessagesPage() {
                         >
                           <div
                             className={`max-w-[70%] rounded-lg p-3 ${
-                              isNotification
-                                ? "bg-warning/10 border border-warning/20"
-                                : isOwnMessage
+                              isOwnMessage
                                 ? "bg-primary text-primary-foreground"
                                 : "bg-muted"
                             }`}
                           >
                             <div className="flex items-center gap-2 mb-1">
-                              {isNotification && <Bell className="h-3 w-3 text-warning" />}
                               <span className="text-xs opacity-70">
                                 {msg.senderName || (msg.senderRole === 'system' ? 'System' : msg.senderRole)}
                                 {" · "}
@@ -782,34 +825,124 @@ export default function MessagesPage() {
                         size="icon"
                         className="h-9 w-9"
                         title="Message templates"
+                        data-testid="button-templates"
                       >
                         <FileText className="h-4 w-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-56 p-2">
+                    <PopoverContent align="start" className="w-64 p-2">
                       <div className="space-y-1">
                         <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
-                          Message Templates
+                          Saved Templates
                         </p>
-                        {MESSAGE_TEMPLATES.map((template) => (
-                          <button
-                            key={template.name}
-                            onClick={() => insertTemplate(template.content)}
-                            className="w-full text-left px-2 py-2 rounded hover:bg-muted transition-colors text-sm"
-                          >
-                            <div className="font-medium">{template.name}</div>
-                            <div className="text-xs text-muted-foreground line-clamp-1">
-                              {template.content.split("\n")[0]}
+                        {savedTemplates.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-2 py-2">
+                            No templates yet. Type a message and save it as a template.
+                          </p>
+                        ) : (
+                          savedTemplates.map((template) => (
+                            <div
+                              key={template.id}
+                              className="flex items-center gap-1 group"
+                              data-testid={`template-item-${template.id}`}
+                            >
+                              <button
+                                onClick={() => insertTemplate(template.content)}
+                                className="flex-1 text-left px-2 py-2 rounded hover:bg-muted transition-colors text-sm"
+                              >
+                                <div className="font-medium">{template.name}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-1">
+                                  {template.content.split("\n")[0]}
+                                </div>
+                              </button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => deleteTemplateMutation.mutate(template.id)}
+                                data-testid={`button-delete-template-${template.id}`}
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
                             </div>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover open={isMergeTagPopoverOpen} onOpenChange={setIsMergeTagPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        title="Insert merge tag"
+                        data-testid="button-merge-tags"
+                      >
+                        <Tags className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-60 p-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
+                          Merge Tags
+                        </p>
+                        {MERGE_TAGS.map((mt) => (
+                          <button
+                            key={mt.tag}
+                            onClick={() => insertMergeTag(mt.tag)}
+                            className="w-full text-left px-2 py-1.5 rounded hover:bg-muted transition-colors text-sm"
+                            data-testid={`merge-tag-${mt.tag}`}
+                          >
+                            <div className="font-medium text-xs">{mt.label}</div>
+                            <div className="text-xs text-muted-foreground font-mono">{mt.tag}</div>
                           </button>
                         ))}
                       </div>
                     </PopoverContent>
                   </Popover>
+
+                  {draft.trim() && (
+                    <Popover open={isSaveTemplateOpen} onOpenChange={setIsSaveTemplateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          title="Save as template"
+                          data-testid="button-save-template"
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-64 p-3">
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold">Save as Template</p>
+                          <Input
+                            placeholder="Template name..."
+                            value={saveTemplateName}
+                            onChange={(e) => setSaveTemplateName(e.target.value)}
+                            data-testid="input-template-name"
+                          />
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            disabled={!saveTemplateName.trim() || createTemplateMutation.isPending}
+                            onClick={() => createTemplateMutation.mutate({ name: saveTemplateName.trim(), content: draft })}
+                            data-testid="button-confirm-save-template"
+                          >
+                            {createTemplateMutation.isPending ? "Saving..." : "Save Template"}
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
                   <Input
+                    ref={messageInputRef}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleKeyDown}
