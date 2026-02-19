@@ -952,6 +952,7 @@ export default function AdminSettings() {
                   )}
                   {isSuperAdmin ? (
                     <>
+                      <OpenAiApiKeySection />
                       <PandaDocApiKeySection />
 
                       <div className="mt-4 border rounded-lg p-4 space-y-3" data-testid="integration-pandadoc-webhook">
@@ -1200,6 +1201,131 @@ function PandaDocApiKeySection() {
         </Button>
         {testResult && (
           <span className={`text-xs ${testResult.success ? 'text-green-600' : 'text-destructive'}`}>
+            {testResult.message}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OpenAiApiKeySection() {
+  const { toast } = useToast();
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const { data: openaiStatus, isLoading: statusLoading } = useQuery<{ connected: boolean; maskedKey?: string; source?: string }>({
+    queryKey: ['/api/admin/openai/status'],
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const res = await apiRequest('PUT', '/api/admin/settings/openai_api_key', {
+        value: key,
+        description: 'OpenAI API Key for AI features',
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Saved", description: "OpenAI API key saved successfully" });
+      setApiKey('');
+      setShowKey(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/openai/status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/integrations/status'] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save API key", variant: "destructive" });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('GET', '/api/admin/openai/test');
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setTestResult({
+        success: data.connected,
+        message: data.connected ? (data.message || 'Connected successfully') : (data.error || 'Connection failed'),
+      });
+    },
+    onError: () => {
+      setTestResult({ success: false, message: 'Failed to test connection' });
+    },
+  });
+
+  return (
+    <div className="mt-6 border rounded-lg p-4 space-y-3" data-testid="integration-openai-api">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain className="h-5 w-5" />
+          <span className="font-medium">OpenAI API Key</span>
+        </div>
+        {statusLoading ? (
+          <Skeleton className="h-5 w-24" />
+        ) : openaiStatus?.connected ? (
+          <Badge variant="default">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Connected
+          </Badge>
+        ) : (
+          <Badge variant="secondary">
+            <XCircle className="h-3 w-3 mr-1" />
+            Not Connected
+          </Badge>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Connect your OpenAI account to enable AI-powered features like document analysis, deal review, and automated communications.
+        Get your API key from{" "}
+        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline" data-testid="link-openai-platform">
+          platform.openai.com
+        </a>.
+      </p>
+      {openaiStatus?.maskedKey && (
+        <p className="text-xs text-muted-foreground" data-testid="text-openai-masked-key">
+          Current key: <span className="font-mono">{openaiStatus.maskedKey}</span>
+          {openaiStatus.source === 'integration' && (
+            <span className="ml-2">(via system integration)</span>
+          )}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          type={showKey ? "text" : "password"}
+          placeholder="Enter your OpenAI API key (sk-...)..."
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          className="font-mono text-xs"
+          data-testid="input-openai-api-key"
+        />
+        <Button
+          variant="outline"
+          onClick={() => setShowKey(!showKey)}
+          data-testid="button-toggle-openai-key-visibility"
+        >
+          {showKey ? "Hide" : "Show"}
+        </Button>
+        <Button
+          onClick={() => saveMutation.mutate(apiKey)}
+          disabled={!apiKey.trim() || saveMutation.isPending}
+          data-testid="button-save-openai-key"
+        >
+          {saveMutation.isPending ? "Saving..." : "Save"}
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          onClick={() => { setTestResult(null); testMutation.mutate(); }}
+          disabled={testMutation.isPending}
+          data-testid="button-test-openai"
+        >
+          {testMutation.isPending ? "Testing..." : "Test Connection"}
+        </Button>
+        {testResult && (
+          <span className={`text-xs ${testResult.success ? 'text-green-600' : 'text-destructive'}`} data-testid="text-openai-test-result">
             {testResult.message}
           </span>
         )}

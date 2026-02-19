@@ -5344,8 +5344,8 @@ export async function registerRoutes(
       const { key } = req.params;
       const { value, description } = req.body;
 
-      if (key === 'pandadoc_api_key' && req.user?.role !== 'super_admin') {
-        return res.status(403).json({ error: 'Only super admins can manage PandaDoc API keys' });
+      if ((key === 'pandadoc_api_key' || key === 'openai_api_key') && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only super admins can manage API keys' });
       }
       
       if (!value) {
@@ -13851,6 +13851,57 @@ If the user provides specific criteria, extract as many rules as you can from th
       }
     } catch (error: any) {
       res.json({ connected: false, error: error.message });
+    }
+  });
+
+  // OpenAI API key status
+  app.get('/api/admin/openai/status', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      let apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        const setting = await storage.getSettingByKey('openai_api_key');
+        apiKey = setting?.settingValue || '';
+      }
+      const isSuperAdmin = req.user?.role === 'super_admin';
+      if (apiKey) {
+        const result: any = { connected: true };
+        if (isSuperAdmin) {
+          result.maskedKey = apiKey.substring(0, 7) + '...' + apiKey.substring(apiKey.length - 4);
+          result.source = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ? 'integration' : 'manual';
+        }
+        return res.json(result);
+      }
+      res.json({ connected: false });
+    } catch (error) {
+      console.error('OpenAI status check error:', error);
+      res.json({ connected: false });
+    }
+  });
+
+  // OpenAI API key test
+  app.get('/api/admin/openai/test', authenticateUser, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      let apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        const setting = await storage.getSettingByKey('openai_api_key');
+        apiKey = setting?.settingValue || '';
+      }
+      if (!apiKey) {
+        return res.json({ connected: false, error: 'No API key configured' });
+      }
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+      const models = await openai.models.list();
+      const modelCount = models.data?.length || 0;
+      res.json({
+        connected: true,
+        message: `Connected successfully. ${modelCount} models available.`,
+      });
+    } catch (error: any) {
+      res.json({ connected: false, error: error.message || 'Connection failed' });
     }
   });
 
