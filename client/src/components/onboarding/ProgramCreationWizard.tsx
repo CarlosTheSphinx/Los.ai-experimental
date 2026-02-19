@@ -1766,23 +1766,9 @@ function DocumentsStep({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Quick add standard documents:</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {standardDocuments.map((cat) => (
-              <Button key={cat.category} variant="outline" size="sm" className="text-xs h-7" onClick={() => addStandardDocs(cat.category)} data-testid={`button-add-docs-${cat.category}`}>
-                <Plus className="h-3 w-3 mr-1" />
-                {cat.categoryLabel}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
         {documents.length === 0 ? (
           <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No documents added yet. Use the quick-add buttons above or add one manually below.
+            No documents added yet. Add one manually below.
           </div>
         ) : (
           <div className="space-y-1 max-h-80 overflow-y-auto">
