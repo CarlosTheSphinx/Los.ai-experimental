@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -15624,6 +15624,130 @@ Return JSON only:
     } catch (error) {
       console.error('Error updating branding settings:', error);
       res.status(500).json({ error: 'Failed to update branding settings' });
+    }
+  });
+
+  // Settings image upload (for logos, etc.)
+  const settingsImageUpload = multer({
+    dest: path.join(process.cwd(), 'uploads', 'temp'),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('image/')) cb(null, true);
+      else cb(new Error('Only image files are allowed'));
+    },
+  });
+
+  app.post('/api/admin/settings/upload-image', authenticateUser, requireAdmin, settingsImageUpload.single('file'), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+      const fs = await import('fs');
+      const fileBuffer = await fs.promises.readFile(req.file.path);
+      const objectStorageService = new ObjectStorageService();
+      const { objectPath } = await objectStorageService.uploadFile(
+        fileBuffer,
+        req.file.originalname || 'logo.png',
+        req.file.mimetype || 'image/png'
+      );
+      await fs.promises.unlink(req.file.path).catch(() => {});
+      const publicUrl = `/api/storage/file?path=${encodeURIComponent(objectPath)}`;
+      res.json({ url: publicUrl, objectPath });
+    } catch (error) {
+      console.error('Settings image upload error:', error);
+      res.status(500).json({ error: 'Failed to upload image' });
+    }
+  });
+
+  // Serve storage files publicly (for logos etc.) - restricted to settings uploads only
+  app.get('/api/storage/file', async (req: Request, res: Response) => {
+    try {
+      const objectPath = req.query.path as string;
+      if (!objectPath) return res.status(400).json({ error: 'path query parameter is required' });
+      const ALLOWED_PREFIXES = ['/objects/uploads/', 'uploads/'];
+      const isAllowed = ALLOWED_PREFIXES.some(prefix => objectPath.startsWith(prefix));
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const svc = new ObjectStorageService();
+      const file = await svc.getObjectEntityFile(objectPath);
+      await svc.downloadObject(file, res, 86400);
+    } catch (error: any) {
+      console.error('Storage file serve error:', error?.message);
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'File not found' });
+      }
+    }
+  });
+
+  // ===================== DEAL STATUS ENDPOINTS =====================
+
+  app.get('/api/admin/deal-statuses', authenticateUser, requireAdmin, async (_req: AuthRequest, res: Response) => {
+    try {
+      const statuses = await db.select().from(dealStatuses).orderBy(asc(dealStatuses.sortOrder));
+      res.json(statuses);
+    } catch (error) {
+      console.error('Error fetching deal statuses:', error);
+      res.status(500).json({ error: 'Failed to fetch deal statuses' });
+    }
+  });
+
+  app.post('/api/admin/deal-statuses', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const data = insertDealStatusSchema.parse(req.body);
+      const [status] = await db.insert(dealStatuses).values(data).returning();
+      res.json(status);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'A status with that key already exists' });
+      }
+      console.error('Error creating deal status:', error);
+      res.status(500).json({ error: 'Failed to create deal status' });
+    }
+  });
+
+  app.put('/api/admin/deal-statuses/reorder', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { order } = req.body;
+      if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array of ids' });
+      for (let i = 0; i < order.length; i++) {
+        await db.update(dealStatuses).set({ sortOrder: i }).where(eq(dealStatuses.id, order[i]));
+      }
+      const allStatuses = await db.select().from(dealStatuses).orderBy(asc(dealStatuses.sortOrder));
+      res.json(allStatuses);
+    } catch (error) {
+      console.error('Error reordering deal statuses:', error);
+      res.status(500).json({ error: 'Failed to reorder deal statuses' });
+    }
+  });
+
+  app.put('/api/admin/deal-statuses/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { label, color, description, isActive, sortOrder } = req.body;
+      const [updated] = await db.update(dealStatuses)
+        .set({ label, color, description, isActive, sortOrder })
+        .where(eq(dealStatuses.id, id))
+        .returning();
+      if (!updated) return res.status(404).json({ error: 'Status not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating deal status:', error);
+      res.status(500).json({ error: 'Failed to update deal status' });
+    }
+  });
+
+  app.delete('/api/admin/deal-statuses/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [status] = await db.select().from(dealStatuses).where(eq(dealStatuses.id, id));
+      if (!status) return res.status(404).json({ error: 'Status not found' });
+      if (status.isDefault) return res.status(400).json({ error: 'Cannot delete a default status' });
+      await db.delete(dealStatuses).where(eq(dealStatuses.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting deal status:', error);
+      res.status(500).json({ error: 'Failed to delete deal status' });
     }
   });
 

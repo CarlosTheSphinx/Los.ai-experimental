@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Save, Settings as SettingsIcon, RefreshCw, HardDrive, Phone, Mail, Brain,
   MapPin, Bot, CheckCircle2, XCircle, AlertCircle, Layers, Plus, Trash2,
-  GripVertical, FileStack, ChevronRight, Shield, Palette, Lock, Package,
+  GripVertical, FileStack, ChevronRight, Shield, Palette, Lock,
   Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText
 } from "lucide-react";
 import { Link } from "wouter";
@@ -57,7 +57,6 @@ import {
 
 import BrandingConfig from "@/components/admin/config/BrandingConfig";
 import AuthSecurityConfig from "@/components/admin/config/AuthSecurityConfig";
-import LoanProductsConfig from "@/components/admin/config/LoanProductsConfig";
 import PricingEngineConfig from "@/components/admin/config/PricingEngineConfig";
 import PipelineWorkflowConfig from "@/components/admin/config/PipelineWorkflowConfig";
 import DocumentsEsignConfig from "@/components/admin/config/DocumentsEsignConfig";
@@ -109,9 +108,8 @@ const CONFIG_TABS = [
   { id: "branding", label: "Branding", icon: Palette },
   { id: "auth", label: "Auth & Security", icon: Lock },
   { id: "roles", label: "Roles & Permissions", icon: Shield },
-  { id: "products", label: "Loan Products", icon: Package },
   { id: "pricing", label: "Pricing Engine", icon: Calculator },
-  { id: "pipeline", label: "Pipeline & Workflow", icon: GitBranch },
+  { id: "pipeline", label: "Statuses & Stages", icon: GitBranch },
   { id: "documents", label: "Documents & eSign", icon: FileText },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "integrations", label: "Integrations", icon: Plug },
@@ -712,8 +710,6 @@ export default function AdminSettings() {
               </CardContent>
             </Card>
           )}
-
-          {activeTab === "products" && <LoanProductsConfig />}
 
           {activeTab === "pricing" && <PricingEngineConfig />}
 

@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { useEffect } from "react";
-import { Save, Building2, Palette, Mail, Scale } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Save, Building2, Palette, Mail, Scale, Upload, X, Image } from "lucide-react";
 
 const defaults = {
   companyName: "",
@@ -24,6 +24,117 @@ const defaults = {
   documentHeaderText: "",
   licensingText: "",
 };
+
+function LogoUploadField({
+  label,
+  value,
+  onChange,
+  testId,
+}: {
+  label: string;
+  value: string;
+  onChange: (url: string) => void;
+  testId: string;
+}) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: "Please select an image file", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File must be under 5MB", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/settings/upload-image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      onChange(data.url);
+      toast({ title: "Logo uploaded successfully" });
+    } catch {
+      toast({ title: "Failed to upload logo", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-3">
+        {value ? (
+          <div className="relative h-12 w-24 rounded-md border bg-muted/50 flex items-center justify-center overflow-hidden">
+            <img
+              src={value}
+              alt={label}
+              className="max-h-full max-w-full object-contain"
+              data-testid={`${testId}-preview`}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground"
+              onClick={() => onChange("")}
+              data-testid={`${testId}-remove`}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : (
+          <div className="h-12 w-24 rounded-md border border-dashed flex items-center justify-center text-muted-foreground">
+            <Image className="h-5 w-5" />
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5 flex-1">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              data-testid={`${testId}-upload`}
+            >
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              {uploading ? "Uploading..." : "Upload File"}
+            </Button>
+            <span className="text-xs text-muted-foreground">or paste URL below</span>
+          </div>
+          <Input
+            data-testid={testId}
+            type="url"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="https://example.com/logo.png"
+            className="text-xs"
+          />
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function BrandingConfig() {
   const { config, isLoading, hasChanges, updateField, save, isPending, isSuccess } =
@@ -57,7 +168,7 @@ export default function BrandingConfig() {
       <CardHeader>
         <CardTitle data-testid="text-branding-title">Branding & White Label</CardTitle>
         <CardDescription data-testid="text-branding-description">
-          Customize the look and feel of your tenant, including logos, colors, and legal text.
+          Customize the look and feel of your platform, including logos, colors, and legal text.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
@@ -77,28 +188,18 @@ export default function BrandingConfig() {
                 placeholder="Your Company Name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="logoLightUrl">Logo URL (Light)</Label>
-              <Input
-                id="logoLightUrl"
-                data-testid="input-logo-light-url"
-                type="url"
-                value={config.logoLightUrl}
-                onChange={(e) => updateField("logoLightUrl", e.target.value)}
-                placeholder="https://example.com/logo-light.png"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="logoDarkUrl">Logo URL (Dark)</Label>
-              <Input
-                id="logoDarkUrl"
-                data-testid="input-logo-dark-url"
-                type="url"
-                value={config.logoDarkUrl}
-                onChange={(e) => updateField("logoDarkUrl", e.target.value)}
-                placeholder="https://example.com/logo-dark.png"
-              />
-            </div>
+            <LogoUploadField
+              label="Logo (Light Mode)"
+              value={config.logoLightUrl}
+              onChange={(url) => updateField("logoLightUrl", url)}
+              testId="input-logo-light-url"
+            />
+            <LogoUploadField
+              label="Logo (Dark Mode)"
+              value={config.logoDarkUrl}
+              onChange={(url) => updateField("logoDarkUrl", url)}
+              testId="input-logo-dark-url"
+            />
           </div>
         </section>
 

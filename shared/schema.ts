@@ -844,6 +844,23 @@ export const insertProgramWorkflowStepSchema = createInsertSchema(programWorkflo
 export type ProgramWorkflowStep = typeof programWorkflowSteps.$inferSelect;
 export type InsertProgramWorkflowStep = z.infer<typeof insertProgramWorkflowStepSchema>;
 
+// Deal Statuses - configurable deal status options
+export const dealStatuses = pgTable("deal_statuses", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 100 }).unique().notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  color: varchar("color", { length: 50 }).default("#6b7280"),
+  description: text("description"),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDealStatusSchema = createInsertSchema(dealStatuses).omit({ id: true, createdAt: true });
+export type DealStatus = typeof dealStatuses.$inferSelect;
+export type InsertDealStatus = z.infer<typeof insertDealStatusSchema>;
+
 // Deal Processors - assigns processors to deals/projects
 export const dealProcessors = pgTable("deal_processors", {
   id: serial("id").primaryKey(),
