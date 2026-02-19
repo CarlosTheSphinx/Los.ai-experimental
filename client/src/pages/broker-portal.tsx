@@ -76,8 +76,9 @@ export default function BrokerPortal() {
     queryKey: ["broker-portal", token],
     queryFn: async () => {
       if (!token) throw new Error("Token is required");
-      const response = await apiRequest(`/api/broker-portal/${token}`);
-      return response;
+      const response = await fetch(`/api/broker-portal/${token}`, { credentials: "include" });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
     },
     enabled: !!token,
     retry: false,
