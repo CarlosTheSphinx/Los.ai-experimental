@@ -205,9 +205,9 @@ export default function MessagesPage() {
   });
 
   const { data: emailThreadsData, isLoading: emailThreadsLoading } = useQuery<{ threads: any[]; total: number }>({
-    queryKey: ["/api/email/threads", "linked"],
+    queryKey: ["/api/email/threads", "all"],
     queryFn: async () => {
-      const res = await fetch('/api/email/threads?linked=true', { credentials: 'include' });
+      const res = await fetch('/api/email/threads', { credentials: 'include' });
       return res.json();
     },
     enabled: !!isAdmin,
@@ -439,7 +439,7 @@ export default function MessagesPage() {
                   variant={inboxTab === 'email' ? 'default' : 'ghost'}
                   size="sm"
                   className="flex-1 text-xs"
-                  onClick={() => { setLocation('/admin/email'); }}
+                  onClick={() => { setInboxTab('email'); }}
                   data-testid="tab-email"
                 >
                   <Mail className="h-3 w-3 mr-1" />
@@ -459,7 +459,7 @@ export default function MessagesPage() {
               ) : emailThreads.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Mail className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No linked email threads</p>
+                  <p>No email threads found</p>
                   <p className="text-xs mt-1">Link emails to deals in the Email Inbox page</p>
                 </div>
               ) : (
