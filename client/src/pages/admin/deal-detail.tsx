@@ -416,7 +416,10 @@ export default function AdminDealDetail() {
     loanType: "",
     loanPurpose: "",
     propertyType: "",
+    loanTerm: "",
   });
+  const [appEditDialogOpen, setAppEditDialogOpen] = useState(false);
+  const [appEditForm, setAppEditForm] = useState<Record<string, string>>({});
   
   // Task dialog state
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -773,6 +776,20 @@ export default function AdminDealDetail() {
     },
   });
 
+  const updateAppDataMutation = useMutation({
+    mutationFn: async (appData: Record<string, string>) => {
+      return apiRequest("PUT", `/api/admin/deals/${dealId}`, { applicationData: appData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      setAppEditDialogOpen(false);
+      toast({ title: "Application details updated" });
+    },
+    onError: () => {
+      toast({ title: "Update failed", variant: "destructive" });
+    },
+  });
+
   const updateStageMutation = useMutation({
     mutationFn: async (stage: string) => {
       return apiRequest("PATCH", `/api/admin/deals/${dealId}`, { stage });
@@ -832,6 +849,7 @@ export default function AdminDealDetail() {
         loanType: deal.loanData?.loanType || "",
         loanPurpose: deal.loanData?.loanPurpose || "",
         propertyType: deal.loanData?.propertyType || "",
+        loanTerm: deal.loanData?.loanTerm?.toString() || "",
       });
       setEditDialogOpen(true);
     }
@@ -1504,7 +1522,12 @@ export default function AdminDealDetail() {
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
           <Card className="p-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Loan Details</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Loan Details</p>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openEditDialog} data-testid="button-edit-loan-details-inline">
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-success" />
@@ -1731,11 +1754,29 @@ export default function AdminDealDetail() {
 
             return (
               <Card className="mt-4" data-testid="card-application-details">
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
                   <CardTitle className="text-base flex items-center gap-2">
                     <FileText className="h-4 w-4" />
                     Application Details
                   </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => {
+                      const formData: Record<string, string> = {};
+                      entries.forEach(({ label, value }) => {
+                        const key = Object.entries(FIELD_LABELS).find(([, v]) => v === label)?.[0] || label;
+                        const originalVal = sourceData[key];
+                        formData[key] = originalVal !== null && originalVal !== undefined ? String(originalVal) : '';
+                      });
+                      setAppEditForm(formData);
+                      setAppEditDialogOpen(true);
+                    }}
+                    data-testid="button-edit-application-details"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
@@ -3299,9 +3340,22 @@ export default function AdminDealDetail() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="loanType">Loan Type</Label>
-                <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50 text-sm" data-testid="text-edit-loan-type">
-                  {getLoanTypeLabel(editForm.loanType) || 'Not set'}
-                </div>
+                <Select
+                  value={editForm.loanType}
+                  onValueChange={(value) => setEditForm({ ...editForm, loanType: value })}
+                >
+                  <SelectTrigger data-testid="select-edit-loan-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dscr">DSCR</SelectItem>
+                    <SelectItem value="fix-and-flip">Fix and Flip</SelectItem>
+                    <SelectItem value="ground-up">Ground Up Construction</SelectItem>
+                    <SelectItem value="bridge">Bridge</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                    <SelectItem value="conventional">Conventional</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="loanPurpose">Loan Purpose</Label>
@@ -3346,6 +3400,16 @@ export default function AdminDealDetail() {
                   <SelectItem value="special-purpose">Special Purpose</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanTerm">Loan Term</Label>
+              <Input
+                id="loanTerm"
+                value={editForm.loanTerm}
+                onChange={(e) => setEditForm({ ...editForm, loanTerm: e.target.value })}
+                placeholder="12 months"
+                data-testid="input-loan-term"
+              />
             </div>
           </div>
           <DialogFooter>
@@ -3936,6 +4000,57 @@ export default function AdminDealDetail() {
               ) : (
                 "Save"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={appEditDialogOpen} onOpenChange={setAppEditDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Application Details</DialogTitle>
+            <DialogDescription>Update the application data fields for this deal.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {Object.entries(appEditForm).map(([key, value]) => {
+              const FIELD_LABELS: Record<string, string> = {
+                loanAmount: 'Loan Amount', propertyValue: 'Property Value', loanType: 'Loan Type',
+                loanPurpose: 'Loan Purpose', propertyType: 'Property Type', interestOnly: 'Interest Only',
+                ltv: 'LTV', dscr: 'Est. DSCR', ficoScore: 'Credit Score', creditScore: 'Credit Score',
+                prepaymentPenalty: 'Prepayment Penalty', tpoPremium: 'TPO Premium', loanTerm: 'Loan Term',
+                loanTermMonths: 'Loan Term (Months)', asIsValue: 'As-Is Value', arv: 'ARV',
+                rehabBudget: 'Rehab Budget', exitStrategy: 'Exit Strategy', experience: 'Experience',
+                constructionBudget: 'Construction Budget', entityType: 'Entity Type', entityName: 'Entity Name',
+                occupancy: 'Occupancy', units: 'Units', annualTaxes: 'Annual Taxes',
+                annualInsurance: 'Annual Insurance', monthlyRent: 'Monthly Rent', monthlyHOA: 'Monthly HOA',
+                appraisalValue: 'Appraisal Value', cashOut: 'Cash Out Amount', citizenshipStatus: 'Citizenship',
+                grossMonthlyRent: 'Gross Monthly Rent', calculatedDscr: 'Calculated DSCR',
+                monthlyPITIA: 'Monthly PITIA', downPayment: 'Down Payment', reserveMonths: 'Reserve Months',
+                squareFootage: 'Square Footage', yearBuilt: 'Year Built', occupancyStatus: 'Occupancy Status',
+                borrowerExperience: 'Borrower Experience', numberOfUnits: 'Number of Units',
+                estimatedPropertyValue: 'Estimated Property Value', purchasePrice: 'Purchase Price',
+              };
+              const label = FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+              return (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <Input
+                    value={value}
+                    onChange={(e) => setAppEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    data-testid={`input-app-edit-${key}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAppEditDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => updateAppDataMutation.mutate(appEditForm)}
+              disabled={updateAppDataMutation.isPending}
+              data-testid="button-save-app-details"
+            >
+              {updateAppDataMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

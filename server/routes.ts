@@ -7766,7 +7766,9 @@ export async function registerRoutes(
         loanType,
         loanPurpose,
         propertyType,
+        loanTerm,
         stage,
+        applicationData: incomingAppData,
       } = req.body;
       
       // Get current deal to preserve existing loanData
@@ -7788,6 +7790,7 @@ export async function registerRoutes(
         loanType: loanType || existingLoanData.loanType,
         loanPurpose: loanPurpose || existingLoanData.loanPurpose,
         propertyType: propertyType || existingLoanData.propertyType,
+        loanTerm: loanTerm || existingLoanData.loanTerm,
       };
       
       // Calculate LTV if we have both values
@@ -7805,6 +7808,7 @@ export async function registerRoutes(
           propertyAddress: propertyAddress || existingDeal.propertyAddress,
           interestRate: interestRate || existingDeal.interestRate,
           loanData: updatedLoanData,
+          ...(incomingAppData ? { applicationData: incomingAppData } : {}),
         })
         .where(eq(savedQuotes.id, dealId))
         .returning();
