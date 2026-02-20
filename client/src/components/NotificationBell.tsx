@@ -99,10 +99,10 @@ export function NotificationBell() {
       <Button
         size="icon"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative h-12 w-12 bg-primary hover:bg-primary/90 text-white"
+        className="relative h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-white"
         data-testid="button-notification-bell"
       >
-        <Bell className="!h-8 !w-8" />
+        <Bell className="!h-6 !w-6" />
         {unreadCount > 0 && (
           <span
             className="absolute -top-1 -right-1 flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ring-2 ring-background"
