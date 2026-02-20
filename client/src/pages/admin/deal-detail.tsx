@@ -1351,46 +1351,13 @@ export default function AdminDealDetail() {
           </Button>
         </Link>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-0.5">
             <span className="text-sm text-muted-foreground font-mono">DEAL-{deal.id}</span>
-            {stages.length > 0 ? (
-              <Select 
-                value={deal.stage} 
-                onValueChange={(value) => updateStageMutation.mutate(value)}
-                disabled={updateStageMutation.isPending}
-              >
-                <SelectTrigger 
-                  className="w-auto h-6 text-xs font-semibold px-2 rounded-md border-0"
-                  style={getStageStyle(deal.stage, stages)}
-                  data-testid="select-deal-stage"
-                >
-                  <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {stages.filter(s => s.isActive !== false).map((stage) => (
-                    <SelectItem key={stage.id} value={stage.key}>
-                      <span className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
-                        {stage.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Badge variant="secondary" className="text-xs">
-                {deal.stage || 'No Stage'}
-              </Badge>
-            )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-semibold" data-testid="text-borrower-name">{borrowerName}</h1>
-            {deal.programName && (
-              <Badge variant="outline" data-testid="badge-program-name">
-                {deal.programName}
-              </Badge>
-            )}
-          </div>
+          <h1 className="text-xl font-semibold" data-testid="text-deal-address">
+            {deal.propertyAddress || 'No Address'}
+          </h1>
+          <p className="text-sm text-muted-foreground" data-testid="text-borrower-name">{borrowerName}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={copyBorrowerPortalLink} data-testid="button-copy-portal-link">
@@ -1629,6 +1596,52 @@ export default function AdminDealDetail() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-3 w-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: stages.find(s => s.key === deal.stage)?.color || '#6b7280' }}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">Stage</span>
+                </div>
+                {stages.length > 0 ? (
+                  <Select
+                    value={deal.stage}
+                    onValueChange={(value) => updateStageMutation.mutate(value)}
+                    disabled={updateStageMutation.isPending}
+                  >
+                    <SelectTrigger
+                      className="w-[180px] font-semibold"
+                      style={getStageStyle(deal.stage, stages)}
+                      data-testid="select-deal-stage"
+                    >
+                      <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.filter(s => s.isActive !== false).map((stage) => (
+                        <SelectItem key={stage.id} value={stage.key}>
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
+                            {stage.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    {deal.stage || 'No Stage'}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
+                <span className="text-sm font-medium text-muted-foreground">Loan Program</span>
+                <span className="text-sm font-medium" data-testid="text-loan-program">
+                  {deal.programName || <span className="text-muted-foreground italic">None</span>}
+                </span>
               </div>
             </CardContent>
           </Card>

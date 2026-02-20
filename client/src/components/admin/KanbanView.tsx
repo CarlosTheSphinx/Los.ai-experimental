@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useRef } from "react";
+import { Link, useLocation } from "wouter";
 import {
   DndContext,
   DragOverlay,
@@ -77,9 +77,11 @@ function formatCurrency(value: number | null) {
 function ProjectCard({
   project,
   isDragOverlay,
+  disableLink,
 }: {
   project: PipelineProject;
   isDragOverlay?: boolean;
+  disableLink?: boolean;
 }) {
   const content = (
     <Card
@@ -118,7 +120,7 @@ function ProjectCard({
     </Card>
   );
 
-  if (isDragOverlay) return content;
+  if (isDragOverlay || disableLink) return content;
 
   return (
     <Link href={`/admin/deals/${project.id}`} data-testid={`link-deal-${project.id}`}>
@@ -128,20 +130,34 @@ function ProjectCard({
 }
 
 function DraggableCard({ project, programId }: { project: PipelineProject; programId: number }) {
+  const [, setLocation] = useLocation();
+  const didDragRef = useRef(false);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `project-${programId}-${project.id}`,
     data: { project, programId },
   });
+
+  if (isDragging) {
+    didDragRef.current = true;
+  }
 
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.4 : 1 }}
+      style={{ opacity: isDragging ? 0.4 : 1, cursor: 'grab' }}
+      onPointerDown={() => { didDragRef.current = false; }}
+      onPointerUp={() => {
+        requestAnimationFrame(() => {
+          if (!didDragRef.current) {
+            setLocation(`/admin/deals/${project.id}`);
+          }
+        });
+      }}
       data-testid={`draggable-deal-${project.id}`}
     >
-      <ProjectCard project={project} />
+      <ProjectCard project={project} disableLink />
     </div>
   );
 }
