@@ -171,9 +171,12 @@ interface PortalOnboardingProps {
   portalType: "broker" | "borrower";
   token: string;
   onComplete: () => void;
+  magicLinkMode?: boolean;
+  lenderCompanyName?: string;
+  returnPath?: string;
 }
 
-function AccountStep({ portalType, token }: { portalType: "broker" | "borrower"; token: string }) {
+function AccountStep({ portalType, token, returnPath }: { portalType: "broker" | "borrower"; token: string; returnPath?: string }) {
   const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -186,7 +189,7 @@ function AccountStep({ portalType, token }: { portalType: "broker" | "borrower";
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
 
-  const portalPath = portalType === "broker" ? `/broker-portal/${token}` : `/portal/${token}`;
+  const portalPath = returnPath || (portalType === "broker" ? `/broker-portal/${token}` : `/portal/${token}`);
   const googleAuthUrl = `/api/auth/google?userType=${portalType}&returnTo=${encodeURIComponent(portalPath)}`;
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -402,7 +405,7 @@ function AccountStep({ portalType, token }: { portalType: "broker" | "borrower";
   );
 }
 
-export function PortalOnboarding({ config, portalType, token, onComplete }: PortalOnboardingProps) {
+export function PortalOnboarding({ config, portalType, token, onComplete, magicLinkMode, lenderCompanyName, returnPath }: PortalOnboardingProps) {
   const { user } = useAuth();
   const defaultSteps = portalType === "broker" ? BROKER_DEFAULT_STEPS : BORROWER_DEFAULT_STEPS;
   const steps = (config?.steps || defaultSteps)
@@ -475,7 +478,11 @@ export function PortalOnboarding({ config, portalType, token, onComplete }: Port
                 <StepIcon className="h-6 w-6 text-blue-600" />
               </div>
             </div>
-            <CardTitle className="text-xl">{currentStep.content.title}</CardTitle>
+            <CardTitle className="text-xl">
+              {magicLinkMode && lenderCompanyName && currentStep.name === "welcome"
+                ? `Welcome to ${lenderCompanyName}`
+                : currentStep.content.title}
+            </CardTitle>
             {currentStep.content.subtitle && (
               <p className="text-sm text-muted-foreground mt-1">{currentStep.content.subtitle}</p>
             )}
@@ -489,7 +496,7 @@ export function PortalOnboarding({ config, portalType, token, onComplete }: Port
             )}
 
             {currentStep.name === "account" && (
-              <AccountStep portalType={portalType} token={token} />
+              <AccountStep portalType={portalType} token={token} returnPath={returnPath} />
             )}
 
             {currentStep.name === "agreement" && (

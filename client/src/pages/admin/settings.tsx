@@ -13,7 +13,7 @@ import {
   Save, Settings as SettingsIcon, RefreshCw, HardDrive, Phone, Mail, Brain,
   MapPin, Bot, CheckCircle2, XCircle, AlertCircle, Layers, Plus, Trash2,
   GripVertical, FileStack, ChevronRight, Shield, Palette, Lock,
-  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText
+  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText, Link2
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -65,6 +65,7 @@ import CustomFieldsConfig from "@/components/admin/config/CustomFieldsConfig";
 import BillingPlansConfig from "@/components/admin/config/BillingPlansConfig";
 import EmailIntegrationConfig from "@/components/admin/config/EmailIntegrationConfig";
 import AICustomizationConfig from "@/components/admin/config/AICustomizationConfig";
+import MagicLinksConfig from "@/components/admin/config/MagicLinksConfig";
 
 interface DealStage {
   id: number;
@@ -116,6 +117,7 @@ const CONFIG_TABS = [
   { id: "integrations", label: "Integrations", icon: Plug },
   { id: "platform-integrations", label: "Platform Integrations", icon: Plug, superAdminOnly: true },
   { id: "ai-customization", label: "AI Customization", icon: Bot },
+  { id: "magic-links", label: "Magic Links", icon: Link2 },
   { id: "custom-fields", label: "Custom Fields", icon: LayoutList },
   { id: "billing", label: "Billing & Plans", icon: CreditCard },
 ] as const;
@@ -1202,6 +1204,8 @@ export default function AdminSettings() {
           )}
 
           {activeTab === "ai-customization" && <AICustomizationConfig />}
+
+          {activeTab === "magic-links" && <MagicLinksConfig />}
 
           {activeTab === "custom-fields" && <CustomFieldsConfig />}
 

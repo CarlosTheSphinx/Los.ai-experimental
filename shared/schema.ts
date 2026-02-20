@@ -1,4 +1,15 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, varchar, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  boolean,
+  timestamp,
+  jsonb,
+  real,
+  varchar,
+  index,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -40,12 +51,19 @@ export const users = pgTable("users", {
   inviteStatus: varchar("invite_status", { length: 50 }).default("none"),
   emailConsent: boolean("email_consent").default(false),
   smsConsent: boolean("sms_consent").default(false),
+  // Magic Links — lender-scoped shareable URLs for borrower/broker self-registration
+  borrowerMagicLink: varchar("borrower_magic_link", { length: 255 }).unique(),
+  borrowerMagicLinkEnabled: boolean("borrower_magic_link_enabled").default(
+    false,
+  ),
+  brokerMagicLink: varchar("broker_magic_link", { length: 255 }).unique(),
+  brokerMagicLinkEnabled: boolean("broker_magic_link_enabled").default(false),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ 
-  id: true, 
-  createdAt: true, 
-  lastLoginAt: true 
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  lastLoginAt: true,
 });
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -67,21 +85,30 @@ export const partners = pgTable("partners", {
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   entityType: varchar("entity_type", { length: 50 }), // LLC, Corporation, Partnership, Individual
-  experienceLevel: varchar("experience_level", { length: 50 }).default("beginner"), // beginner, intermediate, experienced
+  experienceLevel: varchar("experience_level", { length: 50 }).default(
+    "beginner",
+  ), // beginner, intermediate, experienced
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertPartnerSchema = createInsertSchema(partners).omit({ id: true, createdAt: true });
+export const insertPartnerSchema = createInsertSchema(partners).omit({
+  id: true,
+  createdAt: true,
+});
 export type Partner = typeof partners.$inferSelect;
 export type InsertPartner = z.infer<typeof insertPartnerSchema>;
 
 // Saved quotes table
 export const savedQuotes = pgTable("saved_quotes", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
-  partnerId: integer("partner_id").references(() => partners.id, { onDelete: 'set null' }),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
+  partnerId: integer("partner_id").references(() => partners.id, {
+    onDelete: "set null",
+  }),
   partnerName: varchar("partner_name", { length: 255 }), // For manually typed partner names
   customerFirstName: text("customer_first_name").notNull(),
   customerLastName: text("customer_last_name").notNull(),
@@ -103,15 +130,26 @@ export const savedQuotes = pgTable("saved_quotes", {
   basePointsCharged: real("base_points_charged").default(0), // Lender's base points
   brokerPointsCharged: real("broker_points_charged").default(0), // Broker's additional points
   stage: varchar("stage", { length: 50 }).default("initial-review").notNull(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "set null",
+  }),
   googleDriveFolderId: varchar("google_drive_folder_id", { length: 255 }),
   googleDriveFolderUrl: text("google_drive_folder_url"),
-  driveSyncStatus: varchar("drive_sync_status", { length: 50 }).default("NOT_ENABLED"),
+  driveSyncStatus: varchar("drive_sync_status", { length: 50 }).default(
+    "NOT_ENABLED",
+  ),
   driveSyncError: text("drive_sync_error"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSavedQuoteSchema = createInsertSchema(savedQuotes).omit({ id: true, createdAt: true, googleDriveFolderId: true, googleDriveFolderUrl: true, driveSyncStatus: true, driveSyncError: true });
+export const insertSavedQuoteSchema = createInsertSchema(savedQuotes).omit({
+  id: true,
+  createdAt: true,
+  googleDriveFolderId: true,
+  googleDriveFolderUrl: true,
+  driveSyncStatus: true,
+  driveSyncError: true,
+});
 export type SavedQuote = typeof savedQuotes.$inferSelect;
 export type InsertSavedQuote = z.infer<typeof insertSavedQuoteSchema>;
 
@@ -146,20 +184,52 @@ export const pricingResponseSchema = z.object({
   loanData: z.record(z.any()).optional(),
   error: z.string().optional(),
   message: z.string().optional(),
-  debug: z.record(z.any()).optional()
+  debug: z.record(z.any()).optional(),
 });
 
 export type PricingResponse = z.infer<typeof pricingResponseSchema>;
 
 // RTL (Fix and Flip / Ground Up Construction) Pricing Schema
-export const rtlLoanTypeEnum = z.enum(["light_rehab", "heavy_rehab", "bridge_no_rehab", "guc"]);
+export const rtlLoanTypeEnum = z.enum([
+  "light_rehab",
+  "heavy_rehab",
+  "bridge_no_rehab",
+  "guc",
+]);
 export const rtlPurposeEnum = z.enum(["purchase", "refi", "cash_out"]);
-export const rtlPropertyTypeEnum = z.enum(["single-family-residence", "2-4-unit", "multifamily-5-plus", "rental-portfolio", "mixed-use", "infill-lot", "land", "office", "retail", "hospitality", "industrial", "medical", "agricultural", "special-purpose"]);
-export const rtlExperienceTierEnum = z.enum(["no_experience", "experienced", "institutional"]);
+export const rtlPropertyTypeEnum = z.enum([
+  "single-family-residence",
+  "2-4-unit",
+  "multifamily-5-plus",
+  "rental-portfolio",
+  "mixed-use",
+  "infill-lot",
+  "land",
+  "office",
+  "retail",
+  "hospitality",
+  "industrial",
+  "medical",
+  "agricultural",
+  "special-purpose",
+]);
+export const rtlExperienceTierEnum = z.enum([
+  "no_experience",
+  "experienced",
+  "institutional",
+]);
 export const rtlExitStrategyEnum = z.enum(["sell", "rent"]);
 export const rtlEntityTypeEnum = z.enum([
-  "llc", "llp", "lp", "corporation", "sole_prop", "revocable_trust",
-  "natural_person", "irrevocable_trust", "cooperative", "community_land_trust"
+  "llc",
+  "llp",
+  "lp",
+  "corporation",
+  "sole_prop",
+  "revocable_trust",
+  "natural_person",
+  "irrevocable_trust",
+  "cooperative",
+  "community_land_trust",
 ]);
 
 export const rtlPricingFormSchema = z.object({
@@ -229,24 +299,38 @@ export const rtlPricingResponseSchema = z.object({
   points: z.number().optional(),
   yspRateImpact: z.number().optional(),
   effectiveRate: z.number().optional(),
-  caps: z.object({
-    maxLTC: z.number().optional(),
-    maxLTAIV: z.number().optional(),
-    maxLTARV: z.number().nullable().optional(),
-  }).optional(),
-  appliedAdjusters: z.array(z.object({
-    id: z.string(),
-    label: z.string(),
-    rateAdd: z.number(),
-  })).optional(),
-  disqualifiers: z.array(z.object({
-    id: z.string(),
-    message: z.string(),
-  })).optional(),
-  flags: z.array(z.object({
-    id: z.string(),
-    message: z.string(),
-  })).optional(),
+  caps: z
+    .object({
+      maxLTC: z.number().optional(),
+      maxLTAIV: z.number().optional(),
+      maxLTARV: z.number().nullable().optional(),
+    })
+    .optional(),
+  appliedAdjusters: z
+    .array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        rateAdd: z.number(),
+      }),
+    )
+    .optional(),
+  disqualifiers: z
+    .array(
+      z.object({
+        id: z.string(),
+        message: z.string(),
+      }),
+    )
+    .optional(),
+  flags: z
+    .array(
+      z.object({
+        id: z.string(),
+        message: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 export type RTLPricingResponse = z.infer<typeof rtlPricingResponseSchema>;
@@ -254,7 +338,9 @@ export type RTLPricingResponse = z.infer<typeof rtlPricingResponseSchema>;
 // Document signing tables
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
   quoteId: integer("quote_id").references(() => savedQuotes.id),
   name: text("name").notNull(),
   fileName: text("file_name").notNull(),
@@ -272,7 +358,9 @@ export const documents = pgTable("documents", {
 
 export const signers = pgTable("signers", {
   id: serial("id").primaryKey(),
-  documentId: integer("document_id").references(() => documents.id).notNull(),
+  documentId: integer("document_id")
+    .references(() => documents.id)
+    .notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
   color: text("color").notNull().default("#3B82F6"), // Blue default
@@ -287,7 +375,9 @@ export const signers = pgTable("signers", {
 
 export const documentFields = pgTable("document_fields", {
   id: serial("id").primaryKey(),
-  documentId: integer("document_id").references(() => documents.id).notNull(),
+  documentId: integer("document_id")
+    .references(() => documents.id)
+    .notNull(),
   signerId: integer("signer_id").references(() => signers.id),
   pageNumber: integer("page_number").notNull().default(1),
   fieldType: text("field_type").notNull(), // signature, initial, text, date
@@ -303,7 +393,9 @@ export const documentFields = pgTable("document_fields", {
 
 export const documentAuditLog = pgTable("document_audit_log", {
   id: serial("id").primaryKey(),
-  documentId: integer("document_id").references(() => documents.id).notNull(),
+  documentId: integer("document_id")
+    .references(() => documents.id)
+    .notNull(),
   signerId: integer("signer_id").references(() => signers.id),
   action: text("action").notNull(), // created, sent, viewed, signed, completed
   details: text("details"),
@@ -312,10 +404,22 @@ export const documentAuditLog = pgTable("document_audit_log", {
 });
 
 // Insert schemas
-export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true, completedAt: true });
-export const insertSignerSchema = createInsertSchema(signers).omit({ id: true, createdAt: true, signedAt: true });
-export const insertDocumentFieldSchema = createInsertSchema(documentFields).omit({ id: true, createdAt: true });
-export const insertDocumentAuditLogSchema = createInsertSchema(documentAuditLog).omit({ id: true, createdAt: true });
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+export const insertSignerSchema = createInsertSchema(signers).omit({
+  id: true,
+  createdAt: true,
+  signedAt: true,
+});
+export const insertDocumentFieldSchema = createInsertSchema(
+  documentFields,
+).omit({ id: true, createdAt: true });
+export const insertDocumentAuditLogSchema = createInsertSchema(
+  documentAuditLog,
+).omit({ id: true, createdAt: true });
 
 // Types
 export type Document = typeof documents.$inferSelect;
@@ -325,46 +429,60 @@ export type InsertSigner = z.infer<typeof insertSignerSchema>;
 export type DocumentField = typeof documentFields.$inferSelect;
 export type InsertDocumentField = z.infer<typeof insertDocumentFieldSchema>;
 export type DocumentAuditLog = typeof documentAuditLog.$inferSelect;
-export type InsertDocumentAuditLog = z.infer<typeof insertDocumentAuditLogSchema>;
+export type InsertDocumentAuditLog = z.infer<
+  typeof insertDocumentAuditLogSchema
+>;
 
 // Projects table for loan closing progress tracking
 export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
-  agreementId: integer("agreement_id").references(() => documents.id, { onDelete: 'set null' }),
-  quoteId: integer("quote_id").references(() => savedQuotes.id, { onDelete: 'set null' }),
-  
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
+  agreementId: integer("agreement_id").references(() => documents.id, {
+    onDelete: "set null",
+  }),
+  quoteId: integer("quote_id").references(() => savedQuotes.id, {
+    onDelete: "set null",
+  }),
+
   projectName: varchar("project_name", { length: 255 }).notNull(),
   projectNumber: varchar("project_number", { length: 50 }).unique(),
   loanNumber: varchar("loan_number", { length: 10 }).unique(),
-  
+
   loanAmount: real("loan_amount"),
   interestRate: real("interest_rate"),
   loanTermMonths: integer("loan_term_months"),
   loanType: varchar("loan_type", { length: 100 }),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "set null",
+  }),
   propertyAddress: text("property_address"),
   propertyType: varchar("property_type", { length: 100 }),
   borrowerName: varchar("borrower_name", { length: 255 }),
   borrowerEmail: varchar("borrower_email", { length: 255 }),
   borrowerPhone: varchar("borrower_phone", { length: 50 }),
-  
+
   status: varchar("status", { length: 50 }).default("active").notNull(), // active, on_hold, completed, cancelled, funded
-  currentStage: varchar("current_stage", { length: 100 }).default("documentation"),
+  currentStage: varchar("current_stage", { length: 100 }).default(
+    "documentation",
+  ),
   progressPercentage: integer("progress_percentage").default(0),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   applicationDate: timestamp("application_date"),
   targetCloseDate: timestamp("target_close_date"),
   actualCloseDate: timestamp("actual_close_date"),
   fundingDate: timestamp("funding_date"),
   lastUpdated: timestamp("last_updated").defaultNow(),
-  
+
   externalLosId: varchar("external_los_id", { length: 255 }),
   externalSyncStatus: varchar("external_sync_status", { length: 50 }),
   externalSyncAt: timestamp("external_sync_at"),
-  
-  borrowerPortalToken: varchar("borrower_portal_token", { length: 255 }).unique(),
+
+  borrowerPortalToken: varchar("borrower_portal_token", {
+    length: 255,
+  }).unique(),
   borrowerPortalEnabled: boolean("borrower_portal_enabled").default(true),
   borrowerPortalLastViewed: timestamp("borrower_portal_last_viewed"),
 
@@ -378,65 +496,79 @@ export const projects = pgTable("projects", {
 
   googleDriveFolderId: varchar("google_drive_folder_id", { length: 255 }),
   googleDriveFolderUrl: text("google_drive_folder_url"),
-  driveSyncStatus: varchar("drive_sync_status", { length: 50 }).default("NOT_ENABLED"),
+  driveSyncStatus: varchar("drive_sync_status", { length: 50 }).default(
+    "NOT_ENABLED",
+  ),
   driveSyncError: text("drive_sync_error"),
 });
 
 // Project stages/milestones
 export const projectStages = pgTable("project_stages", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   programStepId: integer("program_step_id"),
-  
+
   stageName: varchar("stage_name", { length: 100 }).notNull(),
   stageKey: varchar("stage_key", { length: 50 }).notNull(),
   stageOrder: integer("stage_order").notNull(),
   stageDescription: text("stage_description"),
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed, skipped
-  
+
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   estimatedDurationDays: integer("estimated_duration_days"),
-  
+
   visibleToBorrower: boolean("visible_to_borrower").default(true),
 });
 
 // Project tasks/checklist
 export const projectTasks = pgTable("project_tasks", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'cascade' }),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  stageId: integer("stage_id").references(() => projectStages.id, {
+    onDelete: "cascade",
+  }),
   programTaskTemplateId: integer("program_task_template_id"),
-  
+
   taskTitle: varchar("task_title", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
   taskType: varchar("task_type", { length: 100 }), // document_upload, review, approval, collection, scheduling, verification
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed, blocked, not_applicable
   priority: varchar("priority", { length: 50 }).default("medium"), // low, medium, high, critical
-  
+
   assignedTo: varchar("assigned_to", { length: 255 }),
   dueDate: timestamp("due_date"),
-  
+
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by", { length: 255 }),
-  
+
   requiresDocument: boolean("requires_document").default(false),
-  documentId: integer("document_id").references(() => documents.id, { onDelete: 'set null' }),
+  documentId: integer("document_id").references(() => documents.id, {
+    onDelete: "set null",
+  }),
   documentUrl: text("document_url"),
-  
+
   visibleToBorrower: boolean("visible_to_borrower").default(true),
   borrowerActionRequired: boolean("borrower_action_required").default(false),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Project activity log
 export const projectActivity = pgTable("project_activity", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
 
   activityType: varchar("activity_type", { length: 100 }).notNull(),
   activityDescription: text("activity_description").notNull(),
@@ -456,60 +588,83 @@ export const projectActivity = pgTable("project_activity", {
 /** @deprecated Use dealDocuments instead */
 export const projectDocuments = pgTable("project_documents", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  taskId: integer("task_id").references(() => projectTasks.id, { onDelete: 'set null' }),
-  
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  taskId: integer("task_id").references(() => projectTasks.id, {
+    onDelete: "set null",
+  }),
+
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentType: varchar("document_type", { length: 100 }),
   documentCategory: varchar("document_category", { length: 100 }), // borrower_submitted, internal, third_party
   filePath: text("file_path").notNull(),
   fileSize: integer("file_size"),
-  
+
   uploadedBy: integer("uploaded_by").references(() => users.id),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
-  
+
   status: varchar("status", { length: 50 }).default("pending_review"),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewedAt: timestamp("reviewed_at"),
   reviewNotes: text("review_notes"),
-  
+
   visibleToBorrower: boolean("visible_to_borrower").default(true),
 
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveFileUrl: text("google_drive_file_url"),
   googleDriveMimeType: varchar("google_drive_mime_type", { length: 255 }),
-  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default("NOT_ENABLED"),
+  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default(
+    "NOT_ENABLED",
+  ),
   driveUploadError: text("drive_upload_error"),
 });
 
 // Webhook/Integration log
 export const projectWebhooks = pgTable("project_webhooks", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+
   webhookType: varchar("webhook_type", { length: 100 }), // n8n, external_los, custom
   webhookUrl: text("webhook_url"),
-  
+
   triggerEvent: varchar("trigger_event", { length: 100 }), // stage_completed, project_created, task_completed, etc.
-  
+
   payload: jsonb("payload"),
   responseStatus: integer("response_status"),
   responseBody: text("response_body"),
-  
+
   status: varchar("status", { length: 50 }), // pending, success, failed, retry
   attempts: integer("attempts").default(0),
-  
+
   triggeredAt: timestamp("triggered_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
 
 // Insert schemas for projects
-export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, lastUpdated: true });
-export const insertProjectStageSchema = createInsertSchema(projectStages).omit({ id: true });
-export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ id: true, createdAt: true });
-export const insertProjectActivitySchema = createInsertSchema(projectActivity).omit({ id: true, createdAt: true });
-export const insertProjectDocumentSchema = createInsertSchema(projectDocuments).omit({ id: true, uploadedAt: true });
-export const insertProjectWebhookSchema = createInsertSchema(projectWebhooks).omit({ id: true, triggeredAt: true });
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  lastUpdated: true,
+});
+export const insertProjectStageSchema = createInsertSchema(projectStages).omit({
+  id: true,
+});
+export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertProjectActivitySchema = createInsertSchema(
+  projectActivity,
+).omit({ id: true, createdAt: true });
+export const insertProjectDocumentSchema = createInsertSchema(
+  projectDocuments,
+).omit({ id: true, uploadedAt: true });
+export const insertProjectWebhookSchema = createInsertSchema(
+  projectWebhooks,
+).omit({ id: true, triggeredAt: true });
 
 // Project types
 export type Project = typeof projects.$inferSelect;
@@ -536,35 +691,44 @@ export type InsertProjectWebhook = z.infer<typeof insertProjectWebhookSchema>;
 // Deal documents - required documents checklist per deal based on loan type
 export const dealDocuments = pgTable("deal_documents", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  stageId: integer("stage_id").references(() => projectStages.id, { onDelete: 'set null' }),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  stageId: integer("stage_id").references(() => projectStages.id, {
+    onDelete: "set null",
+  }),
   programDocumentTemplateId: integer("program_document_template_id"),
-  dealPropertyId: integer("deal_property_id").references(() => dealProperties.id, { onDelete: 'set null' }),
-  
+  dealPropertyId: integer("deal_property_id").references(
+    () => dealProperties.id,
+    { onDelete: "set null" },
+  ),
+
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentCategory: varchar("document_category", { length: 100 }), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
   documentDescription: text("document_description"),
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, uploaded, approved, rejected, not_applicable, waived
   isRequired: boolean("is_required").default(true),
-  
+
   assignedTo: varchar("assigned_to", { length: 50 }).default("borrower"), // borrower, broker, admin
   visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
-  
+
   filePath: text("file_path"),
   fileName: text("file_name"),
   fileSize: integer("file_size"),
   mimeType: varchar("mime_type", { length: 100 }),
-  
+
   uploadedAt: timestamp("uploaded_at"),
   uploadedBy: integer("uploaded_by").references(() => users.id),
-  
+
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewNotes: text("review_notes"),
 
   // AI Review fields
-  aiReviewStatus: varchar("ai_review_status", { length: 50 }).default("not_reviewed"), // pending, reviewing, approved, denied, not_reviewed
+  aiReviewStatus: varchar("ai_review_status", { length: 50 }).default(
+    "not_reviewed",
+  ), // pending, reviewing, approved, denied, not_reviewed
   aiReviewReason: text("ai_review_reason"),
   aiReviewedAt: timestamp("ai_reviewed_at"),
   aiReviewConfidence: real("ai_review_confidence"), // 0-1 confidence score
@@ -573,19 +737,32 @@ export const dealDocuments = pgTable("deal_documents", {
 
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveFileUrl: text("google_drive_file_url"),
-  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default("NOT_SYNCED"),
+  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default(
+    "NOT_SYNCED",
+  ),
   driveUploadError: text("drive_upload_error"),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({ id: true, createdAt: true, uploadedAt: true, reviewedAt: true, googleDriveFileId: true, googleDriveFileUrl: true, driveUploadStatus: true, driveUploadError: true });
+export const insertDealDocumentSchema = createInsertSchema(dealDocuments).omit({
+  id: true,
+  createdAt: true,
+  uploadedAt: true,
+  reviewedAt: true,
+  googleDriveFileId: true,
+  googleDriveFileUrl: true,
+  driveUploadStatus: true,
+  driveUploadError: true,
+});
 export type DealDocument = typeof dealDocuments.$inferSelect;
 export type InsertDealDocument = z.infer<typeof insertDealDocumentSchema>;
 
 export const dealDocumentFiles = pgTable("deal_document_files", {
   id: serial("id").primaryKey(),
-  documentId: integer("document_id").references(() => dealDocuments.id, { onDelete: 'cascade' }).notNull(),
+  documentId: integer("document_id")
+    .references(() => dealDocuments.id, { onDelete: "cascade" })
+    .notNull(),
   filePath: text("file_path").notNull(),
   fileName: text("file_name"),
   fileSize: integer("file_size"),
@@ -595,7 +772,9 @@ export const dealDocumentFiles = pgTable("deal_document_files", {
   sortOrder: integer("sort_order").default(0),
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveFileUrl: text("google_drive_file_url"),
-  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default("NOT_SYNCED"),
+  driveUploadStatus: varchar("drive_upload_status", { length: 50 }).default(
+    "NOT_SYNCED",
+  ),
   driveUploadError: text("drive_upload_error"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -604,7 +783,9 @@ export type DealDocumentFile = typeof dealDocumentFiles.$inferSelect;
 
 export const dealProperties = pgTable("deal_properties", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   address: text("address").notNull(),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 50 }),
@@ -621,32 +802,40 @@ export const dealProperties = pgTable("deal_properties", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealPropertySchema = createInsertSchema(dealProperties).omit({ id: true, createdAt: true });
+export const insertDealPropertySchema = createInsertSchema(dealProperties).omit(
+  { id: true, createdAt: true },
+);
 export type DealProperty = typeof dealProperties.$inferSelect;
 export type InsertDealProperty = z.infer<typeof insertDealPropertySchema>;
 
 // Deal tasks - tasks assigned to team members for a deal
 export const dealTasks = pgTable("deal_tasks", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
 
   taskName: varchar("task_name", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed
   priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
-  
+
   assignedTo: integer("assigned_to").references(() => users.id),
   dueDate: timestamp("due_date"),
-  
+
   completedAt: timestamp("completed_at"),
   completedBy: integer("completed_by").references(() => users.id),
-  
+
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealTaskSchema = createInsertSchema(dealTasks).omit({ id: true, createdAt: true, completedAt: true });
+export const insertDealTaskSchema = createInsertSchema(dealTasks).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
 export type DealTask = typeof dealTasks.$inferSelect;
 export type InsertDealTask = z.infer<typeof insertDealTaskSchema>;
 
@@ -663,31 +852,37 @@ export const systemSettings = pgTable("system_settings", {
 // Admin tasks table - internal workflow steps
 export const adminTasks = pgTable("admin_tasks", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
-  
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
+
   taskTitle: varchar("task_title", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
   taskCategory: varchar("task_category", { length: 100 }), // document_processing, underwriting_review, approval_required, closing_coordination
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, in_progress, completed, blocked
   priority: varchar("priority", { length: 50 }).default("medium"), // low, medium, high, critical
-  
+
   assignedTo: integer("assigned_to").references(() => users.id),
   dueDate: timestamp("due_date"),
-  
-  userMilestoneStageId: integer("user_milestone_stage_id").references(() => projectStages.id),
-  userMilestoneTaskId: integer("user_milestone_task_id").references(() => projectTasks.id),
-  
+
+  userMilestoneStageId: integer("user_milestone_stage_id").references(
+    () => projectStages.id,
+  ),
+  userMilestoneTaskId: integer("user_milestone_task_id").references(
+    () => projectTasks.id,
+  ),
+
   autoUpdateUserTask: boolean("auto_update_user_task").default(true),
-  
+
   completedAt: timestamp("completed_at"),
   completedBy: integer("completed_by").references(() => users.id),
-  
+
   requiresDocument: boolean("requires_document").default(false),
   documentId: integer("document_id").references(() => projectDocuments.id),
-  
+
   internalNotes: text("internal_notes"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -695,21 +890,31 @@ export const adminTasks = pgTable("admin_tasks", {
 /** @deprecated Use projectActivity with isInternal=true instead */
 export const adminActivity = pgTable("admin_activity", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
   userId: integer("user_id").references(() => users.id),
-  
+
   actionType: varchar("action_type", { length: 100 }).notNull(), // task_completed, document_added, stage_updated, note_added
   actionDescription: text("action_description").notNull(),
-  
+
   metadata: jsonb("metadata"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Insert schemas for admin tables
-export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({ id: true, updatedAt: true });
-export const insertAdminTaskSchema = createInsertSchema(adminTasks).omit({ id: true, createdAt: true, completedAt: true });
-export const insertAdminActivitySchema = createInsertSchema(adminActivity).omit({ id: true, createdAt: true });
+export const insertSystemSettingSchema = createInsertSchema(
+  systemSettings,
+).omit({ id: true, updatedAt: true });
+export const insertAdminTaskSchema = createInsertSchema(adminTasks).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+export const insertAdminActivitySchema = createInsertSchema(adminActivity).omit(
+  { id: true, createdAt: true },
+);
 
 // Admin types
 export type SystemSetting = typeof systemSettings.$inferSelect;
@@ -734,7 +939,11 @@ export const dealStages = pgTable("deal_stages", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertDealStageSchema = createInsertSchema(dealStages).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDealStageSchema = createInsertSchema(dealStages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type DealStage = typeof dealStages.$inferSelect;
 export type InsertDealStage = z.infer<typeof insertDealStageSchema>;
 
@@ -744,19 +953,19 @@ export const loanPrograms = pgTable("loan_programs", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   loanType: varchar("loan_type", { length: 50 }).notNull(), // rtl, dscr
-  
+
   minLoanAmount: real("min_loan_amount").default(100000),
   maxLoanAmount: real("max_loan_amount").default(5000000),
-  
+
   minLtv: real("min_ltv").default(50),
   maxLtv: real("max_ltv").default(80),
-  
+
   minInterestRate: real("min_interest_rate").default(8),
   maxInterestRate: real("max_interest_rate").default(15),
-  
+
   minUnits: integer("min_units"),
   maxUnits: integer("max_units"),
-  
+
   termOptions: text("term_options"), // comma-separated: "6, 12, 18, 24"
   eligiblePropertyTypes: text("eligible_property_types").array(), // ['single-family-residence', '2-4-unit', 'multifamily-5-plus', etc.]
 
@@ -784,26 +993,34 @@ export const loanPrograms = pgTable("loan_programs", {
 
   reviewGuidelines: text("review_guidelines"),
   creditPolicyId: integer("credit_policy_id"),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertLoanProgramSchema = createInsertSchema(loanPrograms).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLoanProgramSchema = createInsertSchema(loanPrograms).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type LoanProgram = typeof loanPrograms.$inferSelect;
 export type InsertLoanProgram = z.infer<typeof insertLoanProgramSchema>;
 
 // Program Document Templates - documents required for each program
 export const programDocumentTemplates = pgTable("program_document_templates", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
   stepId: integer("step_id"),
-  
+
   documentName: varchar("document_name", { length: 255 }).notNull(),
   documentCategory: varchar("document_category", { length: 100 }).notNull(), // borrower_docs, entity_docs, property_docs, financial_docs, closing_docs
   documentDescription: text("document_description"),
-  
+
   isRequired: boolean("is_required").default(true),
   assignedTo: varchar("assigned_to", { length: 50 }).default("borrower"), // borrower, broker, admin
   visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
@@ -815,32 +1032,43 @@ export const programDocumentTemplates = pgTable("program_document_templates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertProgramDocumentTemplateSchema = createInsertSchema(programDocumentTemplates).omit({ id: true, createdAt: true });
-export type ProgramDocumentTemplate = typeof programDocumentTemplates.$inferSelect;
-export type InsertProgramDocumentTemplate = z.infer<typeof insertProgramDocumentTemplateSchema>;
+export const insertProgramDocumentTemplateSchema = createInsertSchema(
+  programDocumentTemplates,
+).omit({ id: true, createdAt: true });
+export type ProgramDocumentTemplate =
+  typeof programDocumentTemplates.$inferSelect;
+export type InsertProgramDocumentTemplate = z.infer<
+  typeof insertProgramDocumentTemplateSchema
+>;
 
 // Program Task Templates - tasks required for each program
 export const programTaskTemplates = pgTable("program_task_templates", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
   stepId: integer("step_id"),
-  
+
   taskName: varchar("task_name", { length: 255 }).notNull(),
   taskDescription: text("task_description"),
   taskCategory: varchar("task_category", { length: 100 }), // application_review, credit_check, appraisal, title_search, underwriting, closing
-  
+
   assignToRole: varchar("assign_to_role", { length: 50 }).default("admin"), // user, admin, processor
   visibility: varchar("visibility", { length: 50 }).default("all"), // borrower, broker, admin, all
-  
+
   priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
   sortOrder: integer("sort_order").default(0),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertProgramTaskTemplateSchema = createInsertSchema(programTaskTemplates).omit({ id: true, createdAt: true });
+export const insertProgramTaskTemplateSchema = createInsertSchema(
+  programTaskTemplates,
+).omit({ id: true, createdAt: true });
 export type ProgramTaskTemplate = typeof programTaskTemplates.$inferSelect;
-export type InsertProgramTaskTemplate = z.infer<typeof insertProgramTaskTemplateSchema>;
+export type InsertProgramTaskTemplate = z.infer<
+  typeof insertProgramTaskTemplateSchema
+>;
 
 // Workflow Step Definitions - master list of reusable step types
 export const workflowStepDefinitions = pgTable("workflow_step_definitions", {
@@ -856,24 +1084,37 @@ export const workflowStepDefinitions = pgTable("workflow_step_definitions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertWorkflowStepDefinitionSchema = createInsertSchema(workflowStepDefinitions).omit({ id: true, createdAt: true });
-export type WorkflowStepDefinition = typeof workflowStepDefinitions.$inferSelect;
-export type InsertWorkflowStepDefinition = z.infer<typeof insertWorkflowStepDefinitionSchema>;
+export const insertWorkflowStepDefinitionSchema = createInsertSchema(
+  workflowStepDefinitions,
+).omit({ id: true, createdAt: true });
+export type WorkflowStepDefinition =
+  typeof workflowStepDefinitions.$inferSelect;
+export type InsertWorkflowStepDefinition = z.infer<
+  typeof insertWorkflowStepDefinitionSchema
+>;
 
 // Program Workflow Steps - links step definitions to specific programs with ordering
 export const programWorkflowSteps = pgTable("program_workflow_steps", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
-  stepDefinitionId: integer("step_definition_id").references(() => workflowStepDefinitions.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
+  stepDefinitionId: integer("step_definition_id")
+    .references(() => workflowStepDefinitions.id, { onDelete: "cascade" })
+    .notNull(),
   stepOrder: integer("step_order").notNull(),
   isRequired: boolean("is_required").default(true),
   estimatedDays: integer("estimated_days"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertProgramWorkflowStepSchema = createInsertSchema(programWorkflowSteps).omit({ id: true, createdAt: true });
+export const insertProgramWorkflowStepSchema = createInsertSchema(
+  programWorkflowSteps,
+).omit({ id: true, createdAt: true });
 export type ProgramWorkflowStep = typeof programWorkflowSteps.$inferSelect;
-export type InsertProgramWorkflowStep = z.infer<typeof insertProgramWorkflowStepSchema>;
+export type InsertProgramWorkflowStep = z.infer<
+  typeof insertProgramWorkflowStepSchema
+>;
 
 // Deal Statuses - configurable deal status options
 export const dealStatuses = pgTable("deal_statuses", {
@@ -888,33 +1129,46 @@ export const dealStatuses = pgTable("deal_statuses", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealStatusSchema = createInsertSchema(dealStatuses).omit({ id: true, createdAt: true });
+export const insertDealStatusSchema = createInsertSchema(dealStatuses).omit({
+  id: true,
+  createdAt: true,
+});
 export type DealStatus = typeof dealStatuses.$inferSelect;
 export type InsertDealStatus = z.infer<typeof insertDealStatusSchema>;
 
 // Deal Processors - assigns processors to deals/projects
 export const dealProcessors = pgTable("deal_processors", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   role: varchar("role", { length: 100 }).default("processor"),
   assignedAt: timestamp("assigned_at").defaultNow(),
-  assignedBy: integer("assigned_by").references(() => users.id, { onDelete: 'set null' }),
+  assignedBy: integer("assigned_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
 });
 
-export const insertDealProcessorSchema = createInsertSchema(dealProcessors).omit({ id: true, assignedAt: true });
+export const insertDealProcessorSchema = createInsertSchema(
+  dealProcessors,
+).omit({ id: true, assignedAt: true });
 export type DealProcessor = typeof dealProcessors.$inferSelect;
 export type InsertDealProcessor = z.infer<typeof insertDealProcessorSchema>;
 
 // Pricing Rulesets - versioned pricing rules per loan program
 export const pricingRulesets = pgTable("pricing_rulesets", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
-  
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
+
   version: integer("version").notNull(),
   name: varchar("name", { length: 255 }),
   description: text("description"),
-  
+
   // The rules JSON structure contains:
   // - baseRates: { loanType: rate } - starting rates by loan sub-type
   // - points: { default: number } - default points
@@ -923,116 +1177,138 @@ export const pricingRulesets = pgTable("pricing_rulesets", {
   // - overlays: [{ id, label, when: conditions, effects: { ltcAdd, etc } }] - cap adjustments
   // - eligibilityRules: [{ id, label, when: conditions, result: 'ineligible' }] - disqualifiers
   rulesJson: jsonb("rules_json").notNull(),
-  
+
   status: varchar("status", { length: 50 }).default("draft").notNull(), // draft, active, archived
-  
+
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   activatedAt: timestamp("activated_at"),
   archivedAt: timestamp("archived_at"),
 });
 
-export const insertPricingRulesetSchema = createInsertSchema(pricingRulesets).omit({ id: true, createdAt: true, activatedAt: true, archivedAt: true });
+export const insertPricingRulesetSchema = createInsertSchema(
+  pricingRulesets,
+).omit({ id: true, createdAt: true, activatedAt: true, archivedAt: true });
 export type PricingRuleset = typeof pricingRulesets.$inferSelect;
 export type InsertPricingRuleset = z.infer<typeof insertPricingRulesetSchema>;
 
 // Rule Proposals - AI-generated rule suggestions pending review
 export const ruleProposals = pgTable("rule_proposals", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
-  
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
+
   ruleType: varchar("rule_type", { length: 50 }).notNull(), // adjuster, leverage_cap, overlay, eligibility_rule
   proposalJson: jsonb("proposal_json").notNull(), // The proposed rule object
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, accepted, rejected, modified
   confidence: real("confidence"), // AI confidence score 0-1
   reasoning: text("reasoning"), // AI explanation for the proposal
-  
+
   sourceText: text("source_text"), // Original guideline text that generated this
-  
+
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewedAt: timestamp("reviewed_at"),
   reviewNotes: text("review_notes"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertRuleProposalSchema = createInsertSchema(ruleProposals).omit({ id: true, createdAt: true, reviewedAt: true });
+export const insertRuleProposalSchema = createInsertSchema(ruleProposals).omit({
+  id: true,
+  createdAt: true,
+  reviewedAt: true,
+});
 export type RuleProposal = typeof ruleProposals.$inferSelect;
 export type InsertRuleProposal = z.infer<typeof insertRuleProposalSchema>;
 
 // Guideline Uploads - PDF/text files uploaded for rule extraction
 export const guidelineUploads = pgTable("guideline_uploads", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
-  
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
+
   fileName: varchar("file_name", { length: 255 }).notNull(),
   filePath: text("file_path"),
   mimeType: varchar("mime_type", { length: 100 }),
   fileSize: integer("file_size"),
-  
+
   extractedText: text("extracted_text"), // Text extracted from PDF
-  
+
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, processed, failed
   processedAt: timestamp("processed_at"),
-  
+
   uploadedBy: integer("uploaded_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertGuidelineUploadSchema = createInsertSchema(guidelineUploads).omit({ id: true, createdAt: true, processedAt: true });
+export const insertGuidelineUploadSchema = createInsertSchema(
+  guidelineUploads,
+).omit({ id: true, createdAt: true, processedAt: true });
 export type GuidelineUpload = typeof guidelineUploads.$inferSelect;
 export type InsertGuidelineUpload = z.infer<typeof insertGuidelineUploadSchema>;
 
 // Pricing Quote Logs - audit trail for deterministic pricing calculations
 export const pricingQuoteLogs = pgTable("pricing_quote_logs", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
-  rulesetId: integer("ruleset_id").references(() => pricingRulesets.id, { onDelete: 'set null' }),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }),
-  
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "set null",
+  }),
+  rulesetId: integer("ruleset_id").references(() => pricingRulesets.id, {
+    onDelete: "set null",
+  }),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+
   inputsJson: jsonb("inputs_json").notNull(), // The loan scenario inputs
   outputsJson: jsonb("outputs_json").notNull(), // The calculated pricing result
-  
+
   eligible: boolean("eligible").notNull(),
   finalRate: real("final_rate"),
   points: real("points"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertPricingQuoteLogSchema = createInsertSchema(pricingQuoteLogs).omit({ id: true, createdAt: true });
+export const insertPricingQuoteLogSchema = createInsertSchema(
+  pricingQuoteLogs,
+).omit({ id: true, createdAt: true });
 export type PricingQuoteLog = typeof pricingQuoteLogs.$inferSelect;
 export type InsertPricingQuoteLog = z.infer<typeof insertPricingQuoteLogSchema>;
 
 // Zod schemas for ruleset structure validation
-export const ruleConditionSchema = z.object({
-  loanType: z.string().optional(),
-  purpose: z.string().optional(),
-  tier: z.string().optional(),
-  propertyType: z.string().optional(),
-  state: z.string().optional(),
-  ficoLt: z.number().optional(),
-  ficoLte: z.number().optional(),
-  ficoGt: z.number().optional(),
-  ficoGte: z.number().optional(),
-  ltvLt: z.number().optional(),
-  ltvLte: z.number().optional(),
-  ltvGt: z.number().optional(),
-  ltvGte: z.number().optional(),
-  dscrLt: z.number().optional(),
-  dscrLte: z.number().optional(),
-  dscrGt: z.number().optional(),
-  dscrGte: z.number().optional(),
-  loanAmountLt: z.number().optional(),
-  loanAmountLte: z.number().optional(),
-  loanAmountGt: z.number().optional(),
-  loanAmountGte: z.number().optional(),
-  isMidstream: z.boolean().optional(),
-  isRural: z.boolean().optional(),
-  msaIn: z.array(z.string()).optional(),
-  stateIn: z.array(z.string()).optional(),
-}).passthrough();
+export const ruleConditionSchema = z
+  .object({
+    loanType: z.string().optional(),
+    purpose: z.string().optional(),
+    tier: z.string().optional(),
+    propertyType: z.string().optional(),
+    state: z.string().optional(),
+    ficoLt: z.number().optional(),
+    ficoLte: z.number().optional(),
+    ficoGt: z.number().optional(),
+    ficoGte: z.number().optional(),
+    ltvLt: z.number().optional(),
+    ltvLte: z.number().optional(),
+    ltvGt: z.number().optional(),
+    ltvGte: z.number().optional(),
+    dscrLt: z.number().optional(),
+    dscrLte: z.number().optional(),
+    dscrGt: z.number().optional(),
+    dscrGte: z.number().optional(),
+    loanAmountLt: z.number().optional(),
+    loanAmountLte: z.number().optional(),
+    loanAmountGt: z.number().optional(),
+    loanAmountGte: z.number().optional(),
+    isMidstream: z.boolean().optional(),
+    isRural: z.boolean().optional(),
+    msaIn: z.array(z.string()).optional(),
+    stateIn: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 export const ruleAdjusterSchema = z.object({
   id: z.string(),
@@ -1093,23 +1369,33 @@ export type PricingRules = z.infer<typeof pricingRulesSchema>;
 export const messageThreads = pgTable("message_threads", {
   id: serial("id").primaryKey(),
   dealId: integer("deal_id").notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   subject: varchar("subject", { length: 255 }),
   isClosed: boolean("is_closed").default(false).notNull(),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertMessageThreadSchema = createInsertSchema(messageThreads).omit({ id: true, createdAt: true, lastMessageAt: true });
+export const insertMessageThreadSchema = createInsertSchema(
+  messageThreads,
+).omit({ id: true, createdAt: true, lastMessageAt: true });
 export type MessageThread = typeof messageThreads.$inferSelect;
 export type InsertMessageThread = z.infer<typeof insertMessageThreadSchema>;
 
 // Messages - individual messages within a thread
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
-  threadId: integer("thread_id").references(() => messageThreads.id, { onDelete: 'cascade' }).notNull(),
-  senderId: integer("sender_id").references(() => users.id, { onDelete: 'set null' }),
+  threadId: integer("thread_id")
+    .references(() => messageThreads.id, { onDelete: "cascade" })
+    .notNull(),
+  senderId: integer("sender_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   senderRole: varchar("sender_role", { length: 20 }).notNull(), // 'admin', 'user', 'system'
   type: varchar("type", { length: 20 }).notNull(), // 'message', 'notification'
   body: text("body").notNull(),
@@ -1117,19 +1403,28 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+});
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 // Message read receipts - tracks when users last read a thread
 export const messageReads = pgTable("message_reads", {
   id: serial("id").primaryKey(),
-  threadId: integer("thread_id").references(() => messageThreads.id, { onDelete: 'cascade' }).notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  threadId: integer("thread_id")
+    .references(() => messageThreads.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   lastReadAt: timestamp("last_read_at").defaultNow().notNull(),
 });
 
-export const insertMessageReadSchema = createInsertSchema(messageReads).omit({ id: true });
+export const insertMessageReadSchema = createInsertSchema(messageReads).omit({
+  id: true,
+});
 export type MessageRead = typeof messageReads.$inferSelect;
 export type InsertMessageRead = z.infer<typeof insertMessageReadSchema>;
 
@@ -1147,21 +1442,33 @@ export const onboardingDocuments = pgTable("onboarding_documents", {
   sortOrder: integer("sort_order").default(0).notNull(),
   isRequired: boolean("is_required").default(true).notNull(), // Must complete for onboarding
   isActive: boolean("is_active").default(true).notNull(),
-  targetUserType: varchar("target_user_type", { length: 50 }).default("broker").notNull(), // 'broker', 'borrower', 'all'
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  targetUserType: varchar("target_user_type", { length: 50 })
+    .default("broker")
+    .notNull(), // 'broker', 'borrower', 'all'
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertOnboardingDocumentSchema = createInsertSchema(onboardingDocuments).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOnboardingDocumentSchema = createInsertSchema(
+  onboardingDocuments,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type OnboardingDocument = typeof onboardingDocuments.$inferSelect;
-export type InsertOnboardingDocument = z.infer<typeof insertOnboardingDocumentSchema>;
+export type InsertOnboardingDocument = z.infer<
+  typeof insertOnboardingDocumentSchema
+>;
 
 // User onboarding progress - tracks which documents each user has viewed/signed
 export const userOnboardingProgress = pgTable("user_onboarding_progress", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  documentId: integer("document_id").references(() => onboardingDocuments.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  documentId: integer("document_id")
+    .references(() => onboardingDocuments.id, { onDelete: "cascade" })
+    .notNull(),
   status: varchar("status", { length: 50 }).notNull(), // 'viewed', 'completed', 'signed', 'skipped'
   signatureData: text("signature_data"), // For signed documents (base64 or URL)
   signedAt: timestamp("signed_at"),
@@ -1169,14 +1476,23 @@ export const userOnboardingProgress = pgTable("user_onboarding_progress", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertUserOnboardingProgressSchema = createInsertSchema(userOnboardingProgress).omit({ id: true, createdAt: true });
+export const insertUserOnboardingProgressSchema = createInsertSchema(
+  userOnboardingProgress,
+).omit({ id: true, createdAt: true });
 export type UserOnboardingProgress = typeof userOnboardingProgress.$inferSelect;
-export type InsertUserOnboardingProgress = z.infer<typeof insertUserOnboardingProgressSchema>;
+export type InsertUserOnboardingProgress = z.infer<
+  typeof insertUserOnboardingProgressSchema
+>;
 
 // ==================== LOAN DIGEST NOTIFICATION SYSTEM ====================
 
 // Frequency options for digest delivery
-export const digestFrequencyEnum = z.enum(["daily", "every_3_days", "weekly", "custom"]);
+export const digestFrequencyEnum = z.enum([
+  "daily",
+  "every_3_days",
+  "weekly",
+  "custom",
+]);
 export type DigestFrequency = z.infer<typeof digestFrequencyEnum>;
 
 // Delivery method options
@@ -1184,138 +1500,198 @@ export const deliveryMethodEnum = z.enum(["email", "sms", "both"]);
 export type DeliveryMethod = z.infer<typeof deliveryMethodEnum>;
 
 // Content type options for digest
-export const digestContentTypeEnum = z.enum(["documents_needed", "notes", "messages", "general_updates"]);
+export const digestContentTypeEnum = z.enum([
+  "documents_needed",
+  "notes",
+  "messages",
+  "general_updates",
+]);
 export type DigestContentType = z.infer<typeof digestContentTypeEnum>;
 
 // Loan digest configuration - per-project/deal digest settings
 export const loanDigestConfigs = pgTable("loan_digest_configs", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
   dealId: integer("deal_id"),
-  
+
   // WHEN - frequency and timing
   frequency: varchar("frequency", { length: 50 }).default("daily").notNull(), // daily, every_3_days, weekly, custom
   customDays: integer("custom_days"), // For custom frequency, number of days between digests
   timeOfDay: varchar("time_of_day", { length: 10 }).default("09:00").notNull(), // 24-hour format HH:MM
-  timezone: varchar("timezone", { length: 100 }).default("America/New_York").notNull(),
-  
+  timezone: varchar("timezone", { length: 100 })
+    .default("America/New_York")
+    .notNull(),
+
   // WHAT - content included in digest
-  includeDocumentsNeeded: boolean("include_documents_needed").default(true).notNull(), // THE MOST IMPORTANT
+  includeDocumentsNeeded: boolean("include_documents_needed")
+    .default(true)
+    .notNull(), // THE MOST IMPORTANT
   includeNotes: boolean("include_notes").default(false).notNull(),
   includeMessages: boolean("include_messages").default(false).notNull(),
-  includeGeneralUpdates: boolean("include_general_updates").default(true).notNull(),
-  
+  includeGeneralUpdates: boolean("include_general_updates")
+    .default(true)
+    .notNull(),
+
   // MESSAGE - customizable email/sms content
-  emailSubject: varchar("email_subject", { length: 255 }).default("Loan Update: Action Required"),
-  emailBody: text("email_body").default("Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nLendry.AI"),
-  smsBody: text("sms_body").default("Lendry.AI: {{documentsCount}} docs needed for your loan. Log in to your portal for details."),
+  emailSubject: varchar("email_subject", { length: 255 }).default(
+    "Loan Update: Action Required",
+  ),
+  emailBody: text("email_body").default(
+    "Hello {{recipientName}},\n\nHere's an update on your loan for {{propertyAddress}}.\n\n{{documentsSection}}\n\n{{updatesSection}}\n\nPlease log in to your portal to take any necessary actions.\n\nBest regards,\nLendry.AI",
+  ),
+  smsBody: text("sms_body").default(
+    "Lendry.AI: {{documentsCount}} docs needed for your loan. Log in to your portal for details.",
+  ),
 
   // COMMUNICATION CHANNELS - which channels are enabled for communications on this deal
-  communicationChannels: jsonb("communication_channels").default({ email: true, sms: false, inApp: true }).notNull(),
+  communicationChannels: jsonb("communication_channels")
+    .default({ email: true, sms: false, inApp: true })
+    .notNull(),
 
   isEnabled: boolean("is_enabled").default(true).notNull(),
 
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertLoanDigestConfigSchema = createInsertSchema(loanDigestConfigs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLoanDigestConfigSchema = createInsertSchema(
+  loanDigestConfigs,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type LoanDigestConfig = typeof loanDigestConfigs.$inferSelect;
-export type InsertLoanDigestConfig = z.infer<typeof insertLoanDigestConfigSchema>;
+export type InsertLoanDigestConfig = z.infer<
+  typeof insertLoanDigestConfigSchema
+>;
 
 // Loan digest recipients - WHO receives the digest for each config
 export const loanDigestRecipients = pgTable("loan_digest_recipients", {
   id: serial("id").primaryKey(),
-  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
-  
+  configId: integer("config_id")
+    .references(() => loanDigestConfigs.id, { onDelete: "cascade" })
+    .notNull(),
+
   // Can be linked to a user or manual contact info
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
-  
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
+
   // Manual recipient info (if not linked to a user)
   recipientName: varchar("recipient_name", { length: 255 }),
   recipientEmail: varchar("recipient_email", { length: 255 }),
   recipientPhone: varchar("recipient_phone", { length: 50 }),
-  
+
   // HOW - delivery method for this recipient
-  deliveryMethod: varchar("delivery_method", { length: 20 }).default("email").notNull(), // email, sms, both
-  
+  deliveryMethod: varchar("delivery_method", { length: 20 })
+    .default("email")
+    .notNull(), // email, sms, both
+
   isActive: boolean("is_active").default(true).notNull(),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertLoanDigestRecipientSchema = createInsertSchema(loanDigestRecipients).omit({ id: true, createdAt: true });
+export const insertLoanDigestRecipientSchema = createInsertSchema(
+  loanDigestRecipients,
+).omit({ id: true, createdAt: true });
 export type LoanDigestRecipient = typeof loanDigestRecipients.$inferSelect;
-export type InsertLoanDigestRecipient = z.infer<typeof insertLoanDigestRecipientSchema>;
+export type InsertLoanDigestRecipient = z.infer<
+  typeof insertLoanDigestRecipientSchema
+>;
 
 // Loan updates - event ledger for building digest content
 // Whenever admin actions happen, a row is added here so the digest can pick it up
 export const loanUpdates = pgTable("loan_updates", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+
   // Type of update
   updateType: varchar("update_type", { length: 50 }).notNull(), // doc_request, stage_change, note_added, task_assigned, task_completed, message, status_change
-  
+
   // Human-readable summary for the digest
   summary: text("summary").notNull(),
-  
+
   // Additional metadata
   meta: jsonb("meta"),
-  
+
   // Who performed this action (null for system actions)
-  performedBy: integer("performed_by").references(() => users.id, { onDelete: 'set null' }),
-  
+  performedBy: integer("performed_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+
   // Whether this update was included in a digest
   includedInDigestAt: timestamp("included_in_digest_at"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertLoanUpdateSchema = createInsertSchema(loanUpdates).omit({ id: true, createdAt: true, includedInDigestAt: true });
+export const insertLoanUpdateSchema = createInsertSchema(loanUpdates).omit({
+  id: true,
+  createdAt: true,
+  includedInDigestAt: true,
+});
 export type LoanUpdate = typeof loanUpdates.$inferSelect;
 export type InsertLoanUpdate = z.infer<typeof insertLoanUpdateSchema>;
 
 // Digest history - tracks when digests were sent (for audit and preventing duplicates)
 export const digestHistory = pgTable("digest_history", {
   id: serial("id").primaryKey(),
-  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
-  recipientId: integer("recipient_id").references(() => loanDigestRecipients.id, { onDelete: 'cascade' }).notNull(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  
+  configId: integer("config_id")
+    .references(() => loanDigestConfigs.id, { onDelete: "cascade" })
+    .notNull(),
+  recipientId: integer("recipient_id")
+    .references(() => loanDigestRecipients.id, { onDelete: "cascade" })
+    .notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+
   // Delivery details
   deliveryMethod: varchar("delivery_method", { length: 20 }).notNull(), // email, sms
   recipientAddress: varchar("recipient_address", { length: 255 }).notNull(), // Email or phone
-  
+
   // Content summary
   documentsCount: integer("documents_count").default(0).notNull(),
   updatesCount: integer("updates_count").default(0).notNull(),
-  
+
   // Status
   status: varchar("status", { length: 50 }).default("sent").notNull(), // sent, failed, bounced
   errorMessage: text("error_message"),
-  
+
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 });
 
-export const insertDigestHistorySchema = createInsertSchema(digestHistory).omit({ id: true, sentAt: true });
+export const insertDigestHistorySchema = createInsertSchema(digestHistory).omit(
+  { id: true, sentAt: true },
+);
 export type DigestHistory = typeof digestHistory.$inferSelect;
 export type InsertDigestHistory = z.infer<typeof insertDigestHistorySchema>;
 
 // Digest state - tracks the last digest sent per project/recipient to avoid duplicates
 export const digestState = pgTable("digest_state", {
   id: serial("id").primaryKey(),
-  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
-  recipientId: integer("recipient_id").references(() => loanDigestRecipients.id, { onDelete: 'cascade' }).notNull(),
-  
+  configId: integer("config_id")
+    .references(() => loanDigestConfigs.id, { onDelete: "cascade" })
+    .notNull(),
+  recipientId: integer("recipient_id")
+    .references(() => loanDigestRecipients.id, { onDelete: "cascade" })
+    .notNull(),
+
   lastDigestSentAt: timestamp("last_digest_sent_at").notNull(),
   nextDigestDueAt: timestamp("next_digest_due_at").notNull(),
-  
+
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertDigestStateSchema = createInsertSchema(digestState).omit({ id: true, updatedAt: true });
+export const insertDigestStateSchema = createInsertSchema(digestState).omit({
+  id: true,
+  updatedAt: true,
+});
 export type DigestState = typeof digestState.$inferSelect;
 export type InsertDigestState = z.infer<typeof insertDigestStateSchema>;
 
@@ -1324,27 +1700,33 @@ export const digestTemplates = pgTable("digest_templates", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
   description: varchar("description", { length: 255 }),
-  
+
   // Template content with merge tags
   emailSubject: varchar("email_subject", { length: 255 }).notNull(),
   emailBody: text("email_body").notNull(),
   smsBody: text("sms_body"),
-  
+
   // Template type: default, custom
-  templateType: varchar("template_type", { length: 50 }).default("custom").notNull(),
-  
+  templateType: varchar("template_type", { length: 50 })
+    .default("custom")
+    .notNull(),
+
   // Is this the default template?
   isDefault: boolean("is_default").default(false).notNull(),
-  
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertDigestTemplateSchema = createInsertSchema(digestTemplates).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertDigestTemplateSchema = createInsertSchema(
+  digestTemplates,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 export type DigestTemplate = typeof digestTemplates.$inferSelect;
 export type InsertDigestTemplate = z.infer<typeof insertDigestTemplateSchema>;
@@ -1352,59 +1734,71 @@ export type InsertDigestTemplate = z.infer<typeof insertDigestTemplateSchema>;
 // Scheduled digest drafts - pre-generated digests that need approval before sending
 export const scheduledDigestDrafts = pgTable("scheduled_digest_drafts", {
   id: serial("id").primaryKey(),
-  configId: integer("config_id").references(() => loanDigestConfigs.id, { onDelete: 'cascade' }).notNull(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }), // Nullable for deal-only digests
-  
+  configId: integer("config_id")
+    .references(() => loanDigestConfigs.id, { onDelete: "cascade" })
+    .notNull(),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }), // Nullable for deal-only digests
+
   // Scheduled date for this digest
   scheduledDate: timestamp("scheduled_date").notNull(),
   timeOfDay: varchar("time_of_day", { length: 10 }).notNull(),
-  
+
   // Pre-rendered content (editable before approval)
   emailSubject: varchar("email_subject", { length: 255 }),
   emailBody: text("email_body"),
   smsBody: text("sms_body"),
-  
+
   // Content summary
   documentsCount: integer("documents_count").default(0).notNull(),
   updatesCount: integer("updates_count").default(0).notNull(),
-  
+
   // Recipient snapshot (JSON array of recipient info at time of draft creation)
-  recipients: jsonb("recipients").default('[]'),
-  
+  recipients: jsonb("recipients").default("[]"),
+
   // Status: draft, approved, sent, skipped, superseded
   status: varchar("status", { length: 50 }).default("draft").notNull(),
-  
+
   // Source: 'digest' for regular scheduled digests, 'ai_communication' for AI-generated
   source: varchar("source", { length: 50 }).default("digest").notNull(),
   sourceCommId: integer("source_comm_id"),
-  
+
   // Approval tracking
-  approvedBy: integer("approved_by").references(() => users.id, { onDelete: 'set null' }),
+  approvedBy: integer("approved_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   approvedAt: timestamp("approved_at"),
-  
+
   // Sent tracking
   sentAt: timestamp("sent_at"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertScheduledDigestDraftSchema = createInsertSchema(scheduledDigestDrafts).omit({ 
-  id: true, 
-  createdAt: true, 
+export const insertScheduledDigestDraftSchema = createInsertSchema(
+  scheduledDigestDrafts,
+).omit({
+  id: true,
+  createdAt: true,
   updatedAt: true,
   approvedAt: true,
-  sentAt: true
+  sentAt: true,
 });
 export type ScheduledDigestDraft = typeof scheduledDigestDrafts.$inferSelect;
-export type InsertScheduledDigestDraft = z.infer<typeof insertScheduledDigestDraftSchema>;
+export type InsertScheduledDigestDraft = z.infer<
+  typeof insertScheduledDigestDraftSchema
+>;
 
 // ==================== PARTNER BROADCASTS ====================
 
 // Partner broadcasts - stores mass communications sent to all partners
 export const partnerBroadcasts = pgTable("partner_broadcasts", {
   id: serial("id").primaryKey(),
-  sentBy: integer("sent_by").references(() => users.id, { onDelete: 'set null' }),
+  sentBy: integer("sent_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   subject: varchar("subject", { length: 255 }).notNull(),
   emailBody: text("email_body").notNull(),
   smsBody: text("sms_body"),
@@ -1420,43 +1814,59 @@ export const partnerBroadcasts = pgTable("partner_broadcasts", {
   completedAt: timestamp("completed_at"),
 });
 
-export const insertPartnerBroadcastSchema = createInsertSchema(partnerBroadcasts).omit({ 
-  id: true, 
-  createdAt: true, 
+export const insertPartnerBroadcastSchema = createInsertSchema(
+  partnerBroadcasts,
+).omit({
+  id: true,
+  createdAt: true,
   completedAt: true,
   emailsSent: true,
   smsSent: true,
   emailsFailed: true,
   smsFailed: true,
   recipientCount: true,
-  status: true
+  status: true,
 });
 export type PartnerBroadcast = typeof partnerBroadcasts.$inferSelect;
-export type InsertPartnerBroadcast = z.infer<typeof insertPartnerBroadcastSchema>;
+export type InsertPartnerBroadcast = z.infer<
+  typeof insertPartnerBroadcastSchema
+>;
 
 // Partner broadcast recipients - individual delivery tracking
-export const partnerBroadcastRecipients = pgTable("partner_broadcast_recipients", {
-  id: serial("id").primaryKey(),
-  broadcastId: integer("broadcast_id").references(() => partnerBroadcasts.id, { onDelete: 'cascade' }).notNull(),
-  partnerId: integer("partner_id").references(() => partners.id, { onDelete: 'set null' }),
-  partnerName: varchar("partner_name", { length: 255 }),
-  email: varchar("email", { length: 255 }),
-  phone: varchar("phone", { length: 50 }),
-  emailStatus: varchar("email_status", { length: 50 }).default("pending"), // pending, sent, failed
-  smsStatus: varchar("sms_status", { length: 50 }).default("pending"), // pending, sent, failed
-  emailError: text("email_error"),
-  smsError: text("sms_error"),
-  personalizedEmailBody: text("personalized_email_body"),
-  personalizedSmsBody: text("personalized_sms_body"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const partnerBroadcastRecipients = pgTable(
+  "partner_broadcast_recipients",
+  {
+    id: serial("id").primaryKey(),
+    broadcastId: integer("broadcast_id")
+      .references(() => partnerBroadcasts.id, { onDelete: "cascade" })
+      .notNull(),
+    partnerId: integer("partner_id").references(() => partners.id, {
+      onDelete: "set null",
+    }),
+    partnerName: varchar("partner_name", { length: 255 }),
+    email: varchar("email", { length: 255 }),
+    phone: varchar("phone", { length: 50 }),
+    emailStatus: varchar("email_status", { length: 50 }).default("pending"), // pending, sent, failed
+    smsStatus: varchar("sms_status", { length: 50 }).default("pending"), // pending, sent, failed
+    emailError: text("email_error"),
+    smsError: text("sms_error"),
+    personalizedEmailBody: text("personalized_email_body"),
+    personalizedSmsBody: text("personalized_sms_body"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);
 
-export const insertPartnerBroadcastRecipientSchema = createInsertSchema(partnerBroadcastRecipients).omit({ 
-  id: true, 
-  createdAt: true 
+export const insertPartnerBroadcastRecipientSchema = createInsertSchema(
+  partnerBroadcastRecipients,
+).omit({
+  id: true,
+  createdAt: true,
 });
-export type PartnerBroadcastRecipient = typeof partnerBroadcastRecipients.$inferSelect;
-export type InsertPartnerBroadcastRecipient = z.infer<typeof insertPartnerBroadcastRecipientSchema>;
+export type PartnerBroadcastRecipient =
+  typeof partnerBroadcastRecipients.$inferSelect;
+export type InsertPartnerBroadcastRecipient = z.infer<
+  typeof insertPartnerBroadcastRecipientSchema
+>;
 
 // Inbound SMS messages - stores replies from partners
 export const inboundSmsMessages = pgTable("inbound_sms_messages", {
@@ -1465,23 +1875,37 @@ export const inboundSmsMessages = pgTable("inbound_sms_messages", {
   toPhone: varchar("to_phone", { length: 50 }).notNull(),
   body: text("body").notNull(),
   twilioMessageSid: varchar("twilio_message_sid", { length: 255 }),
-  partnerId: integer("partner_id").references(() => partners.id, { onDelete: 'set null' }),
-  broadcastId: integer("broadcast_id").references(() => partnerBroadcasts.id, { onDelete: 'set null' }),
+  partnerId: integer("partner_id").references(() => partners.id, {
+    onDelete: "set null",
+  }),
+  broadcastId: integer("broadcast_id").references(() => partnerBroadcasts.id, {
+    onDelete: "set null",
+  }),
   isRead: boolean("is_read").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertInboundSmsMessageSchema = createInsertSchema(inboundSmsMessages).omit({ 
-  id: true, 
-  createdAt: true 
+export const insertInboundSmsMessageSchema = createInsertSchema(
+  inboundSmsMessages,
+).omit({
+  id: true,
+  createdAt: true,
 });
 export type InboundSmsMessage = typeof inboundSmsMessages.$inferSelect;
-export type InsertInboundSmsMessage = z.infer<typeof insertInboundSmsMessageSchema>;
+export type InsertInboundSmsMessage = z.infer<
+  typeof insertInboundSmsMessageSchema
+>;
 
 // ==================== DOCUMENT TEMPLATES ====================
 
 // Field types for PDF templates
-export const templateFieldTypeEnum = z.enum(["text", "number", "date", "checkbox", "signature"]);
+export const templateFieldTypeEnum = z.enum([
+  "text",
+  "number",
+  "date",
+  "checkbox",
+  "signature",
+]);
 export type TemplateFieldType = z.infer<typeof templateFieldTypeEnum>;
 
 // Document templates - stores PDF templates with field positions
@@ -1489,79 +1913,89 @@ export const documentTemplates = pgTable("document_templates", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  
+
   // PDF storage (URL in object storage)
   pdfUrl: text("pdf_url").notNull(),
   pdfFileName: varchar("pdf_filename", { length: 255 }).notNull(),
-  
+
   // PDF dimensions per page (JSON: [{page: 1, width: 612, height: 792}, ...])
-  pageDimensions: jsonb("page_dimensions").default('[]'),
+  pageDimensions: jsonb("page_dimensions").default("[]"),
   pageCount: integer("page_count").default(1).notNull(),
-  
+
   // Template categorization
   category: varchar("category", { length: 100 }), // e.g., "agreement", "disclosure", "contract"
   loanType: varchar("loan_type", { length: 50 }), // optional: ties to specific loan type
-  
+
   // Status
   isActive: boolean("is_active").default(true).notNull(),
-  
+
   // Optional: Link to external e-sign provider template
   pandadocTemplateId: varchar("pandadoc_template_id", { length: 255 }), // PandaDoc template UUID for direct sending
-  
+
   // Audit
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertDocumentTemplateSchema = createInsertSchema(documentTemplates).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertDocumentTemplateSchema = createInsertSchema(
+  documentTemplates,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
-export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
+export type InsertDocumentTemplate = z.infer<
+  typeof insertDocumentTemplateSchema
+>;
 
 // Template fields - stores field positions and data bindings for each template
 export const templateFields = pgTable("template_fields", {
   id: serial("id").primaryKey(),
-  templateId: integer("template_id").references(() => documentTemplates.id, { onDelete: 'cascade' }).notNull(),
-  
+  templateId: integer("template_id")
+    .references(() => documentTemplates.id, { onDelete: "cascade" })
+    .notNull(),
+
   // Field identification
   fieldName: varchar("field_name", { length: 100 }).notNull(), // Display name in UI
   fieldKey: varchar("field_key", { length: 100 }).notNull(), // Data binding key (e.g., "borrower.name", "loan.amount")
   fieldType: varchar("field_type", { length: 50 }).notNull(), // text, number, date, checkbox, signature
-  
+
   // Position on PDF (in PDF points, origin is bottom-left)
   pageNumber: integer("page_number").notNull(),
   x: real("x").notNull(), // X position in PDF points
   y: real("y").notNull(), // Y position in PDF points
   width: real("width").notNull(), // Width in PDF points
   height: real("height").notNull(), // Height in PDF points
-  
+
   // Display options
   fontSize: integer("font_size").default(12),
   fontColor: varchar("font_color", { length: 20 }).default("#000000"),
   textAlign: varchar("text_align", { length: 20 }).default("left"), // left, center, right
-  
+
   // For signature fields - which signer
   signerRole: varchar("signer_role", { length: 50 }), // e.g., "borrower", "co-borrower", "guarantor"
-  
+
   // Validation
   isRequired: boolean("is_required").default(false).notNull(),
   defaultValue: text("default_value"),
-  
+
   // Order for tab navigation
   tabOrder: integer("tab_order").default(0),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertTemplateFieldSchema = createInsertSchema(templateFields).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertTemplateFieldSchema = createInsertSchema(
+  templateFields,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 export type TemplateField = typeof templateFields.$inferSelect;
 export type InsertTemplateField = z.infer<typeof insertTemplateFieldSchema>;
@@ -1570,40 +2004,52 @@ export type InsertTemplateField = z.infer<typeof insertTemplateFieldSchema>;
 export const esignEnvelopes = pgTable("esign_envelopes", {
   id: serial("id").primaryKey(),
   vendor: varchar("vendor", { length: 50 }).notNull(), // "pandadoc", "docusign", etc.
-  quoteId: integer("quote_id").references(() => savedQuotes.id, { onDelete: 'set null' }),
-  templateId: integer("template_id").references(() => documentTemplates.id, { onDelete: 'set null' }),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
-  
+  quoteId: integer("quote_id").references(() => savedQuotes.id, {
+    onDelete: "set null",
+  }),
+  templateId: integer("template_id").references(() => documentTemplates.id, {
+    onDelete: "set null",
+  }),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+
   // External document reference
-  externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
+  externalDocumentId: varchar("external_document_id", {
+    length: 255,
+  }).notNull(),
   externalTemplateId: varchar("external_template_id", { length: 255 }), // PandaDoc template ID used
-  
+
   // Document details
   documentName: varchar("document_name", { length: 255 }).notNull(),
-  status: varchar("status", { length: 50 }).notNull().default('draft'), // draft, sent, viewed, completed, declined, voided
-  
+  status: varchar("status", { length: 50 }).notNull().default("draft"), // draft, sent, viewed, completed, declined, voided
+
   // Signing URLs
   signingUrl: text("signing_url"), // For embedded signing
   signedPdfUrl: text("signed_pdf_url"), // URL to download signed PDF
-  
+
   // Recipients (stored as JSON array)
-  recipients: jsonb("recipients").default('[]'), // [{name, email, role, status, signedAt}]
-  
+  recipients: jsonb("recipients").default("[]"), // [{name, email, role, status, signedAt}]
+
   // Metadata
-  sendMethod: varchar("send_method", { length: 20 }).default('email'), // email, embedded
+  sendMethod: varchar("send_method", { length: 20 }).default("email"), // email, embedded
   sentAt: timestamp("sent_at"),
   viewedAt: timestamp("viewed_at"),
   completedAt: timestamp("completed_at"),
-  
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertEsignEnvelopeSchema = createInsertSchema(esignEnvelopes).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertEsignEnvelopeSchema = createInsertSchema(
+  esignEnvelopes,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 export type EsignEnvelope = typeof esignEnvelopes.$inferSelect;
 export type InsertEsignEnvelope = z.infer<typeof insertEsignEnvelopeSchema>;
@@ -1612,20 +2058,24 @@ export type InsertEsignEnvelope = z.infer<typeof insertEsignEnvelopeSchema>;
 export const esignEvents = pgTable("esign_events", {
   id: serial("id").primaryKey(),
   vendor: varchar("vendor", { length: 50 }).notNull(),
-  envelopeId: integer("envelope_id").references(() => esignEnvelopes.id, { onDelete: 'cascade' }),
-  externalDocumentId: varchar("external_document_id", { length: 255 }).notNull(),
-  
+  envelopeId: integer("envelope_id").references(() => esignEnvelopes.id, {
+    onDelete: "cascade",
+  }),
+  externalDocumentId: varchar("external_document_id", {
+    length: 255,
+  }).notNull(),
+
   eventType: varchar("event_type", { length: 100 }).notNull(),
-  eventData: jsonb("event_data").default('{}'),
+  eventData: jsonb("event_data").default("{}"),
   processed: boolean("processed").default(false),
   error: text("error"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertEsignEventSchema = createInsertSchema(esignEvents).omit({ 
-  id: true, 
-  createdAt: true 
+export const insertEsignEventSchema = createInsertSchema(esignEvents).omit({
+  id: true,
+  createdAt: true,
 });
 export type EsignEvent = typeof esignEvents.$inferSelect;
 export type InsertEsignEvent = z.infer<typeof insertEsignEventSchema>;
@@ -1634,7 +2084,7 @@ export type InsertEsignEvent = z.infer<typeof insertEsignEventSchema>;
 export const fieldBindingKeys = [
   // Borrower info
   "borrower.firstName",
-  "borrower.lastName", 
+  "borrower.lastName",
   "borrower.fullName",
   "borrower.email",
   "borrower.phone",
@@ -1642,7 +2092,7 @@ export const fieldBindingKeys = [
   "borrower.ssn",
   "borrower.dob",
   "borrower.signature",
-  
+
   // Co-borrower info
   "coBorrower.firstName",
   "coBorrower.lastName",
@@ -1650,7 +2100,7 @@ export const fieldBindingKeys = [
   "coBorrower.email",
   "coBorrower.phone",
   "coBorrower.signature",
-  
+
   // Property info
   "property.address",
   "property.city",
@@ -1659,7 +2109,7 @@ export const fieldBindingKeys = [
   "property.type",
   "property.asIsValue",
   "property.arv",
-  
+
   // Loan info
   "loan.amount",
   "loan.interestRate",
@@ -1670,19 +2120,19 @@ export const fieldBindingKeys = [
   "loan.monthlyPayment",
   "loan.points",
   "loan.totalClosingCosts",
-  
+
   // Company info
   "company.name",
   "company.address",
   "company.phone",
   "company.email",
-  
+
   // Date fields
   "today.date",
   "today.dateFormatted",
 ] as const;
 
-export type FieldBindingKey = typeof fieldBindingKeys[number];
+export type FieldBindingKey = (typeof fieldBindingKeys)[number];
 
 // Team Permissions - role-based permission configuration
 export const teamPermissions = pgTable("team_permissions", {
@@ -1695,7 +2145,9 @@ export const teamPermissions = pgTable("team_permissions", {
   updatedBy: integer("updated_by").references(() => users.id),
 });
 
-export const insertTeamPermissionSchema = createInsertSchema(teamPermissions).omit({
+export const insertTeamPermissionSchema = createInsertSchema(
+  teamPermissions,
+).omit({
   id: true,
   updatedAt: true,
 });
@@ -1703,8 +2155,13 @@ export type TeamPermission = typeof teamPermissions.$inferSelect;
 export type InsertTeamPermission = z.infer<typeof insertTeamPermissionSchema>;
 
 // All available permission keys for the team permission system
-export const TEAM_ROLES = ["processor", "staff", "admin", "super_admin"] as const;
-export type TeamRole = typeof TEAM_ROLES[number];
+export const TEAM_ROLES = [
+  "processor",
+  "staff",
+  "admin",
+  "super_admin",
+] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
 
 export const ROLE_HIERARCHY: Record<string, number> = {
   user: 0,
@@ -1756,7 +2213,7 @@ export const PERMISSION_KEYS = [
   "agents.manage",
 ] as const;
 
-export type PermissionKey = typeof PERMISSION_KEYS[number];
+export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 export const SCOPABLE_PERMISSIONS: PermissionKey[] = [
   "quotes.view",
@@ -1766,7 +2223,10 @@ export const SCOPABLE_PERMISSIONS: PermissionKey[] = [
 ];
 
 // Permission display metadata
-export const PERMISSION_CATEGORIES: Record<string, { label: string; permissions: { key: PermissionKey; label: string }[] }> = {
+export const PERMISSION_CATEGORIES: Record<
+  string,
+  { label: string; permissions: { key: PermissionKey; label: string }[] }
+> = {
   quotes: {
     label: "Quotes",
     permissions: [
@@ -1867,10 +2327,14 @@ export const PERMISSION_CATEGORIES: Record<string, { label: string; permissions:
 
 export const commercialSubmissions = pgTable("commercial_submissions", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
   status: varchar("status", { length: 50 }).default("NEW").notNull(),
   submitterType: varchar("submitter_type", { length: 50 }).notNull(),
-  brokerOrDeveloperName: varchar("broker_or_developer_name", { length: 255 }).notNull(),
+  brokerOrDeveloperName: varchar("broker_or_developer_name", {
+    length: 255,
+  }).notNull(),
   companyName: varchar("company_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 50 }).notNull(),
@@ -1900,8 +2364,12 @@ export const commercialSubmissions = pgTable("commercial_submissions", {
   proFormaNOI: real("pro_forma_noi"),
   capexBudgetTotal: real("capex_budget_total").notNull(),
   businessPlanSummary: text("business_plan_summary").notNull(),
-  primarySponsorName: varchar("primary_sponsor_name", { length: 255 }).notNull(),
-  primarySponsorExperienceYears: integer("primary_sponsor_experience_years").notNull(),
+  primarySponsorName: varchar("primary_sponsor_name", {
+    length: 255,
+  }).notNull(),
+  primarySponsorExperienceYears: integer(
+    "primary_sponsor_experience_years",
+  ).notNull(),
   numberOfSimilarProjects: integer("number_of_similar_projects").notNull(),
   netWorth: real("net_worth").notNull(),
   liquidity: real("liquidity").notNull(),
@@ -1996,24 +2464,44 @@ export const commercialSubmissions = pgTable("commercial_submissions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCommercialSubmissionSchema = createInsertSchema(commercialSubmissions).omit({ id: true, createdAt: true, updatedAt: true, submittedAt: true, reviewedAt: true });
-export type CommercialSubmission = typeof commercialSubmissions.$inferSelect;
-export type InsertCommercialSubmission = z.infer<typeof insertCommercialSubmissionSchema>;
-
-export const commercialSubmissionDocuments = pgTable("commercial_submission_documents", {
-  id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
-  docType: varchar("doc_type", { length: 50 }).notNull(),
-  storageKey: text("storage_key").notNull(),
-  originalFileName: varchar("original_file_name", { length: 255 }).notNull(),
-  mimeType: varchar("mime_type", { length: 100 }).notNull(),
-  fileSize: integer("file_size").notNull(),
-  uploadedAt: timestamp("uploaded_at").defaultNow(),
+export const insertCommercialSubmissionSchema = createInsertSchema(
+  commercialSubmissions,
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  submittedAt: true,
+  reviewedAt: true,
 });
+export type CommercialSubmission = typeof commercialSubmissions.$inferSelect;
+export type InsertCommercialSubmission = z.infer<
+  typeof insertCommercialSubmissionSchema
+>;
 
-export const insertCommercialSubmissionDocumentSchema = createInsertSchema(commercialSubmissionDocuments).omit({ id: true, uploadedAt: true });
-export type CommercialSubmissionDocument = typeof commercialSubmissionDocuments.$inferSelect;
-export type InsertCommercialSubmissionDocument = z.infer<typeof insertCommercialSubmissionDocumentSchema>;
+export const commercialSubmissionDocuments = pgTable(
+  "commercial_submission_documents",
+  {
+    id: serial("id").primaryKey(),
+    submissionId: integer("submission_id")
+      .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+      .notNull(),
+    docType: varchar("doc_type", { length: 50 }).notNull(),
+    storageKey: text("storage_key").notNull(),
+    originalFileName: varchar("original_file_name", { length: 255 }).notNull(),
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+    fileSize: integer("file_size").notNull(),
+    uploadedAt: timestamp("uploaded_at").defaultNow(),
+  },
+);
+
+export const insertCommercialSubmissionDocumentSchema = createInsertSchema(
+  commercialSubmissionDocuments,
+).omit({ id: true, uploadedAt: true });
+export type CommercialSubmissionDocument =
+  typeof commercialSubmissionDocuments.$inferSelect;
+export type InsertCommercialSubmissionDocument = z.infer<
+  typeof insertCommercialSubmissionDocumentSchema
+>;
 
 export const submissionCriteria = pgTable("submission_criteria", {
   id: serial("id").primaryKey(),
@@ -2025,21 +2513,31 @@ export const submissionCriteria = pgTable("submission_criteria", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertSubmissionCriteriaSchema = createInsertSchema(submissionCriteria).omit({ id: true, createdAt: true });
+export const insertSubmissionCriteriaSchema = createInsertSchema(
+  submissionCriteria,
+).omit({ id: true, createdAt: true });
 export type SubmissionCriteria = typeof submissionCriteria.$inferSelect;
-export type InsertSubmissionCriteria = z.infer<typeof insertSubmissionCriteriaSchema>;
+export type InsertSubmissionCriteria = z.infer<
+  typeof insertSubmissionCriteriaSchema
+>;
 
 export const submissionSponsors = pgTable("submission_sponsors", {
   id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  submissionId: integer("submission_id")
+    .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
   sponsorName: varchar("sponsor_name", { length: 255 }).notNull(),
   ownershipPercent: real("ownership_percent"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionSponsorSchema = createInsertSchema(submissionSponsors).omit({ id: true, createdAt: true });
+export const insertSubmissionSponsorSchema = createInsertSchema(
+  submissionSponsors,
+).omit({ id: true, createdAt: true });
 export type SubmissionSponsor = typeof submissionSponsors.$inferSelect;
-export type InsertSubmissionSponsor = z.infer<typeof insertSubmissionSponsorSchema>;
+export type InsertSubmissionSponsor = z.infer<
+  typeof insertSubmissionSponsorSchema
+>;
 
 export const submissionFields = pgTable("submission_fields", {
   id: serial("id").primaryKey(),
@@ -2053,36 +2551,55 @@ export const submissionFields = pgTable("submission_fields", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionFieldSchema = createInsertSchema(submissionFields).omit({ id: true, createdAt: true });
+export const insertSubmissionFieldSchema = createInsertSchema(
+  submissionFields,
+).omit({ id: true, createdAt: true });
 export type SubmissionField = typeof submissionFields.$inferSelect;
 export type InsertSubmissionField = z.infer<typeof insertSubmissionFieldSchema>;
 
 export const submissionFieldResponses = pgTable("submission_field_responses", {
   id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
-  fieldId: integer("field_id").references(() => submissionFields.id, { onDelete: 'cascade' }).notNull(),
+  submissionId: integer("submission_id")
+    .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
+  fieldId: integer("field_id")
+    .references(() => submissionFields.id, { onDelete: "cascade" })
+    .notNull(),
   responseValue: text("response_value"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionFieldResponseSchema = createInsertSchema(submissionFieldResponses).omit({ id: true, createdAt: true });
-export type SubmissionFieldResponse = typeof submissionFieldResponses.$inferSelect;
-export type InsertSubmissionFieldResponse = z.infer<typeof insertSubmissionFieldResponseSchema>;
+export const insertSubmissionFieldResponseSchema = createInsertSchema(
+  submissionFieldResponses,
+).omit({ id: true, createdAt: true });
+export type SubmissionFieldResponse =
+  typeof submissionFieldResponses.$inferSelect;
+export type InsertSubmissionFieldResponse = z.infer<
+  typeof insertSubmissionFieldResponseSchema
+>;
 
-export const submissionDocumentRequirements = pgTable("submission_document_requirements", {
-  id: serial("id").primaryKey(),
-  documentName: varchar("document_name", { length: 255 }).notNull(),
-  documentCategory: varchar("document_category", { length: 100 }),
-  dealType: varchar("deal_type", { length: 50 }).default("all").notNull(),
-  isRequired: boolean("is_required").default(true).notNull(),
-  displayOrder: integer("display_order").default(0).notNull(),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const submissionDocumentRequirements = pgTable(
+  "submission_document_requirements",
+  {
+    id: serial("id").primaryKey(),
+    documentName: varchar("document_name", { length: 255 }).notNull(),
+    documentCategory: varchar("document_category", { length: 100 }),
+    dealType: varchar("deal_type", { length: 50 }).default("all").notNull(),
+    isRequired: boolean("is_required").default(true).notNull(),
+    displayOrder: integer("display_order").default(0).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+);
 
-export const insertSubmissionDocumentRequirementSchema = createInsertSchema(submissionDocumentRequirements).omit({ id: true, createdAt: true });
-export type SubmissionDocumentRequirement = typeof submissionDocumentRequirements.$inferSelect;
-export type InsertSubmissionDocumentRequirement = z.infer<typeof insertSubmissionDocumentRequirementSchema>;
+export const insertSubmissionDocumentRequirementSchema = createInsertSchema(
+  submissionDocumentRequirements,
+).omit({ id: true, createdAt: true });
+export type SubmissionDocumentRequirement =
+  typeof submissionDocumentRequirements.$inferSelect;
+export type InsertSubmissionDocumentRequirement = z.infer<
+  typeof insertSubmissionDocumentRequirementSchema
+>;
 
 export const submissionReviewRules = pgTable("submission_review_rules", {
   id: serial("id").primaryKey(),
@@ -2093,13 +2610,19 @@ export const submissionReviewRules = pgTable("submission_review_rules", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionReviewRuleSchema = createInsertSchema(submissionReviewRules).omit({ id: true, createdAt: true });
+export const insertSubmissionReviewRuleSchema = createInsertSchema(
+  submissionReviewRules,
+).omit({ id: true, createdAt: true });
 export type SubmissionReviewRule = typeof submissionReviewRules.$inferSelect;
-export type InsertSubmissionReviewRule = z.infer<typeof insertSubmissionReviewRuleSchema>;
+export type InsertSubmissionReviewRule = z.infer<
+  typeof insertSubmissionReviewRuleSchema
+>;
 
 export const submissionAiReviews = pgTable("submission_ai_reviews", {
   id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  submissionId: integer("submission_id")
+    .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
   decision: varchar("decision", { length: 50 }).notNull(),
   decisionReason: text("decision_reason"),
   strengths: text("strengths"),
@@ -2114,42 +2637,68 @@ export const submissionAiReviews = pgTable("submission_ai_reviews", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionAiReviewSchema = createInsertSchema(submissionAiReviews).omit({ id: true, createdAt: true });
+export const insertSubmissionAiReviewSchema = createInsertSchema(
+  submissionAiReviews,
+).omit({ id: true, createdAt: true });
 export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;
-export type InsertSubmissionAiReview = z.infer<typeof insertSubmissionAiReviewSchema>;
+export type InsertSubmissionAiReview = z.infer<
+  typeof insertSubmissionAiReviewSchema
+>;
 
 export const submissionNotes = pgTable("submission_notes", {
   id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
-  adminUserId: integer("admin_user_id").references(() => users.id).notNull(),
+  submissionId: integer("submission_id")
+    .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
+  adminUserId: integer("admin_user_id")
+    .references(() => users.id)
+    .notNull(),
   noteText: text("note_text").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionNoteSchema = createInsertSchema(submissionNotes).omit({ id: true, createdAt: true });
+export const insertSubmissionNoteSchema = createInsertSchema(
+  submissionNotes,
+).omit({ id: true, createdAt: true });
 export type SubmissionNote = typeof submissionNotes.$inferSelect;
 export type InsertSubmissionNote = z.infer<typeof insertSubmissionNoteSchema>;
 
 export const submissionNotifications = pgTable("submission_notifications", {
   id: serial("id").primaryKey(),
-  submissionId: integer("submission_id").references(() => commercialSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  submissionId: integer("submission_id")
+    .references(() => commercialSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
   notificationType: varchar("notification_type", { length: 100 }).notNull(),
   recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
   sentAt: timestamp("sent_at").defaultNow(),
   status: varchar("status", { length: 50 }).default("sent").notNull(),
 });
 
-export const insertSubmissionNotificationSchema = createInsertSchema(submissionNotifications).omit({ id: true, sentAt: true });
-export type SubmissionNotification = typeof submissionNotifications.$inferSelect;
-export type InsertSubmissionNotification = z.infer<typeof insertSubmissionNotificationSchema>;
+export const insertSubmissionNotificationSchema = createInsertSchema(
+  submissionNotifications,
+).omit({ id: true, sentAt: true });
+export type SubmissionNotification =
+  typeof submissionNotifications.$inferSelect;
+export type InsertSubmissionNotification = z.infer<
+  typeof insertSubmissionNotificationSchema
+>;
 
 export const documentReviewResults = pgTable("document_review_results", {
   id: serial("id").primaryKey(),
-  documentId: integer("document_id").references(() => dealDocuments.id, { onDelete: 'cascade' }).notNull(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
-  documentTemplateId: integer("document_template_id").references(() => programDocumentTemplates.id, { onDelete: 'set null' }),
-  
+  documentId: integer("document_id")
+    .references(() => dealDocuments.id, { onDelete: "cascade" })
+    .notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "set null",
+  }),
+  documentTemplateId: integer("document_template_id").references(
+    () => programDocumentTemplates.id,
+    { onDelete: "set null" },
+  ),
+
   overallStatus: varchar("overall_status", { length: 50 }).notNull(),
   summary: text("summary"),
   findings: text("findings"),
@@ -2157,15 +2706,19 @@ export const documentReviewResults = pgTable("document_review_results", {
   rulesPassed: integer("rules_passed").default(0),
   rulesFailed: integer("rules_failed").default(0),
   rulesWarning: integer("rules_warning").default(0),
-  
+
   model: varchar("model", { length: 100 }),
   reviewedAt: timestamp("reviewed_at").defaultNow(),
   reviewedBy: integer("reviewed_by").references(() => users.id),
 });
 
-export const insertDocumentReviewResultSchema = createInsertSchema(documentReviewResults).omit({ id: true, reviewedAt: true });
+export const insertDocumentReviewResultSchema = createInsertSchema(
+  documentReviewResults,
+).omit({ id: true, reviewedAt: true });
 export type DocumentReviewResult = typeof documentReviewResults.$inferSelect;
-export type InsertDocumentReviewResult = z.infer<typeof insertDocumentReviewResultSchema>;
+export type InsertDocumentReviewResult = z.infer<
+  typeof insertDocumentReviewResultSchema
+>;
 
 export const creditPolicies = pgTable("credit_policies", {
   id: serial("id").primaryKey(),
@@ -2173,20 +2726,32 @@ export const creditPolicies = pgTable("credit_policies", {
   description: text("description"),
   sourceFileName: varchar("source_file_name", { length: 500 }),
   isActive: boolean("is_active").default(true),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCreditPolicySchema = createInsertSchema(creditPolicies).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCreditPolicySchema = createInsertSchema(creditPolicies).omit(
+  { id: true, createdAt: true, updatedAt: true },
+);
 export type CreditPolicy = typeof creditPolicies.$inferSelect;
 export type InsertCreditPolicy = z.infer<typeof insertCreditPolicySchema>;
 
 export const programReviewRules = pgTable("program_review_rules", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }),
-  creditPolicyId: integer("credit_policy_id").references(() => creditPolicies.id, { onDelete: 'cascade' }),
-  documentTemplateId: integer("document_template_id").references(() => programDocumentTemplates.id, { onDelete: 'cascade' }),
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "cascade",
+  }),
+  creditPolicyId: integer("credit_policy_id").references(
+    () => creditPolicies.id,
+    { onDelete: "cascade" },
+  ),
+  documentTemplateId: integer("document_template_id").references(
+    () => programDocumentTemplates.id,
+    { onDelete: "cascade" },
+  ),
   documentType: varchar("document_type", { length: 100 }).notNull(),
   ruleTitle: varchar("rule_title", { length: 500 }).notNull(),
   ruleDescription: text("rule_description"),
@@ -2199,17 +2764,25 @@ export const programReviewRules = pgTable("program_review_rules", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertProgramReviewRuleSchema = createInsertSchema(programReviewRules).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProgramReviewRuleSchema = createInsertSchema(
+  programReviewRules,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type ProgramReviewRule = typeof programReviewRules.$inferSelect;
-export type InsertProgramReviewRule = z.infer<typeof insertProgramReviewRuleSchema>;
+export type InsertProgramReviewRule = z.infer<
+  typeof insertProgramReviewRuleSchema
+>;
 
 // ==================== PHASE 1: NEW TABLES ====================
 
 // Processor Daily Queue - for managing batch processing of digests, document reviews, etc.
 export const processorDailyQueue = pgTable("processor_daily_queue", {
   id: serial("id").primaryKey(),
-  processorId: integer("processor_id").references(() => users.id, { onDelete: 'set null' }),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  processorId: integer("processor_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   queueDate: timestamp("queue_date").notNull(),
   actionType: varchar("action_type", { length: 50 }).notNull(), // digest_send, document_review, task_creation, message_send
   actionData: jsonb("action_data").notNull(),
@@ -2221,14 +2794,20 @@ export const processorDailyQueue = pgTable("processor_daily_queue", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertProcessorDailyQueueSchema = createInsertSchema(processorDailyQueue).omit({ id: true, createdAt: true });
+export const insertProcessorDailyQueueSchema = createInsertSchema(
+  processorDailyQueue,
+).omit({ id: true, createdAt: true });
 export type ProcessorDailyQueue = typeof processorDailyQueue.$inferSelect;
-export type InsertProcessorDailyQueue = z.infer<typeof insertProcessorDailyQueueSchema>;
+export type InsertProcessorDailyQueue = z.infer<
+  typeof insertProcessorDailyQueueSchema
+>;
 
 // Broker Contacts - contact management for brokers
 export const brokerContacts = pgTable("broker_contacts", {
   id: serial("id").primaryKey(),
-  brokerId: integer("broker_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  brokerId: integer("broker_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
   email: varchar("email", { length: 255 }),
@@ -2244,15 +2823,21 @@ export const brokerContacts = pgTable("broker_contacts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertBrokerContactSchema = createInsertSchema(brokerContacts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBrokerContactSchema = createInsertSchema(
+  brokerContacts,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type BrokerContact = typeof brokerContacts.$inferSelect;
 export type InsertBrokerContact = z.infer<typeof insertBrokerContactSchema>;
 
 // Broker Outreach Messages - tracking outreach campaigns and messages
 export const brokerOutreachMessages = pgTable("broker_outreach_messages", {
   id: serial("id").primaryKey(),
-  brokerId: integer("broker_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  contactId: integer("contact_id").references(() => brokerContacts.id, { onDelete: 'set null' }),
+  brokerId: integer("broker_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  contactId: integer("contact_id").references(() => brokerContacts.id, {
+    onDelete: "set null",
+  }),
   campaignId: integer("campaign_id"),
   channel: varchar("channel", { length: 50 }).notNull(), // email, sms, both
   subject: varchar("subject", { length: 255 }),
@@ -2266,15 +2851,23 @@ export const brokerOutreachMessages = pgTable("broker_outreach_messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertBrokerOutreachMessageSchema = createInsertSchema(brokerOutreachMessages).omit({ id: true, createdAt: true });
+export const insertBrokerOutreachMessageSchema = createInsertSchema(
+  brokerOutreachMessages,
+).omit({ id: true, createdAt: true });
 export type BrokerOutreachMessage = typeof brokerOutreachMessages.$inferSelect;
-export type InsertBrokerOutreachMessage = z.infer<typeof insertBrokerOutreachMessageSchema>;
+export type InsertBrokerOutreachMessage = z.infer<
+  typeof insertBrokerOutreachMessageSchema
+>;
 
 // AI Assistant Conversations - conversation history with AI assistant
 export const aiAssistantConversations = pgTable("ai_assistant_conversations", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'set null' }),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  dealId: integer("deal_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
   conversationType: varchar("conversation_type", { length: 50 }).notNull(), // daily_briefing, deal_review, general
   title: varchar("title", { length: 255 }),
   isActive: boolean("is_active").default(true).notNull(),
@@ -2282,14 +2875,21 @@ export const aiAssistantConversations = pgTable("ai_assistant_conversations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertAiAssistantConversationSchema = createInsertSchema(aiAssistantConversations).omit({ id: true, createdAt: true, updatedAt: true });
-export type AiAssistantConversation = typeof aiAssistantConversations.$inferSelect;
-export type InsertAiAssistantConversation = z.infer<typeof insertAiAssistantConversationSchema>;
+export const insertAiAssistantConversationSchema = createInsertSchema(
+  aiAssistantConversations,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type AiAssistantConversation =
+  typeof aiAssistantConversations.$inferSelect;
+export type InsertAiAssistantConversation = z.infer<
+  typeof insertAiAssistantConversationSchema
+>;
 
 // AI Assistant Messages - individual messages in conversations
 export const aiAssistantMessages = pgTable("ai_assistant_messages", {
   id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id").references(() => aiAssistantConversations.id, { onDelete: 'cascade' }).notNull(),
+  conversationId: integer("conversation_id")
+    .references(() => aiAssistantConversations.id, { onDelete: "cascade" })
+    .notNull(),
   role: varchar("role", { length: 50 }).notNull(), // user, assistant, system
   content: text("content").notNull(),
   actionsTaken: jsonb("actions_taken"), // array of actions performed based on this message
@@ -2297,14 +2897,20 @@ export const aiAssistantMessages = pgTable("ai_assistant_messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAiAssistantMessageSchema = createInsertSchema(aiAssistantMessages).omit({ id: true, createdAt: true });
+export const insertAiAssistantMessageSchema = createInsertSchema(
+  aiAssistantMessages,
+).omit({ id: true, createdAt: true });
 export type AiAssistantMessage = typeof aiAssistantMessages.$inferSelect;
-export type InsertAiAssistantMessage = z.infer<typeof insertAiAssistantMessageSchema>;
+export type InsertAiAssistantMessage = z.infer<
+  typeof insertAiAssistantMessageSchema
+>;
 
 // Document Review Rules - rules for AI document review
 export const documentReviewRules = pgTable("document_review_rules", {
   id: serial("id").primaryKey(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'cascade' }).notNull(),
+  programId: integer("program_id")
+    .references(() => loanPrograms.id, { onDelete: "cascade" })
+    .notNull(),
   documentCategory: varchar("document_category", { length: 100 }).notNull(),
   documentName: varchar("document_name", { length: 255 }).notNull(),
   ruleName: varchar("rule_name", { length: 255 }).notNull(),
@@ -2318,9 +2924,13 @@ export const documentReviewRules = pgTable("document_review_rules", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDocumentReviewRuleSchema = createInsertSchema(documentReviewRules).omit({ id: true, createdAt: true });
+export const insertDocumentReviewRuleSchema = createInsertSchema(
+  documentReviewRules,
+).omit({ id: true, createdAt: true });
 export type DocumentReviewRule = typeof documentReviewRules.$inferSelect;
-export type InsertDocumentReviewRule = z.infer<typeof insertDocumentReviewRuleSchema>;
+export type InsertDocumentReviewRule = z.infer<
+  typeof insertDocumentReviewRuleSchema
+>;
 
 // ==================== AI AGENT SYSTEM ====================
 
@@ -2331,7 +2941,9 @@ export const agentConfigurations = pgTable("agent_configurations", {
   name: varchar("name", { length: 255 }).notNull(),
   systemPrompt: text("system_prompt").notNull(),
   toolDefinitions: jsonb("tool_definitions"), // array of tool schemas
-  modelProvider: varchar("model_provider", { length: 50 }).default("openai").notNull(),
+  modelProvider: varchar("model_provider", { length: 50 })
+    .default("openai")
+    .notNull(),
   modelName: varchar("model_name", { length: 100 }).default("gpt-4o").notNull(),
   temperature: real("temperature").default(0.2).notNull(),
   maxTokens: integer("max_tokens").default(4096).notNull(),
@@ -2343,30 +2955,49 @@ export const agentConfigurations = pgTable("agent_configurations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertAgentConfigurationSchema = createInsertSchema(agentConfigurations).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAgentConfigurationSchema = createInsertSchema(
+  agentConfigurations,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type AgentConfiguration = typeof agentConfigurations.$inferSelect;
-export type InsertAgentConfiguration = z.infer<typeof insertAgentConfigurationSchema>;
+export type InsertAgentConfiguration = z.infer<
+  typeof insertAgentConfigurationSchema
+>;
 
 // Lender Agent Customizations - per-lender supplemental prompts layered on top of baseline agent configs
-export const lenderAgentCustomizations = pgTable("lender_agent_customizations", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(), // the lender/admin user
-  agentType: varchar("agent_type", { length: 50 }).notNull(), // matches agentConfigurations.agentType
-  additionalPrompt: text("additional_prompt").notNull(), // appended to baseline system prompt
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const lenderAgentCustomizations = pgTable(
+  "lender_agent_customizations",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(), // the lender/admin user
+    agentType: varchar("agent_type", { length: 50 }).notNull(), // matches agentConfigurations.agentType
+    additionalPrompt: text("additional_prompt").notNull(), // appended to baseline system prompt
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+);
 
-export const insertLenderAgentCustomizationSchema = createInsertSchema(lenderAgentCustomizations).omit({ id: true, createdAt: true, updatedAt: true });
-export type LenderAgentCustomization = typeof lenderAgentCustomizations.$inferSelect;
-export type InsertLenderAgentCustomization = z.infer<typeof insertLenderAgentCustomizationSchema>;
+export const insertLenderAgentCustomizationSchema = createInsertSchema(
+  lenderAgentCustomizations,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type LenderAgentCustomization =
+  typeof lenderAgentCustomizations.$inferSelect;
+export type InsertLenderAgentCustomization = z.infer<
+  typeof insertLenderAgentCustomizationSchema
+>;
 
 // Document Extractions - stores Agent 1's structured output per document
 export const documentExtractions = pgTable("document_extractions", {
   id: serial("id").primaryKey(),
-  dealDocumentId: integer("deal_document_id").references(() => dealDocuments.id, { onDelete: 'cascade' }),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  dealDocumentId: integer("deal_document_id").references(
+    () => dealDocuments.id,
+    { onDelete: "cascade" },
+  ),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   documentType: varchar("document_type", { length: 100 }).notNull(),
   extractedFields: jsonb("extracted_fields").default({}),
   qualityAssessment: jsonb("quality_assessment"),
@@ -2378,15 +3009,23 @@ export const documentExtractions = pgTable("document_extractions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDocumentExtractionSchema = createInsertSchema(documentExtractions).omit({ id: true, createdAt: true });
+export const insertDocumentExtractionSchema = createInsertSchema(
+  documentExtractions,
+).omit({ id: true, createdAt: true });
 export type DocumentExtraction = typeof documentExtractions.$inferSelect;
-export type InsertDocumentExtraction = z.infer<typeof insertDocumentExtractionSchema>;
+export type InsertDocumentExtraction = z.infer<
+  typeof insertDocumentExtractionSchema
+>;
 
 // Agent Findings - stores Agent 2's analysis results per deal
 export const agentFindings = pgTable("agent_findings", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  programId: integer("program_id").references(() => loanPrograms.id, { onDelete: 'set null' }),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  programId: integer("program_id").references(() => loanPrograms.id, {
+    onDelete: "set null",
+  }),
   agentRunId: integer("agent_run_id"),
   overallStatus: varchar("overall_status", { length: 50 }), // 'clear' | 'conditions_exist' | 'significant_issues' | 'incomplete_data'
   policyFindings: jsonb("policy_findings"),
@@ -2398,14 +3037,19 @@ export const agentFindings = pgTable("agent_findings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAgentFindingSchema = createInsertSchema(agentFindings).omit({ id: true, createdAt: true });
+export const insertAgentFindingSchema = createInsertSchema(agentFindings).omit({
+  id: true,
+  createdAt: true,
+});
 export type AgentFinding = typeof agentFindings.$inferSelect;
 export type InsertAgentFinding = z.infer<typeof insertAgentFindingSchema>;
 
 // Agent Communications - stores Agent 3's drafted messages
 export const agentCommunications = pgTable("agent_communications", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   agentRunId: integer("agent_run_id"),
   recipientType: varchar("recipient_type", { length: 50 }).notNull(), // 'borrower' | 'broker' | 'internal'
   recipientName: varchar("recipient_name", { length: 255 }),
@@ -2426,15 +3070,21 @@ export const agentCommunications = pgTable("agent_communications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAgentCommunicationSchema = createInsertSchema(agentCommunications).omit({ id: true, createdAt: true });
+export const insertAgentCommunicationSchema = createInsertSchema(
+  agentCommunications,
+).omit({ id: true, createdAt: true });
 export type AgentCommunication = typeof agentCommunications.$inferSelect;
-export type InsertAgentCommunication = z.infer<typeof insertAgentCommunicationSchema>;
+export type InsertAgentCommunication = z.infer<
+  typeof insertAgentCommunicationSchema
+>;
 
 // Agent Corrections - stores human feedback for per-tenant learning
 export const agentCorrections = pgTable("agent_corrections", {
   id: serial("id").primaryKey(),
   agentType: varchar("agent_type", { length: 50 }).notNull(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
   originalOutput: text("original_output").notNull(),
   correctedOutput: text("corrected_output").notNull(),
   correctionType: varchar("correction_type", { length: 50 }), // 'finding_override' | 'communication_edit' | 'severity_change' | 'false_positive'
@@ -2443,7 +3093,9 @@ export const agentCorrections = pgTable("agent_corrections", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAgentCorrectionSchema = createInsertSchema(agentCorrections).omit({ id: true, createdAt: true });
+export const insertAgentCorrectionSchema = createInsertSchema(
+  agentCorrections,
+).omit({ id: true, createdAt: true });
 export type AgentCorrection = typeof agentCorrections.$inferSelect;
 export type InsertAgentCorrection = z.infer<typeof insertAgentCorrectionSchema>;
 
@@ -2451,8 +3103,13 @@ export type InsertAgentCorrection = z.infer<typeof insertAgentCorrectionSchema>;
 export const agentRuns = pgTable("agent_runs", {
   id: serial("id").primaryKey(),
   agentType: varchar("agent_type", { length: 50 }).notNull(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'set null' }),
-  configurationId: integer("configuration_id").references(() => agentConfigurations.id, { onDelete: 'set null' }),
+  projectId: integer("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  configurationId: integer("configuration_id").references(
+    () => agentConfigurations.id,
+    { onDelete: "set null" },
+  ),
   status: varchar("status", { length: 50 }).default("running").notNull(), // running | completed | failed | cancelled
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
@@ -2460,19 +3117,27 @@ export const agentRuns = pgTable("agent_runs", {
   durationMs: integer("duration_ms"),
   errorMessage: text("error_message"),
   triggerType: varchar("trigger_type", { length: 50 }), // 'manual' | 'document_upload' | 'schedule' | 'stage_change'
-  triggeredBy: integer("triggered_by").references(() => users.id, { onDelete: 'set null' }),
+  triggeredBy: integer("triggered_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
 
-export const insertAgentRunSchema = createInsertSchema(agentRuns).omit({ id: true, startedAt: true });
+export const insertAgentRunSchema = createInsertSchema(agentRuns).omit({
+  id: true,
+  startedAt: true,
+});
 export type AgentRun = typeof agentRuns.$inferSelect;
 export type InsertAgentRun = z.infer<typeof insertAgentRunSchema>;
 
 // Deal Stories - living narrative per deal (the "story" file)
 export const dealStories = pgTable("deal_stories", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull().unique(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
   currentNarrative: text("current_narrative").notNull(), // the current compiled story
   lastUpdatedSection: varchar("last_updated_section", { length: 100 }),
   storyVersion: integer("story_version").default(1).notNull(),
@@ -2483,51 +3148,81 @@ export const dealStories = pgTable("deal_stories", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertDealStorySchema = createInsertSchema(dealStories).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDealStorySchema = createInsertSchema(dealStories).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type DealStory = typeof dealStories.$inferSelect;
 
 // Platform Settings - global configuration for the platform
 export const platformSettings = pgTable("platform_settings", {
   id: serial("id").primaryKey(),
   aiAgentsEnabled: boolean("ai_agents_enabled").default(true).notNull(),
-  commercialLendingEnabled: boolean("commercial_lending_enabled").default(true).notNull(),
-  documentTemplatesEnabled: boolean("document_templates_enabled").default(true).notNull(),
-  smartProspectingEnabled: boolean("smart_prospecting_enabled").default(false).notNull(),
+  commercialLendingEnabled: boolean("commercial_lending_enabled")
+    .default(true)
+    .notNull(),
+  documentTemplatesEnabled: boolean("document_templates_enabled")
+    .default(true)
+    .notNull(),
+  smartProspectingEnabled: boolean("smart_prospecting_enabled")
+    .default(false)
+    .notNull(),
   autoRunPipeline: boolean("auto_run_pipeline").default(false).notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  updatedBy: integer("updated_by").references(() => users.id, { onDelete: 'set null' }),
+  updatedBy: integer("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
 });
 
-export const insertPlatformSettingsSchema = createInsertSchema(platformSettings).omit({ id: true, updatedAt: true });
+export const insertPlatformSettingsSchema = createInsertSchema(
+  platformSettings,
+).omit({ id: true, updatedAt: true });
 export type PlatformSettings = typeof platformSettings.$inferSelect;
-export type InsertPlatformSettings = z.infer<typeof insertPlatformSettingsSchema>;
+export type InsertPlatformSettings = z.infer<
+  typeof insertPlatformSettingsSchema
+>;
 export type InsertDealStory = z.infer<typeof insertDealStorySchema>;
 
 // Agent Pipeline Runs - tracks full pipeline executions (Agent 1 → 2 → 3) for a deal
 export const agentPipelineRuns = pgTable("agent_pipeline_runs", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   status: varchar("status", { length: 50 }).default("queued").notNull(), // queued, running, completed, failed, cancelled
   agentSequence: jsonb("agent_sequence").notNull(), // ['document_intelligence', 'processor', 'communication']
   currentAgentIndex: integer("current_agent_index").default(0).notNull(),
-  triggerType: varchar("trigger_type", { length: 50 }).default("manual").notNull(), // manual, auto_upload, auto_stage_change
-  triggeredBy: integer("triggered_by").references(() => users.id, { onDelete: 'set null' }),
+  triggerType: varchar("trigger_type", { length: 50 })
+    .default("manual")
+    .notNull(), // manual, auto_upload, auto_stage_change
+  triggeredBy: integer("triggered_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   errorMessage: text("error_message"),
   totalDurationMs: integer("total_duration_ms"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
 
-export const insertAgentPipelineRunSchema = createInsertSchema(agentPipelineRuns).omit({ id: true, startedAt: true });
+export const insertAgentPipelineRunSchema = createInsertSchema(
+  agentPipelineRuns,
+).omit({ id: true, startedAt: true });
 export type AgentPipelineRun = typeof agentPipelineRuns.$inferSelect;
-export type InsertAgentPipelineRun = z.infer<typeof insertAgentPipelineRunSchema>;
+export type InsertAgentPipelineRun = z.infer<
+  typeof insertAgentPipelineRunSchema
+>;
 
 // Pipeline Step Logs - tracks each agent's execution within a pipeline run
 export const pipelineStepLogs = pgTable("pipeline_step_logs", {
   id: serial("id").primaryKey(),
-  pipelineRunId: integer("pipeline_run_id").references(() => agentPipelineRuns.id, { onDelete: 'cascade' }).notNull(),
+  pipelineRunId: integer("pipeline_run_id")
+    .references(() => agentPipelineRuns.id, { onDelete: "cascade" })
+    .notNull(),
   agentType: varchar("agent_type", { length: 100 }).notNull(),
-  agentRunId: integer("agent_run_id").references(() => agentRuns.id, { onDelete: 'set null' }),
+  agentRunId: integer("agent_run_id").references(() => agentRuns.id, {
+    onDelete: "set null",
+  }),
   sequenceIndex: integer("sequence_index").notNull(),
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, running, completed, failed, skipped
   outputSummary: jsonb("output_summary"), // high-level results from this agent step
@@ -2538,7 +3233,9 @@ export const pipelineStepLogs = pgTable("pipeline_step_logs", {
   completedAt: timestamp("completed_at"),
 });
 
-export const insertPipelineStepLogSchema = createInsertSchema(pipelineStepLogs).omit({ id: true });
+export const insertPipelineStepLogSchema = createInsertSchema(
+  pipelineStepLogs,
+).omit({ id: true });
 export type PipelineStepLog = typeof pipelineStepLogs.$inferSelect;
 export type InsertPipelineStepLog = z.infer<typeof insertPipelineStepLogSchema>;
 
@@ -2550,23 +3247,31 @@ export const pipelineAgentSteps = pgTable("pipeline_agent_steps", {
   description: text("description"),
   stepOrder: integer("step_order").default(0).notNull(),
   isEnabled: boolean("is_enabled").default(true).notNull(),
-  triggerCondition: jsonb("trigger_condition").default({
-    type: "previous_step_complete",
-    config: {},
-  }).notNull(),
+  triggerCondition: jsonb("trigger_condition")
+    .default({
+      type: "previous_step_complete",
+      config: {},
+    })
+    .notNull(),
   inputMapping: jsonb("input_mapping").default({}).notNull(),
   outputMapping: jsonb("output_mapping").default({}).notNull(),
   retryOnFailure: boolean("retry_on_failure").default(false).notNull(),
   maxRetries: integer("max_retries").default(1).notNull(),
   timeoutSeconds: integer("timeout_seconds").default(300).notNull(),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertPipelineAgentStepSchema = createInsertSchema(pipelineAgentSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPipelineAgentStepSchema = createInsertSchema(
+  pipelineAgentSteps,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type PipelineAgentStep = typeof pipelineAgentSteps.$inferSelect;
-export type InsertPipelineAgentStep = z.infer<typeof insertPipelineAgentStepSchema>;
+export type InsertPipelineAgentStep = z.infer<
+  typeof insertPipelineAgentStepSchema
+>;
 
 // Lender Training Steps - configurable training content for lender onboarding
 export const lenderTrainingSteps = pgTable("lender_training_steps", {
@@ -2579,51 +3284,75 @@ export const lenderTrainingSteps = pgTable("lender_training_steps", {
   sortOrder: integer("sort_order").default(0).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   isRequired: boolean("is_required").default(true).notNull(),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertLenderTrainingStepSchema = createInsertSchema(lenderTrainingSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLenderTrainingStepSchema = createInsertSchema(
+  lenderTrainingSteps,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type LenderTrainingStep = typeof lenderTrainingSteps.$inferSelect;
-export type InsertLenderTrainingStep = z.infer<typeof insertLenderTrainingStepSchema>;
+export type InsertLenderTrainingStep = z.infer<
+  typeof insertLenderTrainingStepSchema
+>;
 
 // Lender Training Progress - tracks each user's training completion
 export const lenderTrainingProgress = pgTable("lender_training_progress", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  stepId: integer("step_id").references(() => lenderTrainingSteps.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  stepId: integer("step_id")
+    .references(() => lenderTrainingSteps.id, { onDelete: "cascade" })
+    .notNull(),
   status: varchar("status", { length: 50 }).default("not_started").notNull(), // not_started, in_progress, completed
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertLenderTrainingProgressSchema = createInsertSchema(lenderTrainingProgress).omit({ id: true, createdAt: true });
+export const insertLenderTrainingProgressSchema = createInsertSchema(
+  lenderTrainingProgress,
+).omit({ id: true, createdAt: true });
 export type LenderTrainingProgress = typeof lenderTrainingProgress.$inferSelect;
-export type InsertLenderTrainingProgress = z.infer<typeof insertLenderTrainingProgressSchema>;
+export type InsertLenderTrainingProgress = z.infer<
+  typeof insertLenderTrainingProgressSchema
+>;
 
 // Deal Memory Entries - auto-generated timeline of deal events for AI context
 export const dealMemoryEntries = pgTable("deal_memory_entries", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   entryType: varchar("entry_type", { length: 50 }).notNull(), // document_received, document_rejected, document_approved, stage_change, digest_sent, digest_skipped, note_added, field_change
   title: text("title").notNull(),
   description: text("description"),
   metadata: jsonb("metadata"), // flexible data per entry type
   sourceType: varchar("source_type", { length: 30 }), // system, agent, admin
-  sourceUserId: integer("source_user_id").references(() => users.id, { onDelete: 'set null' }),
+  sourceUserId: integer("source_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertDealMemoryEntrySchema = createInsertSchema(dealMemoryEntries).omit({ id: true, createdAt: true });
+export const insertDealMemoryEntrySchema = createInsertSchema(
+  dealMemoryEntries,
+).omit({ id: true, createdAt: true });
 export type DealMemoryEntry = typeof dealMemoryEntries.$inferSelect;
 export type InsertDealMemoryEntry = z.infer<typeof insertDealMemoryEntrySchema>;
 
 // Deal Notes - admin notes, @mentions, AI instructions
 export const dealNotes = pgTable("deal_notes", {
   id: serial("id").primaryKey(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }).notNull(),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "set null" })
+    .notNull(),
   content: text("content").notNull(),
   noteType: varchar("note_type", { length: 30 }).default("note").notNull(), // note, ai_instruction, system
   mentions: jsonb("mentions"), // array of { userId, username, position }
@@ -2633,50 +3362,68 @@ export const dealNotes = pgTable("deal_notes", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertDealNoteSchema = createInsertSchema(dealNotes).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDealNoteSchema = createInsertSchema(dealNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type DealNote = typeof dealNotes.$inferSelect;
 export type InsertDealNote = z.infer<typeof insertDealNoteSchema>;
 
 // ==================== NOTIFICATIONS SYSTEM ====================
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   type: varchar("type", { length: 50 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message").notNull(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }),
+  dealId: integer("deal_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
   link: varchar("link", { length: 500 }),
   isRead: boolean("is_read").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
 // ==================== EMAIL INTEGRATION ====================
 export const emailAccounts = pgTable("email_accounts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   emailAddress: varchar("email_address", { length: 255 }).notNull(),
-  provider: varchar("provider", { length: 50 }).notNull().default('gmail'),
+  provider: varchar("provider", { length: 50 }).notNull().default("gmail"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   tokenExpiresAt: timestamp("token_expires_at"),
   isActive: boolean("is_active").default(true).notNull(),
   lastSyncAt: timestamp("last_sync_at"),
-  syncStatus: varchar("sync_status", { length: 50 }).default('idle'),
+  syncStatus: varchar("sync_status", { length: 50 }).default("idle"),
   historyId: varchar("history_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertEmailAccountSchema = createInsertSchema(emailAccounts).omit({ id: true, createdAt: true });
+export const insertEmailAccountSchema = createInsertSchema(emailAccounts).omit({
+  id: true,
+  createdAt: true,
+});
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type InsertEmailAccount = z.infer<typeof insertEmailAccountSchema>;
 
 export const emailThreads = pgTable("email_threads", {
   id: serial("id").primaryKey(),
-  accountId: integer("account_id").references(() => emailAccounts.id, { onDelete: 'cascade' }).notNull(),
+  accountId: integer("account_id")
+    .references(() => emailAccounts.id, { onDelete: "cascade" })
+    .notNull(),
   gmailThreadId: varchar("gmail_thread_id", { length: 255 }).notNull(),
   subject: varchar("subject", { length: 500 }),
   snippet: text("snippet"),
@@ -2690,13 +3437,18 @@ export const emailThreads = pgTable("email_threads", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertEmailThreadSchema = createInsertSchema(emailThreads).omit({ id: true, createdAt: true });
+export const insertEmailThreadSchema = createInsertSchema(emailThreads).omit({
+  id: true,
+  createdAt: true,
+});
 export type EmailThread = typeof emailThreads.$inferSelect;
 export type InsertEmailThread = z.infer<typeof insertEmailThreadSchema>;
 
 export const emailMessages = pgTable("email_messages", {
   id: serial("id").primaryKey(),
-  threadId: integer("thread_id").references(() => emailThreads.id, { onDelete: 'cascade' }).notNull(),
+  threadId: integer("thread_id")
+    .references(() => emailThreads.id, { onDelete: "cascade" })
+    .notNull(),
   gmailMessageId: varchar("gmail_message_id", { length: 255 }).notNull(),
   fromAddress: varchar("from_address", { length: 255 }),
   fromName: varchar("from_name", { length: 255 }),
@@ -2713,63 +3465,118 @@ export const emailMessages = pgTable("email_messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertEmailMessageSchema = createInsertSchema(emailMessages).omit({ id: true, createdAt: true });
+export const insertEmailMessageSchema = createInsertSchema(emailMessages).omit({
+  id: true,
+  createdAt: true,
+});
 export type EmailMessage = typeof emailMessages.$inferSelect;
 export type InsertEmailMessage = z.infer<typeof insertEmailMessageSchema>;
 
 export const emailThreadDealLinks = pgTable("email_thread_deal_links", {
   id: serial("id").primaryKey(),
-  emailThreadId: integer("email_thread_id").references(() => emailThreads.id, { onDelete: 'cascade' }).notNull(),
-  dealId: integer("deal_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  linkedBy: integer("linked_by").references(() => users.id, { onDelete: 'set null' }),
+  emailThreadId: integer("email_thread_id")
+    .references(() => emailThreads.id, { onDelete: "cascade" })
+    .notNull(),
+  dealId: integer("deal_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  linkedBy: integer("linked_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   linkedAt: timestamp("linked_at").defaultNow().notNull(),
 });
 
-export const insertEmailThreadDealLinkSchema = createInsertSchema(emailThreadDealLinks).omit({ id: true, linkedAt: true });
+export const insertEmailThreadDealLinkSchema = createInsertSchema(
+  emailThreadDealLinks,
+).omit({ id: true, linkedAt: true });
 export type EmailThreadDealLink = typeof emailThreadDealLinks.$inferSelect;
-export type InsertEmailThreadDealLink = z.infer<typeof insertEmailThreadDealLinkSchema>;
+export type InsertEmailThreadDealLink = z.infer<
+  typeof insertEmailThreadDealLinkSchema
+>;
 
 export const messageTemplates = pgTable("message_templates", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   content: text("content").notNull(),
   category: text("category").default("general"),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  createdBy: integer("created_by")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMessageTemplateSchema = createInsertSchema(
+  messageTemplates,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type MessageTemplate = typeof messageTemplates.$inferSelect;
 export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
 
 export const MERGE_TAGS = [
-  { tag: "{{borrower_first_name}}", label: "Borrower First Name", description: "The borrower's first name" },
-  { tag: "{{borrower_last_name}}", label: "Borrower Last Name", description: "The borrower's last name" },
-  { tag: "{{borrower_email}}", label: "Borrower Email", description: "The borrower's email address" },
-  { tag: "{{loan_amount}}", label: "Loan Amount", description: "The loan amount" },
-  { tag: "{{property_address}}", label: "Property Address", description: "The property address" },
-  { tag: "{{loan_program}}", label: "Loan Program", description: "The loan program name" },
+  {
+    tag: "{{borrower_first_name}}",
+    label: "Borrower First Name",
+    description: "The borrower's first name",
+  },
+  {
+    tag: "{{borrower_last_name}}",
+    label: "Borrower Last Name",
+    description: "The borrower's last name",
+  },
+  {
+    tag: "{{borrower_email}}",
+    label: "Borrower Email",
+    description: "The borrower's email address",
+  },
+  {
+    tag: "{{loan_amount}}",
+    label: "Loan Amount",
+    description: "The loan amount",
+  },
+  {
+    tag: "{{property_address}}",
+    label: "Property Address",
+    description: "The property address",
+  },
+  {
+    tag: "{{loan_program}}",
+    label: "Loan Program",
+    description: "The loan program name",
+  },
   { tag: "{{deal_id}}", label: "Deal ID", description: "The deal identifier" },
-  { tag: "{{current_stage}}", label: "Current Stage", description: "The current deal stage" },
-  { tag: "{{company_name}}", label: "Company Name", description: "Your company name" },
+  {
+    tag: "{{current_stage}}",
+    label: "Current Stage",
+    description: "The current deal stage",
+  },
+  {
+    tag: "{{company_name}}",
+    label: "Company Name",
+    description: "Your company name",
+  },
   { tag: "{{sender_name}}", label: "Sender Name", description: "Your name" },
 ] as const;
 
 export const dealThirdParties = pgTable("deal_third_parties", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   role: varchar("role", { length: 100 }).notNull(),
   company: varchar("company", { length: 255 }),
   notes: text("notes"),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertDealThirdPartySchema = createInsertSchema(dealThirdParties).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDealThirdPartySchema = createInsertSchema(
+  dealThirdParties,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export type DealThirdParty = typeof dealThirdParties.$inferSelect;
 export type InsertDealThirdParty = z.infer<typeof insertDealThirdPartySchema>;
