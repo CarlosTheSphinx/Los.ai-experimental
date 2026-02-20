@@ -28,6 +28,7 @@ import {
   Save,
   Trash2,
   Tags,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBranding } from "@/hooks/use-branding";
@@ -40,7 +41,7 @@ import {
   type MessageThread,
   type Message
 } from "@/lib/messagesApi";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -64,6 +65,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 import { MERGE_TAGS, type MessageTemplate } from "@shared/schema";
 
@@ -76,6 +78,7 @@ const QUICK_REPLIES = [
 export default function MessagesPage() {
   const { user } = useAuth();
   const { branding } = useBranding();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
@@ -223,7 +226,19 @@ export default function MessagesPage() {
   });
 
   const emailThreads = emailThreadsData?.threads || [];
-  
+
+  const syncEmailMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/email/sync"),
+    onSuccess: async (res) => {
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/email/threads"] });
+      toast({ title: "Sync Complete", description: `Synced ${result.synced} threads` });
+    },
+    onError: () => {
+      toast({ title: "Sync Failed", variant: "destructive" });
+    },
+  });
+
   // Handle URL params for opening new thread with pre-selected deal
   // Wait for quotes data to be loaded before opening dialog
   useEffect(() => {
@@ -454,13 +469,28 @@ export default function MessagesPage() {
           <Separator />
           <ScrollArea className="flex-1">
             {inboxTab === 'email' && isAdmin ? (
-              emailThreadsLoading ? (
+              <>
+                <div className="px-3 py-2 flex items-center justify-between border-b">
+                  <span className="text-xs text-muted-foreground">{emailThreads.length} thread{emailThreads.length !== 1 ? 's' : ''}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => syncEmailMutation.mutate()}
+                    disabled={syncEmailMutation.isPending}
+                    data-testid="button-sync-email-inbox-tab"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${syncEmailMutation.isPending ? 'animate-spin' : ''}`} />
+                    {syncEmailMutation.isPending ? 'Syncing...' : 'Sync'}
+                  </Button>
+                </div>
+                {emailThreadsLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Loading emails...</div>
               ) : emailThreads.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Mail className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>No email threads found</p>
-                  <p className="text-xs mt-1">Link emails to deals in the Email Inbox page</p>
+                  <p className="text-xs mt-1">Click Sync to fetch your latest emails</p>
                 </div>
               ) : (
                 <div className="p-2">
@@ -518,7 +548,8 @@ export default function MessagesPage() {
                     </button>
                   ))}
                 </div>
-              )
+              )}
+            </>
             ) : threadsLoading ? (
               <div className="p-4 text-center text-muted-foreground">Loading...</div>
             ) : threads.length === 0 ? (

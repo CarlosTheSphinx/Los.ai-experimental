@@ -1,7 +1,7 @@
 import type { Express, Response } from 'express';
 import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
-import { eq, desc, and, sql, ilike, or } from 'drizzle-orm';
+import { eq, desc, and, sql, ilike, or, inArray } from 'drizzle-orm';
 import { emailAccounts, emailThreads, emailMessages, emailThreadDealLinks, projects, users } from '@shared/schema';
 import { getGmailAuthUrl, exchangeGmailCode, syncEmails, getAttachment, checkLinkedThreadsForNewEmails } from '../services/gmail';
 import { encryptToken } from '../utils/encryption';
@@ -213,7 +213,7 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
           emailThreadId: emailThreadDealLinks.emailThreadId,
           dealId: emailThreadDealLinks.dealId,
         }).from(emailThreadDealLinks)
-          .where(sql`${emailThreadDealLinks.emailThreadId} = ANY(${threadIds})`);
+          .where(inArray(emailThreadDealLinks.emailThreadId, threadIds));
       }
 
       const dealLinkMap = new Map<number, number[]>();
