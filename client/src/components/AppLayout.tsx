@@ -515,8 +515,8 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         )}
         <div className="flex items-center justify-end gap-1 px-3 py-1.5 border-b shrink-0">
           <Link href="/inbox">
-            <Button variant="ghost" size="icon" className="relative h-12 w-12" data-testid="button-header-messages">
-              <MessageSquare className="h-9 w-9" />
+            <Button size="icon" className="relative h-12 w-12 bg-primary hover:bg-primary/90 text-white" data-testid="button-header-messages">
+              <MessageSquare className="!h-8 !w-8" />
               <InboxBadge />
             </Button>
           </Link>
