@@ -53,7 +53,9 @@ import {
   CheckCircle2,
   XCircle,
   Inbox,
+  UserCheck,
 } from "lucide-react";
+import { CardDescription } from "@/components/ui/card";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useBranding } from "@/hooks/use-branding";
@@ -754,6 +756,10 @@ export default function AdminPartners() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="user-status" data-testid="tab-user-status">
+            <UserCheck className="h-4 w-4 mr-1.5" />
+            User Status
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="partners" className="mt-4">
@@ -896,7 +902,166 @@ export default function AdminPartners() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="user-status" className="mt-4">
+          <UsersStatus />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+interface OnboardingUser {
+  id: number;
+  email: string;
+  fullName: string | null;
+  userType: string;
+  onboardingCompleted: boolean;
+  partnershipAgreementSignedAt: string | null;
+  trainingCompletedAt: string | null;
+  createdAt: string;
+}
+
+function UsersStatus() {
+  const { data: usersData, isLoading: usersLoading } = useQuery<{ users: OnboardingUser[] }>({
+    queryKey: ['/api/admin/onboarding/users'],
+  });
+
+  const users = usersData?.users || [];
+  const brokersPendingOnboarding = users.filter(u => u.userType === 'broker' && !u.onboardingCompleted);
+  const brokersCompleted = users.filter(u => u.userType === 'broker' && u.onboardingCompleted);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-amber-500" />
+            Pending Onboarding
+          </CardTitle>
+          <CardDescription>
+            Brokers who have not completed their onboarding
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {usersLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : brokersPendingOnboarding.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <CheckCircle2 className="h-12 w-12 text-green-500 mb-4" />
+              <p className="text-lg font-medium">All Caught Up!</p>
+              <p className="text-muted-foreground">All brokers have completed their onboarding.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Agreement</TableHead>
+                  <TableHead>Training</TableHead>
+                  <TableHead>Registered</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {brokersPendingOnboarding.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{user.fullName || 'Unknown'}</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {user.partnershipAgreementSignedAt ? (
+                        <Badge variant="default" className="bg-success">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Signed
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Pending
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {user.trainingCompletedAt ? (
+                        <Badge variant="default" className="bg-success">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Completed
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Pending
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-500" />
+            Completed Onboarding
+          </CardTitle>
+          <CardDescription>
+            Brokers who have completed their onboarding
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {brokersCompleted.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No brokers have completed onboarding yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Agreement Signed</TableHead>
+                  <TableHead>Training Completed</TableHead>
+                  <TableHead>Registered</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {brokersCompleted.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{user.fullName || 'Unknown'}</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {user.partnershipAgreementSignedAt
+                        ? new Date(user.partnershipAgreementSignedAt).toLocaleDateString()
+                        : 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {user.trainingCompletedAt
+                        ? new Date(user.trainingCompletedAt).toLocaleDateString()
+                        : 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
