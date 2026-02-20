@@ -1564,138 +1564,6 @@ export default function AdminDealDetail() {
               </div>
             </div>
           </Card>
-          <Card className="mt-4" data-testid="card-deal-status">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="h-3 w-3 rounded-full flex-shrink-0"
-                    style={{
-                      backgroundColor: {
-                        active: '#16a34a',
-                        closed: '#2563eb',
-                        on_hold: '#d97706',
-                        archived: '#6b7280',
-                      }[deal.projectStatus || 'active'] || '#6b7280',
-                    }}
-                  />
-                  <span className="text-sm font-medium text-muted-foreground">Deal Status</span>
-                </div>
-                <Select
-                  value={deal.projectStatus || 'active'}
-                  onValueChange={(value) => updateStatusMutation.mutate(value)}
-                  disabled={updateStatusMutation.isPending}
-                >
-                  <SelectTrigger
-                    className="w-[140px] font-semibold"
-                    style={{
-                      backgroundColor: {
-                        active: 'rgba(34, 197, 94, 0.1)',
-                        closed: 'rgba(59, 130, 246, 0.1)',
-                        on_hold: 'rgba(245, 158, 11, 0.1)',
-                        archived: 'rgba(107, 114, 128, 0.1)',
-                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.1)',
-                      borderColor: {
-                        active: 'rgba(34, 197, 94, 0.3)',
-                        closed: 'rgba(59, 130, 246, 0.3)',
-                        on_hold: 'rgba(245, 158, 11, 0.3)',
-                        archived: 'rgba(107, 114, 128, 0.3)',
-                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.3)',
-                      color: {
-                        active: '#16a34a',
-                        closed: '#2563eb',
-                        on_hold: '#d97706',
-                        archived: '#6b7280',
-                      }[deal.projectStatus || 'active'] || '#6b7280',
-                    }}
-                    data-testid="select-deal-status"
-                  >
-                    <SelectValue>
-                      {{ active: 'Active', closed: 'Closed', on_hold: 'On Hold', archived: 'Archive' }[deal.projectStatus || 'active'] || deal.projectStatus}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      { value: 'active', label: 'Active', color: '#16a34a' },
-                      { value: 'closed', label: 'Closed', color: '#2563eb' },
-                      { value: 'on_hold', label: 'On Hold', color: '#d97706' },
-                      { value: 'archived', label: 'Archive', color: '#6b7280' },
-                    ].map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        <span className="flex items-center gap-2">
-                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                          {s.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="h-3 w-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: stages.find(s => s.key === deal.stage)?.color || '#6b7280' }}
-                  />
-                  <span className="text-sm font-medium text-muted-foreground">Stage</span>
-                </div>
-                {stages.length > 0 ? (
-                  <Select
-                    value={deal.stage}
-                    onValueChange={(value) => updateStageMutation.mutate(value)}
-                    disabled={updateStageMutation.isPending}
-                  >
-                    <SelectTrigger
-                      className="w-[180px] font-semibold"
-                      style={getStageStyle(deal.stage, stages)}
-                      data-testid="select-deal-stage"
-                    >
-                      <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {stages.filter(s => s.isActive !== false).map((stage) => (
-                        <SelectItem key={stage.id} value={stage.key}>
-                          <span className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
-                            {stage.label}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">
-                    {deal.stage || 'No Stage'}
-                  </Badge>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
-                <span className="text-sm font-medium text-muted-foreground">Loan Program</span>
-                <Select
-                  value={deal.programId ? String(deal.programId) : ""}
-                  onValueChange={(val) => {
-                    if (val && val !== String(deal.programId)) {
-                      setPendingProgramId(val);
-                      setConvertProgramDialogOpen(true);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[180px] h-8 text-sm" data-testid="select-loan-program">
-                    <SelectValue placeholder="Select program" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(loanProgramsData || []).map((prog: any) => (
-                      <SelectItem key={prog.id} value={String(prog.id)}>
-                        {prog.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
           <Card className="mt-4">
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1863,6 +1731,139 @@ export default function AdminDealDetail() {
               </Card>
             );
           })()}
+
+          <Card className="mt-4" data-testid="card-deal-status">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-3 w-3 rounded-full flex-shrink-0"
+                    style={{
+                      backgroundColor: {
+                        active: '#16a34a',
+                        closed: '#2563eb',
+                        on_hold: '#d97706',
+                        archived: '#6b7280',
+                      }[deal.projectStatus || 'active'] || '#6b7280',
+                    }}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">Deal Status</span>
+                </div>
+                <Select
+                  value={deal.projectStatus || 'active'}
+                  onValueChange={(value) => updateStatusMutation.mutate(value)}
+                  disabled={updateStatusMutation.isPending}
+                >
+                  <SelectTrigger
+                    className="w-[140px] font-semibold"
+                    style={{
+                      backgroundColor: {
+                        active: 'rgba(34, 197, 94, 0.1)',
+                        closed: 'rgba(59, 130, 246, 0.1)',
+                        on_hold: 'rgba(245, 158, 11, 0.1)',
+                        archived: 'rgba(107, 114, 128, 0.1)',
+                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.1)',
+                      borderColor: {
+                        active: 'rgba(34, 197, 94, 0.3)',
+                        closed: 'rgba(59, 130, 246, 0.3)',
+                        on_hold: 'rgba(245, 158, 11, 0.3)',
+                        archived: 'rgba(107, 114, 128, 0.3)',
+                      }[deal.projectStatus || 'active'] || 'rgba(107, 114, 128, 0.3)',
+                      color: {
+                        active: '#16a34a',
+                        closed: '#2563eb',
+                        on_hold: '#d97706',
+                        archived: '#6b7280',
+                      }[deal.projectStatus || 'active'] || '#6b7280',
+                    }}
+                    data-testid="select-deal-status"
+                  >
+                    <SelectValue>
+                      {{ active: 'Active', closed: 'Closed', on_hold: 'On Hold', archived: 'Archive' }[deal.projectStatus || 'active'] || deal.projectStatus}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      { value: 'active', label: 'Active', color: '#16a34a' },
+                      { value: 'closed', label: 'Closed', color: '#2563eb' },
+                      { value: 'on_hold', label: 'On Hold', color: '#d97706' },
+                      { value: 'archived', label: 'Archive', color: '#6b7280' },
+                    ].map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        <span className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-3 w-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: stages.find(s => s.key === deal.stage)?.color || '#6b7280' }}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">Stage</span>
+                </div>
+                {stages.length > 0 ? (
+                  <Select
+                    value={deal.stage}
+                    onValueChange={(value) => updateStageMutation.mutate(value)}
+                    disabled={updateStageMutation.isPending}
+                  >
+                    <SelectTrigger
+                      className="w-[180px] font-semibold"
+                      style={getStageStyle(deal.stage, stages)}
+                      data-testid="select-deal-stage"
+                    >
+                      <SelectValue>{getStageLabelFromStages(deal.stage, stages)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.filter(s => s.isActive !== false).map((stage) => (
+                        <SelectItem key={stage.id} value={stage.key}>
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
+                            {stage.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    {deal.stage || 'No Stage'}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t">
+                <span className="text-sm font-medium text-muted-foreground">Loan Program</span>
+                <Select
+                  value={deal.programId ? String(deal.programId) : ""}
+                  onValueChange={(val) => {
+                    if (val && val !== String(deal.programId)) {
+                      setPendingProgramId(val);
+                      setConvertProgramDialogOpen(true);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[180px] h-8 text-sm" data-testid="select-loan-program">
+                    <SelectValue placeholder="Select program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(loanProgramsData || []).map((prog: any) => (
+                      <SelectItem key={prog.id} value={String(prog.id)}>
+                        {prog.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
 
         </div>
 
