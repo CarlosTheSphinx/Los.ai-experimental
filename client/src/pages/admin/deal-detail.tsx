@@ -2059,7 +2059,7 @@ export default function AdminDealDetail() {
                 {/* Borrower Portal Link */}
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Borrower Portal</div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -2079,14 +2079,6 @@ export default function AdminDealDetail() {
                     </Button>
                     {deal?.borrowerPortalToken && (
                       <>
-                        <input
-                          type="text"
-                          readOnly
-                          value={`${window.location.origin}/portal/${deal.borrowerPortalToken}`}
-                          className="flex-1 min-w-0 px-2 py-1 text-[11px] border rounded bg-background cursor-pointer font-mono truncate"
-                          onClick={() => copyToClipboard(`${window.location.origin}/portal/${deal.borrowerPortalToken}`, "Borrower link")}
-                          data-testid="input-borrower-link"
-                        />
                         <Button
                           size="icon"
                           variant="ghost"
@@ -2110,23 +2102,33 @@ export default function AdminDealDetail() {
                     )}
                   </div>
                   {deal?.borrowerPortalToken && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="w-full justify-center text-xs h-7"
-                      onClick={() => window.open(`/portal/${deal.borrowerPortalToken}`, '_blank')}
-                      data-testid="button-view-borrower-portal"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      View Borrower Portal
-                    </Button>
+                    <>
+                      <div
+                        className="w-full px-2 py-1.5 text-[11px] border rounded bg-background cursor-pointer font-mono text-muted-foreground truncate hover:text-foreground transition-colors"
+                        onClick={() => copyToClipboard(`${window.location.origin}/portal/${deal.borrowerPortalToken}`, "Borrower link")}
+                        title={`${window.location.origin}/portal/${deal.borrowerPortalToken}`}
+                        data-testid="input-borrower-link"
+                      >
+                        {`${window.location.origin}/portal/${deal.borrowerPortalToken}`}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-center text-xs h-7"
+                        onClick={() => window.open(`/portal/${deal.borrowerPortalToken}`, '_blank')}
+                        data-testid="button-view-borrower-portal"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View Borrower Portal
+                      </Button>
+                    </>
                   )}
                 </div>
 
                 {/* Broker Portal Link */}
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Broker Portal</div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -2146,14 +2148,6 @@ export default function AdminDealDetail() {
                     </Button>
                     {deal?.brokerPortalToken && (
                       <>
-                        <input
-                          type="text"
-                          readOnly
-                          value={`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`}
-                          className="flex-1 min-w-0 px-2 py-1 text-[11px] border rounded bg-background cursor-pointer font-mono truncate"
-                          onClick={() => copyToClipboard(`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`, "Broker link")}
-                          data-testid="input-broker-link"
-                        />
                         <Button
                           size="icon"
                           variant="ghost"
@@ -2177,16 +2171,26 @@ export default function AdminDealDetail() {
                     )}
                   </div>
                   {deal?.brokerPortalToken && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="w-full justify-center text-xs h-7"
-                      onClick={() => window.open(`/broker-portal/${deal.brokerPortalToken}`, '_blank')}
-                      data-testid="button-view-broker-portal"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      View Broker Portal
-                    </Button>
+                    <>
+                      <div
+                        className="w-full px-2 py-1.5 text-[11px] border rounded bg-background cursor-pointer font-mono text-muted-foreground truncate hover:text-foreground transition-colors"
+                        onClick={() => copyToClipboard(`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`, "Broker link")}
+                        title={`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`}
+                        data-testid="input-broker-link"
+                      >
+                        {`${window.location.origin}/broker-portal/${deal.brokerPortalToken}`}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-center text-xs h-7"
+                        onClick={() => window.open(`/broker-portal/${deal.brokerPortalToken}`, '_blank')}
+                        data-testid="button-view-broker-portal"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View Broker Portal
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
