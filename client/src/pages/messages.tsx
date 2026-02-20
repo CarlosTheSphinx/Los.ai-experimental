@@ -534,7 +534,7 @@ export default function MessagesPage() {
       </div>
 
       <div className="flex h-[calc(100vh-200px)] gap-4">
-        <Card className="w-[420px] shrink-0 flex flex-col overflow-hidden">
+        <Card className="w-[504px] shrink-0 flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
@@ -586,28 +586,26 @@ export default function MessagesPage() {
                       data-testid="input-email-search"
                     />
                   </div>
-                  <div className="flex items-center gap-1.5 w-full">
-                    <Select value={emailLinkFilter} onValueChange={(v) => setEmailLinkFilter(v as any)}>
-                      <SelectTrigger className="h-7 text-xs min-w-0 flex-1" data-testid="select-email-link-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Emails</SelectItem>
-                        <SelectItem value="linked">Linked</SelectItem>
-                        <SelectItem value="unlinked">Not Linked</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={emailReadFilter} onValueChange={(v) => setEmailReadFilter(v as any)}>
-                      <SelectTrigger className="h-7 text-xs min-w-0 flex-1" data-testid="select-email-read-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="unread">Unread</SelectItem>
-                        <SelectItem value="read">Read</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select value={emailLinkFilter} onValueChange={(v) => setEmailLinkFilter(v as any)}>
+                    <SelectTrigger className="h-7 text-xs w-full" data-testid="select-email-link-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Emails</SelectItem>
+                      <SelectItem value="linked">Linked to Deal</SelectItem>
+                      <SelectItem value="unlinked">Not Linked</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={emailReadFilter} onValueChange={(v) => setEmailReadFilter(v as any)}>
+                    <SelectTrigger className="h-7 text-xs w-full" data-testid="select-email-read-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Read Status</SelectItem>
+                      <SelectItem value="unread">Unread Only</SelectItem>
+                      <SelectItem value="read">Read Only</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">{filteredEmailThreads.length} thread{filteredEmailThreads.length !== 1 ? 's' : ''}</span>
                     <Button
