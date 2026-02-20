@@ -169,6 +169,22 @@ export default function RegisterPage() {
                 })}
               </div>
 
+              <div className="relative my-6">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
+                  or
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => { window.location.href = '/api/auth/google'; }}
+                data-testid="button-google-signup"
+              >
+                <SiGoogle className="mr-2 h-4 w-4" />
+                Sign up with Google
+              </Button>
+
               {/* Sign In Link */}
               <div className="mt-8 text-center text-sm text-muted-foreground">
                 Already have an account?{' '}
@@ -331,7 +347,7 @@ export default function RegisterPage() {
               <Button
                 variant="outline"
                 className="w-full h-11"
-                onClick={() => { window.location.href = '/api/auth/google'; }}
+                onClick={() => { window.location.href = `/api/auth/google?userType=${selectedAccountType}`; }}
                 data-testid="button-google-register"
               >
                 <SiGoogle className="mr-2 h-4 w-4" />
