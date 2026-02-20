@@ -38,6 +38,11 @@ export const users = pgTable("users", {
   inviteTokenExpires: timestamp("invite_token_expires"),
   invitedBy: integer("invited_by"),
   inviteStatus: varchar("invite_status", { length: 50 }).default("none"),
+  // Magic Links — lender-scoped shareable URLs for borrower/broker self-registration
+  borrowerMagicLink: varchar("borrower_magic_link", { length: 255 }).unique(),
+  borrowerMagicLinkEnabled: boolean("borrower_magic_link_enabled").default(false),
+  brokerMagicLink: varchar("broker_magic_link", { length: 255 }).unique(),
+  brokerMagicLinkEnabled: boolean("broker_magic_link_enabled").default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ 

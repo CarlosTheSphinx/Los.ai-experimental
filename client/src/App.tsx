@@ -17,6 +17,8 @@ import DealDetail from "@/pages/deal-detail";
 import NewDeal from "@/pages/new-deal";
 import BorrowerPortal from "@/pages/borrower-portal";
 import BrokerPortal from "@/pages/broker-portal";
+import JoinBorrowerPage from "@/pages/join-borrower";
+import JoinBrokerPage from "@/pages/join-broker";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ForgotPasswordPage from "@/pages/forgot-password";
@@ -262,6 +264,8 @@ function AppContent() {
   const [isSignPage] = useRoute("/sign/:token");
   const [isPortalPage] = useRoute("/portal/:token");
   const [isBrokerPortalPage] = useRoute("/broker-portal/:token");
+  const [isJoinBorrowerPage] = useRoute("/join/borrower/:token");
+  const [isJoinBrokerPage] = useRoute("/join/broker/:token");
   const [isLoginPage] = useRoute("/login");
   const [isRegisterPage] = useRoute("/register");
   const [isForgotPasswordPage] = useRoute("/forgot-password");
@@ -303,6 +307,22 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/broker-portal/:token" component={BrokerPortal} />
+      </Switch>
+    );
+  }
+
+  if (isJoinBorrowerPage) {
+    return (
+      <Switch>
+        <Route path="/join/borrower/:token" component={JoinBorrowerPage} />
+      </Switch>
+    );
+  }
+
+  if (isJoinBrokerPage) {
+    return (
+      <Switch>
+        <Route path="/join/broker/:token" component={JoinBrokerPage} />
       </Switch>
     );
   }

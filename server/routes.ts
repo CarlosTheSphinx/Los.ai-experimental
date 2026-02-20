@@ -15825,6 +15825,328 @@ Return JSON only:
     }
   });
 
+  // ==================== MAGIC LINK PUBLIC ENDPOINTS ====================
+
+  // Helper: validate a magic link token and return lender info
+  async function validateMagicLinkToken(token: string): Promise<{
+    lenderId: number;
+    type: 'borrower' | 'broker';
+    lenderName: string;
+    companyName: string;
+  } | null> {
+    // Check borrower magic links
+    const [borrowerMatch] = await db.select({
+      id: users.id,
+      fullName: users.fullName,
+      companyName: users.companyName,
+      borrowerMagicLinkEnabled: users.borrowerMagicLinkEnabled,
+    }).from(users).where(eq(users.borrowerMagicLink, token));
+
+    if (borrowerMatch && borrowerMatch.borrowerMagicLinkEnabled) {
+      return {
+        lenderId: borrowerMatch.id,
+        type: 'borrower',
+        lenderName: borrowerMatch.fullName || 'Lender',
+        companyName: borrowerMatch.companyName || 'Lendry',
+      };
+    }
+
+    // Check broker magic links
+    const [brokerMatch] = await db.select({
+      id: users.id,
+      fullName: users.fullName,
+      companyName: users.companyName,
+      brokerMagicLinkEnabled: users.brokerMagicLinkEnabled,
+    }).from(users).where(eq(users.brokerMagicLink, token));
+
+    if (brokerMatch && brokerMatch.brokerMagicLinkEnabled) {
+      return {
+        lenderId: brokerMatch.id,
+        type: 'broker',
+        lenderName: brokerMatch.fullName || 'Lender',
+        companyName: brokerMatch.companyName || 'Lendry',
+      };
+    }
+
+    return null;
+  }
+
+  // Validate a magic link token
+  app.get('/api/magic-link/validate/:token', async (req: Request, res: Response) => {
+    try {
+      const result = await validateMagicLinkToken(req.params.token);
+      if (!result) {
+        return res.status(404).json({ valid: false, error: 'Invalid or disabled magic link' });
+      }
+      res.json({ valid: true, type: result.type, lenderName: result.lenderName, companyName: result.companyName });
+    } catch (error) {
+      console.error('Magic link validation error:', error);
+      res.status(500).json({ error: 'Failed to validate magic link' });
+    }
+  });
+
+  // Get lender's programs via magic link
+  app.get('/api/magic-link/:token/programs', async (req: Request, res: Response) => {
+    try {
+      const linkData = await validateMagicLinkToken(req.params.token);
+      if (!linkData) {
+        return res.status(404).json({ error: 'Invalid or disabled magic link' });
+      }
+
+      const programs = await db
+        .select({
+          id: loanPrograms.id,
+          name: loanPrograms.name,
+          description: loanPrograms.description,
+          loanType: loanPrograms.loanType,
+          minLoanAmount: loanPrograms.minLoanAmount,
+          maxLoanAmount: loanPrograms.maxLoanAmount,
+          eligiblePropertyTypes: loanPrograms.eligiblePropertyTypes,
+          quoteFormFields: loanPrograms.quoteFormFields,
+          yspEnabled: loanPrograms.yspEnabled,
+          yspMin: loanPrograms.yspMin,
+          yspMax: loanPrograms.yspMax,
+          yspStep: loanPrograms.yspStep,
+          basePoints: loanPrograms.basePoints,
+          basePointsMin: loanPrograms.basePointsMin,
+          basePointsMax: loanPrograms.basePointsMax,
+          brokerPointsEnabled: loanPrograms.brokerPointsEnabled,
+          brokerPointsMax: loanPrograms.brokerPointsMax,
+          brokerPointsStep: loanPrograms.brokerPointsStep,
+        })
+        .from(loanPrograms)
+        .where(and(
+          eq(loanPrograms.createdBy, linkData.lenderId),
+          eq(loanPrograms.isActive, true)
+        ))
+        .orderBy(loanPrograms.sortOrder);
+
+      res.json({ programs, lenderName: linkData.lenderName, companyName: linkData.companyName });
+    } catch (error) {
+      console.error('Magic link programs error:', error);
+      res.status(500).json({ error: 'Failed to fetch programs' });
+    }
+  });
+
+  // DSCR pricing via magic link (no auth)
+  app.post('/api/magic-link/:token/pricing/calculate', async (req: Request, res: Response) => {
+    try {
+      const linkData = await validateMagicLinkToken(req.params.token);
+      if (!linkData) {
+        return res.status(404).json({ error: 'Invalid or disabled magic link' });
+      }
+
+      const { programId, inputs } = req.body;
+      if (!programId || !inputs) {
+        return res.status(400).json({ error: 'programId and inputs are required' });
+      }
+
+      // Verify program belongs to this lender
+      const [program] = await db.select().from(loanPrograms)
+        .where(and(eq(loanPrograms.id, programId), eq(loanPrograms.createdBy, linkData.lenderId)));
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+
+      // Get active ruleset
+      const [ruleset] = await db.select().from(pricingRulesets)
+        .where(and(eq(pricingRulesets.programId, programId), eq(pricingRulesets.status, 'active')))
+        .orderBy(desc(pricingRulesets.version));
+      if (!ruleset) {
+        return res.status(404).json({ error: 'No active pricing ruleset for this program' });
+      }
+
+      const result = priceQuote(ruleset.rulesJson as any, inputs);
+      res.json({ result, rulesetId: ruleset.id, rulesetVersion: ruleset.version });
+    } catch (error) {
+      console.error('Magic link pricing error:', error);
+      res.status(500).json({ error: 'Failed to calculate pricing' });
+    }
+  });
+
+  // RTL pricing via magic link (no auth)
+  app.post('/api/magic-link/:token/pricing/rtl', async (req: Request, res: Response) => {
+    try {
+      const linkData = await validateMagicLinkToken(req.params.token);
+      if (!linkData) {
+        return res.status(404).json({ error: 'Invalid or disabled magic link' });
+      }
+
+      const { rtlPricingFormSchema } = await import('@shared/schema');
+      const parseResult = rtlPricingFormSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: 'Invalid RTL pricing input', details: parseResult.error.flatten() });
+      }
+
+      const { calculateRTLPricing } = await import('./pricing/rtl-engine');
+      const result = calculateRTLPricing(parseResult.data);
+      res.json(result);
+    } catch (error) {
+      console.error('Magic link RTL pricing error:', error);
+      res.status(500).json({ error: 'Failed to calculate RTL pricing' });
+    }
+  });
+
+  // Get matched deals after registration (requires auth)
+  app.get('/api/magic-link/:token/my-deals', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const linkData = await validateMagicLinkToken(req.params.token);
+      if (!linkData) {
+        return res.status(404).json({ error: 'Invalid or disabled magic link' });
+      }
+
+      const userEmail = req.user?.email;
+      if (!userEmail) {
+        return res.json({ deals: [] });
+      }
+
+      let matchedDeals;
+      if (linkData.type === 'borrower') {
+        // Match by borrower email
+        matchedDeals = await db
+          .select({
+            id: projects.id,
+            projectName: projects.projectName,
+            projectNumber: projects.projectNumber,
+            borrowerName: projects.borrowerName,
+            status: projects.status,
+            currentStage: projects.currentStage,
+            loanAmount: projects.loanAmount,
+            propertyAddress: projects.propertyAddress,
+          })
+          .from(projects)
+          .where(and(
+            sql`LOWER(${projects.borrowerEmail}) = LOWER(${userEmail})`,
+            sql`${projects.status} NOT IN ('voided', 'cancelled')`
+          ));
+      } else {
+        // Match broker by dealProcessors or partner associations
+        matchedDeals = await db
+          .select({
+            id: projects.id,
+            projectName: projects.projectName,
+            projectNumber: projects.projectNumber,
+            borrowerName: projects.borrowerName,
+            status: projects.status,
+            currentStage: projects.currentStage,
+            loanAmount: projects.loanAmount,
+            propertyAddress: projects.propertyAddress,
+          })
+          .from(projects)
+          .innerJoin(dealProcessors, eq(dealProcessors.projectId, projects.id))
+          .where(and(
+            eq(dealProcessors.userId, req.user!.id),
+            sql`${projects.status} NOT IN ('voided', 'cancelled')`
+          ));
+      }
+
+      res.json({ deals: matchedDeals });
+    } catch (error) {
+      console.error('Magic link my-deals error:', error);
+      res.status(500).json({ error: 'Failed to fetch matched deals' });
+    }
+  });
+
+  // ==================== MAGIC LINK ADMIN ENDPOINTS ====================
+
+  // Get lender's magic links
+  app.get('/api/admin/magic-links', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const [lender] = await db.select({
+        borrowerMagicLink: users.borrowerMagicLink,
+        borrowerMagicLinkEnabled: users.borrowerMagicLinkEnabled,
+        brokerMagicLink: users.brokerMagicLink,
+        brokerMagicLinkEnabled: users.brokerMagicLinkEnabled,
+      }).from(users).where(eq(users.id, userId));
+
+      if (!lender) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      res.json({
+        links: [
+          {
+            type: 'borrower',
+            token: lender.borrowerMagicLink || null,
+            enabled: lender.borrowerMagicLinkEnabled || false,
+            url: lender.borrowerMagicLink ? `${baseUrl}/join/borrower/${lender.borrowerMagicLink}` : null,
+          },
+          {
+            type: 'broker',
+            token: lender.brokerMagicLink || null,
+            enabled: lender.brokerMagicLinkEnabled || false,
+            url: lender.brokerMagicLink ? `${baseUrl}/join/broker/${lender.brokerMagicLink}` : null,
+          },
+        ],
+      });
+    } catch (error) {
+      console.error('Get magic links error:', error);
+      res.status(500).json({ error: 'Failed to fetch magic links' });
+    }
+  });
+
+  // Generate a magic link
+  app.post('/api/admin/magic-links/generate', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { type } = req.body;
+
+      if (type !== 'borrower' && type !== 'broker') {
+        return res.status(400).json({ error: 'type must be "borrower" or "broker"' });
+      }
+
+      const token = uuidv4();
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+      if (type === 'borrower') {
+        await db.update(users).set({
+          borrowerMagicLink: token,
+          borrowerMagicLinkEnabled: true,
+        }).where(eq(users.id, userId));
+      } else {
+        await db.update(users).set({
+          brokerMagicLink: token,
+          brokerMagicLinkEnabled: true,
+        }).where(eq(users.id, userId));
+      }
+
+      res.json({
+        type,
+        token,
+        enabled: true,
+        url: `${baseUrl}/join/${type}/${token}`,
+      });
+    } catch (error) {
+      console.error('Generate magic link error:', error);
+      res.status(500).json({ error: 'Failed to generate magic link' });
+    }
+  });
+
+  // Toggle a magic link on/off
+  app.put('/api/admin/magic-links/toggle', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { type, enabled } = req.body;
+
+      if (type !== 'borrower' && type !== 'broker') {
+        return res.status(400).json({ error: 'type must be "borrower" or "broker"' });
+      }
+
+      if (type === 'borrower') {
+        await db.update(users).set({ borrowerMagicLinkEnabled: enabled }).where(eq(users.id, userId));
+      } else {
+        await db.update(users).set({ brokerMagicLinkEnabled: enabled }).where(eq(users.id, userId));
+      }
+
+      res.json({ success: true, type, enabled });
+    } catch (error) {
+      console.error('Toggle magic link error:', error);
+      res.status(500).json({ error: 'Failed to toggle magic link' });
+    }
+  });
+
   // Branding endpoints
   app.get('/api/settings/branding', async (req: AuthRequest, res: Response) => {
     try {
