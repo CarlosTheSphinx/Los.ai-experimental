@@ -96,6 +96,8 @@ export default function OnboardingPage() {
   const queryClient = useQueryClient();
   const [currentStep, setCurrentStep] = useState(1);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [emailConsent, setEmailConsent] = useState(true);
+  const [smsConsent, setSmsConsent] = useState(false);
 
   // Load configurable onboarding steps from admin settings
   const { config: brokerConfig } = useTenantConfig<BrokerOnboardingConfigType>(
@@ -157,6 +159,32 @@ export default function OnboardingPage() {
     }
   }, [status, setLocation]);
 
+  // Auto-advance past completed steps (e.g. after Google sign-in redirect)
+  useEffect(() => {
+    if (!status || !configuredSteps.length) return;
+    let advanceTo = 1;
+    for (let i = 0; i < configuredSteps.length; i++) {
+      const stepName = configuredSteps[i].name;
+      if (stepName === 'welcome') {
+        advanceTo = i + 2;
+      } else if (stepName === 'video') {
+        advanceTo = i + 2;
+      } else if (stepName === 'agreement') {
+        if (status.agreementSigned) {
+          advanceTo = i + 2;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+    const targetStep = Math.min(advanceTo, configuredSteps.length);
+    if (targetStep > 1 && currentStep === 1) {
+      setCurrentStep(targetStep);
+    }
+  }, [status, configuredSteps]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -175,13 +203,20 @@ export default function OnboardingPage() {
 
   const partnershipAgreement = status.documents.find(d => d.type === 'partnership_agreement');
   const handleSignAgreement = async () => {
-    if (!partnershipAgreement || !agreedToTerms) return;
+    if (!partnershipAgreement || !agreedToTerms || !emailConsent) return;
 
     await updateProgressMutation.mutateAsync({
       documentId: partnershipAgreement.id,
       status: 'signed',
       signatureData: `${user?.firstName} ${user?.lastName} - ${new Date().toISOString()}`
     });
+
+    try {
+      await apiRequest('POST', '/api/onboarding/consent', {
+        emailConsent,
+        smsConsent,
+      });
+    } catch {}
 
     toast({
       title: 'Agreement Signed',
@@ -391,10 +426,37 @@ export default function OnboardingPage() {
                           id="agree-terms"
                           checked={agreedToTerms}
                           onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                          data-testid="checkbox-agree-terms"
                         />
                         <label htmlFor="agree-terms" className="text-sm cursor-pointer flex-1">
                           {currentStepConfig?.content?.checkboxLabel || 'I have read and agree to the Partnership Agreement terms and conditions. I understand that by clicking "Sign Agreement" below, I am electronically signing this agreement.'}
                         </label>
+                      </div>
+
+                      <div className="border-t border-border pt-4 mt-2 space-y-3">
+                        <p className="text-sm font-medium">Communication Preferences</p>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            id="email-consent"
+                            checked={emailConsent}
+                            onCheckedChange={(checked) => setEmailConsent(checked as boolean)}
+                            data-testid="checkbox-email-consent"
+                          />
+                          <label htmlFor="email-consent" className="text-sm cursor-pointer flex-1">
+                            I consent to receive email communications including loan updates, document requests, and important notifications about my account.
+                          </label>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            id="sms-consent"
+                            checked={smsConsent}
+                            onCheckedChange={(checked) => setSmsConsent(checked as boolean)}
+                            data-testid="checkbox-sms-consent"
+                          />
+                          <label htmlFor="sms-consent" className="text-sm cursor-pointer flex-1 text-muted-foreground">
+                            (Optional) I consent to receive SMS text messages for time-sensitive loan updates and notifications. Standard messaging rates may apply.
+                          </label>
+                        </div>
                       </div>
                     </>
                   )}
@@ -418,7 +480,7 @@ export default function OnboardingPage() {
                     ) : (
                       <Button
                         onClick={handleSignAgreement}
-                        disabled={!agreedToTerms || updateProgressMutation.isPending}
+                        disabled={!agreedToTerms || !emailConsent || updateProgressMutation.isPending}
                         className="flex-1"
                       >
                         {updateProgressMutation.isPending ? (

@@ -11047,6 +11047,24 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
+  // Save communication consent preferences
+  app.post('/api/onboarding/consent', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { emailConsent, smsConsent } = req.body;
+      await db.update(users)
+        .set({
+          emailConsent: !!emailConsent,
+          smsConsent: !!smsConsent,
+        })
+        .where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Save consent error:', error);
+      res.status(500).json({ error: 'Failed to save consent preferences' });
+    }
+  });
+
   // ==================== ADMIN ONBOARDING MANAGEMENT ====================
 
   // Get all onboarding documents (admin)

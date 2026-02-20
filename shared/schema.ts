@@ -38,6 +38,8 @@ export const users = pgTable("users", {
   inviteTokenExpires: timestamp("invite_token_expires"),
   invitedBy: integer("invited_by"),
   inviteStatus: varchar("invite_status", { length: 50 }).default("none"),
+  emailConsent: boolean("email_consent").default(false),
+  smsConsent: boolean("sms_consent").default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ 

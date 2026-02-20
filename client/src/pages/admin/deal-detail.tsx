@@ -1305,7 +1305,7 @@ export default function AdminDealDetail() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/projects/${linkedProjectId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
       queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
       toast({ title: "File removed" });
     },
@@ -1382,10 +1382,6 @@ export default function AdminDealDetail() {
           <p className="text-sm text-muted-foreground" data-testid="text-borrower-name">{borrowerName}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={copyBorrowerPortalLink} data-testid="button-copy-portal-link">
-            <Copy className="h-4 w-4 mr-2" />
-            Borrower Link
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" data-testid="button-more-actions">

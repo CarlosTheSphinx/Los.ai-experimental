@@ -21,6 +21,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Please enter a valid email address'),
+  phone: z.string().optional(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -45,6 +46,7 @@ export default function RegisterPage() {
       firstName: '',
       lastName: '',
       email: '',
+      phone: '',
       password: '',
       confirmPassword: '',
     },
@@ -58,6 +60,7 @@ export default function RegisterPage() {
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
+        phone: data.phone || undefined,
         userType: data.userType,
       });
       if (data.userType === 'lender') {
@@ -265,6 +268,25 @@ export default function RegisterPage() {
                             type="email"
                             placeholder=""
                             data-testid="input-email"
+                            className="h-11"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            placeholder="(555) 123-4567"
+                            data-testid="input-phone"
                             className="h-11"
                             {...field}
                           />
