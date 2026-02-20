@@ -166,6 +166,11 @@ app.use((req, res, next) => {
       }).catch(err => {
         console.error('Failed to start PandaDoc polling:', err);
       });
+      import('./services/emailDocCheck').then(({ startEmailDocCheckPolling }) => {
+        startEmailDocCheckPolling();
+      }).catch(err => {
+        console.error('Failed to start email doc check polling:', err);
+      });
     },
   );
 })();

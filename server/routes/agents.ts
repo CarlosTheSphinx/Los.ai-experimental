@@ -24,10 +24,12 @@ import {
   loanDigestConfigs,
   loanDigestRecipients,
   scheduledDigestDrafts,
-  dealMemoryEntries
+  dealMemoryEntries,
+  systemSettings
 } from '@shared/schema';
 import { asc, gte, lte, sql } from 'drizzle-orm';
 import { startPipeline, getPipelineStatus, getPipelineHistory } from '../agents/orchestrator';
+import { getSettings as getEmailDocCheckSettings, updateSettings as updateEmailDocCheckSettings, runEmailDocCheck, restartEmailDocCheckPolling } from '../services/emailDocCheck';
 
 // ==================== DEFAULT AGENT PROMPTS ====================
 
@@ -87,7 +89,35 @@ Return a JSON object with:
 - body: Full message body
 - tone: Tone classification (informational, urgent, collaborative, etc.)
 - call_to_action: What action is requested
-- estimated_response_time: Expected timeframe for response`
+- estimated_response_time: Expected timeframe for response`,
+
+  EMAIL_DOC_CLASSIFIER: `You are a lending document classifier. Analyze email attachments and identify the document type.
+
+Context:
+- Sender: {{sender_name}} ({{sender_email}})
+- Email Subject: {{email_subject}}
+- Deal: {{deal_name}} — Borrower: {{borrower_name}}
+
+Attachment:
+- Filename: {{filename}}
+- MIME Type: {{mime_type}}
+
+Document Preview:
+{{document_preview}}
+
+Classify into one of these lending document types:
+pay_stub, w2, tax_return, bank_statement, appraisal, title_commitment,
+insurance_certificate, purchase_agreement, closing_disclosure, loan_estimate,
+credit_report, employment_verification, id_document, property_photo, other
+
+Return JSON (no markdown, raw JSON only):
+{
+  "document_type": "one of the types above",
+  "document_type_label": "Human readable label",
+  "confidence": 0-100,
+  "suggested_action": "review|approve|archive|request_modification",
+  "reasoning": "brief explanation of why you classified it this way"
+}`
 };
 
 /**
@@ -1319,6 +1349,16 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
             modelName: 'gpt-4o',
             maxTokens: 2048,
             temperature: 0.7
+          },
+          {
+            agentType: 'email_doc_classifier',
+            name: 'Email Document Classifier',
+            systemPrompt: DEFAULT_AGENT_PROMPTS.EMAIL_DOC_CLASSIFIER,
+            toolDefinitions: ['document_classification'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o',
+            maxTokens: 1024,
+            temperature: 0.2
           }
         ];
 
@@ -1498,6 +1538,110 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
       } catch (error) {
         console.error('Error reordering pipeline steps:', error);
         res.status(500).json({ error: 'Failed to reorder pipeline steps' });
+      }
+    }
+  );
+
+  // ==================== EMAIL DOC CHECK ORCHESTRATION ====================
+
+  /**
+   * GET /api/admin/agents/email-doc-check/settings
+   * Returns polling settings (interval, enabled, lastRun, totalClassifications)
+   */
+  app.get(
+    '/api/admin/agents/email-doc-check/settings',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const settings = await getEmailDocCheckSettings();
+        res.json(settings);
+      } catch (error) {
+        console.error('Error getting email doc check settings:', error);
+        res.status(500).json({ error: 'Failed to get settings' });
+      }
+    }
+  );
+
+  /**
+   * PATCH /api/admin/agents/email-doc-check/settings
+   * Update polling settings. Restarts polling if interval changes.
+   */
+  app.patch(
+    '/api/admin/agents/email-doc-check/settings',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { enabled, intervalMinutes } = req.body;
+        const updates: Record<string, any> = {};
+
+        if (typeof enabled === 'boolean') updates.enabled = enabled;
+        if (typeof intervalMinutes === 'number' && intervalMinutes >= 15 && intervalMinutes <= 360) {
+          updates.intervalMinutes = intervalMinutes;
+        }
+
+        const settings = await updateEmailDocCheckSettings(updates);
+
+        // Restart polling with new settings
+        await restartEmailDocCheckPolling();
+
+        res.json(settings);
+      } catch (error) {
+        console.error('Error updating email doc check settings:', error);
+        res.status(500).json({ error: 'Failed to update settings' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/agents/email-doc-check/trigger
+   * Manually trigger an email document check run
+   */
+  app.post(
+    '/api/admin/agents/email-doc-check/trigger',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        res.status(202).json({ message: 'Email doc check triggered' });
+
+        // Run asynchronously after responding
+        runEmailDocCheck().catch((err) =>
+          console.error('Manual email doc check error:', err)
+        );
+      } catch (error) {
+        console.error('Error triggering email doc check:', error);
+        res.status(500).json({ error: 'Failed to trigger check' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/admin/agents/email-doc-check/runs
+   * Get recent classification runs (agentRuns where agentType = 'email_doc_classifier')
+   */
+  app.get(
+    '/api/admin/agents/email-doc-check/runs',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        const runs = await db
+          .select()
+          .from(agentRuns)
+          .where(eq(agentRuns.agentType, 'email_doc_classifier'))
+          .orderBy(desc(agentRuns.createdAt))
+          .limit(limit)
+          .offset(offset);
+
+        res.json(runs);
+      } catch (error) {
+        console.error('Error getting email doc check runs:', error);
+        res.status(500).json({ error: 'Failed to get runs' });
       }
     }
   );

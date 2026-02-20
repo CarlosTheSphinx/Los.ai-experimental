@@ -49,6 +49,9 @@ import {
   RotateCcw,
   Timer,
   Power,
+  Paperclip,
+  Info,
+  RefreshCw,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -155,6 +158,12 @@ const AGENT_CONFIGS: Record<string, AgentCardConfig> = {
     icon: <Mail className="w-6 h-6" />,
     description: "Drafts borrower and broker communications from findings",
   },
+  email_doc_classifier: {
+    type: "email_doc_classifier",
+    name: "Email Document Classifier",
+    icon: <Paperclip className="w-6 h-6" />,
+    description: "Classifies email attachments into lending document types",
+  },
 };
 
 const MODEL_PROVIDERS = ["openai", "anthropic"];
@@ -181,6 +190,16 @@ const DEFAULT_TEMPLATE_VARIABLES: Record<string, string[]> = {
     "{{deal_findings}}",
     "{{required_documents}}",
     "{{next_steps}}",
+  ],
+  email_doc_classifier: [
+    "{{filename}}",
+    "{{mime_type}}",
+    "{{email_subject}}",
+    "{{sender_email}}",
+    "{{sender_name}}",
+    "{{deal_name}}",
+    "{{borrower_name}}",
+    "{{document_preview}}",
   ],
 };
 
@@ -1128,11 +1147,36 @@ function PipelineOrchestrationEditor({
   );
 }
 
+// Orchestration type constants
+type OrchestationType = "processor" | "email_doc_check";
+
+const ORCHESTRATION_DESCRIPTIONS: Record<OrchestationType, { title: string; description: string }> = {
+  processor: {
+    title: "Processor Orchestration",
+    description: "The Processor Orchestration automates your loan document pipeline. When documents are uploaded to a deal, the Document Intelligence agent extracts key data, the Loan Processor agent analyzes compliance against your credit policies, and the Communication agent drafts borrower and broker messages. Configure each agent\u2019s prompts, models, and the pipeline sequence below.",
+  },
+  email_doc_check: {
+    title: "Email Doc Check Orchestration",
+    description: "The Email Doc Check monitors your linked email threads for new attachments. Every hour (configurable), it scans for new documents, uses AI to classify them (pay stubs, tax returns, bank statements, etc.), and sends you a notification with the classification. Configure the classifier\u2019s AI prompt, polling interval, and review recent classifications below.",
+  },
+};
+
+// Processor agent types (the 3 pipeline agents)
+const PROCESSOR_AGENT_TYPES = ["document_intelligence", "processor", "communication"];
+
+interface EmailDocCheckSettings {
+  enabled: boolean;
+  intervalMinutes: number;
+  lastRunAt: string | null;
+  totalClassifications: number;
+}
+
 export default function AIAgentsPage() {
   const { toast } = useToast();
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [selectedAgentType, setSelectedAgentType] = useState<string>("");
   const [runHistoryAgentFilter, setRunHistoryAgentFilter] = useState("");
+  const [selectedOrchestration, setSelectedOrchestration] = useState<OrchestationType>("processor");
 
   // Pipeline settings
   const { data: pipelineSettings } = useQuery({
@@ -1226,6 +1270,51 @@ export default function AIAgentsPage() {
     },
   });
 
+  // ==================== EMAIL DOC CHECK QUERIES ====================
+
+  const { data: emailDocCheckSettings } = useQuery<EmailDocCheckSettings>({
+    queryKey: ["/api/admin/agents/email-doc-check/settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/agents/email-doc-check/settings");
+      if (!res.ok) return { enabled: true, intervalMinutes: 60, lastRunAt: null, totalClassifications: 0 };
+      return res.json();
+    },
+    enabled: selectedOrchestration === "email_doc_check",
+  });
+
+  const { data: emailDocCheckRuns, isLoading: emailDocCheckRunsLoading } = useQuery<AgentRun[]>({
+    queryKey: ["/api/admin/agents/email-doc-check/runs"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/agents/email-doc-check/runs?limit=50");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: selectedOrchestration === "email_doc_check",
+  });
+
+  const { mutate: updateEmailDocCheckSettings } = useMutation({
+    mutationFn: async (settings: Partial<EmailDocCheckSettings>) => {
+      return apiRequest("PATCH", "/api/admin/agents/email-doc-check/settings", settings);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/agents/email-doc-check/settings"] });
+      toast({ title: "Settings saved", description: "Email doc check settings updated." });
+    },
+  });
+
+  const { mutate: triggerEmailDocCheck, isPending: isTriggering } = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/admin/agents/email-doc-check/trigger", {});
+    },
+    onSuccess: () => {
+      toast({ title: "Triggered", description: "Email doc check is running now." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/agents/email-doc-check/runs"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/agents/email-doc-check/settings"] });
+      }, 5000);
+    },
+  });
+
   // Calculate stats for an agent
   const getAgentStats = (agentType: string) => {
     const agentRuns = runs?.filter((r) => r.agentType === agentType) || [];
@@ -1252,75 +1341,359 @@ export default function AIAgentsPage() {
 
   return (
     <div className="space-y-8 p-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">AI Agents</h1>
-        <p className="text-muted-foreground mt-1">
-          Configure and monitor your autonomous loan processing agents
-        </p>
+      {/* Header with Orchestration Dropdown */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">AI Orchestration</h1>
+          <p className="text-muted-foreground mt-1">
+            Configure and monitor your autonomous AI agents
+          </p>
+        </div>
+        <Select
+          value={selectedOrchestration}
+          onValueChange={(v) => setSelectedOrchestration(v as OrchestationType)}
+        >
+          <SelectTrigger className="w-[300px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="processor">Processor Orchestration</SelectItem>
+            <SelectItem value="email_doc_check">Email Doc Check Orchestration</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Initialize if needed */}
-      {!hasConfigurations && configLoading === false ? (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-blue-900">Initialize Agent System</h3>
-                <p className="text-sm text-blue-700 mt-1">
-                  No agent configurations found. Create the default agents to get started.
-                </p>
-              </div>
-              <Button
-                onClick={() => seedDefaults()}
-                disabled={isSeedingLoading}
-                className="ml-4"
-              >
-                {isSeedingLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Initializing...
-                  </>
-                ) : (
-                  "Initialize Agent System"
-                )}
-              </Button>
+      {/* Description Banner */}
+      <Card className="border-blue-200 bg-blue-50/50">
+        <CardContent className="pt-5 pb-5">
+          <div className="flex gap-3">
+            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">
+                {ORCHESTRATION_DESCRIPTIONS[selectedOrchestration].title}
+              </h3>
+              <p className="text-sm text-blue-700 leading-relaxed">
+                {ORCHESTRATION_DESCRIPTIONS[selectedOrchestration].description}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Agent Cards Grid */}
-      <div className="grid grid-cols-3 gap-6">
-        {Object.values(AGENT_CONFIGS).map((config) => (
-          <AgentCard
-            key={config.type}
-            config={config}
-            configuration={getConfigurationForAgent(config.type)}
-            stats={getAgentStats(config.type)}
-            onConfigure={() => {
-              setSelectedAgentType(config.type);
-              setConfigDialogOpen(true);
-            }}
-            onViewRuns={() => {
-              setRunHistoryAgentFilter(config.type);
-              setActiveTab("runs");
-              setTimeout(() => {
-                document.getElementById("run-history-section")?.scrollIntoView({ behavior: "smooth" });
-              }, 100);
-            }}
+      {/* ==================== PROCESSOR ORCHESTRATION ==================== */}
+      {selectedOrchestration === "processor" && (
+        <>
+          {/* Initialize if needed */}
+          {!hasConfigurations && configLoading === false ? (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-blue-900">Initialize Agent System</h3>
+                    <p className="text-sm text-blue-700 mt-1">
+                      No agent configurations found. Create the default agents to get started.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => seedDefaults()}
+                    disabled={isSeedingLoading}
+                    className="ml-4"
+                  >
+                    {isSeedingLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : (
+                      "Initialize Agent System"
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* Processor Agent Cards Grid */}
+          <div className="grid grid-cols-3 gap-6">
+            {PROCESSOR_AGENT_TYPES.map((type) => {
+              const config = AGENT_CONFIGS[type];
+              if (!config) return null;
+              return (
+                <AgentCard
+                  key={config.type}
+                  config={config}
+                  configuration={getConfigurationForAgent(config.type)}
+                  stats={getAgentStats(config.type)}
+                  onConfigure={() => {
+                    setSelectedAgentType(config.type);
+                    setConfigDialogOpen(true);
+                  }}
+                  onViewRuns={() => {
+                    setRunHistoryAgentFilter(config.type);
+                    setActiveTab("runs");
+                    setTimeout(() => {
+                      document.getElementById("run-history-section")?.scrollIntoView({ behavior: "smooth" });
+                    }, 100);
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Pipeline Orchestration Section */}
+          <PipelineOrchestrationEditor
+            pipelineSettings={pipelineSettings}
+            toggleAutoRun={toggleAutoRun}
+            recentPipelineRuns={recentPipelineRuns}
           />
-        ))}
-      </div>
 
-      {/* Pipeline Orchestration Section */}
-      <PipelineOrchestrationEditor
-        pipelineSettings={pipelineSettings}
-        toggleAutoRun={toggleAutoRun}
-        recentPipelineRuns={recentPipelineRuns}
-      />
+          {/* Run History Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" id="run-history-section">
+            <TabsList>
+              <TabsTrigger value="runs">Run History</TabsTrigger>
+              <TabsTrigger value="dealstory">Deal Story</TabsTrigger>
+            </TabsList>
 
-      {/* Configuration Editor Dialog */}
+            <TabsContent value="runs" className="space-y-6 mt-6">
+              {runsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-48" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              ) : (
+                <RunHistoryTable
+                  runs={(runs || []).filter((r) => PROCESSOR_AGENT_TYPES.includes(r.agentType))}
+                  agentTypeFilter={runHistoryAgentFilter}
+                  onAgentTypeFilterChange={setRunHistoryAgentFilter}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="dealstory" className="space-y-6 mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Deal Story</CardTitle>
+                  <CardDescription>
+                    Understanding the living narrative system
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="prose prose-sm max-w-none">
+                    <p>
+                      Every deal maintains a <strong>living narrative</strong> - a compiled story of all
+                      documents, findings, communications, and next steps. This story is continuously
+                      updated as:
+                    </p>
+                    <ul className="list-disc list-inside space-y-2 mt-3">
+                      <li>
+                        <strong>Document Intelligence Agent</strong> extracts and analyzes new documents
+                      </li>
+                      <li>
+                        <strong>Loan Processor Agent</strong> evaluates compliance and provides findings
+                      </li>
+                      <li>
+                        <strong>Communication Agent</strong> drafts communications based on findings
+                      </li>
+                    </ul>
+                    <p className="mt-4">
+                      The deal story serves as a dynamic reference point for all parties involved in
+                      the loan process, providing context and continuity throughout the lifecycle of
+                      a deal.
+                    </p>
+                    <p className="mt-4">
+                      To view and manage deal stories for specific deals, navigate to the individual
+                      deal detail page where you can see the complete narrative and history of that
+                      deal's processing.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
+
+      {/* ==================== EMAIL DOC CHECK ORCHESTRATION ==================== */}
+      {selectedOrchestration === "email_doc_check" && (
+        <>
+          {/* Email Classifier Agent Card */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <AgentCard
+              config={AGENT_CONFIGS.email_doc_classifier}
+              configuration={getConfigurationForAgent("email_doc_classifier")}
+              stats={getAgentStats("email_doc_classifier")}
+              onConfigure={() => {
+                setSelectedAgentType("email_doc_classifier");
+                setConfigDialogOpen(true);
+              }}
+              onViewRuns={() => {
+                document.getElementById("email-doc-check-runs")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            />
+
+            {/* Polling Settings Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Timer className="w-5 h-5" />
+                  Polling Settings
+                </CardTitle>
+                <CardDescription>
+                  Control how often email threads are checked for new documents
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Enable/Disable Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Enabled</p>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically check email threads for attachments
+                    </p>
+                  </div>
+                  <Switch
+                    checked={emailDocCheckSettings?.enabled ?? true}
+                    onCheckedChange={(checked) => updateEmailDocCheckSettings({ enabled: checked })}
+                  />
+                </div>
+
+                {/* Interval Slider */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Check interval</Label>
+                    <span className="text-sm text-muted-foreground">
+                      Every {emailDocCheckSettings?.intervalMinutes || 60} minutes
+                    </span>
+                  </div>
+                  <Slider
+                    min={15}
+                    max={360}
+                    step={15}
+                    value={[emailDocCheckSettings?.intervalMinutes || 60]}
+                    onValueCommit={(value) => updateEmailDocCheckSettings({ intervalMinutes: value[0] })}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>15 min</span>
+                    <span>6 hours</span>
+                  </div>
+                </div>
+
+                {/* Last Run + Manual Trigger */}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Last run:{" "}
+                      {emailDocCheckSettings?.lastRunAt
+                        ? format(new Date(emailDocCheckSettings.lastRunAt), "MMM d, h:mm a")
+                        : "Never"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Total classifications: {emailDocCheckSettings?.totalClassifications || 0}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => triggerEmailDocCheck()}
+                    disabled={isTriggering}
+                  >
+                    {isTriggering ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Run Now
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Classifications / Run History */}
+          <div id="email-doc-check-runs">
+            <Card>
+              <CardHeader>
+                <CardTitle>Classification Run History</CardTitle>
+                <CardDescription>
+                  Recent AI document classifications from email attachments
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {emailDocCheckRunsLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : !emailDocCheckRuns || emailDocCheckRuns.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Paperclip className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">No classifications yet</p>
+                    <p className="text-sm mt-1">
+                      When email attachments on linked deals are detected, the classifier will run and results will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left">
+                          <th className="pb-2 font-medium">Status</th>
+                          <th className="pb-2 font-medium">Deal</th>
+                          <th className="pb-2 font-medium">Duration</th>
+                          <th className="pb-2 font-medium">Tokens (In/Out)</th>
+                          <th className="pb-2 font-medium">Cost</th>
+                          <th className="pb-2 font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailDocCheckRuns.map((run) => (
+                          <tr key={run.id} className="border-b last:border-0">
+                            <td className="py-2">
+                              {run.status === "completed" ? (
+                                <Badge variant="outline" className="border-emerald-200 text-emerald-700 bg-emerald-50">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Classified
+                                </Badge>
+                              ) : run.status === "failed" ? (
+                                <Badge variant="outline" className="border-red-200 text-red-700 bg-red-50">
+                                  <XCircle className="w-3 h-3 mr-1" /> Failed
+                                </Badge>
+                              ) : run.status === "running" ? (
+                                <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Running
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline">{run.status}</Badge>
+                              )}
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {run.projectId ? `Deal #${run.projectId}` : "—"}
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s` : "—"}
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {run.inputTokens || 0} / {run.outputTokens || 0}
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {run.estimatedCost ? `$${run.estimatedCost.toFixed(4)}` : "—"}
+                            </td>
+                            <td className="py-2 text-muted-foreground">
+                              {run.startedAt ? format(new Date(run.startedAt), "MMM d, h:mm a") : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* Configuration Editor Dialog (shared between both orchestrations) */}
       {selectedAgentType && (
         <ConfigurationEditor
           isOpen={configDialogOpen}
@@ -1338,70 +1711,6 @@ export default function AIAgentsPage() {
           }}
         />
       )}
-
-      {/* Run History Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" id="run-history-section">
-        <TabsList>
-          <TabsTrigger value="runs">Run History</TabsTrigger>
-          <TabsTrigger value="dealstory">Deal Story</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="runs" className="space-y-6 mt-6">
-          {runsLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-48" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : (
-            <RunHistoryTable
-              runs={runs || []}
-              agentTypeFilter={runHistoryAgentFilter}
-              onAgentTypeFilterChange={setRunHistoryAgentFilter}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent value="dealstory" className="space-y-6 mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Deal Story</CardTitle>
-              <CardDescription>
-                Understanding the living narrative system
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="prose prose-sm max-w-none">
-                <p>
-                  Every deal maintains a <strong>living narrative</strong> - a compiled story of all
-                  documents, findings, communications, and next steps. This story is continuously
-                  updated as:
-                </p>
-                <ul className="list-disc list-inside space-y-2 mt-3">
-                  <li>
-                    <strong>Document Intelligence Agent</strong> extracts and analyzes new documents
-                  </li>
-                  <li>
-                    <strong>Loan Processor Agent</strong> evaluates compliance and provides findings
-                  </li>
-                  <li>
-                    <strong>Communication Agent</strong> drafts communications based on findings
-                  </li>
-                </ul>
-                <p className="mt-4">
-                  The deal story serves as a dynamic reference point for all parties involved in
-                  the loan process, providing context and continuity throughout the lifecycle of
-                  a deal.
-                </p>
-                <p className="mt-4">
-                  To view and manage deal stories for specific deals, navigate to the individual
-                  deal detail page where you can see the complete narrative and history of that
-                  deal's processing.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
