@@ -197,59 +197,63 @@ export async function convertDealToProgram(
       await tx.delete(dealDocuments).where(eq(dealDocuments.id, doc.id));
     }
 
+    if (uploadedDocs.length > 0) {
+      for (const doc of uploadedDocs) {
+        await tx.update(dealDocuments)
+          .set({ stageId: null, programDocumentTemplateId: null })
+          .where(eq(dealDocuments.id, doc.id));
+      }
+    }
+
     await tx.delete(projectTasks).where(eq(projectTasks.projectId, projectId));
     await tx.delete(projectStages).where(eq(projectStages.projectId, projectId));
 
     const result = await buildProjectPipelineFromProgram(projectId, newProgramId, undefined, tx);
 
-    if (uploadedDocs.length > 0) {
-      const newStages = await tx.select()
-        .from(projectStages)
-        .where(eq(projectStages.projectId, projectId))
-        .orderBy(asc(projectStages.stageOrder));
+    const newStages = await tx.select()
+      .from(projectStages)
+      .where(eq(projectStages.projectId, projectId))
+      .orderBy(asc(projectStages.stageOrder));
 
-      const stage1Id = newStages.length > 0 ? newStages[0].id : null;
+    const stage1Id = newStages.length > 0 ? newStages[0].id : null;
 
-      for (const doc of uploadedDocs) {
-        const matchingNewDocs = await tx.select()
-          .from(dealDocuments)
-          .where(and(
-            eq(dealDocuments.dealId, projectId),
-            eq(dealDocuments.documentName, doc.documentName)
-          ));
+    for (const doc of uploadedDocs) {
+      const matchingNewDocs = await tx.select()
+        .from(dealDocuments)
+        .where(and(
+          eq(dealDocuments.dealId, projectId),
+          eq(dealDocuments.documentName, doc.documentName),
+          isNull(dealDocuments.filePath)
+        ));
 
-        if (matchingNewDocs.length > 0) {
-          const templateDoc = matchingNewDocs[0];
-          await tx.update(dealDocuments)
-            .set({
-              filePath: doc.filePath,
-              fileSize: doc.fileSize,
-              mimeType: doc.mimeType,
-              fileName: doc.fileName,
-              status: doc.status,
-              uploadedAt: doc.uploadedAt,
-              uploadedBy: doc.uploadedBy,
-              reviewedAt: doc.reviewedAt,
-              reviewedBy: doc.reviewedBy,
-              reviewNotes: doc.reviewNotes,
-              driveFileId: doc.driveFileId,
-              documentCategory: templateDoc.documentCategory,
-              documentDescription: templateDoc.documentDescription,
-              assignedTo: templateDoc.assignedTo,
-              visibility: templateDoc.visibility,
-              isRequired: templateDoc.isRequired,
-            })
-            .where(eq(dealDocuments.id, templateDoc.id));
+      if (matchingNewDocs.length > 0) {
+        const templateDoc = matchingNewDocs[0];
+        await tx.update(dealDocuments)
+          .set({
+            filePath: doc.filePath,
+            fileSize: doc.fileSize,
+            mimeType: doc.mimeType,
+            fileName: doc.fileName,
+            status: doc.status,
+            uploadedAt: doc.uploadedAt,
+            uploadedBy: doc.uploadedBy,
+            reviewedAt: doc.reviewedAt,
+            reviewedBy: doc.reviewedBy,
+            reviewNotes: doc.reviewNotes,
+            driveFileId: doc.driveFileId,
+            documentCategory: templateDoc.documentCategory,
+            documentDescription: templateDoc.documentDescription,
+            assignedTo: templateDoc.assignedTo,
+            visibility: templateDoc.visibility,
+            isRequired: templateDoc.isRequired,
+          })
+          .where(eq(dealDocuments.id, templateDoc.id));
 
-          await tx.delete(dealDocuments).where(eq(dealDocuments.id, doc.id));
-        } else {
-          await tx.update(dealDocuments)
-            .set({
-              programDocumentTemplateId: null,
-              stageId: stage1Id,
-            })
-            .where(eq(dealDocuments.id, doc.id));
-        }
+        await tx.delete(dealDocuments).where(eq(dealDocuments.id, doc.id));
+      } else {
+        await tx.update(dealDocuments)
+          .set({ stageId: stage1Id })
+          .where(eq(dealDocuments.id, doc.id));
       }
     }
 
