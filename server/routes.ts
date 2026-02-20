@@ -3145,8 +3145,20 @@ export async function registerRoutes(
     if (currentStage) {
       const stageTasks = await storage.getTasksByStageId(currentStage.id);
       const completedStageTasks = stageTasks.filter(t => t.status === 'completed').length;
+      const allTasksDone = stageTasks.length === 0 || completedStageTasks === stageTasks.length;
+
+      const stageDocs = await db.select().from(dealDocuments)
+        .where(and(
+          eq(dealDocuments.stageId, currentStage.id),
+          eq(dealDocuments.isRequired, true)
+        ));
+      const allDocsDone = stageDocs.length === 0 || stageDocs.every(d => 
+        d.status === 'approved' || d.status === 'waived' || d.status === 'not_applicable'
+      );
+
+      const hasContent = stageTasks.length > 0 || stageDocs.length > 0;
       
-      if (completedStageTasks === stageTasks.length && stageTasks.length > 0) {
+      if (allTasksDone && allDocsDone && hasContent) {
         // Mark stage complete
         await storage.updateStage(currentStage.id, { 
           status: 'completed', 
@@ -7100,6 +7112,14 @@ export async function registerRoutes(
         }
       }
       
+      if (status === 'approved' || status === 'waived' || status === 'not_applicable') {
+        try {
+          await updateProjectProgress(dealId, req.user!.id);
+        } catch (progressErr) {
+          console.error('Failed to check stage auto-advance after doc approval:', progressErr);
+        }
+      }
+
       res.json({ document: updated });
     } catch (error) {
       console.error('Admin update document error:', error);
@@ -7153,6 +7173,12 @@ export async function registerRoutes(
         console.error('Drive sync check error on bulk approval:', driveErr.message);
       }
       
+      try {
+        await updateProjectProgress(dealId, req.user!.id);
+      } catch (progressErr) {
+        console.error('Failed to check stage auto-advance after bulk approval:', progressErr);
+      }
+
       res.json({ approved: aiReviewedDocs.length, message: `${aiReviewedDocs.length} documents approved` });
     } catch (error: any) {
       console.error('Bulk approve error:', error);
