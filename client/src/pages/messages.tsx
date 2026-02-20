@@ -29,6 +29,8 @@ import {
   Trash2,
   Tags,
   RefreshCw,
+  X,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBranding } from "@/hooks/use-branding";
@@ -102,6 +104,8 @@ export default function MessagesPage() {
   const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [isMergeTagPopoverOpen, setIsMergeTagPopoverOpen] = useState(false);
+  const [isLinkDealDialogOpen, setIsLinkDealDialogOpen] = useState(false);
+  const [linkDealSelectedId, setLinkDealSelectedId] = useState("");
   const messageInputRef = useRef<HTMLInputElement>(null);
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
@@ -231,11 +235,45 @@ export default function MessagesPage() {
     mutationFn: () => apiRequest("POST", "/api/email/sync"),
     onSuccess: async (res) => {
       const result = await res.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/email/threads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/email/threads", "all"] });
       toast({ title: "Sync Complete", description: `Synced ${result.synced} threads` });
     },
     onError: () => {
       toast({ title: "Sync Failed", variant: "destructive" });
+    },
+  });
+
+  const { data: dealsListData } = useQuery<{ quotes: any[] }>({
+    queryKey: ["/api/quotes"],
+    enabled: !!isAdmin && inboxTab === 'email',
+  });
+
+  const linkDealMutation = useMutation({
+    mutationFn: ({ threadId, dealId }: { threadId: number; dealId: number }) =>
+      apiRequest("POST", `/api/email/threads/${threadId}/link`, { dealId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/threads", "all"] });
+      if (activeEmailThreadId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/email/threads", activeEmailThreadId, "detail"] });
+      }
+      setIsLinkDealDialogOpen(false);
+      setLinkDealSelectedId("");
+      toast({ title: "Linked", description: "Email thread linked to deal" });
+    },
+    onError: () => {
+      toast({ title: "Failed to link", variant: "destructive" });
+    },
+  });
+
+  const unlinkDealMutation = useMutation({
+    mutationFn: ({ threadId, dealId }: { threadId: number; dealId: number }) =>
+      apiRequest("DELETE", `/api/email/threads/${threadId}/link/${dealId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/threads", "all"] });
+      if (activeEmailThreadId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/email/threads", activeEmailThreadId, "detail"] });
+      }
+      toast({ title: "Unlinked", description: "Email thread unlinked from deal" });
     },
   });
 
@@ -673,22 +711,48 @@ export default function MessagesPage() {
                           {emailThreadDetail.messages.length} message{emailThreadDetail.messages.length !== 1 ? "s" : ""}
                         </p>
                         {emailThreadDetail.dealLinks.map((link: any) => (
-                          <Badge key={link.dealId} variant="default" className="text-[10px] h-4 px-1.5 gap-0.5">
+                          <Badge key={link.dealId} variant="default" className="text-[10px] h-4 px-1.5 gap-0.5 group/badge">
                             <Link2 className="h-2.5 w-2.5" />
                             DEAL-{link.dealId}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (activeEmailThreadId) {
+                                  unlinkDealMutation.mutate({ threadId: activeEmailThreadId, dealId: link.dealId });
+                                }
+                              }}
+                              className="ml-0.5 opacity-0 group-hover/badge:opacity-100 transition-opacity"
+                              data-testid={`button-unlink-deal-${link.dealId}`}
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
                           </Badge>
                         ))}
                       </div>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setLocation('/admin/email?threadId=' + activeEmailThreadId)}
-                    data-testid="button-open-in-inbox"
-                  >
-                    Open in Inbox
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLinkDealSelectedId("");
+                        setIsLinkDealDialogOpen(true);
+                      }}
+                      data-testid="button-link-to-deal"
+                    >
+                      <Link2 className="h-4 w-4 mr-1" />
+                      Link to Deal
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLocation('/admin/email?threadId=' + activeEmailThreadId)}
+                      data-testid="button-open-in-inbox"
+                    >
+                      Open in Inbox
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <Separator />
@@ -1002,6 +1066,47 @@ export default function MessagesPage() {
           )}
         </Card>
       </div>
+
+      <Dialog open={isLinkDealDialogOpen} onOpenChange={setIsLinkDealDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Link Email Thread to Deal</DialogTitle>
+            <DialogDescription>
+              Choose a deal to link this email conversation to. Linked emails will appear in the deal's communications.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Select Deal</p>
+            <Select value={linkDealSelectedId} onValueChange={setLinkDealSelectedId}>
+              <SelectTrigger data-testid="select-deal-to-link">
+                <SelectValue placeholder="Choose a deal..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(dealsListData?.quotes || []).map((deal: any) => (
+                  <SelectItem key={deal.projectId || deal.id} value={String(deal.projectId || deal.id)}>
+                    DEAL-{deal.projectId || deal.id} - {deal.borrowerName || deal.propertyAddress || "Unknown"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLinkDealDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (activeEmailThreadId && linkDealSelectedId) {
+                  linkDealMutation.mutate({ threadId: activeEmailThreadId, dealId: parseInt(linkDealSelectedId) });
+                }
+              }}
+              disabled={!linkDealSelectedId || linkDealMutation.isPending}
+              data-testid="button-confirm-link"
+            >
+              {linkDealMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+              Link to Deal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
