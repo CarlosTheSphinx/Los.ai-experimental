@@ -222,7 +222,7 @@ function TaskBoard() {
   const tasksByProject = currentTasks.reduce<Record<number, { project: { id: number; name: string; borrower: string; address: string; number: string }; tasks: TaskBoardItem[] }>>((acc, task) => {
     if (!acc[task.projectId]) {
       acc[task.projectId] = {
-        project: { id: task.projectId, name: task.projectName, borrower: task.borrowerName, address: task.propertyAddress, number: task.projectNumber },
+        project: { id: task.projectId, name: task.projectName, borrower: task.borrowerName, address: task.propertyAddress, number: task.loanNumber || task.projectNumber },
         tasks: [],
       };
     }
@@ -489,7 +489,7 @@ function TaskBoard() {
             </div>
             {editingTask && (
               <div className="text-xs text-muted-foreground rounded-md bg-muted p-2">
-                <span className="font-medium">{editingTask.projectNumber}</span> - {editingTask.borrowerName}
+                <span className="font-medium">{editingTask.loanNumber || editingTask.projectNumber}</span> - {editingTask.borrowerName}
               </div>
             )}
           </div>

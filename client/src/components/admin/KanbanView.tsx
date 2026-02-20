@@ -28,6 +28,7 @@ interface PipelineStep {
 interface PipelineProject {
   id: number;
   projectNumber: string;
+  loanNumber?: string | null;
   projectName: string;
   borrowerName: string | null;
   propertyAddress: string | null;
@@ -91,7 +92,7 @@ function ProjectCard({
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-xs font-mono text-muted-foreground" data-testid={`text-deal-number-${project.id}`}>
-            {project.projectNumber}
+            {project.loanNumber || project.projectNumber}
           </span>
           <Badge variant="outline" className="text-[10px]">
             {project.status.replace("_", " ")}

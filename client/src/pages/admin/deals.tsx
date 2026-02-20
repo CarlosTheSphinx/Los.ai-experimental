@@ -108,6 +108,7 @@ interface Deal {
   id: number;
   projectId?: number;
   projectNumber?: string;
+  loanNumber?: string | null;
   userId: number;
   partnerId?: number | null;
   partnerName?: string | null;
@@ -523,12 +524,12 @@ function DealExpandedCard({ deal, formatCurrency, getStageLabel, getLoanTypeLabe
     <Card data-testid={`card-deal-${deal.id}`} className="overflow-hidden hover-elevate">
       <Link href={`/admin/deals/${deal.id}`} data-testid={`link-deal-${deal.id}`}>
         <div className="p-5">
-          {/* Top row: Project number, status badge, arrow */}
+          {/* Top row: Loan number, status badge, arrow */}
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 flex-wrap">
-              {deal.projectNumber && (
+              {(deal.loanNumber || deal.projectNumber) && (
                 <span className="text-xs text-muted-foreground font-mono" data-testid={`text-project-number-${deal.id}`}>
-                  {deal.projectNumber}
+                  {deal.loanNumber || deal.projectNumber}
                 </span>
               )}
               <Badge className="text-xs" style={getStageStyle(deal.stage, stageStats)} data-testid={`badge-status-${deal.id}`}>
@@ -1194,7 +1195,7 @@ export default function AdminDeals({ embedded = false }: { embedded?: boolean })
                     <TableCell>
                       <Link href={`/admin/deals/${deal.id}`}>
                         <span className="font-mono text-sm text-primary hover:underline" data-testid={`link-deal-row-${deal.id}`}>
-                          {deal.projectNumber || `#${deal.id}`}
+                          {deal.loanNumber || deal.projectNumber || `#${deal.id}`}
                         </span>
                       </Link>
                     </TableCell>

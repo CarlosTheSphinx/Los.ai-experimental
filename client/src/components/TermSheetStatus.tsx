@@ -151,7 +151,7 @@ export function TermSheetStatus({ quoteId }: { quoteId: number }) {
     onSuccess: (data) => {
       toast({
         title: "Deal Created",
-        description: `Loan deal ${data.project?.projectNumber || ''} has been created successfully.`,
+        description: `Loan deal ${data.project?.loanNumber || data.project?.projectNumber || ''} has been created successfully.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/esign/pandadoc/quote", quoteId, "envelopes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });

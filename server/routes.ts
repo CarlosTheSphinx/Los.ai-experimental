@@ -5893,6 +5893,7 @@ export async function registerRoutes(
         id: projects.id,
         userId: projects.userId,
         projectNumber: projects.projectNumber,
+        loanNumber: projects.loanNumber,
         projectName: projects.projectName,
         borrowerName: projects.borrowerName,
         borrowerEmail: projects.borrowerEmail,

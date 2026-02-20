@@ -31,6 +31,7 @@ interface PipelineStep {
 interface PipelineProject {
   id: number;
   projectNumber: string;
+  loanNumber?: string | null;
   projectName: string;
   borrowerName: string | null;
   propertyAddress: string | null;
@@ -239,9 +240,9 @@ function DealCardContent({
           </div>
         </div>
 
-        {project.projectNumber && (
+        {(project.loanNumber || project.projectNumber) && (
           <span className="text-[10px] font-mono text-muted-foreground">
-            {project.projectNumber}
+            {project.loanNumber || project.projectNumber}
           </span>
         )}
       </CardContent>

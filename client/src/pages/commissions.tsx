@@ -24,6 +24,7 @@ interface CommissionRow {
   projectId: number;
   projectName: string;
   projectNumber: string | null;
+  loanNumber?: string | null;
   status: string;
   currentStage: string | null;
   loanAmount: number | null;
@@ -176,8 +177,8 @@ export default function CommissionsPage() {
                     <TableRow key={c.projectId} data-testid={`row-commission-${c.projectId}`}>
                       <TableCell className="font-medium">
                         <div>{c.projectName}</div>
-                        {c.projectNumber && (
-                          <div className="text-xs text-muted-foreground">{c.projectNumber}</div>
+                        {(c.loanNumber || c.projectNumber) && (
+                          <div className="text-xs text-muted-foreground">{c.loanNumber || c.projectNumber}</div>
                         )}
                       </TableCell>
                       <TableCell>{c.borrowerName || "—"}</TableCell>
