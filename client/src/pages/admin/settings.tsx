@@ -13,7 +13,7 @@ import {
   Save, Settings as SettingsIcon, RefreshCw, HardDrive, Phone, Mail, Brain,
   MapPin, Bot, CheckCircle2, XCircle, AlertCircle, Layers, Plus, Trash2,
   GripVertical, FileStack, ChevronRight, Shield, Palette, Lock,
-  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText, Link2
+  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText, Link2, FileSearch
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -66,6 +66,7 @@ import BillingPlansConfig from "@/components/admin/config/BillingPlansConfig";
 import EmailIntegrationConfig from "@/components/admin/config/EmailIntegrationConfig";
 import AICustomizationConfig from "@/components/admin/config/AICustomizationConfig";
 import MagicLinksConfig from "@/components/admin/config/MagicLinksConfig";
+import DocumentReviewConfig from "@/components/admin/config/DocumentReviewConfig";
 
 interface DealStage {
   id: number;
@@ -117,6 +118,7 @@ const CONFIG_TABS = [
   { id: "integrations", label: "Integrations", icon: Plug },
   { id: "platform-integrations", label: "Platform Integrations", icon: Plug, superAdminOnly: true },
   { id: "ai-customization", label: "AI Customization", icon: Bot },
+  { id: "doc-review", label: "Doc Review & Comms", icon: FileSearch },
   { id: "magic-links", label: "Magic Links", icon: Link2 },
   { id: "custom-fields", label: "Custom Fields", icon: LayoutList },
   { id: "billing", label: "Billing & Plans", icon: CreditCard },
@@ -1204,6 +1206,8 @@ export default function AdminSettings() {
           )}
 
           {activeTab === "ai-customization" && <AICustomizationConfig />}
+
+          {activeTab === "doc-review" && <DocumentReviewConfig />}
 
           {activeTab === "magic-links" && <MagicLinksConfig />}
 

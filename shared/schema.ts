@@ -1552,9 +1552,10 @@ export const loanDigestConfigs = pgTable("loan_digest_configs", {
 
   isEnabled: boolean("is_enabled").default(true).notNull(),
 
-  createdBy: integer("created_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
+  // Whether digest drafts require human approval before sending (overrides lender-level config)
+  requireApproval: boolean("require_approval").default(true).notNull(),
+
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3067,6 +3068,12 @@ export const agentCommunications = pgTable("agent_communications", {
   approvedAt: timestamp("approved_at"),
   sentAt: timestamp("sent_at"),
   sentVia: varchar("sent_via", { length: 50 }), // 'email' | 'sms'
+
+  // Scheduling — allows queuing for a specific date (shows on communications calendar)
+  scheduledSendDate: timestamp("scheduled_send_date"),
+  // Source trigger — what caused this communication to be created
+  sourceTrigger: varchar("source_trigger", { length: 50 }), // 'doc_review_fail' | 'digest' | 'manual' | 'ai_agent'
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -3580,3 +3587,47 @@ export const insertDealThirdPartySchema = createInsertSchema(
 ).omit({ id: true, createdAt: true, updatedAt: true });
 export type DealThirdParty = typeof dealThirdParties.$inferSelect;
 export type InsertDealThirdParty = z.infer<typeof insertDealThirdPartySchema>;
+
+// ==================== DOCUMENT REVIEW & COMMUNICATIONS CONFIG ====================
+
+// Lender-level document review and communication preferences
+export const lenderReviewConfig = pgTable("lender_review_config", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull().unique(), // the lender/admin
+
+  // AI Review Mode: automatic (on upload), timed (batch on schedule), manual (click to review)
+  aiReviewMode: varchar("ai_review_mode", { length: 20 }).default("manual").notNull(),
+
+  // For timed mode — how often to batch-run reviews (in minutes)
+  timedReviewIntervalMinutes: integer("timed_review_interval_minutes").default(60),
+  lastTimedReviewAt: timestamp("last_timed_review_at"),
+
+  // ---- Fail Alert Preferences ----
+  // When a document FAILS AI review, who gets notified and how
+  failAlertEnabled: boolean("fail_alert_enabled").default(true).notNull(),
+  failAlertRecipients: varchar("fail_alert_recipients", { length: 20 }).default("both").notNull(), // borrower, broker, both
+  failAlertChannels: jsonb("fail_alert_channels").default({ email: true, sms: false, inApp: true }).notNull(),
+
+  // ---- Pass Notification Preferences ----
+  // When a document PASSES AI review, notify lender/processor for human approval
+  passNotifyEnabled: boolean("pass_notify_enabled").default(true).notNull(),
+  passNotifyChannels: jsonb("pass_notify_channels").default({ email: false, inApp: true }).notNull(),
+
+  // ---- Digest / Scheduled Communications ----
+  // Whether digest drafts auto-send or require human approval
+  digestAutoSend: boolean("digest_auto_send").default(false).notNull(),
+
+  // When AI agent drafts are generated, require approval or auto-send
+  aiDraftAutoSend: boolean("ai_draft_auto_send").default(false).notNull(),
+
+  // Notify lender/processor when a draft is ready for review
+  draftReadyNotifyEnabled: boolean("draft_ready_notify_enabled").default(true).notNull(),
+  draftReadyNotifyChannels: jsonb("draft_ready_notify_channels").default({ email: true, inApp: true }).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLenderReviewConfigSchema = createInsertSchema(lenderReviewConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type LenderReviewConfig = typeof lenderReviewConfig.$inferSelect;
+export type InsertLenderReviewConfig = z.infer<typeof insertLenderReviewConfigSchema>;

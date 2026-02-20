@@ -33,7 +33,7 @@ import {
   getOutstandingDocuments,
   getRecentUpdates
 } from './digestService';
-import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents } from '@shared/schema';
+import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents, lenderReviewConfig } from '@shared/schema';
 import { sendPartnerBroadcast, handleIncomingSms, getInboundMessages, markMessageRead, getBroadcastHistory } from './broadcastService';
 import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
 import multer from 'multer';
@@ -17348,6 +17348,178 @@ Return JSON only:
     } catch (error) {
       console.error('Send test portal link error:', error);
       res.status(500).json({ error: 'Failed to send test portal link' });
+    }
+  });
+
+  // ==================== LENDER REVIEW CONFIG ====================
+
+  // GET - Fetch lender's document review and communication config
+  app.get('/api/admin/review-config', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const [config] = await db
+        .select()
+        .from(lenderReviewConfig)
+        .where(eq(lenderReviewConfig.userId, userId));
+
+      if (!config) {
+        // Return defaults
+        return res.json({
+          aiReviewMode: 'manual',
+          timedReviewIntervalMinutes: 60,
+          failAlertEnabled: true,
+          failAlertRecipients: 'both',
+          failAlertChannels: { email: true, sms: false, inApp: true },
+          passNotifyEnabled: true,
+          passNotifyChannels: { email: false, inApp: true },
+          digestAutoSend: false,
+          aiDraftAutoSend: false,
+          draftReadyNotifyEnabled: true,
+          draftReadyNotifyChannels: { email: true, inApp: true },
+        });
+      }
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching review config:', error);
+      res.status(500).json({ error: 'Failed to fetch review config' });
+    }
+  });
+
+  // PUT - Update lender's document review and communication config
+  app.put('/api/admin/review-config', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const {
+        aiReviewMode,
+        timedReviewIntervalMinutes,
+        failAlertEnabled,
+        failAlertRecipients,
+        failAlertChannels,
+        passNotifyEnabled,
+        passNotifyChannels,
+        digestAutoSend,
+        aiDraftAutoSend,
+        draftReadyNotifyEnabled,
+        draftReadyNotifyChannels,
+      } = req.body;
+
+      // Validate aiReviewMode
+      if (aiReviewMode && !['automatic', 'timed', 'manual'].includes(aiReviewMode)) {
+        return res.status(400).json({ error: 'Invalid aiReviewMode. Must be automatic, timed, or manual.' });
+      }
+
+      const [existing] = await db
+        .select()
+        .from(lenderReviewConfig)
+        .where(eq(lenderReviewConfig.userId, userId));
+
+      const configData: any = {
+        ...(aiReviewMode !== undefined && { aiReviewMode }),
+        ...(timedReviewIntervalMinutes !== undefined && { timedReviewIntervalMinutes }),
+        ...(failAlertEnabled !== undefined && { failAlertEnabled }),
+        ...(failAlertRecipients !== undefined && { failAlertRecipients }),
+        ...(failAlertChannels !== undefined && { failAlertChannels }),
+        ...(passNotifyEnabled !== undefined && { passNotifyEnabled }),
+        ...(passNotifyChannels !== undefined && { passNotifyChannels }),
+        ...(digestAutoSend !== undefined && { digestAutoSend }),
+        ...(aiDraftAutoSend !== undefined && { aiDraftAutoSend }),
+        ...(draftReadyNotifyEnabled !== undefined && { draftReadyNotifyEnabled }),
+        ...(draftReadyNotifyChannels !== undefined && { draftReadyNotifyChannels }),
+        updatedAt: new Date(),
+      };
+
+      let result;
+      if (existing) {
+        [result] = await db
+          .update(lenderReviewConfig)
+          .set(configData)
+          .where(eq(lenderReviewConfig.userId, userId))
+          .returning();
+      } else {
+        [result] = await db
+          .insert(lenderReviewConfig)
+          .values({ userId, ...configData })
+          .returning();
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error('Error updating review config:', error);
+      res.status(500).json({ error: 'Failed to update review config' });
+    }
+  });
+
+  // POST - Schedule a communication for a specific date (put on calendar)
+  app.post('/api/admin/communications/:commId/schedule', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const commId = parseInt(req.params.commId);
+      const { scheduledDate } = req.body;
+
+      if (!scheduledDate) {
+        return res.status(400).json({ error: 'scheduledDate is required' });
+      }
+
+      const [updated] = await db
+        .update(agentCommunications)
+        .set({
+          scheduledSendDate: new Date(scheduledDate),
+          status: 'approved',
+          approvedBy: req.user?.id,
+          approvedAt: new Date(),
+        })
+        .where(eq(agentCommunications.id, commId))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Communication not found' });
+      }
+
+      // Also create a scheduled digest draft entry so it appears on the calendar
+      if (updated.projectId) {
+        const [digestConfig] = await db
+          .select()
+          .from(loanDigestConfigs)
+          .where(eq(loanDigestConfigs.projectId, updated.projectId))
+          .limit(1);
+
+        if (digestConfig) {
+          await db.insert(scheduledDigestDrafts).values({
+            configId: digestConfig.id,
+            projectId: updated.projectId,
+            scheduledDate: new Date(scheduledDate),
+            timeOfDay: '09:00',
+            emailSubject: updated.subject,
+            emailBody: updated.editedBody || updated.body,
+            status: 'approved',
+            source: 'ai_communication',
+            sourceCommId: updated.id,
+            approvedBy: req.user?.id,
+            approvedAt: new Date(),
+          });
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error scheduling communication:', error);
+      res.status(500).json({ error: 'Failed to schedule communication' });
+    }
+  });
+
+  // POST - Run timed batch review manually (admin trigger)
+  app.post('/api/admin/review-config/run-batch', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { runTimedBatchReview } = await import('./services/documentReviewOrchestrator');
+      const result = await runTimedBatchReview();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error('Error running batch review:', error);
+      res.status(500).json({ error: 'Failed to run batch review' });
     }
   });
 

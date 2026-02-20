@@ -377,6 +377,20 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         console.error('Portal auto-trigger check error:', triggerErr.message);
       }
 
+      // Auto-trigger AI document review based on lender config
+      try {
+        const { onDocumentUploaded } = await import('../services/documentReviewOrchestrator');
+        onDocumentUploaded({
+          documentId: docId,
+          projectId: project.id,
+          uploaderType: 'borrower',
+        }).catch(err => {
+          console.error(`Auto doc review trigger failed for doc ${docId}:`, err.message);
+        });
+      } catch (reviewErr: any) {
+        console.error('Doc review orchestrator error:', reviewErr.message);
+      }
+
       res.json({ document: updated, file: newFile });
     } catch (error) {
       console.error('Portal upload complete error:', error);
@@ -734,6 +748,20 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         }
       } catch (driveErr: any) {
         console.error('Drive sync check error:', driveErr.message);
+      }
+
+      // Auto-trigger AI document review based on lender config
+      try {
+        const { onDocumentUploaded } = await import('../services/documentReviewOrchestrator');
+        onDocumentUploaded({
+          documentId: docId,
+          projectId: project.id,
+          uploaderType: 'broker',
+        }).catch(err => {
+          console.error(`Auto doc review trigger failed for broker doc ${docId}:`, err.message);
+        });
+      } catch (reviewErr: any) {
+        console.error('Doc review orchestrator error:', reviewErr.message);
       }
 
       res.json({ document: updated, file: newFile });
