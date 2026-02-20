@@ -100,6 +100,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/broker/outreach", label: "Smart Prospect", icon: Target, shortcut: undefined },
   { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
+  { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view", shortcut: undefined },
 ];
 
 const borrowerNavItems: NavItem[] = [
