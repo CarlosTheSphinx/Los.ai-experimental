@@ -439,7 +439,7 @@ export default function MessagesPage() {
                   variant={inboxTab === 'email' ? 'default' : 'ghost'}
                   size="sm"
                   className="flex-1 text-xs"
-                  onClick={() => { setInboxTab('email'); setActiveThreadId(null); }}
+                  onClick={() => { setLocation('/admin/email-inbox'); }}
                   data-testid="tab-email"
                 >
                   <Mail className="h-3 w-3 mr-1" />
