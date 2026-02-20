@@ -670,6 +670,9 @@ export default function AdminDealDetail() {
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string | null; mimeType?: string | null; downloadUrl: string } | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'completed' | 'todo' | 'digests' | 'ai_insights'>('all');
   const [subFilter, setSubFilter] = useState<'all' | 'documents' | 'tasks'>('all');
   const [showMemoryPanel, setShowMemoryPanel] = useState(true);
@@ -687,6 +690,44 @@ export default function AdminDealDetail() {
       setStageExpandInitialized(true);
     }
   }, [projectStages, stageExpandInitialized]);
+
+  useEffect(() => {
+    if (!previewOpen || !previewFile) {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
+      }
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+    const pType = getPreviewType(previewFile.fileName, previewFile.mimeType);
+    if (pType === 'unsupported') return;
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewBlobUrl(null);
+
+    fetch(previewFile.url, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('File not available');
+        return res.blob();
+      })
+      .then(blob => {
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        setPreviewBlobUrl(blobUrl);
+        setPreviewLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPreviewError('This file is no longer available. It may have been moved or deleted.');
+        setPreviewLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [previewOpen, previewFile]);
 
   const toggleStageExpanded = (stageId: number) => {
     setExpandedStages(prev => {
@@ -4059,18 +4100,33 @@ export default function AdminDealDetail() {
             <DialogDescription className="sr-only">Preview uploaded document</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden px-6 pb-4 min-h-0">
-            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'pdf' && (
+            {previewLoading && (
+              <div className="flex flex-col items-center justify-center h-[70vh] bg-muted/30 rounded border gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Loading preview...</p>
+              </div>
+            )}
+            {previewError && (
+              <div className="flex flex-col items-center justify-center h-[70vh] bg-muted/30 rounded border gap-4">
+                <AlertCircle className="h-12 w-12 text-muted-foreground" />
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-medium">Unable to Preview</p>
+                  <p className="text-xs text-muted-foreground">{previewError}</p>
+                </div>
+              </div>
+            )}
+            {!previewLoading && !previewError && previewFile && previewBlobUrl && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'pdf' && (
               <iframe
-                src={previewFile.url}
+                src={previewBlobUrl}
                 className="w-full h-[70vh] rounded border"
                 title="Document Preview"
                 data-testid="preview-iframe-pdf"
               />
             )}
-            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'image' && (
+            {!previewLoading && !previewError && previewFile && previewBlobUrl && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'image' && (
               <div className="flex items-center justify-center h-[70vh] bg-muted/30 rounded border">
                 <img
-                  src={previewFile.url}
+                  src={previewBlobUrl}
                   alt={previewFile.fileName || 'Document'}
                   className="max-w-full max-h-full object-contain"
                   data-testid="preview-image"
@@ -4083,7 +4139,7 @@ export default function AdminDealDetail() {
                 <div className="text-center space-y-1">
                   <p className="text-lg font-medium">{getFileExtensionLabel(previewFile.fileName)}</p>
                   <p className="text-sm text-muted-foreground">{previewFile.fileName}</p>
-                  <p className="text-xs text-muted-foreground">This file type can't be previewed in the browser.</p>
+                  <p className="text-xs text-muted-foreground">This file type can't be previewed in the browser. Please download it to view.</p>
                 </div>
                 <Button onClick={() => { const link = document.createElement('a'); link.href = previewFile.downloadUrl; link.download = previewFile.fileName || 'document'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }} data-testid="button-preview-download">
                   <Download className="h-4 w-4 mr-2" />
