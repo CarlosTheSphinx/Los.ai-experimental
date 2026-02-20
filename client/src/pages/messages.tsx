@@ -32,6 +32,16 @@ import {
   X,
   Loader2,
   Search,
+  Bell,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  Play,
+  Pencil,
+  Eye,
+  MapPin,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBranding } from "@/hooks/use-branding";
@@ -98,7 +108,7 @@ export default function MessagesPage() {
   const [initialMessage, setInitialMessage] = useState("");
   const [starredThreadIds, setStarredThreadIds] = useState<Set<number>>(new Set());
   const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
-  const [inboxTab, setInboxTab] = useState<'messages' | 'email'>(urlTab === 'email' ? 'email' : 'messages');
+  const [inboxTab, setInboxTab] = useState<'messages' | 'email' | 'digests'>(urlTab === 'email' ? 'email' : 'messages');
   const [activeEmailThreadId, setActiveEmailThreadId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -112,6 +122,8 @@ export default function MessagesPage() {
   const [emailReplyText, setEmailReplyText] = useState("");
   const [emailLinkFilter, setEmailLinkFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
   const [emailReadFilter, setEmailReadFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [digestDate, setDigestDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [editingDraft, setEditingDraft] = useState<any>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
@@ -316,6 +328,56 @@ export default function MessagesPage() {
       }
     }
   }, [activeEmailThreadId]);
+
+  // Digest queries and mutations
+  const { data: digestsData, isLoading: digestsLoading } = useQuery<{ date: string; digests: any[] }>({
+    queryKey: ['/api/admin/digests/scheduled', digestDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/digests/scheduled?date=${digestDate}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch digests');
+      return res.json();
+    },
+    enabled: inboxTab === 'digests' && !!isAdmin,
+    refetchInterval: inboxTab === 'digests' ? 30000 : false,
+  });
+
+  const approveDraftMutation = useMutation({
+    mutationFn: (draftId: number) => apiRequest('POST', `/api/admin/digests/drafts/${draftId}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/digests/scheduled', digestDate] });
+      toast({ title: 'Draft approved' });
+    },
+    onError: () => toast({ title: 'Failed to approve', variant: 'destructive' }),
+  });
+
+  const skipDraftMutation = useMutation({
+    mutationFn: (draftId: number) => apiRequest('POST', `/api/admin/digests/drafts/${draftId}/skip`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/digests/scheduled', digestDate] });
+      toast({ title: 'Draft skipped' });
+    },
+    onError: () => toast({ title: 'Failed to skip', variant: 'destructive' }),
+  });
+
+  const sendDraftMutation = useMutation({
+    mutationFn: (draftId: number) => apiRequest('POST', `/api/admin/digests/drafts/${draftId}/send`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/digests/scheduled', digestDate] });
+      toast({ title: 'Digest sent!' });
+    },
+    onError: () => toast({ title: 'Failed to send', variant: 'destructive' }),
+  });
+
+  const updateDraftMutation = useMutation({
+    mutationFn: ({ draftId, data }: { draftId: number; data: any }) =>
+      apiRequest('PUT', `/api/admin/digests/drafts/${draftId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/digests/scheduled', digestDate] });
+      setEditingDraft(null);
+      toast({ title: 'Draft updated' });
+    },
+    onError: () => toast({ title: 'Failed to update', variant: 'destructive' }),
+  });
 
   // Handle URL params for opening new thread with pre-selected deal
   // Wait for quotes data to be loaded before opening dialog
@@ -568,6 +630,16 @@ export default function MessagesPage() {
                     <Badge variant={inboxTab === 'email' ? 'secondary' : 'outline'} className="ml-1 h-4 min-w-[16px] px-1 text-[10px] leading-none">{emailThreads.filter((t: any) => t.unreadCount > 0).length}</Badge>
                   )}
                 </Button>
+                <Button
+                  variant={inboxTab === 'digests' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="flex-1 text-xs"
+                  onClick={() => { setInboxTab('digests'); }}
+                  data-testid="tab-digests"
+                >
+                  <Bell className="h-3 w-3 mr-1" />
+                  Updates
+                </Button>
               </div>
             )}
           </CardHeader>
@@ -694,6 +766,169 @@ export default function MessagesPage() {
                 </div>
               )}
             </>
+            ) : inboxTab === 'digests' && isAdmin ? (
+              <div className="p-3 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const d = new Date(digestDate);
+                      d.setDate(d.getDate() - 1);
+                      setDigestDate(format(d, 'yyyy-MM-dd'));
+                    }}
+                    data-testid="button-digest-prev-day"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                    {format(new Date(digestDate + 'T12:00:00'), 'MMM d, yyyy')}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const d = new Date(digestDate);
+                      d.setDate(d.getDate() + 1);
+                      setDigestDate(format(d, 'yyyy-MM-dd'));
+                    }}
+                    data-testid="button-digest-next-day"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {digestsLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                    <p className="text-xs">Loading scheduled updates...</p>
+                  </div>
+                ) : !digestsData?.digests?.length ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Bell className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-medium">No scheduled updates</p>
+                    <p className="text-xs mt-1">Automated loan digests will appear here when scheduled</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">{digestsData.digests.length} update{digestsData.digests.length !== 1 ? 's' : ''} scheduled</p>
+                    {digestsData.digests.map((digest: any) => (
+                      <div
+                        key={digest.id}
+                        className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
+                        data-testid={`digest-item-${digest.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            {digest.propertyAddress && (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
+                                <MapPin className="h-3 w-3" />
+                                <span className="truncate">{digest.propertyAddress}</span>
+                              </div>
+                            )}
+                            <div className="text-sm font-medium truncate">
+                              {digest.borrowerName || 'Borrower'}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {digest.dealIdentifier && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">{digest.dealIdentifier}</Badge>
+                              )}
+                              <Badge
+                                variant={digest.status === 'approved' ? 'default' : digest.status === 'sent' ? 'secondary' : digest.status === 'skipped' ? 'outline' : 'secondary'}
+                                className="text-[10px] h-4 px-1.5"
+                              >
+                                {digest.status}
+                              </Badge>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            {digest.scheduledFor ? format(new Date(digest.scheduledFor), 'h:mm a') : ''}
+                          </span>
+                        </div>
+
+                        {editingDraft?.id === digest.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              className="w-full text-xs border rounded p-2 min-h-[80px] resize-none bg-background"
+                              value={editingDraft.content}
+                              onChange={(e) => setEditingDraft({ ...editingDraft, content: e.target.value })}
+                              data-testid={`textarea-edit-digest-${digest.id}`}
+                            />
+                            <div className="flex gap-1.5 justify-end">
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingDraft(null)} data-testid={`button-cancel-edit-digest-${digest.id}`}>Cancel</Button>
+                              <Button
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => updateDraftMutation.mutate({ draftId: digest.id, data: { emailBody: editingDraft.content } })}
+                                disabled={updateDraftMutation.isPending}
+                                data-testid={`button-save-digest-${digest.id}`}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground line-clamp-3">
+                              {digest.emailBody || digest.smsBody || 'No content preview available'}
+                            </p>
+                            {digest.status === 'draft' && (
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs gap-1"
+                                  onClick={() => setEditingDraft({ id: digest.id, content: digest.emailBody || '' })}
+                                  data-testid={`button-edit-digest-${digest.id}`}
+                                >
+                                  <Pencil className="h-3 w-3" /> Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs gap-1 text-green-600"
+                                  onClick={() => approveDraftMutation.mutate(digest.id)}
+                                  disabled={approveDraftMutation.isPending}
+                                  data-testid={`button-approve-digest-${digest.id}`}
+                                >
+                                  <CheckCircle2 className="h-3 w-3" /> Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs gap-1 text-red-600"
+                                  onClick={() => skipDraftMutation.mutate(digest.id)}
+                                  disabled={skipDraftMutation.isPending}
+                                  data-testid={`button-skip-digest-${digest.id}`}
+                                >
+                                  <XCircle className="h-3 w-3" /> Skip
+                                </Button>
+                              </div>
+                            )}
+                            {digest.status === 'approved' && (
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="h-7 text-xs gap-1"
+                                  onClick={() => sendDraftMutation.mutate(digest.id)}
+                                  disabled={sendDraftMutation.isPending}
+                                  data-testid={`button-send-digest-${digest.id}`}
+                                >
+                                  <Play className="h-3 w-3" /> Send Now
+                                </Button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : threadsLoading ? (
               <div className="p-4 text-center text-muted-foreground">Loading...</div>
             ) : (
@@ -737,11 +972,19 @@ export default function MessagesPage() {
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <div className="flex items-center justify-center h-8 w-8 rounded-full bg-muted text-xs font-semibold shrink-0">
-                              {getInitials(t.userName)}
+                              {getInitials(t.propertyAddress || t.userName)}
                             </div>
                             <div className="flex-1 min-w-0">
+                              <div className={`text-sm truncate ${t.unreadCount > 0 ? 'font-bold' : 'font-semibold'}`}>
+                                {t.propertyAddress || t.subject || "General"}
+                              </div>
                               <div className="flex items-center gap-1.5">
-                                <span className={`text-sm truncate ${t.unreadCount > 0 ? 'font-bold' : 'font-semibold'}`}>
+                                {t.dealIdentifier && (
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {t.dealIdentifier}
+                                  </Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground truncate">
                                   {t.userName || "User"}
                                 </span>
                                 {t.userType && (
@@ -749,9 +992,6 @@ export default function MessagesPage() {
                                     {t.userType === 'borrower' ? 'Borrower' : 'Broker'}
                                   </Badge>
                                 )}
-                              </div>
-                              <div className="text-xs text-muted-foreground truncate">
-                                {thread.subject || (t.dealIdentifier ? t.dealIdentifier : "General")}
                               </div>
                             </div>
                           </div>
@@ -766,18 +1006,6 @@ export default function MessagesPage() {
                             </span>
                           </div>
                         </div>
-                        {t.dealIdentifier && (
-                          <div className="flex items-center gap-1.5 ml-10 mb-1">
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                              {t.dealIdentifier}
-                            </Badge>
-                            {t.propertyAddress && (
-                              <span className="text-[10px] text-muted-foreground truncate">
-                                {t.propertyAddress}
-                              </span>
-                            )}
-                          </div>
-                        )}
                         <div className="text-xs text-muted-foreground line-clamp-1 ml-10">
                           {t.lastMessagePreview || "No messages yet"}
                         </div>
