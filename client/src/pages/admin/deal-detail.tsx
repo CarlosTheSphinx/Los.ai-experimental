@@ -709,15 +709,17 @@ export default function AdminDealDetail() {
     setPreviewError(null);
     setPreviewReady(false);
 
-    fetch(previewFile.url, { method: 'HEAD', credentials: 'include' })
-      .then(res => {
+    fetch(previewFile.url, { credentials: 'include' })
+      .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
           setPreviewError('This file is no longer available. It may have been moved or deleted.');
+          setPreviewLoading(false);
         } else {
+          res.body?.cancel().catch(() => {});
           setPreviewReady(true);
+          setPreviewLoading(false);
         }
-        setPreviewLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
@@ -4114,25 +4116,36 @@ export default function AdminDealDetail() {
                 </div>
               </div>
             )}
-            {!previewLoading && !previewError && previewFile && previewBlobUrl && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'pdf' && (
-              <iframe
-                src={previewBlobUrl}
-                className="w-full h-[70vh] rounded border"
-                title="Document Preview"
-                data-testid="preview-iframe-pdf"
-              />
+            {!previewLoading && !previewError && previewReady && previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'pdf' && (
+              <div className="flex flex-col items-center justify-center h-[70vh] bg-muted/30 rounded border gap-4">
+                <FileCheck className="h-16 w-16 text-primary" />
+                <div className="text-center space-y-1">
+                  <p className="text-lg font-medium">{previewFile.fileName}</p>
+                  <p className="text-xs text-muted-foreground">PDF files open in a new tab for the best viewing experience.</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => { window.open(previewFile.url, '_blank'); setPreviewOpen(false); }} data-testid="button-preview-open-pdf">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open PDF
+                  </Button>
+                  <Button variant="outline" onClick={() => { const link = document.createElement('a'); link.href = previewFile.downloadUrl; link.download = previewFile.fileName || 'document'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }} data-testid="button-preview-download-pdf">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                </div>
+              </div>
             )}
-            {!previewLoading && !previewError && previewFile && previewBlobUrl && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'image' && (
+            {!previewLoading && !previewError && previewReady && previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'image' && (
               <div className="flex items-center justify-center h-[70vh] bg-muted/30 rounded border">
                 <img
-                  src={previewBlobUrl}
+                  src={previewFile.url}
                   alt={previewFile.fileName || 'Document'}
                   className="max-w-full max-h-full object-contain"
                   data-testid="preview-image"
                 />
               </div>
             )}
-            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'unsupported' && (
+            {!previewLoading && !previewError && previewReady && previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'unsupported' && (
               <div className="flex flex-col items-center justify-center h-[70vh] bg-muted/30 rounded border gap-4">
                 <FileText className="h-16 w-16 text-muted-foreground" />
                 <div className="text-center space-y-1">
