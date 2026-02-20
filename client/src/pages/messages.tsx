@@ -534,7 +534,7 @@ export default function MessagesPage() {
       </div>
 
       <div className="flex h-[calc(100vh-200px)] gap-4">
-        <Card className="w-96 flex flex-col">
+        <Card className="w-[420px] shrink-0 flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
@@ -661,6 +661,11 @@ export default function MessagesPage() {
                             <div className={`text-xs truncate ${thread.isUnread ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
                               {thread.subject || "(No Subject)"}
                             </div>
+                            {thread.snippet && (
+                              <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                                {thread.snippet}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
