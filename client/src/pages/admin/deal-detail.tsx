@@ -1486,17 +1486,7 @@ export default function AdminDealDetail() {
                   );
                 })}
               </div>
-              {deal.programName && (
-                <div className="border-t mt-5 pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Loan Program</span>
-                    </div>
-                    <span className="text-sm font-medium" data-testid="text-program-name">{deal.programName}</span>
-                  </div>
-                </div>
-              )}
+              
             </CardContent>
           </Card>
         );
@@ -1527,12 +1517,6 @@ export default function AdminDealDetail() {
               </div>
               <Separator orientation="vertical" className="h-5 hidden md:block" />
               <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-warning" />
-                <span className="text-xs text-muted-foreground">Property</span>
-                <span className="font-semibold text-sm" data-testid="text-property-type">{deal.loanData?.propertyType || '\u2014'}</span>
-              </div>
-              <Separator orientation="vertical" className="h-5 hidden md:block" />
-              <div className="flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Target Close</span>
                 <span className="font-semibold text-sm" data-testid="text-target-close-date">
@@ -1546,6 +1530,37 @@ export default function AdminDealDetail() {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
+              </div>
+              {deal.programName && (
+                <>
+                  <Separator orientation="vertical" className="h-5 hidden md:block" />
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Program</span>
+                    <span className="font-semibold text-sm" data-testid="text-loan-program">{deal.programName}</span>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3 pt-3 border-t">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Origination Points</span>
+                <span className="font-semibold text-sm" data-testid="text-origination-points">{deal.pointsCharged ?? 0}</span>
+              </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Broker Points</span>
+                <span className="font-semibold text-sm" data-testid="text-broker-points">{deal.commission ?? 0}</span>
+              </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">YSP</span>
+                <span className="font-semibold text-sm" data-testid="text-ysp">{deal.tpoPremiumAmount ?? 0}</span>
+              </div>
+              <Separator orientation="vertical" className="h-5 hidden md:block" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Total Points</span>
+                <span className="font-semibold text-sm" data-testid="text-total-points">{formatCurrency(deal.pointsAmount || 0)}</span>
               </div>
             </div>
           </Card>

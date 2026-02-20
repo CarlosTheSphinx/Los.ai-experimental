@@ -16759,10 +16759,17 @@ Return JSON only:
       const adminUsers = await db.select({ id: users.id }).from(users)
         .where(or(eq(users.role, 'admin'), eq(users.role, 'super_admin'), eq(users.role, 'staff')));
 
-      for (const admin of adminUsers) {
-        if (excludeUserId && admin.id === excludeUserId) continue;
+      const processors = await db.select({ userId: dealProcessors.userId }).from(dealProcessors)
+        .where(eq(dealProcessors.dealId, dealId));
+
+      const notifyUserIds = new Set<number>();
+      for (const admin of adminUsers) notifyUserIds.add(admin.id);
+      for (const proc of processors) notifyUserIds.add(proc.userId);
+
+      for (const uid of notifyUserIds) {
+        if (excludeUserId && uid === excludeUserId) continue;
         await createNotification({
-          userId: admin.id,
+          userId: uid,
           type,
           title,
           message,
