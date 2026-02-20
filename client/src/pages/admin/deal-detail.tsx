@@ -86,6 +86,27 @@ import { LinkedEmailsSection } from "@/components/admin/LinkedEmailsSection";
 import { AIInsightsPanel } from "@/components/admin/AIInsightsPanel";
 import { DealMemoryPanel } from "@/components/admin/DealMemoryPanel";
 
+function getPreviewType(fileName: string | null, mimeType?: string | null): 'image' | 'pdf' | 'unsupported' {
+  const mime = (mimeType || '').toLowerCase();
+  const name = (fileName || '').toLowerCase();
+  if (mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name)) return 'image';
+  if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  return 'unsupported';
+}
+
+function getFileExtensionLabel(fileName: string | null): string {
+  if (!fileName) return 'Document';
+  const ext = fileName.split('.').pop()?.toUpperCase();
+  const labels: Record<string, string> = {
+    DOC: 'Word Document', DOCX: 'Word Document',
+    XLS: 'Excel Spreadsheet', XLSX: 'Excel Spreadsheet',
+    PPT: 'PowerPoint', PPTX: 'PowerPoint',
+    CSV: 'CSV File', TXT: 'Text File',
+    ZIP: 'ZIP Archive', RAR: 'RAR Archive',
+  };
+  return labels[ext || ''] || `${ext} File`;
+}
+
 interface Deal {
   id: number;
   userId: number | null;
@@ -647,6 +668,8 @@ export default function AdminDealDetail() {
   );
   const project = projectDetailData?.project;
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string | null; mimeType?: string | null; downloadUrl: string } | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'completed' | 'todo' | 'digests' | 'ai_insights'>('all');
   const [subFilter, setSubFilter] = useState<'all' | 'documents' | 'tasks'>('all');
   const [showMemoryPanel, setShowMemoryPanel] = useState(true);
@@ -1299,8 +1322,11 @@ export default function AdminDealDetail() {
     e.target.value = "";
   };
 
-  const handleViewDocument = (docId: number) => {
-    window.open(`/api/admin/deals/${dealId}/documents/${docId}/download`, "_blank");
+  const handleViewDocument = (docId: number, fileName: string | null, mimeType?: string | null) => {
+    const url = `/api/admin/deals/${dealId}/documents/${docId}/download`;
+    const downloadUrl = `/api/admin/deals/${dealId}/documents/${docId}/download?download=true`;
+    setPreviewFile({ url, fileName, mimeType, downloadUrl });
+    setPreviewOpen(true);
   };
 
   const handleDownloadDocument = (docId: number, fileName: string | null) => {
@@ -1312,8 +1338,11 @@ export default function AdminDealDetail() {
     document.body.removeChild(link);
   };
 
-  const handleViewFile = (fileId: number) => {
-    window.open(`/api/admin/document-files/${fileId}/download`, "_blank");
+  const handleViewFile = (fileId: number, fileName: string | null, mimeType?: string | null) => {
+    const url = `/api/admin/document-files/${fileId}/download`;
+    const downloadUrl = `/api/admin/document-files/${fileId}/download?download=true`;
+    setPreviewFile({ url, fileName, mimeType, downloadUrl });
+    setPreviewOpen(true);
   };
 
   const handleDownloadFile = (fileId: number, fileName: string | null) => {
@@ -2824,7 +2853,7 @@ export default function AdminDealDetail() {
                                   )}
                                   {doc.filePath && (!doc.files || doc.files.length === 0) && (
                                     <>
-                                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleViewDocument(doc.id); }} data-testid={`button-view-doc-${doc.id}`} title="View">
+                                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleViewDocument(doc.id, doc.fileName, doc.mimeType); }} data-testid={`button-view-doc-${doc.id}`} title="View">
                                         <Eye className="h-3.5 w-3.5" />
                                       </Button>
                                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDownloadDocument(doc.id, doc.fileName); }} data-testid={`button-download-doc-${doc.id}`} title="Download">
@@ -2885,7 +2914,7 @@ export default function AdminDealDetail() {
                                       <span className="truncate flex-1 min-w-0">{file.fileName || 'Unnamed file'}</span>
                                       {file.fileSize && <span className="flex-shrink-0">{(file.fileSize / 1024).toFixed(0)} KB</span>}
                                       {file.uploadedAt && <span className="flex-shrink-0">{new Date(file.uploadedAt).toLocaleDateString()}</span>}
-                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handleViewFile(file.id); }} data-testid={`button-view-file-${file.id}`} title="View">
+                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handleViewFile(file.id, file.fileName, file.mimeType); }} data-testid={`button-view-file-${file.id}`} title="View">
                                         <Eye className="h-3 w-3" />
                                       </Button>
                                       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handleDownloadFile(file.id, file.fileName); }} data-testid={`button-download-file-${file.id}`} title="Download">
@@ -4019,6 +4048,52 @@ export default function AdminDealDetail() {
         </DialogContent>
       </Dialog>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="flex items-center gap-2 text-sm font-medium truncate">
+              <FileText className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{previewFile?.fileName || 'Document Preview'}</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">Preview uploaded document</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden px-6 pb-4 min-h-0">
+            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'pdf' && (
+              <iframe
+                src={previewFile.url}
+                className="w-full h-[70vh] rounded border"
+                title="Document Preview"
+                data-testid="preview-iframe-pdf"
+              />
+            )}
+            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'image' && (
+              <div className="flex items-center justify-center h-[70vh] bg-muted/30 rounded border">
+                <img
+                  src={previewFile.url}
+                  alt={previewFile.fileName || 'Document'}
+                  className="max-w-full max-h-full object-contain"
+                  data-testid="preview-image"
+                />
+              </div>
+            )}
+            {previewFile && getPreviewType(previewFile.fileName, previewFile.mimeType) === 'unsupported' && (
+              <div className="flex flex-col items-center justify-center h-[70vh] bg-muted/30 rounded border gap-4">
+                <FileText className="h-16 w-16 text-muted-foreground" />
+                <div className="text-center space-y-1">
+                  <p className="text-lg font-medium">{getFileExtensionLabel(previewFile.fileName)}</p>
+                  <p className="text-sm text-muted-foreground">{previewFile.fileName}</p>
+                  <p className="text-xs text-muted-foreground">This file type can't be previewed in the browser.</p>
+                </div>
+                <Button onClick={() => { const link = document.createElement('a'); link.href = previewFile.downloadUrl; link.download = previewFile.fileName || 'document'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }} data-testid="button-preview-download">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download to View
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className={cn("flex-shrink-0 h-full transition-all duration-200", showMemoryPanel ? "w-[380px]" : "w-10")} data-testid="memory-sidebar">
         <DealMemoryPanel
