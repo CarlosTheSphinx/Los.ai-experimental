@@ -1870,6 +1870,18 @@ export default function AdminDealDetail() {
                     </>
                   )}
                 </div>
+                {deal?.borrowerPortalToken && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-center text-xs mt-1"
+                    onClick={() => window.open(`/portal/${deal.borrowerPortalToken}`, '_blank')}
+                    data-testid="button-view-borrower-portal"
+                  >
+                    <Eye className="h-3.5 w-3.5 mr-1.5" />
+                    View Borrower Portal
+                  </Button>
+                )}
               </div>
 
               <div className="border-t pt-3" />
@@ -1935,6 +1947,18 @@ export default function AdminDealDetail() {
                     </>
                   )}
                 </div>
+                {deal?.brokerPortalToken && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-center text-xs mt-1"
+                    onClick={() => window.open(`/broker-portal/${deal.brokerPortalToken}`, '_blank')}
+                    data-testid="button-view-broker-portal"
+                  >
+                    <Eye className="h-3.5 w-3.5 mr-1.5" />
+                    View Broker Portal
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
