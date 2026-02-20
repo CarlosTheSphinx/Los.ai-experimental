@@ -23,6 +23,9 @@ import {
   emailMessages,
   emailThreadDealLinks,
   projectActivity,
+  messageThreads,
+  messages,
+  messageReads,
   type AiAssistantConversation,
   type AiAssistantMessage,
   type Project,
@@ -104,7 +107,10 @@ export async function generateDailyBriefing(
     .from(dealProcessors)
     .innerJoin(projects, eq(dealProcessors.projectId, projects.id))
     .where(
-      and(eq(dealProcessors.userId, processorId), eq(projects.status, "active"))
+      and(
+        eq(dealProcessors.userId, processorId),
+        sql`${projects.status} NOT IN ('voided', 'cancelled')`
+      )
     );
 
   const dealBriefings: DealBriefing[] = [];
@@ -400,11 +406,11 @@ const FUNCTION_DEFINITIONS = [
   },
   {
     name: "list_user_deals",
-    description: "List all deals assigned to the current user/processor. Use when asked 'show me my deals' or 'what am I working on'.",
+    description: "List all deals assigned to the current user/processor. Returns all deals regardless of status by default (excluding voided/cancelled). Only pass a status filter if the user explicitly asks for a specific status like 'funded' or 'on_hold'. When the user says 'active deals', 'my deals', 'current loans', or 'loans in the pipeline', do NOT pass a status filter — just call this without status to get everything.",
     parameters: {
       type: "object",
       properties: {
-        status: { type: "string", enum: ["active", "on_hold", "completed", "cancelled"], description: "Optional status filter" },
+        status: { type: "string", enum: ["active", "on_hold", "completed", "cancelled", "funded"], description: "Only use if the user explicitly asks for a specific status. Leave empty to get all deals." },
       },
     },
   },
@@ -567,6 +573,45 @@ const FUNCTION_DEFINITIONS = [
     },
   },
 
+  // ─── Phase 3b: In-App Messaging ──────────────────────────
+
+  {
+    name: "send_deal_message",
+    description: "Send an in-app message on a deal thread to a borrower or broker. Creates a new thread if none exists for the deal. Use this when the user wants to message a borrower or broker directly through the platform (not email).",
+    parameters: {
+      type: "object",
+      properties: {
+        dealId: { type: "number", description: "The deal ID" },
+        recipientUserId: { type: "number", description: "The recipient user ID (borrower or broker). Use get_deal_details first to find team members." },
+        subject: { type: "string", description: "Thread subject (only used when creating a new thread)" },
+        body: { type: "string", description: "The message content" },
+      },
+      required: ["dealId", "recipientUserId", "body"],
+    },
+  },
+  {
+    name: "get_deal_messages",
+    description: "Get in-app message threads and messages for a deal. Shows conversation history between lender/processor and borrower/broker. Use when the user asks about messages, conversations, or communications on a deal.",
+    parameters: {
+      type: "object",
+      properties: {
+        dealId: { type: "number", description: "The deal ID" },
+        limit: { type: "number", description: "Max messages to return per thread (default 20)" },
+      },
+      required: ["dealId"],
+    },
+  },
+  {
+    name: "get_unread_messages",
+    description: "Get all unread message threads for the current user across all deals. Use when the user asks 'do I have any messages', 'any new messages', or 'check my inbox'.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Max threads to return (default 10)" },
+      },
+    },
+  },
+
   // ─── Phase 4: Proactive Intelligence ──────────────────────
 
   {
@@ -637,7 +682,7 @@ export async function processAssistantMessage(
   // Format for OpenAI with system prompt
   const systemMessage = {
     role: "system" as const,
-    content: `You are Lendry AI, an expert loan processing assistant for commercial real estate. You help processors manage their deal pipeline efficiently.
+    content: `You are Lendry AI, an expert loan processing assistant for commercial real estate. You help lenders and processors manage their deal pipeline efficiently.
 
 CAPABILITIES:
 - Search and retrieve deal information by name, borrower, property, or project number
@@ -645,17 +690,23 @@ CAPABILITIES:
 - Make batch changes across multiple deals at once (update documents, create tasks, add notes, change stages)
 - Draft professional emails and SMS messages for borrowers and brokers
 - Suggest responses to unread emails linked to deals
+- Send and read in-app messages to borrowers and brokers on specific deals
 - Analyze deal health and detect portfolio-wide anomalies
 - Recommend next actions based on deal state
 
+IMPORTANT — DEAL STATUS INTERPRETATION:
+When a user asks about "active loans", "current deals", "my deals", "loans in the pipeline", or similar phrases, they mean ALL deals currently in the system that are not voided or cancelled. Do NOT filter by a literal "active" status. Use list_user_deals WITHOUT a status filter to return all their deals. Only filter by a specific status if the user explicitly asks for it (e.g., "show me only my funded deals" or "which deals are on hold").
+
 BEHAVIOR RULES:
 1. When a user mentions a deal by name or description, ALWAYS use search_deals first to find the correct deal before taking action.
-2. When asked about multiple deals, use list_user_deals or search_deals to find them, then batch operations to act on them.
+2. When asked about multiple deals or "my deals", use list_user_deals WITHOUT a status filter to get everything, then summarize.
 3. For any communication drafts, ALWAYS save them for approval — never claim an email was sent.
 4. When reporting batch results, always state how many succeeded and failed.
 5. Be proactive: if you notice issues (overdue tasks, missing docs) while looking at a deal, mention them.
 6. Reference deals by name and borrower, not just ID numbers.
-7. Keep responses concise but thorough. Use markdown formatting for readability.`,
+7. Keep responses concise but thorough. Use markdown formatting for readability.
+8. When sending in-app messages, use send_deal_message. When checking for messages, use get_deal_messages.
+9. Always include the deal status in your summaries so the user knows the state of each deal.`,
   };
 
   const chatMessages = [
@@ -1004,11 +1055,6 @@ BEHAVIOR RULES:
           }
 
           case "list_user_deals": {
-            const userDealsConditions = [eq(dealProcessors.userId, processorId)];
-            if (args.status) {
-              // Will be applied after join
-            }
-
             const userDeals = await db
               .select({
                 id: projects.id,
@@ -1025,7 +1071,10 @@ BEHAVIOR RULES:
               .where(
                 args.status
                   ? and(eq(dealProcessors.userId, processorId), eq(projects.status, args.status))
-                  : eq(dealProcessors.userId, processorId)
+                  : and(
+                      eq(dealProcessors.userId, processorId),
+                      sql`${projects.status} NOT IN ('voided', 'cancelled')`
+                    )
               );
 
             actionsTaken.push({
@@ -1435,6 +1484,209 @@ Respond ONLY with JSON: {"response": "..."}`;
             break;
           }
 
+          // ─── Phase 3b: In-App Messaging ────────────────────
+
+          case "send_deal_message": {
+            try {
+              // Find or create a thread for this deal + recipient
+              let thread = await db
+                .select()
+                .from(messageThreads)
+                .where(
+                  and(
+                    eq(messageThreads.dealId, args.dealId),
+                    eq(messageThreads.userId, args.recipientUserId)
+                  )
+                )
+                .then((r) => r[0]);
+
+              if (!thread) {
+                const [newThread] = await db
+                  .insert(messageThreads)
+                  .values({
+                    dealId: args.dealId,
+                    userId: args.recipientUserId,
+                    createdBy: processorId,
+                    subject: args.subject || `Deal #${args.dealId} Message`,
+                    lastMessageAt: new Date(),
+                  })
+                  .returning();
+                thread = newThread;
+              }
+
+              // Insert the message
+              const [newMessage] = await db
+                .insert(messages)
+                .values({
+                  threadId: thread.id,
+                  senderId: processorId,
+                  senderRole: "lender",
+                  type: "text",
+                  body: args.body,
+                })
+                .returning();
+
+              // Update thread lastMessageAt
+              await db
+                .update(messageThreads)
+                .set({ lastMessageAt: new Date() })
+                .where(eq(messageThreads.id, thread.id));
+
+              actionsTaken.push({
+                type: "send_deal_message",
+                status: "success",
+                details: {
+                  threadId: thread.id,
+                  messageId: newMessage.id,
+                  dealId: args.dealId,
+                  recipientUserId: args.recipientUserId,
+                },
+              });
+            } catch (msgErr) {
+              actionsTaken.push({ type: "send_deal_message", status: "failed", details: { error: String(msgErr) } });
+            }
+            break;
+          }
+
+          case "get_deal_messages": {
+            try {
+              const limit = args.limit || 20;
+              const threads = await db
+                .select()
+                .from(messageThreads)
+                .where(eq(messageThreads.dealId, args.dealId))
+                .orderBy(sql`${messageThreads.lastMessageAt} DESC`);
+
+              const threadData = [];
+              for (const thread of threads) {
+                const threadMessages = await db
+                  .select({
+                    id: messages.id,
+                    senderId: messages.senderId,
+                    senderRole: messages.senderRole,
+                    body: messages.body,
+                    createdAt: messages.createdAt,
+                  })
+                  .from(messages)
+                  .where(eq(messages.threadId, thread.id))
+                  .orderBy(sql`${messages.createdAt} DESC`)
+                  .limit(limit);
+
+                // Check unread status for current user
+                const readRecord = await db
+                  .select()
+                  .from(messageReads)
+                  .where(
+                    and(
+                      eq(messageReads.threadId, thread.id),
+                      eq(messageReads.userId, processorId)
+                    )
+                  )
+                  .then((r) => r[0]);
+
+                const unreadCount = readRecord
+                  ? threadMessages.filter((m) => m.createdAt && readRecord.lastReadAt && m.createdAt > readRecord.lastReadAt).length
+                  : threadMessages.length;
+
+                threadData.push({
+                  threadId: thread.id,
+                  subject: thread.subject,
+                  recipientUserId: thread.userId,
+                  isClosed: thread.isClosed,
+                  lastMessageAt: thread.lastMessageAt,
+                  unreadCount,
+                  messages: threadMessages.reverse(),
+                });
+              }
+
+              actionsTaken.push({
+                type: "get_deal_messages",
+                status: "success",
+                details: { dealId: args.dealId, threadCount: threadData.length, threads: threadData },
+              });
+            } catch (msgErr) {
+              actionsTaken.push({ type: "get_deal_messages", status: "failed", details: { error: String(msgErr) } });
+            }
+            break;
+          }
+
+          case "get_unread_messages": {
+            try {
+              const limit = args.limit || 10;
+
+              // Get all threads where the processor is either the creator or there are messages for them
+              const allThreads = await db
+                .select({
+                  threadId: messageThreads.id,
+                  dealId: messageThreads.dealId,
+                  subject: messageThreads.subject,
+                  userId: messageThreads.userId,
+                  lastMessageAt: messageThreads.lastMessageAt,
+                  isClosed: messageThreads.isClosed,
+                })
+                .from(messageThreads)
+                .innerJoin(dealProcessors, eq(messageThreads.dealId, dealProcessors.projectId))
+                .where(eq(dealProcessors.userId, processorId))
+                .orderBy(sql`${messageThreads.lastMessageAt} DESC`)
+                .limit(limit);
+
+              const unreadThreads = [];
+              for (const thread of allThreads) {
+                const readRecord = await db
+                  .select()
+                  .from(messageReads)
+                  .where(
+                    and(
+                      eq(messageReads.threadId, thread.threadId),
+                      eq(messageReads.userId, processorId)
+                    )
+                  )
+                  .then((r) => r[0]);
+
+                const unreadMessages = await db
+                  .select({ id: messages.id, body: messages.body, senderRole: messages.senderRole, createdAt: messages.createdAt })
+                  .from(messages)
+                  .where(
+                    readRecord
+                      ? and(
+                          eq(messages.threadId, thread.threadId),
+                          sql`${messages.createdAt} > ${readRecord.lastReadAt}`
+                        )
+                      : eq(messages.threadId, thread.threadId)
+                  )
+                  .orderBy(sql`${messages.createdAt} DESC`);
+
+                if (unreadMessages.length > 0) {
+                  // Get deal name for context
+                  const deal = await db
+                    .select({ projectName: projects.projectName, borrowerName: projects.borrowerName })
+                    .from(projects)
+                    .where(eq(projects.id, thread.dealId))
+                    .then((r) => r[0]);
+
+                  unreadThreads.push({
+                    threadId: thread.threadId,
+                    dealId: thread.dealId,
+                    dealName: deal?.projectName || "Unknown Deal",
+                    borrowerName: deal?.borrowerName || "Unknown",
+                    subject: thread.subject,
+                    unreadCount: unreadMessages.length,
+                    latestMessage: unreadMessages[0],
+                  });
+                }
+              }
+
+              actionsTaken.push({
+                type: "get_unread_messages",
+                status: "success",
+                details: { unreadThreadCount: unreadThreads.length, threads: unreadThreads },
+              });
+            } catch (msgErr) {
+              actionsTaken.push({ type: "get_unread_messages", status: "failed", details: { error: String(msgErr) } });
+            }
+            break;
+          }
+
           // ─── Phase 4: Proactive Intelligence ────────────────
 
           case "analyze_deal_health": {
@@ -1542,7 +1794,10 @@ Respond ONLY with JSON: {"actions": [{"action": "...", "priority": "high|medium|
               })
               .from(dealProcessors)
               .innerJoin(projects, eq(dealProcessors.projectId, projects.id))
-              .where(and(eq(dealProcessors.userId, processorId), eq(projects.status, "active")));
+              .where(and(
+                eq(dealProcessors.userId, processorId),
+                sql`${projects.status} NOT IN ('voided', 'cancelled')`
+              ));
 
             const now = new Date();
             const anomalies: Array<{ dealId: number; dealName: string; type: string; detail: string }> = [];
