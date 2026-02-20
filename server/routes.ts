@@ -5704,14 +5704,22 @@ export async function registerRoutes(
           
           if (openaiConnection) {
             integrations.openai = { connected: true, status: 'Connected' };
+          } else if (process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+            integrations.openai = { connected: true, status: 'Connected' };
           } else {
             integrations.openai = { connected: false, status: 'Not connected' };
           }
+        } else if (process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+          integrations.openai = { connected: true, status: 'Connected' };
         } else {
           integrations.openai = { connected: false, status: 'Connector not available' };
         }
       } catch (error) {
-        integrations.openai = { connected: false, status: 'Error checking status' };
+        if (process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+          integrations.openai = { connected: true, status: 'Connected' };
+        } else {
+          integrations.openai = { connected: false, status: 'Error checking status' };
+        }
       }
       
       // Check Geoapify integration (environment variable based)
