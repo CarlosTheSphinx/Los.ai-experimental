@@ -153,8 +153,9 @@ export default function AdminOnboarding() {
       const res = await apiRequest('POST', '/api/auth/complete-onboarding', {});
       return res.json();
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/auth/me'] });
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      await qc.refetchQueries({ queryKey: ['/api/auth/me'] });
       toast({ title: 'Setup complete', description: 'Welcome to the platform!' });
       setLocation('/admin/deals');
     },

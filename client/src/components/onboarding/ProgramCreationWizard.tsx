@@ -40,6 +40,8 @@ import {
   ArrowDown,
   Settings2,
   FormInput,
+  Pencil,
+  Check,
 } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -668,6 +670,8 @@ function CreditPolicyStep({
   const [newPolicyName, setNewPolicyName] = useState('');
   const [newPolicyDescription, setNewPolicyDescription] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const [editingRuleData, setEditingRuleData] = useState<{ ruleTitle: string; ruleDescription: string }>({ ruleTitle: '', ruleDescription: '' });
 
   const createPolicyMutation = useMutation({
     mutationFn: async () => {
@@ -751,10 +755,10 @@ function CreditPolicyStep({
     if (file) handleFileUpload(file);
   }, [handleFileUpload]);
 
-  const rulesByGroup = extractedRules.reduce<Record<string, typeof extractedRules>>((acc, rule) => {
+  const rulesByGroup = extractedRules.reduce<Record<string, { rule: typeof extractedRules[0]; globalIndex: number }[]>>((acc, rule, index) => {
     const group = rule.documentType || 'General';
     if (!acc[group]) acc[group] = [];
-    acc[group].push(rule);
+    acc[group].push({ rule, globalIndex: index });
     return acc;
   }, {});
 
@@ -896,7 +900,7 @@ function CreditPolicyStep({
                       <Sparkles className="h-3.5 w-3.5 text-primary" />
                       Extracted Rules
                     </Label>
-                    <div className="border rounded-md divide-y max-h-64 overflow-y-auto">
+                    <div className="border rounded-md divide-y max-h-80 overflow-y-auto">
                       {Object.entries(rulesByGroup).map(([group, groupRules]) => (
                         <div key={group}>
                           <button
@@ -913,11 +917,60 @@ function CreditPolicyStep({
                           </button>
                           {expandedGroups[group] && (
                             <div className="px-3 pb-2 space-y-1.5">
-                              {groupRules.map((rule, i) => (
-                                <div key={i} className="text-xs p-2 bg-muted/30 rounded">
-                                  <p className="font-medium">{rule.ruleTitle}</p>
-                                  <p className="text-muted-foreground mt-0.5">{rule.ruleDescription}</p>
-                                </div>
+                              {groupRules.map(({ rule, globalIndex }) => (
+                                  <div key={globalIndex} className="text-xs p-2 bg-muted/30 rounded group relative">
+                                    {editingRuleIndex === globalIndex ? (
+                                      <div className="space-y-2">
+                                        <Input
+                                          value={editingRuleData.ruleTitle}
+                                          onChange={(e) => setEditingRuleData(prev => ({ ...prev, ruleTitle: e.target.value }))}
+                                          className="h-7 text-xs"
+                                          placeholder="Rule title"
+                                          data-testid={`input-edit-rule-title-${globalIndex}`}
+                                        />
+                                        <Textarea
+                                          value={editingRuleData.ruleDescription}
+                                          onChange={(e) => setEditingRuleData(prev => ({ ...prev, ruleDescription: e.target.value }))}
+                                          className="text-xs min-h-[60px]"
+                                          placeholder="Rule description"
+                                          data-testid={`input-edit-rule-desc-${globalIndex}`}
+                                        />
+                                        <div className="flex items-center gap-1">
+                                          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => {
+                                            setExtractedRules(prev => prev.map((r, i) => i === globalIndex ? { ...r, ruleTitle: editingRuleData.ruleTitle, ruleDescription: editingRuleData.ruleDescription } : r));
+                                            setEditingRuleIndex(null);
+                                          }} data-testid={`button-save-rule-${globalIndex}`}>
+                                            <Check className="h-3 w-3 mr-1" /> Save
+                                          </Button>
+                                          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setEditingRuleIndex(null)} data-testid={`button-cancel-edit-rule-${globalIndex}`}>
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1">
+                                            <p className="font-medium">{rule.ruleTitle}</p>
+                                            <p className="text-muted-foreground mt-0.5">{rule.ruleDescription}</p>
+                                          </div>
+                                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                                              setEditingRuleIndex(globalIndex);
+                                              setEditingRuleData({ ruleTitle: rule.ruleTitle, ruleDescription: rule.ruleDescription || '' });
+                                            }} data-testid={`button-edit-rule-${globalIndex}`}>
+                                              <Pencil className="h-3 w-3" />
+                                            </Button>
+                                            <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => {
+                                              setExtractedRules(prev => prev.filter((_, i) => i !== globalIndex));
+                                            }} data-testid={`button-delete-rule-${globalIndex}`}>
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                               ))}
                             </div>
                           )}
@@ -926,18 +979,23 @@ function CreditPolicyStep({
                     </div>
                   </div>
 
-                  <Button
-                    onClick={() => createPolicyMutation.mutate()}
-                    disabled={!newPolicyName.trim() || createPolicyMutation.isPending}
-                    data-testid="button-save-credit-policy"
-                  >
-                    {createPolicyMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <ShieldCheck className="h-4 w-4 mr-2" />
-                    )}
-                    Save Credit Policy & Attach to Program
-                  </Button>
+                  <div className="flex items-center justify-between pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      {extractedRules.length} rule{extractedRules.length !== 1 ? 's' : ''} ready to save
+                    </p>
+                    <Button
+                      onClick={() => createPolicyMutation.mutate()}
+                      disabled={!newPolicyName.trim() || extractedRules.length === 0 || createPolicyMutation.isPending}
+                      data-testid="button-save-credit-policy"
+                    >
+                      {createPolicyMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      Accept & Save Credit Policy
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

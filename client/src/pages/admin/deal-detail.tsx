@@ -468,6 +468,9 @@ export default function AdminDealDetail() {
   const [borrowerForm, setBorrowerForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
   const [showEditBroker, setShowEditBroker] = useState(false);
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>("");
+  const [showAddThirdParty, setShowAddThirdParty] = useState(false);
+  const [thirdPartyForm, setThirdPartyForm] = useState({ name: "", email: "", phone: "", role: "", company: "", customRole: "" });
+  const [editingThirdPartyId, setEditingThirdPartyId] = useState<number | null>(null);
 
   const { data: projectDetailData, isLoading: projectLoading } = useQuery<ProjectDetailResponse>({
     queryKey: ['/api/admin/projects', linkedProjectId],
@@ -532,6 +535,56 @@ export default function AdminDealDetail() {
     },
   });
   
+  const { data: thirdPartiesData } = useQuery<{ contacts: any[] }>({
+    queryKey: ['/api/admin/deals', dealId, 'third-parties'],
+    enabled: !!dealId,
+  });
+
+  const addThirdPartyMutation = useMutation({
+    mutationFn: async (data: { name: string; email: string; phone: string; role: string; company: string }) => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/third-parties`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'third-parties'] });
+      setShowAddThirdParty(false);
+      setThirdPartyForm({ name: "", email: "", phone: "", role: "", company: "", customRole: "" });
+      setEditingThirdPartyId(null);
+      toast({ title: "Third party contact added" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add contact", variant: "destructive" });
+    },
+  });
+
+  const updateThirdPartyMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/third-parties/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'third-parties'] });
+      setShowAddThirdParty(false);
+      setThirdPartyForm({ name: "", email: "", phone: "", role: "", company: "", customRole: "" });
+      setEditingThirdPartyId(null);
+      toast({ title: "Contact updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update contact", variant: "destructive" });
+    },
+  });
+
+  const deleteThirdPartyMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/admin/deals/${dealId}/third-parties/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deals', dealId, 'third-parties'] });
+      toast({ title: "Contact removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove contact", variant: "destructive" });
+    },
+  });
+
   const addPropertyMutation = useMutation({
     mutationFn: async (propertyData: { address: string; city?: string; state?: string; zip?: string; propertyType?: string; estimatedValue?: number | null; isPrimary?: boolean }) => {
       return apiRequest("POST", `/api/admin/deals/${dealId}/properties`, propertyData);
@@ -1978,9 +2031,160 @@ export default function AdminDealDetail() {
                 <p className="text-xs text-muted-foreground italic ml-9">No broker assigned</p>
               )}
             </div>
+            <div className="border-t pt-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Third Parties</div>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setEditingThirdPartyId(null);
+                  setThirdPartyForm({ name: "", email: "", phone: "", role: "", company: "", customRole: "" });
+                  setShowAddThirdParty(true);
+                }} data-testid="button-add-third-party">
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              </div>
+              {thirdPartiesData?.contacts && thirdPartiesData.contacts.length > 0 ? (
+                <div className="space-y-2">
+                  {thirdPartiesData.contacts.map((contact: any) => (
+                    <div key={contact.id} className="flex items-center gap-2 group" data-testid={`third-party-${contact.id}`}>
+                      <div className="h-7 w-7 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                        <User className="h-3.5 w-3.5 text-amber-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium truncate text-xs">{contact.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {contact.role}{contact.company ? ` · ${contact.company}` : ''}
+                        </div>
+                        {contact.email && <div className="text-xs text-muted-foreground truncate">{contact.email}</div>}
+                      </div>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                          const predefinedRoles = ['Title Contact', 'Attorney', 'Insurance Agent', 'Appraiser', 'Surveyor', 'Inspector', 'Accountant', 'Contractor'];
+                          const isPredefined = predefinedRoles.includes(contact.role);
+                          setEditingThirdPartyId(contact.id);
+                          setThirdPartyForm({
+                            name: contact.name || "",
+                            email: contact.email || "",
+                            phone: contact.phone || "",
+                            role: isPredefined ? contact.role : "custom",
+                            company: contact.company || "",
+                            customRole: isPredefined ? "" : contact.role,
+                          });
+                          setShowAddThirdParty(true);
+                        }} data-testid={`button-edit-third-party-${contact.id}`}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => deleteThirdPartyMutation.mutate(contact.id)} data-testid={`button-delete-third-party-${contact.id}`}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic ml-9">No third parties added</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Add/Edit Third Party Dialog */}
+      <Dialog open={showAddThirdParty} onOpenChange={setShowAddThirdParty}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingThirdPartyId ? 'Edit' : 'Add'} Third Party Contact</DialogTitle>
+            <DialogDescription>Add someone involved in this deal like an attorney, title agent, or insurance provider.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={thirdPartyForm.role} onValueChange={(val) => setThirdPartyForm(prev => ({ ...prev, role: val, customRole: val === "custom" ? prev.customRole : "" }))}>
+                <SelectTrigger data-testid="select-third-party-role">
+                  <SelectValue placeholder="Select a role..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Title Contact">Title Contact</SelectItem>
+                  <SelectItem value="Attorney">Attorney</SelectItem>
+                  <SelectItem value="Insurance Agent">Insurance Agent</SelectItem>
+                  <SelectItem value="Appraiser">Appraiser</SelectItem>
+                  <SelectItem value="Surveyor">Surveyor</SelectItem>
+                  <SelectItem value="Inspector">Inspector</SelectItem>
+                  <SelectItem value="Accountant">Accountant</SelectItem>
+                  <SelectItem value="Contractor">Contractor</SelectItem>
+                  <SelectItem value="custom">Other (Custom Role)</SelectItem>
+                </SelectContent>
+              </Select>
+              {thirdPartyForm.role === "custom" && (
+                <Input
+                  value={thirdPartyForm.customRole}
+                  onChange={(e) => setThirdPartyForm(prev => ({ ...prev, customRole: e.target.value }))}
+                  placeholder="Enter custom role..."
+                  data-testid="input-third-party-custom-role"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={thirdPartyForm.name}
+                onChange={(e) => setThirdPartyForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Full name"
+                data-testid="input-third-party-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  value={thirdPartyForm.email}
+                  onChange={(e) => setThirdPartyForm(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="email@example.com"
+                  type="email"
+                  data-testid="input-third-party-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={thirdPartyForm.phone}
+                  onChange={(e) => setThirdPartyForm(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="(555) 123-4567"
+                  data-testid="input-third-party-phone"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Company</Label>
+              <Input
+                value={thirdPartyForm.company}
+                onChange={(e) => setThirdPartyForm(prev => ({ ...prev, company: e.target.value }))}
+                placeholder="Company name (optional)"
+                data-testid="input-third-party-company"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddThirdParty(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const role = thirdPartyForm.role === "custom" ? thirdPartyForm.customRole : thirdPartyForm.role;
+                const payload = { name: thirdPartyForm.name, email: thirdPartyForm.email, phone: thirdPartyForm.phone, role, company: thirdPartyForm.company };
+                if (editingThirdPartyId) {
+                  updateThirdPartyMutation.mutate({ id: editingThirdPartyId, data: payload });
+                } else {
+                  addThirdPartyMutation.mutate(payload as any);
+                }
+              }}
+              disabled={!thirdPartyForm.name.trim() || (!thirdPartyForm.role || (thirdPartyForm.role === "custom" && !thirdPartyForm.customRole.trim())) || addThirdPartyMutation.isPending || updateThirdPartyMutation.isPending}
+              data-testid="button-confirm-third-party"
+            >
+              {(addThirdPartyMutation.isPending || updateThirdPartyMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editingThirdPartyId ? 'Update Contact' : 'Add Contact'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Manage Processor Dialog */}
       <Dialog open={showAddProcessor} onOpenChange={setShowAddProcessor}>

@@ -2748,3 +2748,21 @@ export const MERGE_TAGS = [
   { tag: "{{company_name}}", label: "Company Name", description: "Your company name" },
   { tag: "{{sender_name}}", label: "Sender Name", description: "Your name" },
 ] as const;
+
+export const dealThirdParties = pgTable("deal_third_parties", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  role: varchar("role", { length: 100 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  notes: text("notes"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDealThirdPartySchema = createInsertSchema(dealThirdParties).omit({ id: true, createdAt: true, updatedAt: true });
+export type DealThirdParty = typeof dealThirdParties.$inferSelect;
+export type InsertDealThirdParty = z.infer<typeof insertDealThirdPartySchema>;

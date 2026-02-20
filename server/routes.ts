@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -5117,6 +5117,70 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin update deal people error:', error);
       res.status(500).json({ error: 'Failed to update deal people' });
+    }
+  });
+
+  app.get('/api/admin/deals/:dealId/third-parties', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const contacts = await db.select().from(dealThirdParties)
+        .where(eq(dealThirdParties.projectId, dealId))
+        .orderBy(asc(dealThirdParties.createdAt));
+      res.json({ contacts });
+    } catch (error) {
+      console.error('Get third parties error:', error);
+      res.status(500).json({ error: 'Failed to get third parties' });
+    }
+  });
+
+  app.post('/api/admin/deals/:dealId/third-parties', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { name, email, phone, role, company, notes } = req.body;
+      if (!name || !role) {
+        return res.status(400).json({ error: 'Name and role are required' });
+      }
+      const [contact] = await db.insert(dealThirdParties).values({
+        projectId: dealId,
+        name,
+        email: email || null,
+        phone: phone || null,
+        role,
+        company: company || null,
+        notes: notes || null,
+        createdBy: req.user!.id,
+      }).returning();
+      res.json(contact);
+    } catch (error) {
+      console.error('Add third party error:', error);
+      res.status(500).json({ error: 'Failed to add third party' });
+    }
+  });
+
+  app.patch('/api/admin/deals/:dealId/third-parties/:contactId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const contactId = parseInt(req.params.contactId);
+      const { name, email, phone, role, company, notes } = req.body;
+      const [updated] = await db.update(dealThirdParties)
+        .set({ name, email: email || null, phone: phone || null, role, company: company || null, notes: notes || null, updatedAt: new Date() })
+        .where(eq(dealThirdParties.id, contactId))
+        .returning();
+      if (!updated) return res.status(404).json({ error: 'Contact not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Update third party error:', error);
+      res.status(500).json({ error: 'Failed to update third party' });
+    }
+  });
+
+  app.delete('/api/admin/deals/:dealId/third-parties/:contactId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const contactId = parseInt(req.params.contactId);
+      await db.delete(dealThirdParties).where(eq(dealThirdParties.id, contactId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete third party error:', error);
+      res.status(500).json({ error: 'Failed to delete third party' });
     }
   });
 
