@@ -17523,7 +17523,7 @@ Return JSON only:
     }
   });
 
-  app.get('/api/deals/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+  app.get('/api/projects/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
       const [project] = await db.select({ aiReviewMode: projects.aiReviewMode }).from(projects).where(eq(projects.id, dealId));
@@ -17543,7 +17543,7 @@ Return JSON only:
     }
   });
 
-  app.put('/api/deals/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+  app.put('/api/projects/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
       const { aiReviewMode } = req.body;
