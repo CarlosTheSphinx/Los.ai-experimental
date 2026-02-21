@@ -421,7 +421,7 @@ function getCategoryIcon(category: string | null) {
 
 function DealReviewModeControl({ dealId }: { dealId: number }) {
   const { toast } = useToast();
-  const reviewModeQuery = useQuery<{ aiReviewMode: string | null }>({
+  const reviewModeQuery = useQuery<{ dealReviewMode: string | null; lenderDefault: string; effectiveMode: string }>({
     queryKey: ['/api/deals', dealId, 'review-mode'],
     queryFn: async () => {
       const res = await fetch(`/api/deals/${dealId}/review-mode`);
@@ -444,7 +444,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
     },
   });
 
-  const currentMode = reviewModeQuery.data?.aiReviewMode || null;
+  const currentMode = reviewModeQuery.data?.dealReviewMode ?? null;
 
   const modes = [
     { value: null, label: "Use Lender Default", icon: <RefreshCw className="h-4 w-4" />, desc: "Falls back to your global setting" },
