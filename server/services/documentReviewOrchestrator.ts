@@ -56,9 +56,9 @@ async function getLenderConfig(projectId: number): Promise<{
   draftReadyNotifyEnabled: boolean;
   lenderId: number | null;
 } | null> {
-  // Find the lender (project creator) for this deal
+  // Find the lender (project creator) and per-deal override for this deal
   const [project] = await db
-    .select({ lenderId: projects.userId })
+    .select({ lenderId: projects.userId, aiReviewMode: projects.aiReviewMode })
     .from(projects)
     .where(eq(projects.id, projectId));
 
@@ -69,9 +69,9 @@ async function getLenderConfig(projectId: number): Promise<{
     .from(lenderReviewConfig)
     .where(eq(lenderReviewConfig.userId, project.lenderId));
 
-  // Return defaults if no config exists
+  // Per-deal override takes priority over lender config
   const defaults = {
-    reviewMode: config?.aiReviewMode || "manual",
+    reviewMode: project.aiReviewMode || config?.aiReviewMode || "manual",
     timedIntervalMinutes: config?.timedReviewIntervalMinutes || 60,
     alerts: {
       failAlertEnabled: config?.failAlertEnabled ?? true,

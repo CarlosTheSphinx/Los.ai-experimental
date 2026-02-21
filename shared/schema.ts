@@ -500,6 +500,8 @@ export const projects = pgTable("projects", {
     "NOT_ENABLED",
   ),
   driveSyncError: text("drive_sync_error"),
+
+  aiReviewMode: varchar("ai_review_mode", { length: 20 }),
 });
 
 // Project stages/milestones

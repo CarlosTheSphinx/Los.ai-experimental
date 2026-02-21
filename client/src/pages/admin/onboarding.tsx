@@ -96,11 +96,12 @@ const GUIDE_STEPS = [
   { id: 2, label: 'Integrations', icon: Plug },
   { id: 3, label: 'Loan Programs', icon: Layers },
   { id: 4, label: 'Pricing', icon: DollarSign },
-  { id: 5, label: 'AI Agent', icon: Bot },
-  { id: 6, label: 'Communications', icon: MessageSquare },
-  { id: 7, label: 'Team Setup', icon: Users },
-  { id: 8, label: 'Role Permissions', icon: Shield },
-  { id: 9, label: 'Magic Links', icon: Link },
+  { id: 5, label: 'Doc Review', icon: FileSearch },
+  { id: 6, label: 'AI Agent', icon: Bot },
+  { id: 7, label: 'Communications', icon: MessageSquare },
+  { id: 8, label: 'Team Setup', icon: Users },
+  { id: 9, label: 'Role Permissions', icon: Shield },
+  { id: 10, label: 'Magic Links', icon: Link },
 ];
 
 export default function AdminOnboarding() {
@@ -281,12 +282,18 @@ export default function AdminOnboarding() {
                 />
               )}
               {currentStep === 5 && (
-                <StepAIAgent
+                <StepDocumentReview
                   onNext={handleNext}
                   onBack={handleBack}
                 />
               )}
               {currentStep === 6 && (
+                <StepAIAgent
+                  onNext={handleNext}
+                  onBack={handleBack}
+                />
+              )}
+              {currentStep === 7 && (
                 <StepCommunications
                   emailConnected={emailConnected}
                   onNext={handleNext}
@@ -294,7 +301,7 @@ export default function AdminOnboarding() {
                   onNavigate={setLocation}
                 />
               )}
-              {currentStep === 7 && (
+              {currentStep === 8 && (
                 <StepTeamSetup
                   teamData={teamData?.users || []}
                   isLoading={teamLoading}
@@ -304,13 +311,13 @@ export default function AdminOnboarding() {
                   onNavigate={setLocation}
                 />
               )}
-              {currentStep === 8 && (
+              {currentStep === 9 && (
                 <StepRolePermissions
                   onNext={handleNext}
                   onBack={handleBack}
                 />
               )}
-              {currentStep === 9 && (
+              {currentStep === 10 && (
                 <StepMagicLinks
                   onboardingCompleted={!!user?.onboardingCompleted}
                   onBack={handleBack}
@@ -1590,6 +1597,302 @@ interface PermissionValue {
   scope: string;
 }
 
+function StepDocumentReview({
+  onNext,
+  onBack,
+}: {
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const [config, setConfig] = useState({
+    aiReviewMode: "manual",
+    timedReviewIntervalMinutes: 60,
+    failAlertEnabled: true,
+    failAlertRecipients: "both",
+    failAlertChannels: { email: true, sms: false, inApp: true },
+    passNotifyEnabled: true,
+    passNotifyChannels: { email: false, inApp: true },
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["/api/admin/review-config"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/review-config");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (data) {
+      setConfig((prev) => ({
+        ...prev,
+        ...data,
+        failAlertChannels: data.failAlertChannels || prev.failAlertChannels,
+        passNotifyChannels: data.passNotifyChannels || prev.passNotifyChannels,
+      }));
+    }
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (configData: typeof config) => {
+      const res = await apiRequest("PUT", "/api/admin/review-config", configData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/review-config"] });
+      setHasChanges(false);
+      toast({ title: "Saved", description: "Document review settings saved." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    },
+  });
+
+  const updateConfig = (updates: Partial<typeof config>) => {
+    setConfig((prev) => ({ ...prev, ...updates }));
+    setHasChanges(true);
+  };
+
+  const updateChannels = (
+    field: "failAlertChannels" | "passNotifyChannels",
+    channel: string,
+    value: boolean
+  ) => {
+    setConfig((prev) => ({
+      ...prev,
+      [field]: { ...(prev[field] as any), [channel]: value },
+    }));
+    setHasChanges(true);
+  };
+
+  const reviewModes = [
+    {
+      value: "automatic",
+      label: "Automatic",
+      desc: "Review immediately when a document is uploaded",
+      icon: <Zap className="h-5 w-5 text-green-500" />,
+    },
+    {
+      value: "timed",
+      label: "Timed / Batch",
+      desc: "Review documents on a schedule (batch processing)",
+      icon: <Clock className="h-5 w-5 text-blue-500" />,
+    },
+    {
+      value: "manual",
+      label: "Manual",
+      desc: "You trigger AI review manually per document",
+      icon: <Settings className="h-5 w-5 text-gray-500" />,
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileSearch className="h-5 w-5" />
+            AI Document Review Mode
+          </CardTitle>
+          <CardDescription>
+            Choose when AI reviews uploaded documents against your configured rules. You can also override this on a per-deal basis later.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            {reviewModes.map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => updateConfig({ aiReviewMode: mode.value })}
+                className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                  config.aiReviewMode === mode.value
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
+                }`}
+                data-testid={`button-review-mode-${mode.value}`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  {mode.icon}
+                  <span className="font-medium">{mode.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{mode.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          {config.aiReviewMode === "timed" && (
+            <div className="flex items-center gap-4 pt-2">
+              <Label className="whitespace-nowrap">Review every</Label>
+              <Input
+                type="number"
+                min={15}
+                max={1440}
+                value={config.timedReviewIntervalMinutes}
+                onChange={(e) =>
+                  updateConfig({ timedReviewIntervalMinutes: parseInt(e.target.value) || 60 })
+                }
+                className="w-24"
+                data-testid="input-review-interval"
+              />
+              <span className="text-sm text-muted-foreground">minutes</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+            Failed Review Alerts
+          </CardTitle>
+          <CardDescription>
+            When a document fails AI review, instantly notify the borrower and/or broker.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label>Enable instant fail alerts</Label>
+            <Switch
+              checked={config.failAlertEnabled}
+              onCheckedChange={(v) => updateConfig({ failAlertEnabled: v })}
+              data-testid="switch-fail-alerts"
+            />
+          </div>
+
+          {config.failAlertEnabled && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label>Who gets notified?</Label>
+                <Select
+                  value={config.failAlertRecipients}
+                  onValueChange={(v) => updateConfig({ failAlertRecipients: v })}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-fail-recipients">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="borrower">Borrower only</SelectItem>
+                    <SelectItem value="broker">Broker only</SelectItem>
+                    <SelectItem value="both">Both borrower & broker</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Alert channels</Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={config.failAlertChannels?.inApp ?? true}
+                      onCheckedChange={(v) => updateChannels("failAlertChannels", "inApp", v)}
+                    />
+                    <Bell className="h-4 w-4" />
+                    <span className="text-sm">In-App</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={config.failAlertChannels?.email ?? false}
+                      onCheckedChange={(v) => updateChannels("failAlertChannels", "email", v)}
+                    />
+                    <Mail className="h-4 w-4" />
+                    <span className="text-sm">Email</span>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-green-600">
+            <CheckCircle2 className="h-5 w-5" />
+            Passed Review Notifications
+          </CardTitle>
+          <CardDescription>
+            When a document passes AI review, you get notified to give final human approval.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label>Notify me when documents pass AI review</Label>
+            <Switch
+              checked={config.passNotifyEnabled}
+              onCheckedChange={(v) => updateConfig({ passNotifyEnabled: v })}
+              data-testid="switch-pass-notify"
+            />
+          </div>
+
+          {config.passNotifyEnabled && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label>Notification channels</Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={config.passNotifyChannels?.inApp ?? true}
+                      onCheckedChange={(v) => updateChannels("passNotifyChannels", "inApp", v)}
+                    />
+                    <Bell className="h-4 w-4" />
+                    <span className="text-sm">In-App</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={config.passNotifyChannels?.email ?? false}
+                      onCheckedChange={(v) => updateChannels("passNotifyChannels", "email", v)}
+                    />
+                    <Mail className="h-4 w-4" />
+                    <span className="text-sm">Email</span>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {hasChanges && (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => saveMutation.mutate(config)}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-review-config"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {saveMutation.isPending ? "Saving..." : "Save Settings"}
+          </Button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-4">
+        <Button variant="outline" onClick={onBack} data-testid="button-back-step-5">
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        <Button onClick={onNext} data-testid="button-next-step-5">
+          Next
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface PermissionState {
   [role: string]: {
     [key: string]: PermissionValue;
@@ -1777,11 +2080,11 @@ function StepRolePermissions({
       </Card>
 
       <div className="flex items-center justify-between gap-4">
-        <Button variant="outline" onClick={onBack} data-testid="button-back-step-8">
+        <Button variant="outline" onClick={onBack} data-testid="button-back-step-9">
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} data-testid="button-next-step-8">
+        <Button onClick={onNext} data-testid="button-next-step-9">
           Next
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
@@ -1910,13 +2213,13 @@ function StepMagicLinks({
       </Card>
 
       <div className="flex items-center justify-between gap-4">
-        <Button variant="outline" onClick={onBack} data-testid="button-back-step-9">
+        <Button variant="outline" onClick={onBack} data-testid="button-back-step-10">
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
         <div className="flex items-center gap-3">
           {!onboardingCompleted && (
-            <Button variant="ghost" onClick={onCompleteOnboarding} disabled={isCompleting} className="text-muted-foreground" data-testid="button-skip-step-9">
+            <Button variant="ghost" onClick={onCompleteOnboarding} disabled={isCompleting} className="text-muted-foreground" data-testid="button-skip-step-10">
               Skip for now
             </Button>
           )}

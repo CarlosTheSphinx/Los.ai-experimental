@@ -69,6 +69,8 @@ import {
   CloudUpload,
   LinkIcon,
   Zap,
+  FileSearch,
+  Hand,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -415,6 +417,75 @@ function getCategoryIcon(category: string | null) {
     default:
       return <Folder className="h-4 w-4" />;
   }
+}
+
+function DealReviewModeControl({ dealId }: { dealId: number }) {
+  const { toast } = useToast();
+  const reviewModeQuery = useQuery<{ aiReviewMode: string | null }>({
+    queryKey: ['/api/deals', dealId, 'review-mode'],
+    queryFn: async () => {
+      const res = await fetch(`/api/deals/${dealId}/review-mode`);
+      if (!res.ok) throw new Error('Failed to fetch review mode');
+      return res.json();
+    },
+  });
+
+  const updateReviewMode = useMutation({
+    mutationFn: async (mode: string | null) => {
+      const res = await apiRequest('PUT', `/api/deals/${dealId}/review-mode`, { aiReviewMode: mode });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deals', dealId, 'review-mode'] });
+      toast({ title: "Review mode updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update review mode", variant: "destructive" });
+    },
+  });
+
+  const currentMode = reviewModeQuery.data?.aiReviewMode || null;
+
+  const modes = [
+    { value: null, label: "Use Lender Default", icon: <RefreshCw className="h-4 w-4" />, desc: "Falls back to your global setting" },
+    { value: "automatic", label: "Automatic", icon: <Zap className="h-4 w-4" />, desc: "Review immediately on upload" },
+    { value: "timed", label: "Timed / Batch", icon: <Clock className="h-4 w-4" />, desc: "Review on a schedule" },
+    { value: "manual", label: "Manual", icon: <Hand className="h-4 w-4" />, desc: "Only when you trigger it" },
+  ];
+
+  return (
+    <div className="mt-4 pt-4 border-t" data-testid="deal-review-mode-control">
+      <div className="flex items-center gap-2 mb-3">
+        <FileSearch className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-medium">AI Document Review Mode</span>
+        {currentMode && (
+          <Badge variant="secondary" className="text-xs">Override Active</Badge>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {modes.map((mode) => {
+          const isSelected = currentMode === mode.value;
+          return (
+            <button
+              key={mode.value || 'default'}
+              onClick={() => updateReviewMode.mutate(mode.value)}
+              disabled={updateReviewMode.isPending}
+              className={`flex flex-col items-center gap-1 p-3 rounded-lg border text-xs transition-colors ${
+                isSelected
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border hover:border-muted-foreground/30 text-muted-foreground'
+              }`}
+              data-testid={`button-review-mode-${mode.value || 'default'}`}
+            >
+              {mode.icon}
+              <span className="font-medium">{mode.label}</span>
+              <span className="text-[10px] text-center opacity-70">{mode.desc}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function AdminDealDetail() {
@@ -2622,6 +2693,8 @@ export default function AdminDealDetail() {
               )}
             </div>
           )}
+
+          {dealId && <DealReviewModeControl dealId={parseInt(dealId)} />}
         </CardContent>
       </Card>
 

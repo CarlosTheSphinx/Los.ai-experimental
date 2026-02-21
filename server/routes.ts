@@ -17523,5 +17523,40 @@ Return JSON only:
     }
   });
 
+  app.get('/api/deals/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const [project] = await db.select({ aiReviewMode: projects.aiReviewMode }).from(projects).where(eq(projects.id, dealId));
+      if (!project) return res.status(404).json({ error: 'Deal not found' });
+
+      const lenderId = req.user!.id;
+      const [lenderConfig] = await db.select({ aiReviewMode: lenderReviewConfig.aiReviewMode }).from(lenderReviewConfig).where(eq(lenderReviewConfig.userId, lenderId));
+
+      res.json({
+        dealReviewMode: project.aiReviewMode || null,
+        lenderDefault: lenderConfig?.aiReviewMode || 'manual',
+        effectiveMode: project.aiReviewMode || lenderConfig?.aiReviewMode || 'manual',
+      });
+    } catch (error) {
+      console.error('Error getting deal review mode:', error);
+      res.status(500).json({ error: 'Failed to get review mode' });
+    }
+  });
+
+  app.put('/api/deals/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const { aiReviewMode } = req.body;
+      if (aiReviewMode && !['automatic', 'timed', 'manual'].includes(aiReviewMode)) {
+        return res.status(400).json({ error: 'Invalid review mode' });
+      }
+      await db.update(projects).set({ aiReviewMode: aiReviewMode || null }).where(eq(projects.id, dealId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating deal review mode:', error);
+      res.status(500).json({ error: 'Failed to update review mode' });
+    }
+  });
+
   return httpServer;
 }
