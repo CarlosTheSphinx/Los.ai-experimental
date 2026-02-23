@@ -430,6 +430,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
     scheduledTime: string | null;
     scheduledDays: string[] | null;
     timezone: string | null;
+    communicationFrequencyMinutes: number | null;
   }>({
     queryKey: ['/api/deals', dealId, 'review-mode'],
     queryFn: async () => {
@@ -440,7 +441,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
   });
 
   const updateReviewMode = useMutation({
-    mutationFn: async (payload: { aiReviewMode: string; intervalMinutes?: number | null; scheduledTime?: string | null; scheduledDays?: string[] | null; timezone?: string | null }) => {
+    mutationFn: async (payload: { aiReviewMode: string; intervalMinutes?: number | null; scheduledTime?: string | null; scheduledDays?: string[] | null; timezone?: string | null; communicationFrequencyMinutes?: number | null }) => {
       const res = await apiRequest('PUT', `/api/deals/${dealId}/review-mode`, payload);
       return res.json();
     },
@@ -458,6 +459,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
   const currentScheduledTime = reviewModeQuery.data?.scheduledTime ?? '09:00';
   const currentScheduledDays = reviewModeQuery.data?.scheduledDays ?? [];
   const currentTimezone = reviewModeQuery.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const currentCommFreq = reviewModeQuery.data?.communicationFrequencyMinutes ?? null;
 
   const modes = [
     { value: "automatic", label: "Automatic", icon: <Zap className="h-4 w-4" />, desc: "Immediate review on upload" },
@@ -470,6 +472,14 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
     { value: 2880, label: "Every 2 days" },
     { value: 4320, label: "Every 3 days" },
     { value: 10080, label: "Every week" },
+  ];
+
+  const commFrequencyOptions = [
+    { value: 0, label: "After every review" },
+    { value: 1440, label: "Once a day" },
+    { value: 2880, label: "Every 2 days" },
+    { value: 4320, label: "Every 3 days" },
+    { value: 10080, label: "Once a week" },
   ];
 
   const dayOptions = [
@@ -570,7 +580,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
               return (
                 <button
                   key={opt.value}
-                  onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: opt.value })}
+                  onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: opt.value, communicationFrequencyMinutes: currentCommFreq })}
                   disabled={updateReviewMode.isPending}
                   className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors ${
                     isActive
@@ -583,6 +593,41 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-border/50">
+            <div className="flex items-center gap-2 mb-1">
+              <Send className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-medium">AI Communication Frequency</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              How often should the AI generate and send messages to borrowers/brokers about review results?
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {commFrequencyOptions.map((opt) => {
+                const isActive = currentCommFreq === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: currentInterval, communicationFrequencyMinutes: opt.value })}
+                    disabled={updateReviewMode.isPending}
+                    className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
+                    }`}
+                    data-testid={`button-comm-frequency-${opt.value}`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {currentCommFreq == null && (
+              <p className="text-[10px] text-amber-600 mt-2">
+                Select a frequency to control how often AI sends messages
+              </p>
+            )}
           </div>
         </div>
       )}

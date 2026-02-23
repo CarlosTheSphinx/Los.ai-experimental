@@ -17532,6 +17532,7 @@ Return JSON only:
         aiReviewScheduledTime: projects.aiReviewScheduledTime,
         aiReviewScheduledDays: projects.aiReviewScheduledDays,
         aiReviewTimezone: projects.aiReviewTimezone,
+        aiCommunicationFrequencyMinutes: projects.aiCommunicationFrequencyMinutes,
       }).from(projects).where(eq(projects.id, dealId));
       if (!project) return res.status(404).json({ error: 'Deal not found' });
 
@@ -17541,6 +17542,7 @@ Return JSON only:
         scheduledTime: project.aiReviewScheduledTime || null,
         scheduledDays: project.aiReviewScheduledDays || null,
         timezone: project.aiReviewTimezone || null,
+        communicationFrequencyMinutes: project.aiCommunicationFrequencyMinutes || null,
       });
     } catch (error) {
       console.error('Error getting deal review mode:', error);
@@ -17551,7 +17553,7 @@ Return JSON only:
   app.put('/api/projects/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { aiReviewMode, intervalMinutes, scheduledTime, scheduledDays, timezone } = req.body;
+      const { aiReviewMode, intervalMinutes, scheduledTime, scheduledDays, timezone, communicationFrequencyMinutes } = req.body;
       if (aiReviewMode && !['automatic', 'timed', 'manual'].includes(aiReviewMode)) {
         return res.status(400).json({ error: 'Invalid review mode' });
       }
@@ -17568,6 +17570,7 @@ Return JSON only:
       };
       if (aiReviewMode === 'automatic') {
         updateData.aiReviewIntervalMinutes = intervalMinutes != null ? parseInt(intervalMinutes) : null;
+        updateData.aiCommunicationFrequencyMinutes = communicationFrequencyMinutes != null ? parseInt(communicationFrequencyMinutes) : null;
         updateData.aiReviewScheduledTime = null;
         updateData.aiReviewScheduledDays = null;
       } else if (aiReviewMode === 'timed') {
@@ -17575,11 +17578,13 @@ Return JSON only:
         updateData.aiReviewScheduledDays = scheduledDays || null;
         updateData.aiReviewTimezone = timezone || null;
         updateData.aiReviewIntervalMinutes = null;
+        updateData.aiCommunicationFrequencyMinutes = null;
       } else {
         updateData.aiReviewIntervalMinutes = null;
         updateData.aiReviewScheduledTime = null;
         updateData.aiReviewScheduledDays = null;
         updateData.aiReviewTimezone = null;
+        updateData.aiCommunicationFrequencyMinutes = null;
       }
       await db.update(projects).set(updateData).where(eq(projects.id, dealId));
       res.json({ success: true });
