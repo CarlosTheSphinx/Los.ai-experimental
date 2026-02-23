@@ -481,6 +481,7 @@ export default function AdminPrograms() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
       setShowAddProgram(false);
       resetProgramForm();
       setInlineDocuments([]);
@@ -513,6 +514,7 @@ export default function AdminPrograms() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
       setShowEditProgram(false);
       setSelectedProgram(null);
       resetProgramForm();
@@ -532,6 +534,7 @@ export default function AdminPrograms() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
     },
     onError: () => {
       toast({ title: "Failed to toggle program", variant: "destructive" });
@@ -544,6 +547,7 @@ export default function AdminPrograms() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
       toast({ title: "Program deleted successfully" });
     },
     onError: () => {
@@ -557,6 +561,7 @@ export default function AdminPrograms() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
       toast({ title: "Program duplicated successfully" });
     },
     onError: () => {

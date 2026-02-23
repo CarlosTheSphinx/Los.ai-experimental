@@ -399,6 +399,7 @@ export function ProgramCreationWizard({
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/programs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/programs-with-pricing'] });
       // If we have review rules, save them
       if (reviewRules.length > 0 && data.program?.id) {
         saveReviewRules(data.program.id);
