@@ -422,11 +422,11 @@ function getCategoryIcon(category: string | null) {
 function DealReviewModeControl({ dealId }: { dealId: number }) {
   const { toast } = useToast();
   const reviewModeQuery = useQuery<{
-    dealReviewMode: string | null;
+    dealReviewMode: string;
     dealIntervalMinutes: number | null;
-    lenderDefault: string;
-    lenderDefaultInterval: number;
-    effectiveMode: string;
+    scheduledTime: string | null;
+    scheduledDays: string[] | null;
+    timezone: string | null;
   }>({
     queryKey: ['/api/deals', dealId, 'review-mode'],
     queryFn: async () => {
@@ -437,7 +437,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
   });
 
   const updateReviewMode = useMutation({
-    mutationFn: async (payload: { aiReviewMode: string | null; intervalMinutes?: number | null }) => {
+    mutationFn: async (payload: { aiReviewMode: string; intervalMinutes?: number | null; scheduledTime?: string | null; scheduledDays?: string[] | null; timezone?: string | null }) => {
       const res = await apiRequest('PUT', `/api/deals/${dealId}/review-mode`, payload);
       return res.json();
     },
@@ -450,52 +450,98 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
     },
   });
 
-  const currentMode = reviewModeQuery.data?.dealReviewMode ?? null;
+  const currentMode = reviewModeQuery.data?.dealReviewMode ?? 'manual';
   const currentInterval = reviewModeQuery.data?.dealIntervalMinutes ?? null;
+  const currentScheduledTime = reviewModeQuery.data?.scheduledTime ?? '09:00';
+  const currentScheduledDays = reviewModeQuery.data?.scheduledDays ?? [];
+  const currentTimezone = reviewModeQuery.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const modes = [
-    { value: null, label: "Use Lender Default", icon: <RefreshCw className="h-4 w-4" />, desc: "Falls back to your global setting" },
-    { value: "automatic", label: "Automatic", icon: <Zap className="h-4 w-4" />, desc: "Review immediately on upload" },
-    { value: "timed", label: "Timed / Batch", icon: <Clock className="h-4 w-4" />, desc: "Review on a schedule" },
+    { value: "automatic", label: "Automatic", icon: <Zap className="h-4 w-4" />, desc: "Immediate review on upload" },
+    { value: "timed", label: "Timed / Batch", icon: <Clock className="h-4 w-4" />, desc: "Scheduled review at set times" },
     { value: "manual", label: "Manual", icon: <Hand className="h-4 w-4" />, desc: "Only when you trigger it" },
   ];
 
-  const frequencyOptions = [
-    { value: 15, label: "Every 15 min" },
-    { value: 30, label: "Every 30 min" },
-    { value: 60, label: "Every 1 hour" },
-    { value: 120, label: "Every 2 hours" },
-    { value: 240, label: "Every 4 hours" },
-    { value: 480, label: "Every 8 hours" },
-    { value: 720, label: "Every 12 hours" },
-    { value: 1440, label: "Every 24 hours" },
+  const sweepFrequencyOptions = [
+    { value: 1440, label: "Every day" },
+    { value: 2880, label: "Every 2 days" },
+    { value: 4320, label: "Every 3 days" },
+    { value: 10080, label: "Every week" },
   ];
 
-  const showFrequency = currentMode === "automatic" || currentMode === "timed";
+  const dayOptions = [
+    { value: "mon", label: "Mon" },
+    { value: "tue", label: "Tue" },
+    { value: "wed", label: "Wed" },
+    { value: "thu", label: "Thu" },
+    { value: "fri", label: "Fri" },
+    { value: "sat", label: "Sat" },
+    { value: "sun", label: "Sun" },
+  ];
+
+  const timeOptions: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hStr = h.toString().padStart(2, '0');
+      const mStr = m.toString().padStart(2, '0');
+      timeOptions.push(`${hStr}:${mStr}`);
+    }
+  }
+
+  const formatTime12 = (t: string) => {
+    const [hh, mm] = t.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12}:${mm.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  const toggleDay = (day: string) => {
+    const days = [...currentScheduledDays];
+    const idx = days.indexOf(day);
+    if (idx >= 0) {
+      days.splice(idx, 1);
+    } else {
+      days.push(day);
+    }
+    updateReviewMode.mutate({
+      aiReviewMode: 'timed',
+      scheduledTime: currentScheduledTime,
+      scheduledDays: days,
+      timezone: currentTimezone,
+    });
+  };
 
   return (
     <div className="mt-4 pt-4 border-t" data-testid="deal-review-mode-control">
       <div className="flex items-center gap-2 mb-3">
         <FileSearch className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">AI Document Review Mode</span>
-        {currentMode && (
-          <Badge variant="secondary" className="text-xs">Override Active</Badge>
-        )}
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {modes.map((mode) => {
           const isSelected = currentMode === mode.value;
           return (
             <button
-              key={mode.value || 'default'}
-              onClick={() => updateReviewMode.mutate({ aiReviewMode: mode.value, intervalMinutes: mode.value ? currentInterval : null })}
+              key={mode.value}
+              onClick={() => {
+                if (mode.value === 'timed') {
+                  updateReviewMode.mutate({
+                    aiReviewMode: 'timed',
+                    scheduledTime: currentScheduledTime,
+                    scheduledDays: currentScheduledDays.length > 0 ? currentScheduledDays : ['mon', 'tue', 'wed', 'thu', 'fri'],
+                    timezone: currentTimezone,
+                  });
+                } else {
+                  updateReviewMode.mutate({ aiReviewMode: mode.value, intervalMinutes: mode.value === 'automatic' ? (currentInterval || 1440) : null });
+                }
+              }}
               disabled={updateReviewMode.isPending}
               className={`flex flex-col items-center gap-1 p-3 rounded-lg border text-xs transition-colors ${
                 isSelected
                   ? 'border-primary bg-primary/5 text-primary'
                   : 'border-border hover:border-muted-foreground/30 text-muted-foreground'
               }`}
-              data-testid={`button-review-mode-${mode.value || 'default'}`}
+              data-testid={`button-review-mode-${mode.value}`}
             >
               {mode.icon}
               <span className="font-medium">{mode.label}</span>
@@ -505,42 +551,101 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
         })}
       </div>
 
-      {showFrequency && (
+      {currentMode === "automatic" && (
         <div className="mt-3 p-3 bg-muted/30 rounded-lg border" data-testid="review-frequency-config">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">
-              {currentMode === "automatic" ? "Review Frequency" : "Batch Review Schedule"}
-            </span>
+          <div className="flex items-center gap-2 mb-1">
+            <Zap className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-medium">Immediate Review on Upload</span>
           </div>
-          <p className="text-[11px] text-muted-foreground mb-2">
-            {currentMode === "automatic"
-              ? "How often should the AI check for new documents to review?"
-              : "How often should the AI run batch reviews on pending documents?"}
+          <p className="text-[11px] text-muted-foreground mb-3">
+            Documents are reviewed by AI as soon as they're uploaded. Choose how often the AI also runs a sweep to catch anything missed:
           </p>
+          <span className="text-[11px] font-medium text-muted-foreground mb-1.5 block">Catch-up Sweep Frequency</span>
           <div className="flex flex-wrap gap-1.5">
-            {frequencyOptions.map((opt) => {
+            {sweepFrequencyOptions.map((opt) => {
               const isActive = currentInterval === opt.value;
               return (
                 <button
                   key={opt.value}
-                  onClick={() => updateReviewMode.mutate({ aiReviewMode: currentMode, intervalMinutes: opt.value })}
+                  onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: opt.value })}
                   disabled={updateReviewMode.isPending}
                   className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors ${
                     isActive
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
                   }`}
-                  data-testid={`button-frequency-${opt.value}`}
+                  data-testid={`button-sweep-frequency-${opt.value}`}
                 >
                   {opt.label}
                 </button>
               );
             })}
           </div>
-          {!currentInterval && (
+        </div>
+      )}
+
+      {currentMode === "timed" && (
+        <div className="mt-3 p-3 bg-muted/30 rounded-lg border" data-testid="review-schedule-config">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-medium">Batch Review Schedule</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground mb-3">
+            The AI will review all pending documents at the scheduled time on selected days.
+          </p>
+
+          <div className="mb-3">
+            <span className="text-[11px] font-medium text-muted-foreground mb-1.5 block">Review Time</span>
+            <select
+              value={currentScheduledTime}
+              onChange={(e) => updateReviewMode.mutate({
+                aiReviewMode: 'timed',
+                scheduledTime: e.target.value,
+                scheduledDays: currentScheduledDays,
+                timezone: currentTimezone,
+              })}
+              disabled={updateReviewMode.isPending}
+              className="w-40 px-2.5 py-1.5 rounded-md border text-xs bg-background"
+              data-testid="select-review-time"
+            >
+              {timeOptions.map((t) => (
+                <option key={t} value={t}>{formatTime12(t)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-3">
+            <span className="text-[11px] font-medium text-muted-foreground mb-1.5 block">Review Days</span>
+            <div className="flex flex-wrap gap-1.5">
+              {dayOptions.map((day) => {
+                const isActive = currentScheduledDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    onClick={() => toggleDay(day.value)}
+                    disabled={updateReviewMode.isPending}
+                    className={`w-10 py-1.5 rounded-md border text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
+                    }`}
+                    data-testid={`button-day-${day.value}`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-medium text-muted-foreground mb-1.5 block">Timezone</span>
+            <span className="text-xs text-foreground">{currentTimezone}</span>
+          </div>
+
+          {currentScheduledDays.length === 0 && (
             <p className="text-[10px] text-amber-600 mt-2">
-              Select a frequency to activate {currentMode === "automatic" ? "automatic" : "scheduled"} reviews for this deal
+              Select at least one day to activate scheduled reviews
             </p>
           )}
         </div>

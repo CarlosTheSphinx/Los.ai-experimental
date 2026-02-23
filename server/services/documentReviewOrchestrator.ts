@@ -2,12 +2,12 @@
  * Document Review Orchestrator
  *
  * Handles the full lifecycle after document upload:
- * 1. Checks lender's aiReviewMode (automatic / timed / manual)
- * 2. If automatic → triggers AI review immediately
+ * 1. Checks per-deal aiReviewMode (automatic / timed / manual, default: manual)
+ * 2. If automatic → triggers AI review immediately on upload
  * 3. On review result:
  *    - FAIL → sends instant alerts to borrower/broker per lender config
  *    - PASS → notifies lender/processor for human approval
- * 4. For timed mode → queues document for next batch review cycle
+ * 4. For timed mode → queues document; batch job runs at the scheduled time/days per deal
  */
 
 import { db } from "../db";
@@ -69,9 +69,9 @@ async function getLenderConfig(projectId: number): Promise<{
     .from(lenderReviewConfig)
     .where(eq(lenderReviewConfig.userId, project.lenderId));
 
-  // Per-deal override takes priority over lender config
+  // Per-deal mode only — lender defaults no longer apply for review mode
   const defaults = {
-    reviewMode: project.aiReviewMode || config?.aiReviewMode || "manual",
+    reviewMode: project.aiReviewMode || "manual",
     timedIntervalMinutes: config?.timedReviewIntervalMinutes || 60,
     alerts: {
       failAlertEnabled: config?.failAlertEnabled ?? true,
@@ -326,70 +326,100 @@ async function handleReviewPass(
 }
 
 // ---------------------------------------------------------------------------
-// Timed batch review — called by a cron/scheduler
+// Timed batch review — called by a cron/scheduler (runs every minute)
+// Checks per-deal scheduled time/days and processes pending documents when due
 // ---------------------------------------------------------------------------
+
+function isDueForTimedReview(
+  scheduledTime: string | null,
+  scheduledDays: string[] | null,
+  timezone: string | null
+): boolean {
+  if (!scheduledTime || !scheduledDays || scheduledDays.length === 0) return false;
+
+  const tz = timezone || "America/New_York";
+  const now = new Date();
+
+  const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  let currentDay: number;
+  let currentHour: number;
+  let currentMinute: number;
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const weekday = parts.find((p) => p.type === "weekday")?.value?.toLowerCase()?.substring(0, 3) || "";
+    currentDay = dayMap[weekday] ?? now.getDay();
+    currentHour = parseInt(parts.find((p) => p.type === "hour")?.value || "0");
+    currentMinute = parseInt(parts.find((p) => p.type === "minute")?.value || "0");
+  } catch {
+    currentDay = now.getDay();
+    currentHour = now.getHours();
+    currentMinute = now.getMinutes();
+  }
+
+  const dayNames = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const todayName = dayNames[currentDay];
+  if (!scheduledDays.includes(todayName)) return false;
+
+  const [schedH, schedM] = scheduledTime.split(":").map(Number);
+  return currentHour === schedH && currentMinute === schedM;
+}
 
 export async function runTimedBatchReview(): Promise<{ reviewed: number; errors: number }> {
   let reviewed = 0;
   let errors = 0;
 
   try {
-    // Find all lenders with timed review mode
-    const configs = await db
-      .select()
-      .from(lenderReviewConfig)
-      .where(eq(lenderReviewConfig.aiReviewMode, "timed"));
+    const timedProjects = await db
+      .select({
+        id: projects.id,
+        scheduledTime: projects.aiReviewScheduledTime,
+        scheduledDays: projects.aiReviewScheduledDays,
+        timezone: projects.aiReviewTimezone,
+      })
+      .from(projects)
+      .where(eq(projects.aiReviewMode, "timed"));
 
-    for (const config of configs) {
-      const intervalMs = (config.timedReviewIntervalMinutes || 60) * 60 * 1000;
-      const lastRun = config.lastTimedReviewAt?.getTime() || 0;
-      const now = Date.now();
+    for (const proj of timedProjects) {
+      const days = Array.isArray(proj.scheduledDays) ? (proj.scheduledDays as string[]) : null;
+      if (!isDueForTimedReview(proj.scheduledTime, days, proj.timezone)) continue;
 
-      if (now - lastRun < intervalMs) continue; // not due yet
+      const pendingDocs = await db
+        .select()
+        .from(dealDocuments)
+        .where(
+          and(
+            eq(dealDocuments.dealId, proj.id),
+            eq(dealDocuments.aiReviewStatus, "pending")
+          )
+        );
 
-      // Find all pending documents for this lender's deals
-      const lenderProjects = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(eq(projects.userId, config.userId));
-
-      for (const proj of lenderProjects) {
-        const pendingDocs = await db
-          .select()
-          .from(dealDocuments)
-          .where(
-            and(
-              eq(dealDocuments.dealId, proj.id),
-              eq(dealDocuments.aiReviewStatus, "pending")
-            )
-          );
-
-        for (const doc of pendingDocs) {
-          try {
-            const fullConfig = await getLenderConfig(proj.id);
-            if (fullConfig) {
-              await triggerAiReview(
-                {
-                  documentId: doc.id,
-                  projectId: proj.id,
-                  uploaderType: "borrower",
-                },
-                fullConfig
-              );
-              reviewed++;
-            }
-          } catch (err: any) {
-            console.error(`[DocReviewOrch] Timed review error for doc ${doc.id}:`, err.message);
-            errors++;
+      for (const doc of pendingDocs) {
+        try {
+          const fullConfig = await getLenderConfig(proj.id);
+          if (fullConfig) {
+            await triggerAiReview(
+              {
+                documentId: doc.id,
+                projectId: proj.id,
+                uploaderType: "borrower",
+              },
+              fullConfig
+            );
+            reviewed++;
           }
+        } catch (err: any) {
+          console.error(`[DocReviewOrch] Timed review error for doc ${doc.id}:`, err.message);
+          errors++;
         }
       }
-
-      // Update last run timestamp
-      await db
-        .update(lenderReviewConfig)
-        .set({ lastTimedReviewAt: new Date() })
-        .where(eq(lenderReviewConfig.id, config.id));
     }
   } catch (err: any) {
     console.error("[DocReviewOrch] Timed batch review error:", err.message);

@@ -501,8 +501,11 @@ export const projects = pgTable("projects", {
   ),
   driveSyncError: text("drive_sync_error"),
 
-  aiReviewMode: varchar("ai_review_mode", { length: 20 }),
+  aiReviewMode: varchar("ai_review_mode", { length: 20 }).default("manual"),
   aiReviewIntervalMinutes: integer("ai_review_interval_minutes"),
+  aiReviewScheduledTime: varchar("ai_review_scheduled_time", { length: 10 }),
+  aiReviewScheduledDays: jsonb("ai_review_scheduled_days"),
+  aiReviewTimezone: varchar("ai_review_timezone", { length: 50 }),
 });
 
 // Project stages/milestones

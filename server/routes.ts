@@ -17529,21 +17529,18 @@ Return JSON only:
       const [project] = await db.select({
         aiReviewMode: projects.aiReviewMode,
         aiReviewIntervalMinutes: projects.aiReviewIntervalMinutes,
+        aiReviewScheduledTime: projects.aiReviewScheduledTime,
+        aiReviewScheduledDays: projects.aiReviewScheduledDays,
+        aiReviewTimezone: projects.aiReviewTimezone,
       }).from(projects).where(eq(projects.id, dealId));
       if (!project) return res.status(404).json({ error: 'Deal not found' });
 
-      const lenderId = req.user!.id;
-      const [lenderConfig] = await db.select({
-        aiReviewMode: lenderReviewConfig.aiReviewMode,
-        timedReviewIntervalMinutes: lenderReviewConfig.timedReviewIntervalMinutes,
-      }).from(lenderReviewConfig).where(eq(lenderReviewConfig.userId, lenderId));
-
       res.json({
-        dealReviewMode: project.aiReviewMode || null,
+        dealReviewMode: project.aiReviewMode || 'manual',
         dealIntervalMinutes: project.aiReviewIntervalMinutes || null,
-        lenderDefault: lenderConfig?.aiReviewMode || 'manual',
-        lenderDefaultInterval: lenderConfig?.timedReviewIntervalMinutes || 60,
-        effectiveMode: project.aiReviewMode || lenderConfig?.aiReviewMode || 'manual',
+        scheduledTime: project.aiReviewScheduledTime || null,
+        scheduledDays: project.aiReviewScheduledDays || null,
+        timezone: project.aiReviewTimezone || null,
       });
     } catch (error) {
       console.error('Error getting deal review mode:', error);
@@ -17554,14 +17551,37 @@ Return JSON only:
   app.put('/api/projects/:dealId/review-mode', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { aiReviewMode, intervalMinutes } = req.body;
+      const { aiReviewMode, intervalMinutes, scheduledTime, scheduledDays, timezone } = req.body;
       if (aiReviewMode && !['automatic', 'timed', 'manual'].includes(aiReviewMode)) {
         return res.status(400).json({ error: 'Invalid review mode' });
       }
-      await db.update(projects).set({
-        aiReviewMode: aiReviewMode || null,
-        aiReviewIntervalMinutes: intervalMinutes != null ? parseInt(intervalMinutes) : null,
-      }).where(eq(projects.id, dealId));
+      if (aiReviewMode === 'timed') {
+        if (scheduledTime && !/^\d{2}:\d{2}$/.test(scheduledTime)) {
+          return res.status(400).json({ error: 'Invalid scheduled time format (expected HH:MM)' });
+        }
+        if (scheduledDays && (!Array.isArray(scheduledDays) || scheduledDays.some((d: string) => !['mon','tue','wed','thu','fri','sat','sun'].includes(d)))) {
+          return res.status(400).json({ error: 'Invalid scheduled days' });
+        }
+      }
+      const updateData: Record<string, any> = {
+        aiReviewMode: aiReviewMode || 'manual',
+      };
+      if (aiReviewMode === 'automatic') {
+        updateData.aiReviewIntervalMinutes = intervalMinutes != null ? parseInt(intervalMinutes) : null;
+        updateData.aiReviewScheduledTime = null;
+        updateData.aiReviewScheduledDays = null;
+      } else if (aiReviewMode === 'timed') {
+        updateData.aiReviewScheduledTime = scheduledTime || null;
+        updateData.aiReviewScheduledDays = scheduledDays || null;
+        updateData.aiReviewTimezone = timezone || null;
+        updateData.aiReviewIntervalMinutes = null;
+      } else {
+        updateData.aiReviewIntervalMinutes = null;
+        updateData.aiReviewScheduledTime = null;
+        updateData.aiReviewScheduledDays = null;
+        updateData.aiReviewTimezone = null;
+      }
+      await db.update(projects).set(updateData).where(eq(projects.id, dealId));
       res.json({ success: true });
     } catch (error) {
       console.error('Error updating deal review mode:', error);
