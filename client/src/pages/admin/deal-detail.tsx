@@ -43,6 +43,7 @@ import {
   Clock,
   Upload,
   AlertCircle,
+  X,
   XCircle,
   FileCheck,
   Folder,
@@ -1647,6 +1648,21 @@ export default function AdminDealDetail() {
     },
   });
 
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (docId: number) => {
+      const res = await apiRequest('DELETE', `/api/admin/deals/${dealId}/documents/${docId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
+      toast({ title: "Document removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove document", variant: "destructive" });
+    },
+  });
+
   const deal = data?.deal;
   const documents = projectDetailData?.documents || data?.documents || [];
 
@@ -3121,6 +3137,22 @@ export default function AdminDealDetail() {
                                   {(doc.status === 'rejected' || doc.status === 'not_applicable' || doc.status === 'approved') && (
                                     <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateDocumentStatus.mutate({ docId: doc.id, status: 'pending' }); }} disabled={updateDocumentStatus.isPending} data-testid={`button-reset-${doc.id}`}>Reset</Button>
                                   )}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Remove "${doc.documentName}" from this deal?`)) {
+                                        deleteDocumentMutation.mutate(doc.id);
+                                      }
+                                    }}
+                                    disabled={deleteDocumentMutation.isPending}
+                                    data-testid={`button-remove-doc-${doc.id}`}
+                                    title="Remove document"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
                               </div>
                               {doc.files && doc.files.length > 0 && (
@@ -3261,6 +3293,22 @@ export default function AdminDealDetail() {
                           <CheckCircle2 className="h-5 w-5 text-success" data-testid={`doc-approved-check-${doc.id}`} />
                         )}
                         {getDocumentStatusBadge(doc.status)}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Remove "${doc.documentName}" from this deal?`)) {
+                              deleteDocumentMutation.mutate(doc.id);
+                            }
+                          }}
+                          disabled={deleteDocumentMutation.isPending}
+                          data-testid={`button-remove-doc-${doc.id}`}
+                          title="Remove document"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   ))}

@@ -7512,6 +7512,28 @@ export async function registerRoutes(
   });
 
 
+  app.delete('/api/admin/deals/:dealId/documents/:docId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const dealId = parseInt(req.params.dealId);
+      const docId = parseInt(req.params.docId);
+
+      const [doc] = await db.select().from(dealDocuments)
+        .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, dealId)))
+        .limit(1);
+      if (!doc) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      await db.delete(dealDocumentFiles).where(eq(dealDocumentFiles.documentId, docId));
+      await db.delete(dealDocuments).where(eq(dealDocuments.id, docId));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete deal document error:', error);
+      res.status(500).json({ error: 'Failed to delete document' });
+    }
+  });
+
   // Override/action on a specific AI review finding
   app.patch('/api/admin/reviews/:reviewId/findings/:findingIndex/override', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
