@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -56,12 +55,14 @@ import {
   Download,
   FileUp,
   Paperclip,
+  Layers,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import ProgramWorkflowEditor from "@/components/ProgramWorkflowEditor";
 import CreditPoliciesTab from "@/components/CreditPoliciesTab";
+import { PricingConfiguration } from "@/components/onboarding/PricingConfiguration";
 
 interface LoanProgram {
   id: number;
@@ -301,7 +302,7 @@ function getDefaultQuoteFields(loanType: string): QuoteFormField[] {
 
 export default function AdminPrograms() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("programs");
+  const [currentStep, setCurrentStep] = useState(1);
   const [selectedProgram, setSelectedProgram] = useState<LoanProgram | null>(null);
   const [showAddProgram, setShowAddProgram] = useState(false);
   const [showEditProgram, setShowEditProgram] = useState(false);
@@ -1089,28 +1090,48 @@ export default function AdminPrograms() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="programs" className="gap-2" data-testid="tab-programs">
-            <Settings2 className="h-4 w-4" />
-            Loan Programs
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="gap-2" data-testid="tab-documents">
-            <FileText className="h-4 w-4" />
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="tasks" className="gap-2" data-testid="tab-tasks">
-            <ListChecks className="h-4 w-4" />
-            Tasks
-          </TabsTrigger>
-          <TabsTrigger value="credit-policies" className="gap-2" data-testid="tab-credit-policies">
-            <ShieldCheck className="h-4 w-4" />
-            Credit Policies
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="lg:w-64 flex-shrink-0">
+          <Card>
+            <CardContent className="p-4 space-y-1">
+              {[
+                { id: 1, label: 'Loan Programs', icon: Layers },
+                { id: 2, label: 'Pricing', icon: DollarSign },
+                { id: 3, label: 'Documents', icon: FileText },
+                { id: 4, label: 'Tasks', icon: ListChecks },
+                { id: 5, label: 'Credit Policies', icon: ShieldCheck },
+              ].map((step) => {
+                const StepIcon = step.icon;
+                const isActive = currentStep === step.id;
+                return (
+                  <button
+                    key={step.id}
+                    onClick={() => setCurrentStep(step.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-md text-left transition-colors ${
+                      isActive
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'hover:bg-muted text-muted-foreground'
+                    }`}
+                    data-testid={`button-step-${step.id}`}
+                  >
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isActive
+                        ? 'bg-primary/20 text-primary'
+                        : 'bg-muted text-muted-foreground'
+                    }`}>
+                      <span className="text-sm font-medium">{step.id}</span>
+                    </div>
+                    <span className="text-sm">{step.label}</span>
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Loan Programs Tab */}
-        <TabsContent value="programs" className="space-y-4">
+        <div className="flex-1 min-w-0">
+          {currentStep === 1 && (
+          <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Loan Programs</h2>
@@ -2177,10 +2198,15 @@ export default function AdminPrograms() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
+          </div>
+          )}
 
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="space-y-4">
+          {currentStep === 2 && (
+            <PricingConfiguration hideNavigation />
+          )}
+
+          {currentStep === 3 && (
+          <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Document Templates</h2>
@@ -2326,10 +2352,11 @@ export default function AdminPrograms() {
               })}
             </div>
           )}
-        </TabsContent>
+          </div>
+          )}
 
-        {/* Tasks Tab */}
-        <TabsContent value="tasks" className="space-y-4">
+          {currentStep === 4 && (
+          <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Task Templates</h2>
@@ -2397,13 +2424,16 @@ export default function AdminPrograms() {
               })}
             </div>
           )}
-        </TabsContent>
+          </div>
+          )}
 
-        {/* Credit Policies Tab */}
-        <TabsContent value="credit-policies" className="space-y-4">
-          <CreditPoliciesTab />
-        </TabsContent>
-      </Tabs>
+          {currentStep === 5 && (
+            <div className="space-y-4">
+              <CreditPoliciesTab />
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Edit Program Dialog */}
       <Dialog open={showEditProgram} onOpenChange={setShowEditProgram}>

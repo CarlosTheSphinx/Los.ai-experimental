@@ -94,9 +94,11 @@ const conditionOptions = [
 export function PricingConfiguration({
   onNext,
   onBack,
+  hideNavigation = false,
 }: {
-  onNext: () => void;
-  onBack: () => void;
+  onNext?: () => void;
+  onBack?: () => void;
+  hideNavigation?: boolean;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -678,22 +680,23 @@ export function PricingConfiguration({
         </CardContent>
       </Card>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between gap-4">
-        <Button variant="outline" onClick={onBack}>
-          <ChevronLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={onNext} className="text-muted-foreground">
-            {pricingMode === 'none' ? 'Skip for now' : 'Continue'}
+      {!hideNavigation && (
+        <div className="flex items-center justify-between gap-4">
+          <Button variant="outline" onClick={onBack}>
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Back
           </Button>
-          <Button onClick={onNext}>
-            Next: Communications & AI
-            <ChevronRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={onNext} className="text-muted-foreground">
+              {pricingMode === 'none' ? 'Skip for now' : 'Continue'}
+            </Button>
+            <Button onClick={onNext}>
+              Next: Communications & AI
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
