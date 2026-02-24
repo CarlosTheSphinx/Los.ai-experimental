@@ -47,4 +47,4 @@ expertMode = true
 [userenv]
 
 [userenv.shared]
-APP_URL = "https://code-paste.replit.app"
+BASE_URL = "https://code-paste.replit.app"
