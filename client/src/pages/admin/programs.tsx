@@ -61,7 +61,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import ProgramWorkflowEditor from "@/components/ProgramWorkflowEditor";
-import CreditPoliciesTab from "@/components/CreditPoliciesTab";
 import { PricingConfiguration } from "@/components/onboarding/PricingConfiguration";
 import { ProgramCreationWizard } from "@/components/onboarding/ProgramCreationWizard";
 
@@ -312,8 +311,6 @@ export default function AdminPrograms() {
   const [showQuickAddSection, setShowQuickAddSection] = useState(true);
   const [selectedStandardDocs, setSelectedStandardDocs] = useState<Set<string>>(new Set());
   const [showAddTask, setShowAddTask] = useState(false);
-  const [collapsedDocPrograms, setCollapsedDocPrograms] = useState<Set<number>>(new Set());
-  const [collapsedTaskPrograms, setCollapsedTaskPrograms] = useState<Set<number>>(new Set());
   const [workflowEditorProgram, setWorkflowEditorProgram] = useState<LoanProgram | null>(null);
 
   // Inline document/task templates for program creation
@@ -1097,9 +1094,6 @@ export default function AdminPrograms() {
               {[
                 { id: 1, label: 'Loan Programs', icon: Layers },
                 { id: 2, label: 'Pricing', icon: DollarSign },
-                { id: 3, label: 'Documents', icon: FileText },
-                { id: 4, label: 'Tasks', icon: ListChecks },
-                { id: 5, label: 'Credit Policies', icon: ShieldCheck },
               ].map((step) => {
                 const StepIcon = step.icon;
                 const isActive = currentStep === step.id;
@@ -1338,233 +1332,6 @@ export default function AdminPrograms() {
             <PricingConfiguration hideNavigation />
           )}
 
-          {currentStep === 3 && (
-          <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">Document Templates</h2>
-              <p className="text-muted-foreground text-sm">
-                Configure required documents for each loan program
-              </p>
-            </div>
-          </div>
-
-          {!programs || programs.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="font-semibold text-lg mb-2">No Programs Available</h3>
-                <p className="text-muted-foreground">
-                  Create a loan program first to add document templates.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {programs.map((program) => {
-                const isCollapsed = collapsedDocPrograms.has(program.id);
-                return (
-                  <Card key={program.id}>
-                    <CardContent className="p-6">
-                      <div
-                        className="flex items-center justify-between cursor-pointer select-none"
-                        onClick={() => {
-                          setCollapsedDocPrograms(prev => {
-                            const next = new Set(prev);
-                            if (next.has(program.id)) next.delete(program.id);
-                            else next.add(program.id);
-                            return next;
-                          });
-                        }}
-                        data-testid={`toggle-doc-section-${program.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {isCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
-                          <h3 className="font-semibold">{program.name}</h3>
-                          <Badge variant="outline">
-                            {program.documentCount || 0} documents
-                          </Badge>
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProgram(program);
-                            setShowAddDocument(true);
-                          }}
-                          data-testid={`button-add-doc-${program.id}`}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Document
-                        </Button>
-                      </div>
-                      {!isCollapsed && (
-                        <div className="mt-4 space-y-4">
-                          {/* Quick Add Standard Documents Section */}
-                          <div className="border rounded-md bg-muted/30 p-4">
-                            <div
-                              className="flex items-center gap-2 cursor-pointer select-none"
-                              onClick={() => setShowQuickAddSection(!showQuickAddSection)}
-                            >
-                              {showQuickAddSection ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                              <BookTemplate className="h-4 w-4" />
-                              <span className="font-medium text-sm">Quick Add Standard Documents</span>
-                            </div>
-                            {showQuickAddSection && (
-                              <div className="mt-4 space-y-4">
-                                {standardDocuments.map((categoryGroup) => {
-                                  const existingDocs = programDetails?.documents || [];
-                                  const existingNames = new Set(existingDocs.map(d => d.documentName));
-                                  return (
-                                    <div key={categoryGroup.category}>
-                                      <h4 className="text-sm font-medium mb-2">{categoryGroup.categoryLabel}</h4>
-                                      <div className="space-y-2 pl-2">
-                                        {categoryGroup.documents.map((doc) => {
-                                          const isAdded = existingNames.has(doc.name);
-                                          const isSelected = selectedStandardDocs.has(doc.name);
-                                          return (
-                                            <div key={doc.id} className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id={`std-doc-${doc.id}`}
-                                                checked={isSelected}
-                                                disabled={isAdded}
-                                                onChange={(e) => {
-                                                  const newSelected = new Set(selectedStandardDocs);
-                                                  if (e.target.checked) {
-                                                    newSelected.add(doc.name);
-                                                  } else {
-                                                    newSelected.delete(doc.name);
-                                                  }
-                                                  setSelectedStandardDocs(newSelected);
-                                                }}
-                                                className="h-4 w-4 rounded"
-                                              />
-                                              <label
-                                                htmlFor={`std-doc-${doc.id}`}
-                                                className={`text-sm cursor-pointer flex items-center gap-2 ${isAdded ? 'text-muted-foreground line-through' : ''}`}
-                                              >
-                                                {doc.name}
-                                                {isAdded && <Check className="h-3 w-3 text-green-600" />}
-                                              </label>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                                <Button
-                                  size="sm"
-                                  className="w-full mt-2"
-                                  onClick={() => {
-                                    if (selectedStandardDocs.size > 0) {
-                                      bulkCreateDocuments.mutate({ programId: program.id, docNames: Array.from(selectedStandardDocs) });
-                                    }
-                                  }}
-                                  disabled={bulkCreateDocuments.isPending || selectedStandardDocs.size === 0}
-                                >
-                                  {bulkCreateDocuments.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
-                                  Add Selected ({selectedStandardDocs.size})
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Document List */}
-                          <DocumentList programId={program.id} onDelete={(docId: number) => deleteDocument.mutate({ programId: program.id, docId })} onEdit={loadDocumentForEditing} />
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-          </div>
-          )}
-
-          {currentStep === 4 && (
-          <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">Task Templates</h2>
-              <p className="text-muted-foreground text-sm">
-                Configure workflow tasks for each loan program
-              </p>
-            </div>
-          </div>
-
-          {!programs || programs.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <ListChecks className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="font-semibold text-lg mb-2">No Programs Available</h3>
-                <p className="text-muted-foreground">
-                  Create a loan program first to add task templates.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {programs.map((program) => {
-                const isCollapsed = collapsedTaskPrograms.has(program.id);
-                return (
-                  <Card key={program.id}>
-                    <CardContent className="p-6">
-                      <div
-                        className="flex items-center justify-between cursor-pointer select-none"
-                        onClick={() => {
-                          setCollapsedTaskPrograms(prev => {
-                            const next = new Set(prev);
-                            if (next.has(program.id)) next.delete(program.id);
-                            else next.add(program.id);
-                            return next;
-                          });
-                        }}
-                        data-testid={`toggle-task-section-${program.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {isCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
-                          <h3 className="font-semibold">{program.name}</h3>
-                          <Badge variant="outline">{program.taskCount || 0} tasks</Badge>
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProgram(program);
-                            setShowAddTask(true);
-                          }}
-                          data-testid={`button-add-task-${program.id}`}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Task
-                        </Button>
-                      </div>
-                      {!isCollapsed && (
-                        <div className="mt-4">
-                          <TaskList programId={program.id} onDelete={(taskId: number) => deleteTask.mutate({ programId: program.id, taskId })} />
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-          </div>
-          )}
-
-          {currentStep === 5 && (
-            <div className="space-y-4">
-              <CreditPoliciesTab />
-            </div>
-          )}
         </div>
       </div>
 
