@@ -64,10 +64,15 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
   const [basePointsValue, setBasePointsValue] = useState(programBasePoints);
   const [brokerPointsValue, setBrokerPointsValue] = useState(0);
 
-  // YSP state
-  const [yspValue, setYspValue] = useState(
-    programYspEnabled && !programYspBrokerCanToggle ? programYspFixedAmount : 0
+  // YSP state — when broker can toggle, they control an additional amount on top of fixed
+  const [brokerYspValue, setBrokerYspValue] = useState(0);
+  const [lenderYspOverride, setLenderYspOverride] = useState(
+    programYspEnabled ? programYspFixedAmount : programYspFixedAmount
   );
+
+  const totalYspValue = programYspBrokerCanToggle
+    ? programYspFixedAmount + brokerYspValue
+    : (isLender ? lenderYspOverride : programYspFixedAmount);
 
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [customerFirstName, setCustomerFirstName] = useState("");
@@ -106,8 +111,8 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
   const totalPointsAmount = (maxLoanByLTC * totalPoints) / 100;
 
   // YSP calculations
-  const yspDollarAmount = (maxLoanByLTC * yspValue) / 100;
-  const yspRateImpactEstimate = yspValue * 0.25;
+  const yspDollarAmount = (maxLoanByLTC * totalYspValue) / 100;
+  const yspRateImpactEstimate = totalYspValue * 0.25;
 
   // Broker commission = additional points + YSP
   const brokerCommission = brokerPointsAmount + yspDollarAmount;
@@ -125,7 +130,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
         interestRate: formattedRate,
         pointsCharged: totalPoints,
         programId: programId || null,
-        yspAmount: yspValue,
+        yspAmount: totalYspValue,
         yspRateImpact: yspRateImpactEstimate,
         yspDollarAmount,
         basePointsCharged: basePointsValue,
@@ -246,7 +251,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                 </span>
               )}
             </div>
-            {programYspEnabled && yspValue > 0 && (
+            {programYspEnabled && totalYspValue > 0 && (
               <div className="mt-2 text-sm text-warning">
                 +{yspRateImpactEstimate.toFixed(3)}% YSP rate impact
               </div>
@@ -306,7 +311,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <Label className="text-foreground font-medium">
-                    Base Lender Points
+                    Automatic Points Included
                   </Label>
                   <span className="text-lg font-bold text-foreground">{basePointsValue.toFixed(2)}</span>
                 </div>
@@ -329,7 +334,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                   </>
                 ) : (
                   <div className="bg-background rounded-lg p-3 border border-border text-sm text-muted-foreground">
-                    Fixed by lender — {programBasePoints.toFixed(2)} points
+                    Automatic points — {programBasePoints.toFixed(2)} points
                     <span className="ml-2 text-foreground font-medium">
                       (${basePointsAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })})
                     </span>
@@ -385,7 +390,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
               {/* Points Summary */}
               <div className="bg-background rounded-lg p-4 border border-border space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Base Lender Points</span>
+                  <span className="text-muted-foreground">Automatic Points Included</span>
                   <span className="font-medium">{basePointsValue.toFixed(2)} (${basePointsAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })})</span>
                 </div>
                 {programBrokerPointsEnabled && (
@@ -408,15 +413,25 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                       <TrendingUp className="w-3 h-3" />
                       YSP (Yield Spread Premium)
                     </Label>
-                    <span className="text-lg font-bold text-foreground">{yspValue.toFixed(3)}%</span>
+                    <span className="text-lg font-bold text-foreground">{totalYspValue.toFixed(3)}%</span>
                   </div>
 
-                  {/* Lender always gets full slider; Broker only if allowed */}
-                  {(isLender || programYspBrokerCanToggle) ? (
+                  {programYspFixedAmount > 0 && (
+                    <div className="flex items-center justify-between bg-muted/40 rounded-lg p-3 border mb-3">
+                      <span className="text-sm text-muted-foreground">Fixed YSP (included)</span>
+                      <span className="font-bold">{programYspFixedAmount}%</span>
+                    </div>
+                  )}
+
+                  {isLender && !programYspBrokerCanToggle ? (
                     <div className="bg-background rounded-lg p-4 border border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm">YSP Override</Label>
+                        <span className="font-bold">{lenderYspOverride.toFixed(3)}%</span>
+                      </div>
                       <Slider
-                        value={[yspValue]}
-                        onValueChange={([val]) => setYspValue(val)}
+                        value={[lenderYspOverride]}
+                        onValueChange={([val]) => setLenderYspOverride(val)}
                         min={programYspMin}
                         max={programYspMax}
                         step={programYspStep}
@@ -424,17 +439,42 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-2">
                         <span>{programYspMin}%</span>
-                        <span>{(programYspMax / 2).toFixed(1)}%</span>
                         <span>{programYspMax}%</span>
                       </div>
                     </div>
-                  ) : (
-                    <div className="bg-background rounded-lg p-3 border border-border text-sm text-muted-foreground">
-                      Fixed YSP: {programYspFixedAmount.toFixed(2)}% (set by lender)
+                  ) : (isLender || programYspBrokerCanToggle) ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="text-sm">
+                          {isLender ? 'Broker YSP Addition' : 'Your Additional YSP'}
+                        </Label>
+                        <span className="font-bold">{brokerYspValue.toFixed(3)}%</span>
+                      </div>
+                      <div className="bg-background rounded-lg p-4 border border-border">
+                        <Slider
+                          value={[brokerYspValue]}
+                          onValueChange={([val]) => setBrokerYspValue(val)}
+                          min={programYspMin}
+                          max={programYspMax}
+                          step={programYspStep}
+                          className="w-full"
+                          data-testid="slider-broker-ysp"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                          <span>+{programYspMin}%</span>
+                          <span>+{programYspMax}%</span>
+                        </div>
+                      </div>
+                      {brokerYspValue > 0 && (
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg p-2 border text-sm">
+                          <span className="text-muted-foreground">Total YSP</span>
+                          <span className="font-bold">{totalYspValue.toFixed(3)}% (fixed {programYspFixedAmount}% + {brokerYspValue.toFixed(3)}%)</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
 
-                  {yspValue > 0 && (
+                  {totalYspValue > 0 && (
                     <div className="mt-3 p-3 bg-warning/10 rounded-lg border border-warning/20 space-y-1">
                       <div className="flex items-center gap-1 text-warning text-sm font-medium">
                         <Info className="w-3 h-3" />
@@ -461,7 +501,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                     ${brokerCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
-                {programYspEnabled && yspValue > 0 && (
+                {programYspEnabled && totalYspValue > 0 && (
                   <div className="text-xs text-muted-foreground">
                     Additional points: ${brokerPointsAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} + YSP: ${yspDollarAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>

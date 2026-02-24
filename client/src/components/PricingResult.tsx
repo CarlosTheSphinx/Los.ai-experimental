@@ -69,10 +69,15 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   const [basePointsValue, setBasePointsValue] = useState(programBasePoints);
   const [brokerPointsValue, setBrokerPointsValue] = useState(0);
 
-  // YSP state
-  const [yspValue, setYspValue] = useState(
-    programYspEnabled && !programYspBrokerCanToggle ? programYspFixedAmount : 0
+  // YSP state — when broker can toggle, they control an additional amount on top of fixed
+  const [brokerYspValue, setBrokerYspValue] = useState(0);
+  const [lenderYspOverride, setLenderYspOverride] = useState(
+    programYspEnabled && !programYspBrokerCanToggle ? programYspFixedAmount : programYspFixedAmount
   );
+
+  const totalYspValue = programYspBrokerCanToggle
+    ? programYspFixedAmount + brokerYspValue
+    : (isLender ? lenderYspOverride : programYspFixedAmount);
 
   // Computed values
   const loanAmount = formData?.loanAmount || 0;
@@ -86,10 +91,8 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   const totalRevenue = totalPointsAmount + tpoPremiumAmount;
 
   // YSP calculations
-  const yspDollarAmount = (loanAmount * yspValue) / 100;
-  // YSP rate impact is approximate — the actual impact depends on the pricing ruleset tiers
-  // We use a simple linear estimate here: ~0.25% rate per 1% YSP
-  const yspRateImpactEstimate = yspValue * 0.25;
+  const yspDollarAmount = (loanAmount * totalYspValue) / 100;
+  const yspRateImpactEstimate = totalYspValue * 0.25;
 
   // Commission = broker's additional points + YSP dollar amount
   const brokerCommission = brokerPointsAmount + yspDollarAmount;
@@ -109,7 +112,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
         pointsCharged: totalPointsCharged,
         programId: programId || null,
         // New YSP + split points fields
-        yspAmount: yspValue,
+        yspAmount: totalYspValue,
         yspRateImpact: yspRateImpactEstimate,
         yspDollarAmount,
         basePointsCharged: basePointsValue,
@@ -186,7 +189,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
         <div className="text-5xl font-extrabold text-primary tracking-tight">
           {formattedRate}
         </div>
-        {programYspEnabled && yspValue > 0 && (
+        {programYspEnabled && totalYspValue > 0 && (
           <p className="text-xs text-amber-600 font-medium">
             +{yspRateImpactEstimate.toFixed(3)}% YSP rate impact (est.)
           </p>
@@ -304,7 +307,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                   {isLender ? (
                     <>
                       <div className="flex items-center justify-between">
-                        <Label className="text-sm">Base Lender Points</Label>
+                        <Label className="text-sm">Automatic Points Included</Label>
                         <div className="flex items-center gap-2">
                           <Input
                             type="number"
@@ -340,7 +343,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                     </>
                   ) : (
                     <div className="flex items-center justify-between bg-muted/40 rounded-lg p-3 border">
-                      <span className="text-sm text-muted-foreground">Lender Base Points</span>
+                      <span className="text-sm text-muted-foreground">Automatic Points Included</span>
                       <span className="font-bold text-lg">{programBasePoints}</span>
                     </div>
                   )}
@@ -405,92 +408,100 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                     YSP (Yield Spread Premium)
                   </Label>
 
-                  {/* Lender always gets the full slider */}
-                  {isLender ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm">YSP Amount</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min={programYspMin}
-                            max={programYspMax}
-                            step={programYspStep}
-                            value={yspValue}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              if (!isNaN(val) && val >= programYspMin && val <= programYspMax) {
-                                setYspValue(val);
-                              }
-                            }}
-                            className="w-20 text-center font-bold"
-                          />
-                          <span className="text-sm text-muted-foreground">%</span>
-                        </div>
-                      </div>
-                      <div className="bg-background rounded-lg p-3 border border-border">
-                        <Slider
-                          value={[yspValue]}
-                          onValueChange={([val]) => setYspValue(val)}
-                          min={programYspMin}
-                          max={programYspMax}
-                          step={programYspStep}
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                          <span>{programYspMin}%</span>
-                          <span>{programYspMax}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : programYspBrokerCanToggle ? (
-                    /* Broker CAN toggle — show slider within bounds */
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm">YSP Amount</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min={programYspMin}
-                            max={programYspMax}
-                            step={programYspStep}
-                            value={yspValue}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              if (!isNaN(val) && val >= programYspMin && val <= programYspMax) {
-                                setYspValue(val);
-                              }
-                            }}
-                            className="w-20 text-center font-bold"
-                          />
-                          <span className="text-sm text-muted-foreground">%</span>
-                        </div>
-                      </div>
-                      <div className="bg-background rounded-lg p-3 border border-border">
-                        <Slider
-                          value={[yspValue]}
-                          onValueChange={([val]) => setYspValue(val)}
-                          min={programYspMin}
-                          max={programYspMax}
-                          step={programYspStep}
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                          <span>{programYspMin}%</span>
-                          <span>{programYspMax}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Broker can NOT toggle — show read-only fixed amount */
+                  {programYspFixedAmount > 0 && (
                     <div className="flex items-center justify-between bg-muted/40 rounded-lg p-3 border">
-                      <span className="text-sm text-muted-foreground">Fixed YSP</span>
+                      <span className="text-sm text-muted-foreground">Fixed YSP (included)</span>
                       <span className="font-bold">{programYspFixedAmount}%</span>
                     </div>
                   )}
 
-                  {/* YSP live info */}
-                  {yspValue > 0 && (
+                  {isLender && !programYspBrokerCanToggle ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm">YSP Override</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={programYspMin}
+                            max={programYspMax}
+                            step={programYspStep}
+                            value={lenderYspOverride}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val) && val >= programYspMin && val <= programYspMax) {
+                                setLenderYspOverride(val);
+                              }
+                            }}
+                            className="w-20 text-center font-bold"
+                          />
+                          <span className="text-sm text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                      <div className="bg-background rounded-lg p-3 border border-border">
+                        <Slider
+                          value={[lenderYspOverride]}
+                          onValueChange={([val]) => setLenderYspOverride(val)}
+                          min={programYspMin}
+                          max={programYspMax}
+                          step={programYspStep}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>{programYspMin}%</span>
+                          <span>{programYspMax}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (isLender || programYspBrokerCanToggle) ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm">
+                          {isLender ? 'Broker YSP Addition' : 'Your Additional YSP'}
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={programYspMin}
+                            max={programYspMax}
+                            step={programYspStep}
+                            value={brokerYspValue}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val) && val >= programYspMin && val <= programYspMax) {
+                                setBrokerYspValue(val);
+                              }
+                            }}
+                            className="w-20 text-center font-bold"
+                            data-testid="input-broker-ysp"
+                          />
+                          <span className="text-sm text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                      <div className="bg-background rounded-lg p-3 border border-border">
+                        <Slider
+                          value={[brokerYspValue]}
+                          onValueChange={([val]) => setBrokerYspValue(val)}
+                          min={programYspMin}
+                          max={programYspMax}
+                          step={programYspStep}
+                          className="w-full"
+                          data-testid="slider-broker-ysp"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>+{programYspMin}%</span>
+                          <span>+{programYspMax}%</span>
+                        </div>
+                      </div>
+                      {brokerYspValue > 0 && (
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg p-2 border text-sm">
+                          <span className="text-muted-foreground">Total YSP</span>
+                          <span className="font-bold">{totalYspValue.toFixed(3)}% (fixed {programYspFixedAmount}% + {brokerYspValue.toFixed(3)}%)</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {totalYspValue > 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1 text-sm">
                       <div className="flex justify-between">
                         <span className="text-amber-800">Est. Rate Impact</span>
@@ -520,7 +531,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
 
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Base Points ({basePointsValue.toFixed(3)} pts)</span>
+                    <span className="text-muted-foreground">Automatic Points ({basePointsValue.toFixed(3)} pts)</span>
                     <span className="font-medium">
                       ${basePointsAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
@@ -533,9 +544,9 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                       </span>
                     </div>
                   )}
-                  {programYspEnabled && yspValue > 0 && (
+                  {programYspEnabled && totalYspValue > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">YSP ({yspValue.toFixed(3)}%)</span>
+                      <span className="text-muted-foreground">YSP ({totalYspValue.toFixed(3)}%)</span>
                       <span className="font-medium">
                         ${yspDollarAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
@@ -554,7 +565,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-success text-sm">
                       {isBroker ? "Your" : "Broker"} Compensation
-                      {programYspEnabled && yspValue > 0 ? " (Points + YSP)" : ` (${brokerPointsValue.toFixed(2)} additional pts)`}
+                      {programYspEnabled && totalYspValue > 0 ? " (Points + YSP)" : ` (${brokerPointsValue.toFixed(2)} additional pts)`}
                     </span>
                     <span className="text-2xl font-bold text-success" data-testid="text-commission">
                       ${brokerCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

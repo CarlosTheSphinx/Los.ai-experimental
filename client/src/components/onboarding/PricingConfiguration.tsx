@@ -424,15 +424,15 @@ export function PricingConfiguration({
                       <h4 className="text-sm font-semibold">Origination Points</h4>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">Base Points</Label>
+                          <Label className="text-xs">Automatic Points Included</Label>
                           <Input type="number" step="0.125" min="0" max="10" value={basePoints} onChange={(e) => setBasePoints(e.target.value)} data-testid="input-base-points" />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Min Base</Label>
+                          <Label className="text-xs">Min Automatic</Label>
                           <Input type="number" step="0.125" min="0" value={basePointsMin} onChange={(e) => setBasePointsMin(e.target.value)} data-testid="input-base-points-min" />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Max Base</Label>
+                          <Label className="text-xs">Max Automatic</Label>
                           <Input type="number" step="0.125" min="0" value={basePointsMax} onChange={(e) => setBasePointsMax(e.target.value)} data-testid="input-base-points-max" />
                         </div>
                       </div>
@@ -465,27 +465,46 @@ export function PricingConfiguration({
                             <Switch checked={yspBrokerCanToggle} onCheckedChange={(v) => setYspBrokerCanToggle(v)} data-testid="switch-ysp-broker-toggle" />
                             <Label className="text-sm">Broker Can Adjust YSP on Quotes</Label>
                           </div>
-                          {!yspBrokerCanToggle && (
-                            <div className="space-y-1">
-                              <Label className="text-xs">Fixed YSP Amount (%)</Label>
-                              <Input type="number" step="0.125" min="0" max="5" value={yspFixedAmount} onChange={(e) => setYspFixedAmount(e.target.value)} data-testid="input-ysp-fixed" />
-                              <p className="text-xs text-muted-foreground">This fixed YSP % will be applied to every quote</p>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Fixed YSP Amount (%)</Label>
+                            <Input type="number" step="0.125" min="0" max="5" value={yspFixedAmount} onChange={(e) => setYspFixedAmount(e.target.value)} data-testid="input-ysp-fixed" />
+                            <p className="text-xs text-muted-foreground">
+                              {yspBrokerCanToggle
+                                ? 'This base YSP % is always included. Brokers can add additional YSP within the range below.'
+                                : 'This fixed YSP % will be applied to every quote'}
+                            </p>
+                          </div>
+                          {yspBrokerCanToggle ? (
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Min Broker YSP Addition (%)</Label>
+                                <Input type="number" step="0.125" min="0" value={yspMin} onChange={(e) => setYspMin(e.target.value)} data-testid="input-ysp-min" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Max Broker YSP Addition (%)</Label>
+                                <Input type="number" step="0.125" min="0" value={yspMax} onChange={(e) => setYspMax(e.target.value)} data-testid="input-ysp-max" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Step Size</Label>
+                                <Input type="number" step="0.0625" min="0.0625" value={yspStep} onChange={(e) => setYspStep(e.target.value)} data-testid="input-ysp-step" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Min YSP (%)</Label>
+                                <Input type="number" step="0.125" min="0" value={yspMin} onChange={(e) => setYspMin(e.target.value)} data-testid="input-ysp-min" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Max YSP (%)</Label>
+                                <Input type="number" step="0.125" min="0" value={yspMax} onChange={(e) => setYspMax(e.target.value)} data-testid="input-ysp-max" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Step Size</Label>
+                                <Input type="number" step="0.0625" min="0.0625" value={yspStep} onChange={(e) => setYspStep(e.target.value)} data-testid="input-ysp-step" />
+                              </div>
                             </div>
                           )}
-                          <div className="grid grid-cols-3 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Min YSP (%)</Label>
-                              <Input type="number" step="0.125" min="0" value={yspMin} onChange={(e) => setYspMin(e.target.value)} data-testid="input-ysp-min" />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Max YSP (%)</Label>
-                              <Input type="number" step="0.125" min="0" value={yspMax} onChange={(e) => setYspMax(e.target.value)} data-testid="input-ysp-max" />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Step Size</Label>
-                              <Input type="number" step="0.0625" min="0.0625" value={yspStep} onChange={(e) => setYspStep(e.target.value)} data-testid="input-ysp-step" />
-                            </div>
-                          </div>
                           <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800">
                             <Info className="h-3 w-3 inline mr-1" />
                             YSP rate impact tiers can be configured in the pricing ruleset for this program. Add a <code>yspPricing</code> array to define how each YSP% tier affects the interest rate.
