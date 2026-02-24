@@ -34,7 +34,7 @@ import {
   getOutstandingDocuments,
   getRecentUpdates
 } from './digestService';
-import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents, lenderReviewConfig } from '@shared/schema';
+import { loanDigestConfigs, loanDigestRecipients, loanUpdates, digestHistory, digestState, partnerBroadcasts, partnerBroadcastRecipients, inboundSmsMessages, scheduledDigestDrafts, esignEnvelopes, esignEvents, lenderReviewConfig, borrowerProfiles, borrowerDocuments } from '@shared/schema';
 import { sendPartnerBroadcast, handleIncomingSms, getInboundMessages, markMessageRead, getBroadcastHistory } from './broadcastService';
 import { registerObjectStorageRoutes, ObjectStorageService } from './replit_integrations/object_storage';
 import multer from 'multer';
@@ -2865,7 +2865,8 @@ export async function registerRoutes(
         borrowerEmail,
         borrowerPhone,
         targetCloseDate,
-        notes
+        notes,
+        programFieldData,
       } = req.body;
       
       if (!borrowerName || !borrowerEmail) {
@@ -2915,8 +2916,24 @@ export async function registerRoutes(
         borrowerPortalEnabled: true,
         notes,
         tenantId: userTenantId,
+        metadata: programFieldData ? { applicationData: programFieldData } : undefined,
       });
       
+      // Upsert borrower profile
+      if (borrowerEmail) {
+        const [existingProfile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, borrowerEmail));
+        if (!existingProfile) {
+          const nameParts = (borrowerName || '').split(' ');
+          await db.insert(borrowerProfiles).values({
+            email: borrowerEmail,
+            firstName: nameParts[0] || null,
+            lastName: nameParts.slice(1).join(' ') || null,
+            phone: borrowerPhone || null,
+            streetAddress: propertyAddress || null,
+          });
+        }
+      }
+
       if (propertyAddress) {
         await db.insert(dealProperties).values({
           dealId: project.id,
@@ -3783,6 +3800,203 @@ export async function registerRoutes(
   // Get borrower portal view (no auth required)
   // ==================== BORROWER PORTAL ROUTES ====================
   registerPortalRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
+
+  // ==================== BORROWER PROFILE ROUTES ====================
+
+  // Get or create borrower profile by email (portal token auth)
+  app.get('/api/portal/:token/borrower-profile', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email on this deal' });
+
+      let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) {
+        // Auto-create profile from deal info
+        const nameParts = (project.borrowerName || '').split(' ');
+        const [inserted] = await db.insert(borrowerProfiles).values({
+          email,
+          firstName: nameParts[0] || null,
+          lastName: nameParts.slice(1).join(' ') || null,
+          phone: project.borrowerPhone || null,
+          streetAddress: project.propertyAddress || null,
+        }).returning();
+        profile = inserted;
+      }
+
+      res.json({ profile });
+    } catch (error) {
+      console.error('Get borrower profile error:', error);
+      res.status(500).json({ error: 'Failed to load borrower profile' });
+    }
+  });
+
+  // Update borrower profile (portal token auth)
+  app.put('/api/portal/:token/borrower-profile', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email on this deal' });
+
+      const updates = req.body;
+      delete updates.id;
+      delete updates.email; // can't change email
+      delete updates.createdAt;
+      updates.updatedAt = new Date();
+
+      const [updated] = await db.update(borrowerProfiles)
+        .set(updates)
+        .where(eq(borrowerProfiles.email, email))
+        .returning();
+
+      res.json({ profile: updated });
+    } catch (error) {
+      console.error('Update borrower profile error:', error);
+      res.status(500).json({ error: 'Failed to update borrower profile' });
+    }
+  });
+
+  // Get borrower documents (portal token auth)
+  app.get('/api/portal/:token/borrower-documents', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email' });
+
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.json({ documents: [] });
+
+      const docs = await db.select().from(borrowerDocuments)
+        .where(and(eq(borrowerDocuments.borrowerProfileId, profile.id), eq(borrowerDocuments.isActive, true)))
+        .orderBy(borrowerDocuments.uploadedAt);
+
+      res.json({ documents: docs });
+    } catch (error) {
+      console.error('Get borrower documents error:', error);
+      res.status(500).json({ error: 'Failed to load borrower documents' });
+    }
+  });
+
+  // Upload borrower document (portal token auth)
+  app.post('/api/portal/:token/borrower-documents', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email' });
+
+      let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) {
+        const nameParts = (project.borrowerName || '').split(' ');
+        const [inserted] = await db.insert(borrowerProfiles).values({
+          email,
+          firstName: nameParts[0] || null,
+          lastName: nameParts.slice(1).join(' ') || null,
+        }).returning();
+        profile = inserted;
+      }
+
+      const { fileName, fileType, fileSize, storagePath, category, description, expirationDate } = req.body;
+      const [doc] = await db.insert(borrowerDocuments).values({
+        borrowerProfileId: profile.id,
+        fileName,
+        fileType,
+        fileSize,
+        storagePath,
+        category: category || 'other',
+        description,
+        expirationDate,
+      }).returning();
+
+      res.json({ document: doc });
+    } catch (error) {
+      console.error('Upload borrower document error:', error);
+      res.status(500).json({ error: 'Failed to upload document' });
+    }
+  });
+
+  // Delete borrower document (soft delete)
+  app.delete('/api/portal/:token/borrower-documents/:docId', async (req: Request, res: Response) => {
+    try {
+      const { token, docId } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      await db.update(borrowerDocuments)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(borrowerDocuments.id, parseInt(docId)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete borrower document error:', error);
+      res.status(500).json({ error: 'Failed to delete document' });
+    }
+  });
+
+  // Admin: Get borrower profile for a deal
+  app.get('/api/admin/deals/:dealId/borrower-profile', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const [project] = await db.select().from(projects).where(eq(projects.id, parseInt(dealId)));
+      if (!project) return res.status(404).json({ error: 'Deal not found' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.json({ profile: null });
+
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.json({ profile: null });
+
+      const docs = await db.select().from(borrowerDocuments)
+        .where(and(eq(borrowerDocuments.borrowerProfileId, profile.id), eq(borrowerDocuments.isActive, true)))
+        .orderBy(borrowerDocuments.uploadedAt);
+
+      // Get all loans for this borrower
+      const loans = await db.select({
+        id: projects.id,
+        projectName: projects.projectName,
+        status: projects.status,
+        loanAmount: projects.loanAmount,
+        createdAt: projects.createdAt,
+      }).from(projects).where(eq(projects.borrowerEmail, email));
+
+      res.json({ profile, documents: docs, loans });
+    } catch (error) {
+      console.error('Admin get borrower profile error:', error);
+      res.status(500).json({ error: 'Failed to load borrower profile' });
+    }
+  });
+
+  // Auto-populate: Get borrower profile data for pre-filling new deal forms
+  app.get('/api/borrower-profile/lookup', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const email = req.query.email as string;
+      if (!email) return res.status(400).json({ error: 'Email required' });
+
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.json({ profile: null });
+
+      res.json({ profile });
+    } catch (error) {
+      console.error('Borrower profile lookup error:', error);
+      res.status(500).json({ error: 'Failed to lookup borrower profile' });
+    }
+  });
 
   // ==================== MESSAGING ROUTES ====================
   registerMessagingRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
@@ -10852,6 +11066,29 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
   
+  // Get program quote form fields (for deal creation and detail pages)
+  app.get('/api/programs/:id/quote-fields', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const [program] = await db.select({
+        quoteFormFields: loanPrograms.quoteFormFields,
+        termOptions: loanPrograms.termOptions,
+      }).from(loanPrograms).where(eq(loanPrograms.id, parseInt(id)));
+
+      if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+
+      res.json({
+        quoteFormFields: program.quoteFormFields || [],
+        termOptions: program.termOptions || null,
+      });
+    } catch (error) {
+      console.error('Get program quote fields error:', error);
+      res.status(500).json({ error: 'Failed to load program quote fields' });
+    }
+  });
+
   // Get programs with active rulesets (for quote page)
   app.get('/api/programs-with-pricing', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {

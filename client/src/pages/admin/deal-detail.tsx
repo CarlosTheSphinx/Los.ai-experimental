@@ -534,12 +534,12 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
   };
 
   return (
-    <div className="mt-4 pt-4 border-t" data-testid="deal-review-mode-control">
+    <div className="mt-4 pt-4 border-t overflow-hidden" data-testid="deal-review-mode-control">
       <div className="flex items-center gap-2 mb-3">
         <FileSearch className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">AI Document Review Mode</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {modes.map((mode) => {
           const isSelected = currentMode === mode.value;
           return (
@@ -755,6 +755,20 @@ export default function AdminDealDetail() {
   const { data: dealProcessorsData } = useQuery<any[]>({
     queryKey: ['/api/admin/projects', linkedProjectId, 'processors'],
     enabled: !!linkedProjectId,
+  });
+
+  // Fetch program form field config to determine display grouping
+  const { data: programFieldsData } = useQuery<{ quoteFormFields: Array<{ fieldKey: string; label: string; displayGroup?: string }>; termOptions?: string | null }>({
+    queryKey: [`/api/programs/${data?.deal?.programId}/quote-fields`],
+    enabled: !!data?.deal?.programId,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Borrower profile data (from persistent borrower profile table)
+  const { data: borrowerProfileData } = useQuery<{ profile: any; documents: any[]; loans: any[] } | null>({
+    queryKey: [`/api/admin/deals/${dealId}/borrower-profile`],
+    enabled: !!dealId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: availableProcessors } = useQuery<any[]>({
@@ -2061,6 +2075,7 @@ export default function AdminDealDetail() {
             </CardContent>
           </Card>
 
+          {/* Grouped Application Data Sections */}
           {(() => {
             const FIELD_LABELS: Record<string, string> = {
               loanAmount: 'Loan Amount', propertyValue: 'Property Value', loanType: 'Loan Type',
@@ -2078,8 +2093,9 @@ export default function AdminDealDetail() {
               squareFootage: 'Square Footage', yearBuilt: 'Year Built', occupancyStatus: 'Occupancy Status',
               borrowerExperience: 'Borrower Experience', numberOfUnits: 'Number of Units',
               estimatedPropertyValue: 'Estimated Property Value', purchasePrice: 'Purchase Price',
+              firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', address: 'Address',
             };
-            const SKIP_KEYS = ['additionalProperties', 'propertyAddress', 'firstName', 'lastName', 'email', 'phone', 'address'];
+            const SKIP_KEYS = ['additionalProperties', 'propertyAddress'];
             const CURRENCY_KEYS = ['loanAmount', 'propertyValue', 'asIsValue', 'arv', 'rehabBudget', 'constructionBudget', 'cashOut', 'annualTaxes', 'annualInsurance', 'monthlyRent', 'monthlyHOA', 'appraisalValue', 'grossMonthlyRent', 'monthlyPITIA', 'downPayment', 'estimatedPropertyValue', 'purchasePrice', 'annualPropertyTax'];
             const formatValue = (key: string, val: any): string => {
               if (val === null || val === undefined || val === '') return '\u2014';
@@ -2105,65 +2121,109 @@ export default function AdminDealDetail() {
               if (deal.interestRate && deal.interestRate !== '—') sourceData.interestRate = deal.interestRate;
             }
 
-            const entries = Object.entries(sourceData)
-              .filter(([key]) => !SKIP_KEYS.includes(key))
-              .map(([key, val]) => ({ label: FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim(), value: formatValue(key, val) }));
+            // Build field-to-group mapping from program config
+            const fieldGroupMap: Record<string, string> = {};
+            const fieldLabelMap: Record<string, string> = {};
+            const programFields = programFieldsData?.quoteFormFields || [];
+            programFields.forEach((f) => {
+              fieldGroupMap[f.fieldKey] = f.displayGroup || 'application_details';
+              if (f.label) fieldLabelMap[f.fieldKey] = f.label;
+            });
 
-            if (entries.length === 0) return null;
+            // Group entries by displayGroup
+            const grouped: Record<string, { key: string; label: string; value: string }[]> = {
+              borrower_details: [],
+              application_details: [],
+            };
+            Object.entries(sourceData)
+              .filter(([key]) => !SKIP_KEYS.includes(key))
+              .forEach(([key, val]) => {
+                const group = fieldGroupMap[key] || 'application_details';
+                const label = fieldLabelMap[key] || FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+                if (!grouped[group]) grouped[group] = [];
+                grouped[group].push({ key, label, value: formatValue(key, val) });
+              });
+
+            // Add property totals to application_details
+            const properties = data?.properties || [];
+            const totalRent = properties.reduce((sum, p) => sum + (p.monthlyRent || 0), 0);
+            const totalTaxes = properties.reduce((sum, p) => sum + (p.annualTaxes || 0), 0);
+            const totalInsurance = properties.reduce((sum, p) => sum + (p.annualInsurance || 0), 0);
+            if (totalRent > 0) grouped.application_details.push({ key: '_totalRent', label: 'Total Rent (Monthly)', value: formatCurrency(totalRent) });
+            if (totalTaxes > 0) grouped.application_details.push({ key: '_totalTaxes', label: 'Total Taxes (Annual)', value: formatCurrency(totalTaxes) });
+            if (totalInsurance > 0) grouped.application_details.push({ key: '_totalInsurance', label: 'Total Insurance (Annual)', value: formatCurrency(totalInsurance) });
+
+            const allEntries = Object.values(grouped).flat();
+            if (allEntries.length === 0) return null;
+
+            const renderSection = (title: string, icon: React.ReactNode, entries: typeof allEntries, testId: string) => {
+              if (entries.length === 0) return null;
+              return (
+                <Card className="mt-4" data-testid={testId}>
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {icon}
+                      {title}
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        const formData: Record<string, string> = {};
+                        entries.forEach(({ key, label }) => {
+                          const originalVal = sourceData[key];
+                          if (key.startsWith('_')) return;
+                          formData[key] = originalVal !== null && originalVal !== undefined ? String(originalVal) : '';
+                        });
+                        setAppEditForm(formData);
+                        setAppEditDialogOpen(true);
+                      }}
+                      data-testid={`button-edit-${testId}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      {entries.map(({ key, label, value }) => (
+                        <div key={key} className="flex items-center justify-between gap-2 py-1 border-b border-border/50 last:border-0">
+                          <span className="text-xs text-muted-foreground">{label}</span>
+                          <span className="text-sm font-medium text-right" data-testid={`text-app-${label.toLowerCase().replace(/\s+/g, '-')}`}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            };
+
+            // Merge borrower profile data into borrower_details entries
+            const borrowerEntries = [...(grouped.borrower_details || [])];
+            if (borrowerProfileData?.profile) {
+              const bp = borrowerProfileData.profile;
+              const profileFields: { key: string; label: string; value: string }[] = [];
+              if (bp.streetAddress) profileFields.push({ key: 'bp_address', label: 'Address', value: [bp.streetAddress, bp.city, bp.state, bp.zipCode].filter(Boolean).join(', ') });
+              if (bp.dateOfBirth) profileFields.push({ key: 'bp_dob', label: 'Date of Birth', value: bp.dateOfBirth });
+              if (bp.employerName) profileFields.push({ key: 'bp_employer', label: 'Employer', value: bp.employerName });
+              if (bp.employmentTitle) profileFields.push({ key: 'bp_title', label: 'Title', value: bp.employmentTitle });
+              if (bp.annualIncome) profileFields.push({ key: 'bp_income', label: 'Annual Income', value: `$${Number(bp.annualIncome).toLocaleString()}` });
+              if (bp.entityName) profileFields.push({ key: 'bp_entity', label: 'Entity', value: `${bp.entityName}${bp.entityType ? ` (${bp.entityType})` : ''}` });
+              if (bp.idType) profileFields.push({ key: 'bp_id', label: 'ID', value: `${bp.idType}${bp.idNumber ? ` - ${bp.idNumber}` : ''}` });
+              // Add profile fields that don't already exist in borrowerEntries
+              const existingKeys = new Set(borrowerEntries.map(e => e.label.toLowerCase()));
+              profileFields.forEach(pf => {
+                if (!existingKeys.has(pf.label.toLowerCase())) {
+                  borrowerEntries.push(pf);
+                }
+              });
+            }
 
             return (
-              <Card className="mt-4" data-testid="card-application-details">
-                <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Application Details
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => {
-                      const formData: Record<string, string> = {};
-                      entries.forEach(({ label, value }) => {
-                        const key = Object.entries(FIELD_LABELS).find(([, v]) => v === label)?.[0] || label;
-                        const originalVal = sourceData[key];
-                        formData[key] = originalVal !== null && originalVal !== undefined ? String(originalVal) : '';
-                      });
-                      setAppEditForm(formData);
-                      setAppEditDialogOpen(true);
-                    }}
-                    data-testid="button-edit-application-details"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                    {entries.map(({ label, value }) => (
-                      <div key={label} className="flex items-center justify-between gap-2 py-1 border-b border-border/50 last:border-0">
-                        <span className="text-xs text-muted-foreground">{label}</span>
-                        <span className="text-sm font-medium text-right" data-testid={`text-app-${label.toLowerCase().replace(/\s+/g, '-')}`}>{value}</span>
-                      </div>
-                    ))}
-                    {(() => {
-                      const properties = data?.properties || [];
-                      const totalRent = properties.reduce((sum, p) => sum + (p.monthlyRent || 0), 0);
-                      const totalTaxes = properties.reduce((sum, p) => sum + (p.annualTaxes || 0), 0);
-                      const totalInsurance = properties.reduce((sum, p) => sum + (p.annualInsurance || 0), 0);
-                      const totals: { label: string; value: string; testId: string }[] = [];
-                      if (totalRent > 0) totals.push({ label: 'Total Rent (Monthly)', value: formatCurrency(totalRent), testId: 'text-total-rent' });
-                      if (totalTaxes > 0) totals.push({ label: 'Total Taxes (Annual)', value: formatCurrency(totalTaxes), testId: 'text-total-taxes' });
-                      if (totalInsurance > 0) totals.push({ label: 'Total Insurance (Annual)', value: formatCurrency(totalInsurance), testId: 'text-total-insurance' });
-                      return totals.map(({ label, value, testId }) => (
-                        <div key={label} className="flex items-center justify-between gap-2 py-1 border-b border-border/50 last:border-0">
-                          <span className="text-xs text-muted-foreground">{label}</span>
-                          <span className="text-sm font-semibold text-right" data-testid={testId}>{value}</span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </CardContent>
-              </Card>
+              <>
+                {renderSection('Borrower Details', <User className="h-4 w-4" />, borrowerEntries, 'card-borrower-details')}
+                {renderSection('Application Details', <FileText className="h-4 w-4" />, grouped.application_details || [], 'card-application-details')}
+              </>
             );
           })()}
 
@@ -2924,16 +2984,16 @@ export default function AdminDealDetail() {
                 </SelectContent>
               </Select>
               {linkedProjectId && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     onClick={(e) => { e.stopPropagation(); syncAllDriveMutation.mutate(); }}
                     disabled={driveSyncing}
                     variant="outline"
-                    className="text-base px-5 py-3 h-auto font-semibold"
+                    className="text-sm px-4 py-2 h-auto font-semibold"
                     data-testid="button-sync-all-drive"
                   >
-                    {driveSyncing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <CloudUpload className="h-5 w-5 mr-2" />}
-                    {driveSyncing ? 'Syncing...' : 'Sync all Approved Documents to Drive'}
+                    {driveSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CloudUpload className="h-4 w-4 mr-2" />}
+                    {driveSyncing ? 'Syncing...' : 'Sync to Drive'}
                   </Button>
                   {projectDetailData?.project?.googleDriveFolderId && (
                     <Button
@@ -2943,21 +3003,21 @@ export default function AdminDealDetail() {
                         window.open(folderUrl, '_blank');
                       }}
                       variant="outline"
-                      className="text-base px-5 py-3 h-auto font-semibold border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20"
+                      className="text-sm px-4 py-2 h-auto font-semibold border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20"
                       data-testid="button-open-drive-folder"
                     >
-                      <FolderOpen className="h-5 w-5 mr-2" />
-                      Open Drive Folder
+                      <FolderOpen className="h-4 w-4 mr-2" />
+                      Drive Folder
                     </Button>
                   )}
                   <Button
                     onClick={(e) => { e.stopPropagation(); triggerPipeline.mutate(); }}
                     disabled={pipelineRunning}
-                    className="bg-success hover:bg-success/90 text-white text-base px-6 py-3 h-auto font-semibold"
+                    className="bg-success hover:bg-success/90 text-white text-sm px-4 py-2 h-auto font-semibold"
                     data-testid="button-trigger-pipeline"
                   >
-                    {pipelineRunning ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <Zap className="h-5 w-5 mr-2" />}
-                    {pipelineRunning ? 'PROCESSING...' : 'AUTOMATIC PROCESSING'}
+                    {pipelineRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                    {pipelineRunning ? 'PROCESSING...' : 'AUTO PROCESS'}
                   </Button>
                 </div>
               )}

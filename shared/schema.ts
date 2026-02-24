@@ -3685,3 +3685,66 @@ export const teamChatMessages = pgTable("team_chat_messages", {
 export const insertTeamChatMessageSchema = createInsertSchema(teamChatMessages).omit({ id: true, createdAt: true });
 export type TeamChatMessage = typeof teamChatMessages.$inferSelect;
 export type InsertTeamChatMessage = z.infer<typeof insertTeamChatMessageSchema>;
+
+// ============ Borrower Profiles ============
+export const borrowerProfiles = pgTable("borrower_profiles", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  firstName: varchar("first_name", { length: 255 }),
+  lastName: varchar("last_name", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  dateOfBirth: varchar("date_of_birth", { length: 20 }),
+
+  // Address
+  streetAddress: text("street_address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+
+  // Identification
+  ssnLast4: varchar("ssn_last4", { length: 4 }),
+  idType: varchar("id_type", { length: 50 }), // drivers_license, passport, state_id
+  idNumber: varchar("id_number", { length: 100 }),
+  idExpirationDate: varchar("id_expiration_date", { length: 20 }),
+
+  // Employment & Income
+  employerName: varchar("employer_name", { length: 255 }),
+  employmentTitle: varchar("employment_title", { length: 255 }),
+  annualIncome: real("annual_income"),
+  employmentType: varchar("employment_type", { length: 50 }), // employed, self_employed, retired, other
+
+  // Entity Info (for investors/LLCs)
+  entityName: varchar("entity_name", { length: 255 }),
+  entityType: varchar("entity_type", { length: 50 }), // llc, corp, trust, individual
+  einNumber: varchar("ein_number", { length: 20 }),
+
+  // JSONB for any extra application fields that don't fit the columns above
+  profileData: jsonb("profile_data"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBorrowerProfileSchema = createInsertSchema(borrowerProfiles).omit({ id: true, createdAt: true, updatedAt: true });
+export type BorrowerProfile = typeof borrowerProfiles.$inferSelect;
+export type InsertBorrowerProfile = z.infer<typeof insertBorrowerProfileSchema>;
+
+// ============ Borrower Documents (persistent across loans) ============
+export const borrowerDocuments = pgTable("borrower_documents", {
+  id: serial("id").primaryKey(),
+  borrowerProfileId: integer("borrower_profile_id").references(() => borrowerProfiles.id, { onDelete: "cascade" }).notNull(),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileType: varchar("file_type", { length: 100 }), // pdf, image, etc.
+  fileSize: integer("file_size"),
+  storagePath: text("storage_path"), // S3/GCS path or local path
+  category: varchar("category", { length: 100 }), // id_document, bank_statement, tax_return, pay_stub, insurance, other
+  description: text("description"),
+  expirationDate: varchar("expiration_date", { length: 20 }),
+  isActive: boolean("is_active").default(true),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBorrowerDocumentSchema = createInsertSchema(borrowerDocuments).omit({ id: true, uploadedAt: true, updatedAt: true });
+export type BorrowerDocument = typeof borrowerDocuments.$inferSelect;
+export type InsertBorrowerDocument = z.infer<typeof insertBorrowerDocumentSchema>;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { ArrowLeft, Plus, User, DollarSign, Building2, Briefcase, Loader2, ClipboardList } from "lucide-react";
@@ -55,19 +55,62 @@ export default function NewDeal() {
 
   const programs = programsData?.programs || [];
 
-  const { data: fieldsData, isLoading: fieldsLoading } = useQuery<{ quoteFormFields: QuoteField[] }>({
+  const { data: fieldsData, isLoading: fieldsLoading } = useQuery<{ quoteFormFields: QuoteField[]; termOptions?: string | null }>({
     queryKey: [`/api/programs/${formData.programId}/quote-fields`],
     enabled: !!formData.programId,
   });
 
   const programFields = fieldsData?.quoteFormFields?.filter(f => f.visible) || [];
+  const termOptionsList = fieldsData?.termOptions ? fieldsData.termOptions.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  // Auto-populate from borrower profile when email is entered
+  const lookupEmail = formData.email || formData.borrowerEmail;
+  const { data: profileLookup } = useQuery<{ profile: any | null }>({
+    queryKey: ['/api/borrower-profile/lookup', lookupEmail],
+    queryFn: async () => {
+      const res = await fetch(`/api/borrower-profile/lookup?email=${encodeURIComponent(lookupEmail!)}`);
+      if (!res.ok) return { profile: null };
+      return res.json();
+    },
+    enabled: !!lookupEmail && lookupEmail.includes('@'),
+    staleTime: 30 * 1000,
+  });
+
+  // Auto-fill from profile when found
+  const [profileAppliedEmail, setProfileAppliedEmail] = useState('');
+  useEffect(() => {
+    if (profileLookup?.profile && lookupEmail && lookupEmail !== profileAppliedEmail) {
+      const bp = profileLookup.profile;
+      const updates: Record<string, string> = {};
+      if (bp.firstName && !formData.firstName) updates.firstName = bp.firstName;
+      if (bp.lastName && !formData.lastName) updates.lastName = bp.lastName;
+      if (bp.phone && !formData.phone && !formData.borrowerPhone) {
+        updates.phone = bp.phone;
+        updates.borrowerPhone = bp.phone;
+      }
+      if (!formData.borrowerName && bp.firstName) {
+        updates.borrowerName = [bp.firstName, bp.lastName].filter(Boolean).join(' ');
+      }
+      if (Object.keys(updates).length > 0) {
+        setFormData(prev => ({ ...prev, ...updates }));
+        toast({ title: "Borrower profile found", description: "Fields auto-populated from existing profile." });
+      }
+      setProfileAppliedEmail(lookupEmail);
+    }
+  }, [profileLookup?.profile, lookupEmail]);
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, string>) => {
+      // Build borrower info from either direct fields or program intake form fields
+      const borrowerFirst = data.firstName || '';
+      const borrowerLast = data.lastName || '';
+      const derivedName = (borrowerFirst && borrowerLast) ? `${borrowerFirst} ${borrowerLast}`.trim() : data.borrowerName;
+      const derivedEmail = data.email || data.borrowerEmail;
+      const derivedPhone = data.phone || data.borrowerPhone;
       const payload: Record<string, any> = {
-        borrowerName: data.borrowerName,
-        borrowerEmail: data.borrowerEmail,
-        borrowerPhone: data.borrowerPhone,
+        borrowerName: derivedName,
+        borrowerEmail: derivedEmail,
+        borrowerPhone: derivedPhone,
         loanAmount: data.loanAmount ? parseFloat(stripCommas(data.loanAmount)) : null,
         interestRate: data.interestRate ? parseFloat(data.interestRate) : null,
         loanTermMonths: data.loanTermMonths ? parseInt(data.loanTermMonths) : null,
@@ -111,7 +154,9 @@ export default function NewDeal() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.borrowerName || !formData.borrowerEmail) {
+    const hasName = formData.borrowerName || (formData.firstName && formData.lastName);
+    const hasEmail = formData.borrowerEmail || formData.email;
+    if (!hasName || !hasEmail) {
       toast({ title: "Please fill in borrower name and email", variant: "destructive" });
       return;
     }
@@ -346,54 +391,6 @@ export default function NewDeal() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Borrower Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="borrowerName">Full Name *</Label>
-                <Input
-                  id="borrowerName"
-                  value={formData.borrowerName}
-                  onChange={(e) => updateField("borrowerName", e.target.value)}
-                  placeholder="John Smith"
-                  data-testid="input-borrower-name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="borrowerEmail">Email *</Label>
-                <Input
-                  id="borrowerEmail"
-                  type="email"
-                  value={formData.borrowerEmail}
-                  onChange={(e) => updateField("borrowerEmail", e.target.value)}
-                  onBlur={() => {}}
-                  placeholder="john@example.com"
-                  data-testid="input-borrower-email"
-                />
-                {getEmailError(formData.borrowerEmail) && <p className="text-xs text-destructive mt-1">{getEmailError(formData.borrowerEmail)}</p>}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="borrowerPhone">Phone</Label>
-              <Input
-                id="borrowerPhone"
-                type="tel"
-                value={formData.borrowerPhone}
-                onChange={(e) => updateField("borrowerPhone", formatPhoneNumber(e.target.value))}
-                placeholder="(555) 123-4567"
-                data-testid="input-borrower-phone"
-              />
-              {getPhoneError(formData.borrowerPhone) && <p className="text-xs text-destructive mt-1">{getPhoneError(formData.borrowerPhone)}</p>}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Property Details
             </CardTitle>
@@ -415,10 +412,10 @@ export default function NewDeal() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <ClipboardList className="h-4 w-4" />
-                Program Requirements
+                Intake Form
               </CardTitle>
               <CardDescription>
-                Fields based on the selected loan program
+                Complete the intake form for this loan program
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -429,6 +426,26 @@ export default function NewDeal() {
               ) : (
                 <div className="grid sm:grid-cols-2 gap-4">
                   {programFields.map(renderProgramField)}
+                  {termOptionsList.length > 0 && (
+                    <div>
+                      <Label htmlFor="loanTermMonths">Loan Term (months)</Label>
+                      <Select
+                        value={formData.loanTermMonths}
+                        onValueChange={(v) => updateField("loanTermMonths", v)}
+                      >
+                        <SelectTrigger id="loanTermMonths">
+                          <SelectValue placeholder="Select term" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {termOptionsList.map((term) => (
+                            <SelectItem key={term} value={term}>
+                              {term} months
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -439,11 +456,35 @@ export default function NewDeal() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Loan Details
+                <User className="h-4 w-4" />
+                Borrower & Loan Details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="borrowerName">Borrower Name *</Label>
+                  <Input
+                    id="borrowerName"
+                    value={formData.borrowerName}
+                    onChange={(e) => updateField("borrowerName", e.target.value)}
+                    placeholder="John Smith"
+                    data-testid="input-borrower-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="borrowerEmail">Borrower Email *</Label>
+                  <Input
+                    id="borrowerEmail"
+                    type="email"
+                    value={formData.borrowerEmail}
+                    onChange={(e) => updateField("borrowerEmail", e.target.value)}
+                    placeholder="john@example.com"
+                    data-testid="input-borrower-email"
+                  />
+                  {getEmailError(formData.borrowerEmail) && <p className="text-xs text-destructive mt-1">{getEmailError(formData.borrowerEmail)}</p>}
+                </div>
+              </div>
               <div className="grid sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="loanAmount">Loan Amount</Label>

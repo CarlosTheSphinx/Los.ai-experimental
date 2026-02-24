@@ -1,7 +1,7 @@
-import { Inbox, FileText, DollarSign, Home } from "lucide-react";
+import { Inbox, FileText, DollarSign, Home, FolderOpen, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type PortalView = "dashboard" | "inbox" | "loans" | "commissions";
+export type PortalView = "dashboard" | "inbox" | "loans" | "commissions" | "documents" | "profile";
 
 interface PortalSidebarProps {
   portalType: "broker" | "borrower";
@@ -21,6 +21,8 @@ const BORROWER_NAV = [
   { id: "dashboard" as PortalView, label: "Dashboard", icon: Home },
   { id: "inbox" as PortalView, label: "Inbox", icon: Inbox },
   { id: "loans" as PortalView, label: "Loans", icon: FileText },
+  { id: "documents" as PortalView, label: "My Documents", icon: FolderOpen },
+  { id: "profile" as PortalView, label: "My Profile", icon: UserCircle },
 ];
 
 export function PortalSidebar({ portalType, activeView, onViewChange, dealName }: PortalSidebarProps) {

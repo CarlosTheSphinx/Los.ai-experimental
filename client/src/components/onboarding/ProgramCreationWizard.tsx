@@ -145,6 +145,8 @@ const standardDocuments = [
 
 // ─── Quote Form Field Types ─────────────────────────────────────
 
+type DisplayGroup = 'loan_details' | 'property_details' | 'borrower_details' | 'application_details';
+
 type QuoteFormField = {
   fieldKey: string;
   label: string;
@@ -152,10 +154,18 @@ type QuoteFormField = {
   required: boolean;
   visible: boolean;
   isDefault: boolean;
+  displayGroup?: DisplayGroup;
   options?: string[];
   conditionalOn?: string;
   conditionalValue?: string;
 };
+
+const DISPLAY_GROUP_OPTIONS: { value: DisplayGroup; label: string }[] = [
+  { value: 'loan_details', label: 'Loan Details' },
+  { value: 'property_details', label: 'Property Details' },
+  { value: 'borrower_details', label: 'Borrower Details' },
+  { value: 'application_details', label: 'Application Details' },
+];
 
 const FIELD_TYPE_OPTIONS: { value: QuoteFormField['fieldType']; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -169,11 +179,11 @@ const FIELD_TYPE_OPTIONS: { value: QuoteFormField['fieldType']; label: string }[
 ];
 
 const CONTACT_FIELDS: QuoteFormField[] = [
-  { fieldKey: 'firstName', label: 'First Name', fieldType: 'text', required: true, visible: true, isDefault: true },
-  { fieldKey: 'lastName', label: 'Last Name', fieldType: 'text', required: true, visible: true, isDefault: true },
-  { fieldKey: 'email', label: 'Email', fieldType: 'email', required: true, visible: true, isDefault: true },
-  { fieldKey: 'phone', label: 'Phone Number', fieldType: 'phone', required: false, visible: true, isDefault: true },
-  { fieldKey: 'address', label: 'Address', fieldType: 'text', required: false, visible: true, isDefault: true },
+  { fieldKey: 'firstName', label: 'First Name', fieldType: 'text', required: true, visible: true, isDefault: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'lastName', label: 'Last Name', fieldType: 'text', required: true, visible: true, isDefault: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'email', label: 'Email', fieldType: 'email', required: true, visible: true, isDefault: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'phone', label: 'Phone Number', fieldType: 'phone', required: false, visible: true, isDefault: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'address', label: 'Address', fieldType: 'text', required: false, visible: true, isDefault: true, displayGroup: 'borrower_details' },
 ];
 
 const DSCR_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
@@ -1416,7 +1426,7 @@ function QuoteFormBuilderStep({
     const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
     setQuoteFormFields([
       ...quoteFormFields,
-      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false },
+      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false, displayGroup: 'application_details' as DisplayGroup },
     ]);
     setNewFieldName('');
     setNewFieldType('text');
@@ -1655,6 +1665,23 @@ function QuoteFormBuilderStep({
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Display Section</Label>
+                          <Select
+                            value={field.displayGroup || 'application_details'}
+                            onValueChange={(v) => updateField(field.fieldKey, { displayGroup: v as DisplayGroup })}
+                          >
+                            <SelectTrigger data-testid={`select-display-group-${field.fieldKey}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DISPLAY_GROUP_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-muted-foreground">Where this field appears on the deal detail page</p>
                         </div>
                       </div>
 

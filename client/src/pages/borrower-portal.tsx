@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { useState, useRef, type ChangeEvent } from "react";
-import { 
-  CheckCircle2, 
+import {
+  CheckCircle2,
   Building2,
   Calendar,
   DollarSign,
@@ -13,13 +13,22 @@ import {
   Upload,
   Loader2,
   MessageSquare,
+  FolderOpen,
+  UserCircle,
+  Pencil,
+  Trash2,
+  Save,
+  X,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
 import { PortalSidebar, type PortalView } from "@/components/portal/PortalSidebar";
@@ -106,6 +115,45 @@ const DEFAULT_FIELD_VISIBILITY = {
   targetCloseDate: true,
 };
 
+interface BorrowerProfile {
+  id: number;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  dateOfBirth: string | null;
+  streetAddress: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+  ssnLast4: string | null;
+  idType: string | null;
+  idNumber: string | null;
+  idExpirationDate: string | null;
+  employerName: string | null;
+  employmentTitle: string | null;
+  annualIncome: number | null;
+  employmentType: string | null;
+  entityName: string | null;
+  entityType: string | null;
+  einNumber: string | null;
+  profileData: Record<string, any> | null;
+}
+
+interface BorrowerDocument {
+  id: number;
+  borrowerProfileId: number;
+  fileName: string;
+  fileType: string | null;
+  fileSize: number | null;
+  storagePath: string | null;
+  category: string | null;
+  description: string | null;
+  expirationDate: string | null;
+  isActive: boolean;
+  uploadedAt: string;
+}
+
 interface RelatedDeal {
   id: number;
   dealName: string;
@@ -134,6 +182,45 @@ export default function BorrowerPortal() {
     return !hasCompletedOnboarding("borrower", token);
   });
   const [activeView, setActiveView] = useState<PortalView>("dashboard");
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState<Partial<BorrowerProfile>>({});
+
+  // Borrower profile query
+  const { data: profileData } = useQuery<{ profile: BorrowerProfile }>({
+    queryKey: ['/api/portal', token, 'borrower-profile'],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/borrower-profile`);
+      if (!res.ok) throw new Error('Failed to load profile');
+      return res.json();
+    },
+    enabled: !!token && (activeView === 'profile' || activeView === 'documents'),
+  });
+
+  // Borrower documents query
+  const { data: docsData } = useQuery<{ documents: BorrowerDocument[] }>({
+    queryKey: ['/api/portal', token, 'borrower-documents'],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/borrower-documents`);
+      if (!res.ok) throw new Error('Failed to load documents');
+      return res.json();
+    },
+    enabled: !!token && activeView === 'documents',
+  });
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: Partial<BorrowerProfile>) => {
+      const res = await apiRequest('PUT', `/api/portal/${token}/borrower-profile`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'borrower-profile'] });
+      setEditingProfile(false);
+      toast({ title: "Profile updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update profile", variant: "destructive" });
+    },
+  });
 
   const { data, isLoading, error } = useQuery<{
     project: Project;
@@ -594,6 +681,198 @@ export default function BorrowerPortal() {
                 <CardContent className="py-12 text-center">
                   <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">No messages yet. You'll see updates about your loan here.</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* My Documents View */}
+          {activeView === "documents" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4" />
+                      My Documents
+                    </CardTitle>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Documents stored here persist across all your loans.</p>
+                </CardHeader>
+                <CardContent>
+                  {!docsData?.documents?.length ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <FolderOpen className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p className="text-sm">No documents yet. Documents you upload will be stored here for future loans.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {docsData.documents.map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{doc.fileName}</p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                {doc.category && <Badge variant="outline" className="text-[10px]">{doc.category.replace(/_/g, ' ')}</Badge>}
+                                <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                                {doc.fileSize && <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* My Profile View */}
+          {activeView === "profile" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <UserCircle className="h-4 w-4" />
+                      My Profile
+                    </CardTitle>
+                    {!editingProfile ? (
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setProfileForm(profileData?.profile || {});
+                        setEditingProfile(true);
+                      }}>
+                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                      </Button>
+                    ) : (
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingProfile(false)}>
+                          <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                        </Button>
+                        <Button size="sm" onClick={() => updateProfileMutation.mutate(profileForm)} disabled={updateProfileMutation.isPending}>
+                          <Save className="h-3.5 w-3.5 mr-1" /> Save
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Your profile information auto-populates new loan applications.</p>
+                </CardHeader>
+                <CardContent>
+                  {!profileData?.profile ? (
+                    <div className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Loading profile...</p>
+                    </div>
+                  ) : editingProfile ? (
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Personal Information</h3>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div><Label className="text-xs">First Name</Label><Input value={profileForm.firstName || ''} onChange={(e) => setProfileForm({...profileForm, firstName: e.target.value})} /></div>
+                          <div><Label className="text-xs">Last Name</Label><Input value={profileForm.lastName || ''} onChange={(e) => setProfileForm({...profileForm, lastName: e.target.value})} /></div>
+                          <div><Label className="text-xs">Email</Label><Input value={profileForm.email || ''} disabled className="bg-muted" /></div>
+                          <div><Label className="text-xs">Phone</Label><Input value={profileForm.phone || ''} onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})} /></div>
+                          <div><Label className="text-xs">Date of Birth</Label><Input type="date" value={profileForm.dateOfBirth || ''} onChange={(e) => setProfileForm({...profileForm, dateOfBirth: e.target.value})} /></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Address</h3>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div className="sm:col-span-2"><Label className="text-xs">Street Address</Label><Input value={profileForm.streetAddress || ''} onChange={(e) => setProfileForm({...profileForm, streetAddress: e.target.value})} /></div>
+                          <div><Label className="text-xs">City</Label><Input value={profileForm.city || ''} onChange={(e) => setProfileForm({...profileForm, city: e.target.value})} /></div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div><Label className="text-xs">State</Label><Input value={profileForm.state || ''} onChange={(e) => setProfileForm({...profileForm, state: e.target.value})} /></div>
+                            <div><Label className="text-xs">ZIP</Label><Input value={profileForm.zipCode || ''} onChange={(e) => setProfileForm({...profileForm, zipCode: e.target.value})} /></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Identification</h3>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div><Label className="text-xs">SSN (last 4)</Label><Input maxLength={4} value={profileForm.ssnLast4 || ''} onChange={(e) => setProfileForm({...profileForm, ssnLast4: e.target.value})} /></div>
+                          <div><Label className="text-xs">ID Type</Label><Input value={profileForm.idType || ''} onChange={(e) => setProfileForm({...profileForm, idType: e.target.value})} placeholder="e.g. Driver's License" /></div>
+                          <div><Label className="text-xs">ID Number</Label><Input value={profileForm.idNumber || ''} onChange={(e) => setProfileForm({...profileForm, idNumber: e.target.value})} /></div>
+                          <div><Label className="text-xs">ID Expiration</Label><Input type="date" value={profileForm.idExpirationDate || ''} onChange={(e) => setProfileForm({...profileForm, idExpirationDate: e.target.value})} /></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Employment & Income</h3>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div><Label className="text-xs">Employer</Label><Input value={profileForm.employerName || ''} onChange={(e) => setProfileForm({...profileForm, employerName: e.target.value})} /></div>
+                          <div><Label className="text-xs">Title</Label><Input value={profileForm.employmentTitle || ''} onChange={(e) => setProfileForm({...profileForm, employmentTitle: e.target.value})} /></div>
+                          <div><Label className="text-xs">Annual Income</Label><Input type="number" value={profileForm.annualIncome || ''} onChange={(e) => setProfileForm({...profileForm, annualIncome: parseFloat(e.target.value) || null})} /></div>
+                          <div><Label className="text-xs">Employment Type</Label><Input value={profileForm.employmentType || ''} onChange={(e) => setProfileForm({...profileForm, employmentType: e.target.value})} placeholder="e.g. employed, self-employed" /></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Entity Information</h3>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div><Label className="text-xs">Entity Name</Label><Input value={profileForm.entityName || ''} onChange={(e) => setProfileForm({...profileForm, entityName: e.target.value})} /></div>
+                          <div><Label className="text-xs">Entity Type</Label><Input value={profileForm.entityType || ''} onChange={(e) => setProfileForm({...profileForm, entityType: e.target.value})} placeholder="e.g. LLC, Corp, Trust" /></div>
+                          <div><Label className="text-xs">EIN</Label><Input value={profileForm.einNumber || ''} onChange={(e) => setProfileForm({...profileForm, einNumber: e.target.value})} /></div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {(() => {
+                        const p = profileData.profile;
+                        const sections = [
+                          { title: "Personal Information", fields: [
+                            { label: "Name", value: [p.firstName, p.lastName].filter(Boolean).join(' ') },
+                            { label: "Email", value: p.email },
+                            { label: "Phone", value: p.phone },
+                            { label: "Date of Birth", value: p.dateOfBirth },
+                          ]},
+                          { title: "Address", fields: [
+                            { label: "Street", value: p.streetAddress },
+                            { label: "City", value: p.city },
+                            { label: "State", value: p.state },
+                            { label: "ZIP", value: p.zipCode },
+                          ]},
+                          { title: "Identification", fields: [
+                            { label: "SSN (last 4)", value: p.ssnLast4 ? `••••${p.ssnLast4}` : null },
+                            { label: "ID Type", value: p.idType },
+                            { label: "ID Number", value: p.idNumber },
+                            { label: "ID Expiration", value: p.idExpirationDate },
+                          ]},
+                          { title: "Employment", fields: [
+                            { label: "Employer", value: p.employerName },
+                            { label: "Title", value: p.employmentTitle },
+                            { label: "Income", value: p.annualIncome ? `$${p.annualIncome.toLocaleString()}` : null },
+                            { label: "Type", value: p.employmentType },
+                          ]},
+                          { title: "Entity", fields: [
+                            { label: "Entity Name", value: p.entityName },
+                            { label: "Entity Type", value: p.entityType },
+                            { label: "EIN", value: p.einNumber },
+                          ]},
+                        ];
+                        return sections.map((section) => {
+                          const hasValues = section.fields.some(f => f.value);
+                          return (
+                            <div key={section.title}>
+                              <h3 className="text-sm font-semibold mb-2">{section.title}</h3>
+                              {!hasValues ? (
+                                <p className="text-xs text-muted-foreground italic">Not provided yet</p>
+                              ) : (
+                                <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                                  {section.fields.filter(f => f.value).map((f) => (
+                                    <div key={f.label} className="flex justify-between py-1 text-sm border-b border-dashed">
+                                      <span className="text-muted-foreground">{f.label}</span>
+                                      <span className="font-medium">{f.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
