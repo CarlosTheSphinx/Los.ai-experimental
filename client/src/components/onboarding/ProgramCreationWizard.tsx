@@ -343,8 +343,10 @@ const dscrDefaultRules: RuleEntry[] = [
 
 export function ProgramCreationWizard({
   onComplete,
+  onCancel,
 }: {
   onComplete: () => void;
+  onCancel?: () => void;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -504,6 +506,19 @@ export function ProgramCreationWizard({
 
   return (
     <div className="space-y-4">
+      {onCancel && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={onCancel} data-testid="button-back-from-wizard">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h2 className="text-lg font-semibold leading-tight">Add New Loan Program</h2>
+              <p className="text-xs text-muted-foreground">Configure a new loan program for your borrowers</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Progress bar */}
       <div className="flex items-center gap-1 text-xs">
         {wizardSteps.map((step, i) => (
