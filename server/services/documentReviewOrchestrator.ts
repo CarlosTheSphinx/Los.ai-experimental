@@ -69,9 +69,9 @@ async function getLenderConfig(projectId: number): Promise<{
     .from(lenderReviewConfig)
     .where(eq(lenderReviewConfig.userId, project.lenderId));
 
-  // Per-deal mode only — lender defaults no longer apply for review mode
+  // Use per-deal override if set, otherwise fallback to lender-level config
   const defaults = {
-    reviewMode: project.aiReviewMode || "manual",
+    reviewMode: project.aiReviewMode || config?.aiReviewMode || "manual",
     timedIntervalMinutes: config?.timedReviewIntervalMinutes || 60,
     alerts: {
       failAlertEnabled: config?.failAlertEnabled ?? true,

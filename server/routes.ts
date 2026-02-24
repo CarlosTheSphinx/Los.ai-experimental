@@ -4954,16 +4954,57 @@ export async function registerRoutes(
         performedBy: req.user!.id,
       });
 
+      const moverDisplayName = req.user!.fullName || req.user!.email || 'Admin';
       try {
         await db.insert(dealMemoryEntries).values({
           dealId: projectId,
           entryType: 'stage_change',
-          title: `Moved to stage: ${targetStage.stageName}`,
+          title: `Moved to "${targetStage.stageName}" by ${moverDisplayName}`,
           sourceType: 'admin',
           sourceUserId: req.user!.id,
           metadata: { stageKey: targetStageKey, stageName: targetStage.stageName },
         });
       } catch (e) { console.error('Memory entry error:', e); }
+
+      // Notify assigned processors and borrower about stage change
+      try {
+        const moverName = moverDisplayName;
+        const [stageProject] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+        const dealLabel = stageProject?.loanNumber || `DEAL-${projectId}`;
+
+        // Notify processors assigned to this deal
+        const stageProcessors = await db.select({ userId: dealProcessors.userId }).from(dealProcessors)
+          .where(eq(dealProcessors.dealId, projectId));
+        for (const proc of stageProcessors) {
+          if (proc.userId !== req.user!.id) {
+            await createNotification({
+              userId: proc.userId,
+              type: 'stage_change',
+              title: `Deal Moved: ${targetStage.stageName}`,
+              message: `${moverName} moved ${dealLabel} to stage "${targetStage.stageName}"`,
+              dealId: projectId,
+              link: `/admin/deals/${projectId}`,
+            });
+          }
+        }
+
+        // Notify borrower
+        if (stageProject?.borrowerEmail) {
+          const [borrower] = await db.select({ id: users.id }).from(users).where(eq(users.email, stageProject.borrowerEmail));
+          if (borrower) {
+            await createNotification({
+              userId: borrower.id,
+              type: 'stage_change',
+              title: `Loan Update: ${targetStage.stageName}`,
+              message: `Your loan ${dealLabel} has moved to the "${targetStage.stageName}" stage.`,
+              dealId: projectId,
+              link: stageProject.borrowerPortalToken ? `/portal/${stageProject.borrowerPortalToken}` : undefined,
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error('Failed to send stage change notifications:', notifErr);
+      }
 
       res.json({ success: true, currentStage: targetStageKey });
     } catch (error) {
@@ -7030,10 +7071,11 @@ export async function registerRoutes(
         }
 
         try {
+          const reviewerDisplayName = req.user!.fullName || req.user!.email || 'Admin';
           await db.insert(dealMemoryEntries).values({
             dealId,
             entryType: status === 'approved' ? 'document_approved' : 'document_rejected',
-            title: `${updated.documentName || updated.documentCategory || 'Document'} ${actionText}`,
+            title: `${updated.documentName || updated.documentCategory || 'Document'} ${actionText} by ${reviewerDisplayName}`,
             description: reviewNotes || undefined,
             sourceType: 'admin',
             sourceUserId: req.user!.id,
@@ -7041,12 +7083,57 @@ export async function registerRoutes(
           });
         } catch (e) { console.error('Memory entry error:', e); }
 
+        // Send in-app notifications for document approval/rejection
+        try {
+          const [dealProject] = await db.select().from(projects).where(eq(projects.id, dealId)).limit(1);
+          if (dealProject) {
+            const reviewerName = req.user!.fullName || req.user!.email || 'Admin';
+            const docName = updated.documentName || 'Document';
+            const dealLabel = dealProject.loanNumber || `DEAL-${dealId}`;
+
+            // Notify borrower
+            if (dealProject.borrowerEmail) {
+              const [borrower] = await db.select({ id: users.id }).from(users).where(eq(users.email, dealProject.borrowerEmail));
+              if (borrower) {
+                await createNotification({
+                  userId: borrower.id,
+                  type: status === 'approved' ? 'document_approved' : 'document_rejected',
+                  title: status === 'approved' ? `Document Approved: ${docName}` : `Document Rejected: ${docName}`,
+                  message: status === 'approved'
+                    ? `Your document "${docName}" for ${dealLabel} has been approved by ${reviewerName}.`
+                    : `Your document "${docName}" for ${dealLabel} was rejected by ${reviewerName}.${reviewNotes ? ` Reason: ${reviewNotes}` : ' Please re-upload a corrected version.'}`,
+                  dealId,
+                  link: `/portal/${dealProject.borrowerPortalToken}`,
+                });
+              }
+            }
+
+            // Notify assigned processors
+            const processors = await db.select({ userId: dealProcessors.userId }).from(dealProcessors)
+              .where(eq(dealProcessors.dealId, dealId));
+            for (const proc of processors) {
+              if (proc.userId !== req.user!.id) {
+                await createNotification({
+                  userId: proc.userId,
+                  type: status === 'approved' ? 'document_approved' : 'document_rejected',
+                  title: `${docName} ${actionText} by ${reviewerName}`,
+                  message: `Document "${docName}" for ${dealLabel} has been ${actionText}${reviewNotes ? `: ${reviewNotes}` : ''}`,
+                  dealId,
+                  link: `/admin/deals/${dealId}`,
+                });
+              }
+            }
+          }
+        } catch (notifErr) {
+          console.error('Failed to send doc approval/rejection notifications:', notifErr);
+        }
+
         try {
           const [project] = await db.select({ id: projects.id })
             .from(projects)
             .where(eq(projects.quoteId, dealId))
             .limit(1);
-          
+
           if (project) {
             await db.insert(loanUpdates).values({
               projectId: project.id,
@@ -7124,13 +7211,9 @@ export async function registerRoutes(
         }
       }
       
-      if (status === 'approved' || status === 'waived' || status === 'not_applicable') {
-        try {
-          await updateProjectProgress(dealId, req.user!.id);
-        } catch (progressErr) {
-          console.error('Failed to check stage auto-advance after doc approval:', progressErr);
-        }
-      }
+      // Note: Removed auto-advance (updateProjectProgress) on document approval
+      // to prevent deals from changing order in the pipeline.
+      // Stage advancement should be done explicitly via drag-and-drop or manual action.
 
       res.json({ document: updated });
     } catch (error) {
@@ -7762,7 +7845,7 @@ export async function registerRoutes(
         await db.insert(dealMemoryEntries).values({
           dealId,
           entryType: 'stage_change',
-          title: `Stage changed to: ${targetStage.stageName}`,
+          title: `Stage changed to "${targetStage.stageName}" by ${(req as any).user?.fullName || (req as any).user?.email || 'Admin'}`,
           description: previousStageKey ? `From "${previousStageKey}" to "${targetStage.stageName}"` : undefined,
           sourceType: 'admin',
           sourceUserId: (req as any).user?.id || null,
@@ -8067,7 +8150,29 @@ export async function registerRoutes(
           createdBy: req.user!.id,
         })
         .returning();
-      
+
+      // Notify assignee when task is created with an assigned user
+      if (assignedTo) {
+        const assigneeId = parseInt(assignedTo);
+        if (!isNaN(assigneeId) && assigneeId !== req.user!.id) {
+          try {
+            const assignerName = req.user!.fullName || req.user!.email || 'Someone';
+            const taskProj = await db.select({ loanNumber: projects.loanNumber }).from(projects).where(eq(projects.id, dealId)).limit(1);
+            const dealLabel = taskProj[0]?.loanNumber || `DEAL-${dealId}`;
+            await createNotification({
+              userId: assigneeId,
+              type: 'task_assigned',
+              title: 'New Task Assigned',
+              message: `${assignerName} assigned you "${taskName}" on ${dealLabel}`,
+              dealId,
+              link: `/admin/deals/${dealId}`,
+            });
+          } catch (notifErr) {
+            console.error('Failed to send task creation notification:', notifErr);
+          }
+        }
+      }
+
       res.json({ task });
     } catch (error) {
       console.error('Admin create deal task error:', error);

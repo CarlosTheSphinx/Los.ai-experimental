@@ -89,6 +89,7 @@ import { DigestConfigPanel } from "@/components/DigestConfigPanel";
 import { LinkedEmailsSection } from "@/components/admin/LinkedEmailsSection";
 import { AIInsightsPanel } from "@/components/admin/AIInsightsPanel";
 import { DealMemoryPanel } from "@/components/admin/DealMemoryPanel";
+import { TasksSidebar } from "@/components/admin/TasksSidebar";
 
 function getPreviewType(fileName: string | null, mimeType?: string | null): 'image' | 'pdf' | 'unsupported' {
   const mime = (mimeType || '').toLowerCase();
@@ -439,7 +440,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
   }>({
     queryKey: ['/api/deals', dealId, 'review-mode'],
     queryFn: async () => {
-      const res = await fetch(`/api/deals/${dealId}/review-mode`);
+      const res = await fetch(`/api/projects/${dealId}/review-mode`);
       if (!res.ok) throw new Error('Failed to fetch review mode');
       return res.json();
     },
@@ -447,7 +448,7 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
 
   const updateReviewMode = useMutation({
     mutationFn: async (payload: { aiReviewMode: string; intervalMinutes?: number | null; scheduledTime?: string | null; scheduledDays?: string[] | null; timezone?: string | null; communicationFrequencyMinutes?: number | null }) => {
-      const res = await apiRequest('PUT', `/api/deals/${dealId}/review-mode`, payload);
+      const res = await apiRequest('PUT', `/api/projects/${dealId}/review-mode`, payload);
       return res.json();
     },
     onSuccess: () => {
@@ -575,65 +576,9 @@ function DealReviewModeControl({ dealId }: { dealId: number }) {
             <Zap className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-medium">Immediate Review on Upload</span>
           </div>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Documents are reviewed by AI as soon as they're uploaded. Choose how often the AI also runs a sweep to catch anything missed:
+          <p className="text-[11px] text-muted-foreground">
+            Documents are reviewed by AI as soon as they're uploaded. No additional configuration needed.
           </p>
-          <span className="text-[11px] font-medium text-muted-foreground mb-1.5 block">Catch-up Sweep Frequency</span>
-          <div className="flex flex-wrap gap-1.5">
-            {sweepFrequencyOptions.map((opt) => {
-              const isActive = currentInterval === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: opt.value, communicationFrequencyMinutes: currentCommFreq })}
-                  disabled={updateReviewMode.isPending}
-                  className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors ${
-                    isActive
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
-                  }`}
-                  data-testid={`button-sweep-frequency-${opt.value}`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-border/50">
-            <div className="flex items-center gap-2 mb-1">
-              <Send className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium">AI Communication Frequency</span>
-            </div>
-            <p className="text-[11px] text-muted-foreground mb-2">
-              How often should the AI generate and send messages to borrowers/brokers about review results?
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {commFrequencyOptions.map((opt) => {
-                const isActive = currentCommFreq === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    onClick={() => updateReviewMode.mutate({ aiReviewMode: 'automatic', intervalMinutes: currentInterval, communicationFrequencyMinutes: opt.value })}
-                    disabled={updateReviewMode.isPending}
-                    className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors ${
-                      isActive
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
-                    }`}
-                    data-testid={`button-comm-frequency-${opt.value}`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-            {currentCommFreq == null && (
-              <p className="text-[10px] text-amber-600 mt-2">
-                Select a frequency to control how often AI sends messages
-              </p>
-            )}
-          </div>
         </div>
       )}
 
@@ -964,8 +909,9 @@ export default function AdminDealDetail() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'completed' | 'todo' | 'digests' | 'ai_insights'>('all');
-  const [subFilter, setSubFilter] = useState<'all' | 'documents' | 'tasks'>('all');
+  const [subFilter, setSubFilter] = useState<'all' | 'documents'>('all');
   const [showMemoryPanel, setShowMemoryPanel] = useState(true);
+  const [showTasksSidebar, setShowTasksSidebar] = useState(false);
   const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
   const [stageExpandInitialized, setStageExpandInitialized] = useState(false);
 
@@ -1768,6 +1714,21 @@ export default function AdminDealDetail() {
           </h1>
           <p className="text-sm text-muted-foreground" data-testid="text-borrower-name">{borrowerName}</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowTasksSidebar(true)}
+          className="flex items-center gap-2"
+          data-testid="button-open-tasks-sidebar"
+        >
+          <ListChecks className="h-4 w-4" />
+          Tasks
+          {projectStages.reduce((sum, s) => sum + (s.tasks || []).filter(t => t.status !== 'completed').length, 0) > 0 && (
+            <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1.5 text-xs">
+              {projectStages.reduce((sum, s) => sum + (s.tasks || []).filter(t => t.status !== 'completed').length, 0)}
+            </Badge>
+          )}
+        </Button>
       </div>
 
       {/* Enhanced Progress Bar */}
@@ -2884,9 +2845,8 @@ export default function AdminDealDetail() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Documents & Tasks</SelectItem>
+                  <SelectItem value="all">All Documents</SelectItem>
                   <SelectItem value="documents">Documents Only</SelectItem>
-                  <SelectItem value="tasks">Tasks Only</SelectItem>
                 </SelectContent>
               </Select>
               {linkedProjectId && (
@@ -2947,14 +2907,8 @@ export default function AdminDealDetail() {
               const allStageTasks = stage.tasks || [];
               const allStageDocs = getStageDocuments(stage);
 
-              const showTasks = subFilter === 'all' || subFilter === 'tasks';
               const showDocs = subFilter === 'all' || subFilter === 'documents';
 
-              const stageTasks = allStageTasks.filter(t => {
-                if (activeFilter === 'completed') return t.status === 'completed';
-                if (activeFilter === 'todo') return t.status !== 'completed';
-                return true;
-              });
               const stageDocs = allStageDocs.filter(d => {
                 const isDocCompleted = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                 if (activeFilter === 'completed') return isDocCompleted;
@@ -2962,9 +2916,8 @@ export default function AdminDealDetail() {
                 return true;
               });
 
-              const visibleTaskCount = showTasks ? stageTasks.length : 0;
               const visibleDocCount = showDocs ? stageDocs.length : 0;
-              if ((activeFilter === 'completed' || activeFilter === 'todo') && visibleTaskCount === 0 && visibleDocCount === 0) {
+              if ((activeFilter === 'completed' || activeFilter === 'todo') && visibleDocCount === 0) {
                 return null;
               }
 
@@ -3030,95 +2983,8 @@ export default function AdminDealDetail() {
 
                   {isExpanded && (
                     <div className="border-t px-5 pb-5">
-                      {showTasks && stageTasks.length > 0 && (
-                        <div className="mt-5">
-                          <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
-                            <CheckSquare className="h-4 w-4 text-muted-foreground" />
-                            Tasks ({stageTasks.filter(t => t.status === 'completed').length}/{stageTasks.length})
-                          </h4>
-                          <div className="space-y-2">
-                            {stageTasks.map((task) => {
-                              const assignedMember = teamData?.teamMembers?.find(m => String(m.id) === task.assignedTo);
-                              return (
-                              <div
-                                key={task.id}
-                                className={cn(
-                                  "flex items-center gap-3 p-3 rounded-lg border",
-                                  task.status === 'completed' && "bg-success/10 border-success/30 opacity-80"
-                                )}
-                                data-testid={`task-row-${task.id}`}
-                              >
-                                <Checkbox
-                                  checked={task.status === 'completed'}
-                                  onCheckedChange={(checked) => {
-                                    if (linkedProjectId) {
-                                      updateProjectTaskMutation.mutate({
-                                        projectId: linkedProjectId,
-                                        taskId: task.id,
-                                        status: checked ? 'completed' : 'pending'
-                                      });
-                                    }
-                                  }}
-                                  data-testid={`checkbox-task-${task.id}`}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className={cn("text-sm font-medium", task.status === 'completed' && "line-through text-muted-foreground")}>
-                                      {task.taskTitle}
-                                    </span>
-                                    {getPriorityBadge(task.priority)}
-                                    {task.borrowerActionRequired && (
-                                      <Badge variant="outline" className="text-xs">Borrower Action</Badge>
-                                    )}
-                                  </div>
-                                  {task.completedAt && (
-                                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                                      <Check className="h-3 w-3 text-success" />
-                                      {formatDateTime(task.completedAt)}
-                                      {task.completedBy && ` by ${task.completedBy}`}
-                                    </div>
-                                  )}
-                                </div>
-                                <Select
-                                  value={task.assignedTo || "unassigned"}
-                                  onValueChange={(value) => {
-                                    if (linkedProjectId) {
-                                      updateProjectTaskMutation.mutate({
-                                        projectId: linkedProjectId,
-                                        taskId: task.id,
-                                        assignedTo: value === "unassigned" ? null : value,
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger
-                                    className="w-[140px] h-8 text-xs shrink-0"
-                                    data-testid={`select-assign-task-${task.id}`}
-                                  >
-                                    <SelectValue placeholder="Assign to..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                                    <SelectItem value="borrower">{borrowerName.trim() || 'Borrower'} (Borrower)</SelectItem>
-                                    {deal.userName && (
-                                      <SelectItem value="broker">{deal.userName} (Broker)</SelectItem>
-                                    )}
-                                    {teamData?.teamMembers?.filter(m => m.role === 'admin' || m.role === 'super_admin' || m.role === 'staff' || m.role === 'processor').map(member => (
-                                      <SelectItem key={member.id} value={String(member.id)}>
-                                        {member.fullName || member.email} ({member.role === 'super_admin' ? 'Super Admin' : member.role.charAt(0).toUpperCase() + member.role.slice(1)})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
                       {showDocs && stageDocs.length > 0 && (
-                        <div className={cn("mt-5", showTasks && stageTasks.length > 0 && "pt-5 border-t")}>
+                        <div className="mt-5">
                           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                             <h4 className="text-sm font-semibold flex items-center gap-2">
                               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -3285,25 +3151,14 @@ export default function AdminDealDetail() {
                         </div>
                       )}
 
-                      {showTasks && stageTasks.length === 0 && showDocs && stageDocs.length === 0 && (
+                      {showDocs && stageDocs.length === 0 && (
                         <div className="py-6 text-center text-sm text-muted-foreground">
-                          No items in this stage yet.
+                          No documents in this stage yet.
                         </div>
                       )}
 
                       {linkedProjectId && dealId && (
-                        <div className={cn("flex items-center gap-2 mt-4", (stageTasks.length > 0 || stageDocs.length > 0) && "pt-3 border-t")}>
-                          {showTasks && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => { e.stopPropagation(); setAddTaskStageId(stage.id); }}
-                              data-testid={`button-add-task-stage-${stage.id}`}
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              Add Task
-                            </Button>
-                          )}
+                        <div className={cn("flex items-center gap-2 mt-4", stageDocs.length > 0 && "pt-3 border-t")}>
                           {showDocs && (
                             <Button
                               size="sm"
@@ -3423,9 +3278,8 @@ export default function AdminDealDetail() {
                 const done = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
                 return activeFilter === 'completed' ? done : !done;
               });
-              const visT = (subFilter === 'all' || subFilter === 'tasks') ? filteredTasks.length : 0;
               const visD = (subFilter === 'all' || subFilter === 'documents') ? filteredDocs.length : 0;
-              return visT + visD > 0;
+              return visD > 0;
             });
             const hasUnassigned = (subFilter === 'all' || subFilter === 'documents') && getUnassignedDocuments().some(d => {
               const done = d.status === 'approved' || d.status === 'ai_reviewed' || d.status === 'uploaded';
@@ -3440,7 +3294,7 @@ export default function AdminDealDetail() {
                     <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium">No completed items yet</h3>
                     <p className="text-muted-foreground">
-                      Completed {subFilter === 'tasks' ? 'tasks' : subFilter === 'documents' ? 'documents' : 'items'} will appear here.
+                      Completed {subFilter === 'documents' ? 'documents' : 'items'} will appear here.
                     </p>
                   </>
                 ) : (
@@ -3448,7 +3302,7 @@ export default function AdminDealDetail() {
                     <Circle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium">All caught up</h3>
                     <p className="text-muted-foreground">
-                      No outstanding {subFilter === 'tasks' ? 'tasks' : subFilter === 'documents' ? 'documents' : 'items'} remaining.
+                      No outstanding {subFilter === 'documents' ? 'documents' : 'items'} remaining.
                     </p>
                   </>
                 )}
@@ -4479,6 +4333,18 @@ export default function AdminDealDetail() {
           onToggle={() => setShowMemoryPanel(!showMemoryPanel)}
         />
       </div>
+
+      {/* Tasks Sidebar */}
+      <TasksSidebar
+        open={showTasksSidebar}
+        onOpenChange={setShowTasksSidebar}
+        dealId={deal.id}
+        projectId={linkedProjectId}
+        stages={projectStages}
+        teamMembers={teamData?.teamMembers}
+        borrowerName={borrowerName.trim() || undefined}
+        brokerName={deal.userName || undefined}
+      />
     </div>
   );
 }
