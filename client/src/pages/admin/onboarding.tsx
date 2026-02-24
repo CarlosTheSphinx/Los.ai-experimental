@@ -1116,7 +1116,7 @@ function StepIntegrations({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Find the folder ID in your Google Drive folder's URL after /folders/
+                  In your Google Drive folder URL, the ID is everything after /folders/ and before the "?" — copy only that part.
                 </p>
               </div>
             )}

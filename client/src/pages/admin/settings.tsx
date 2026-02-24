@@ -223,7 +223,7 @@ const settingLabels: Record<string, { label: string; description: string; type: 
   },
   google_drive_parent_folder_id: {
     label: "Google Drive Parent Folder ID",
-    description: "The ID of the parent Google Drive folder where all deal folders will be created. Find this in your Google Drive folder's URL after /folders/",
+    description: "The ID of the parent Google Drive folder where all deal folders will be created. In your Google Drive folder URL (e.g. drive.google.com/drive/folders/ABC123?resourcekey=...), the ID is everything after /folders/ and before the \"?\" — copy only that part.",
     type: "text",
     category: "google_drive",
   },

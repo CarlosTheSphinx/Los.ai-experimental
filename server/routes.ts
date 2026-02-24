@@ -5587,13 +5587,6 @@ export async function registerRoutes(
       const tenantId = await getTenantId(req.user!);
       const setting = await storage.upsertSetting(key, value, description || null, req.user!.id, tenantId);
       
-      await storage.createAdminActivity({
-        userId: req.user!.id,
-        actionType: 'setting_updated',
-        actionDescription: `Updated setting: ${key}`,
-        metadata: { key, value }
-      });
-      
       res.json({ setting });
     } catch (error) {
       console.error('Admin update setting error:', error);
