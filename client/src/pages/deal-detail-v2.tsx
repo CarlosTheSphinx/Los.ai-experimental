@@ -38,6 +38,8 @@ export default function DealDetailV2() {
   const isAdmin = user?.role && ["admin", "staff", "super_admin"].includes(user.role);
   const [activeTab, setActiveTab] = useState("overview");
 
+  const apiBase = isAdmin ? `/api/admin/deals` : `/api/deals`;
+
   // Main deal query — endpoint returns { deal, stages, activity, processors }
   const { data: dealData, isLoading } = useQuery<{
     deal: any;
@@ -45,9 +47,9 @@ export default function DealDetailV2() {
     activity: any[];
     processors?: any[];
   }>({
-    queryKey: ["/api/deals", dealId],
+    queryKey: [apiBase, dealId],
     queryFn: async () => {
-      const res = await fetch(`/api/deals/${dealId}`, { credentials: "include" });
+      const res = await fetch(`${apiBase}/${dealId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch deal");
       return res.json();
     },
@@ -59,10 +61,10 @@ export default function DealDetailV2() {
 
   // Tasks (separate endpoint, may or may not exist)
   const { data: tasksData } = useQuery<any[]>({
-    queryKey: ["/api/deals", dealId, "tasks"],
+    queryKey: [apiBase, dealId, "tasks"],
     queryFn: async () => {
       try {
-        const res = await fetch(`/api/deals/${dealId}/tasks`, { credentials: "include" });
+        const res = await fetch(`${apiBase}/${dealId}/tasks`, { credentials: "include" });
         if (!res.ok) return [];
         return res.json();
       } catch {
@@ -75,9 +77,9 @@ export default function DealDetailV2() {
 
   // Documents
   const { data: docsData } = useQuery<{ documents: any[] }>({
-    queryKey: ["/api/deals", dealId, "documents"],
+    queryKey: [apiBase, dealId, "documents"],
     queryFn: async () => {
-      const res = await fetch(`/api/deals/${dealId}/documents`, { credentials: "include" });
+      const res = await fetch(`${apiBase}/${dealId}/documents`, { credentials: "include" });
       if (!res.ok) return { documents: [] };
       return res.json();
     },
