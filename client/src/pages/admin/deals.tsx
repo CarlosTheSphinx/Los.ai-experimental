@@ -112,6 +112,8 @@ interface Deal {
   googleDriveFolderUrl?: string | null;
   driveSyncStatus?: string | null;
   programName?: string | null;
+  totalDocuments?: number;
+  completedDocuments?: number;
 }
 
 interface StageInfo {
@@ -360,7 +362,7 @@ function ExpandedDealRow({ deal, stageStats }: { deal: Deal; stageStats?: StageI
             <Link href={`/admin/deals/${deal.id}`}>
               <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                 <FileText className="h-3.5 w-3.5" />
-                Documents
+                Documents ({deal.completedDocuments || 0}/{deal.totalDocuments || 0})
               </Button>
             </Link>
           </div>

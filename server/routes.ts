@@ -6230,6 +6230,15 @@ export async function registerRoutes(
         }
       }
 
+      const docCountRows = await db.select({
+        dealId: dealDocuments.dealId,
+        total: sql<number>`count(*)::int`,
+        completed: sql<number>`count(*) filter (where ${dealDocuments.status} in ('uploaded', 'approved', 'ai_reviewed'))::int`,
+      })
+        .from(dealDocuments)
+        .groupBy(dealDocuments.dealId);
+      const docCountMap = new Map(docCountRows.map(r => [r.dealId, { total: r.total, completed: r.completed }]));
+
       // Transform projects to deal format for frontend compatibility
       const deals = allProjects.map(p => {
         const nameParts = (p.borrowerName || '').split(' ');
@@ -6267,6 +6276,8 @@ export async function registerRoutes(
           googleDriveFolderId: p.googleDriveFolderId || null,
           googleDriveFolderUrl: p.googleDriveFolderUrl || null,
           driveSyncStatus: p.driveSyncStatus || 'NOT_ENABLED',
+          totalDocuments: docCountMap.get(p.id)?.total || 0,
+          completedDocuments: docCountMap.get(p.id)?.completed || 0,
         };
       });
       
