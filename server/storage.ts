@@ -9,6 +9,7 @@ import {
   documentReviewResults,
   programReviewRules,
   creditPolicies,
+  loanPrograms,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
