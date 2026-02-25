@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  ArrowLeft, Play, FolderOpen, RefreshCw, ExternalLink
+  ArrowLeft, Play, FolderOpen, RefreshCw, ExternalLink,
+  LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -172,19 +173,26 @@ export default function DealDetailV2() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-transparent border-b rounded-none w-full justify-start gap-0 p-0 h-auto">
             {[
-              { value: "overview", label: "Overview" },
-              { value: "documents", label: `Documents (${documents.length})` },
-              { value: "tasks", label: `Tasks (${tasks.length})` },
-              { value: "people", label: "People" },
-              { value: "communications", label: "Communications" },
-              { value: "ai-insights", label: "AI Insights" },
+              { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
+              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} pending` : String(documents.length) },
+              { value: "tasks", label: "Tasks", icon: CheckSquare, badge: String(tasks.length) },
+              { value: "people", label: "People", icon: Users, badge: null },
+              { value: "communications", label: "Communications", icon: MessageCircle, badge: null },
+              { value: "ai-insights", label: "AI Insights", icon: Sparkles, badge: null },
             ].map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-5 py-2.5 text-[13px] font-medium"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-5 py-2.5 text-[13px] font-medium gap-1.5"
+                data-testid={`tab-${tab.value}`}
               >
+                <tab.icon className="h-3.5 w-3.5" />
                 {tab.label}
+                {tab.badge && (
+                  <span className={`text-[11px] ml-0.5 ${tab.badge.includes('pending') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
+                    {tab.badge}
+                  </span>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>

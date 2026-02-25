@@ -1,23 +1,51 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, MessageSquare, Activity } from "lucide-react";
+import {
+  Send, MessageSquare, Activity, Mail, Settings, Plus, StickyNote
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function formatDateTime(dateStr: string): string {
+  return `${formatDate(dateStr)} · ${formatTime(dateStr)}`;
+}
+
+function getDigestDotColor(type: string | undefined): string {
+  switch (type) {
+    case "welcome": return "bg-blue-500";
+    case "digest":
+    case "weekly": return "bg-blue-400";
+    case "portal": return "bg-green-500";
+    case "document_request": return "bg-green-500";
+    case "stage_update": return "bg-blue-500";
+    default: return "bg-blue-400";
+  }
+}
+
+function getActivityDotColor(type: string | undefined): string {
+  switch (type) {
+    case "stage_change": return "bg-orange-400";
+    case "document_review":
+    case "ai_review": return "bg-orange-400";
+    case "note": return "bg-orange-400";
+    case "system": return "bg-green-500";
+    default: return "bg-orange-400";
+  }
 }
 
 export default function TabComms({
@@ -31,10 +59,48 @@ export default function TabComms({
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const isAdmin = user?.role && ["admin", "staff", "super_admin"].includes(user.role);
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [noteContent, setNoteContent] = useState("");
+  const [showMessages, setShowMessages] = useState(false);
   const [newMessage, setNewMessage] = useState("");
-  const [activeView, setActiveView] = useState<"messages" | "activity">("messages");
 
-  // Fetch threads for this deal
+  const apiBase = isAdmin ? `/api/admin/deals` : `/api/deals`;
+
+  const { data: notesData, refetch: refetchNotes } = useQuery<{ notes: any[] }>({
+    queryKey: [apiBase, dealId, "notes"],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${apiBase}/${dealId}/notes`, { credentials: "include" });
+        if (!res.ok) return { notes: [] };
+        return res.json();
+      } catch {
+        return { notes: [] };
+      }
+    },
+    enabled: !!dealId,
+  });
+  const notes = notesData?.notes ?? [];
+
+  const addNoteMutation = useMutation({
+    mutationFn: async (content: string) => {
+      return apiRequest("POST", `${apiBase}/${dealId}/notes`, {
+        content,
+        noteType: "general",
+      });
+    },
+    onSuccess: () => {
+      setNoteContent("");
+      setShowAddNote(false);
+      refetchNotes();
+      queryClient.invalidateQueries({ queryKey: [apiBase, dealId] });
+      toast({ title: "Note added" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add note", variant: "destructive" });
+    },
+  });
+
   const { data: threadsData, refetch: refetchThreads } = useQuery<{ threads: any[] }>({
     queryKey: ["/api/messages/threads", { dealId }],
     queryFn: async () => {
@@ -106,110 +172,245 @@ export default function TabComms({
     }
   };
 
+  const digestEntries = activities
+    .filter(a => {
+      const desc = (a.activityDescription || a.description || "").toLowerCase();
+      return desc.includes("email") || desc.includes("digest") || desc.includes("sent") ||
+             desc.includes("portal") || desc.includes("welcome") || desc.includes("notification");
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const activityEntries = activities
+    .filter(a => {
+      const desc = (a.activityDescription || a.description || "").toLowerCase();
+      return desc.includes("moved") || desc.includes("stage") || desc.includes("review") ||
+             desc.includes("approved") || desc.includes("rejected") || desc.includes("updated") ||
+             desc.includes("created") || desc.includes("assigned") || desc.includes("note") ||
+             desc.includes("document") || desc.includes("uploaded");
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const allActivityAndNotes = [
+    ...activityEntries.map(a => ({
+      id: `activity-${a.id}`,
+      type: "activity" as const,
+      content: a.activityDescription || a.description,
+      createdAt: a.createdAt,
+      author: a.userName || a.userEmail || null,
+      dotColor: getActivityDotColor(a.activityType),
+    })),
+    ...notes.map(n => ({
+      id: `note-${n.id}`,
+      type: "note" as const,
+      content: `${n.authorFullName || "User"} added note: "${n.content}"`,
+      createdAt: n.createdAt,
+      author: n.authorFullName || n.authorEmail || null,
+      dotColor: "bg-orange-400",
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   return (
-    <div className="space-y-4">
-      {/* Toggle */}
-      <div className="flex gap-1 bg-muted p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveView("messages")}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
-            activeView === "messages" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <MessageSquare className="h-3 w-3 inline mr-1.5" />
-          Messages
-        </button>
-        <button
-          onClick={() => setActiveView("activity")}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
-            activeView === "activity" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Activity className="h-3 w-3 inline mr-1.5" />
-          Activity ({activities.length})
-        </button>
-      </div>
-
-      {activeView === "messages" ? (
-        <div className="space-y-3">
-          {/* Message List */}
-          {messages.length === 0 && !currentThread ? (
-            <EmptyState
-              icon={MessageSquare}
-              title="No messages yet"
-              description="Start a conversation about this deal."
-            />
-          ) : (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {messages.map((msg: any) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.senderId === user?.id ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-lg px-3 py-2 text-[13px] ${
-                      msg.senderId === user?.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    }`}
-                  >
-                    {msg.senderName && msg.senderId !== user?.id && (
-                      <p className="text-[11px] font-medium mb-0.5 opacity-70">{msg.senderName}</p>
-                    )}
-                    <p>{msg.body}</p>
-                    <p className="text-[10px] mt-1 opacity-60">{timeAgo(msg.createdAt)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Compose */}
-          <div className="flex gap-2">
-            <Textarea
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              className="text-[13px] min-h-[60px] resize-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
-            <Button
-              size="sm"
-              className="self-end"
-              onClick={handleSend}
-              disabled={!newMessage.trim() || sendMessageMutation.isPending || createThreadMutation.isPending}
-            >
-              <Send className="h-3.5 w-3.5" />
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <Card>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-[14px] flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              Email Digests
+            </CardTitle>
+            <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-configure-digests">
+              <Settings className="h-3 w-3" />
+              Configure
             </Button>
-          </div>
-        </div>
-      ) : (
-        /* Activity Log */
-        <div className="space-y-1">
-          {activities.length === 0 ? (
-            <EmptyState
-              icon={Activity}
-              title="No activity yet"
-              description="Activity will be logged as the deal progresses."
-            />
-          ) : (
-            activities.map((item: any) => (
-              <div key={item.id} className="flex items-start gap-3 py-2 px-3 text-[12px]">
-                <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground mt-1.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-foreground">{item.activityDescription || item.description}</p>
-                  <p className="text-muted-foreground mt-0.5">{timeAgo(item.createdAt)}</p>
+          </CardHeader>
+          <CardContent>
+            {digestEntries.length === 0 ? (
+              <div className="text-center py-6">
+                <Mail className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No email digests sent yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Digests will appear here when emails are sent to the borrower</p>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {digestEntries.slice(0, 10).map((entry, idx) => {
+                  const desc = entry.activityDescription || entry.description || "";
+                  const parts = desc.split(" — ");
+                  const title = parts[0] || desc;
+                  const subtitle = parts[1] || "";
+
+                  return (
+                    <div key={entry.id || idx} className="flex items-start gap-3 py-3 border-b last:border-0">
+                      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${getDigestDotColor(entry.activityType)}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-foreground leading-snug">{title}</p>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">
+                          {formatDateTime(entry.createdAt)}
+                          {subtitle && ` — ${subtitle}`}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-[14px] flex items-center gap-2">
+              <StickyNote className="h-4 w-4 text-muted-foreground" />
+              Notes & Activity
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1.5 h-7"
+              onClick={() => setShowAddNote(!showAddNote)}
+              data-testid="button-add-note"
+            >
+              <Plus className="h-3 w-3" />
+              Add Note
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {showAddNote && (
+              <div className="mb-4 p-3 bg-muted/50 rounded-lg space-y-2">
+                <Textarea
+                  placeholder="Write a note..."
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  className="text-[13px] min-h-[70px] resize-none bg-white"
+                  data-testid="input-note-content"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => { setShowAddNote(false); setNoteContent(""); }}
+                    data-testid="button-cancel-note"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="text-xs h-7"
+                    disabled={!noteContent.trim() || addNoteMutation.isPending}
+                    onClick={() => addNoteMutation.mutate(noteContent)}
+                    data-testid="button-save-note"
+                  >
+                    {addNoteMutation.isPending ? "Saving..." : "Save Note"}
+                  </Button>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      )}
+            )}
+
+            {allActivityAndNotes.length === 0 ? (
+              <div className="text-center py-6">
+                <Activity className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No activity yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Activity will be logged as the deal progresses</p>
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {allActivityAndNotes.slice(0, 10).map((entry, idx) => (
+                  <div key={entry.id} className="flex items-start gap-3 py-3 border-b last:border-0">
+                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${entry.dotColor}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground leading-snug">{entry.content}</p>
+                      <p className="text-[12px] text-muted-foreground mt-0.5">
+                        {formatDateTime(entry.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[14px] flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              Messages
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => setShowMessages(!showMessages)}
+              data-testid="button-toggle-messages"
+            >
+              {showMessages ? "Collapse" : "Show Messages"}
+            </Button>
+          </div>
+        </CardHeader>
+        {showMessages && (
+          <CardContent className="space-y-3">
+            {messages.length === 0 && !currentThread ? (
+              <EmptyState
+                icon={MessageSquare}
+                title="No messages yet"
+                description="Start a conversation about this deal."
+              />
+            ) : (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {messages.map((msg: any) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.senderId === user?.id ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-lg px-3 py-2 text-[13px] ${
+                        msg.senderId === user?.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      }`}
+                    >
+                      {msg.senderName && msg.senderId !== user?.id && (
+                        <p className="text-[11px] font-medium mb-0.5 opacity-70">{msg.senderName}</p>
+                      )}
+                      <p>{msg.body}</p>
+                      <p className="text-[10px] mt-1 opacity-60">
+                        {formatDateTime(msg.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Type a message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="text-[13px] min-h-[60px] resize-none"
+                data-testid="input-message-content"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                className="self-end"
+                onClick={handleSend}
+                disabled={!newMessage.trim() || sendMessageMutation.isPending || createThreadMutation.isPending}
+                data-testid="button-send-message"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }
