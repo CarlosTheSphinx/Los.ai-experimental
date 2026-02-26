@@ -56,6 +56,27 @@ interface Deal {
   metadata?: any;
 }
 
+const AVATAR_COLORS = [
+  { bg: "bg-blue-100", text: "text-blue-600" },
+  { bg: "bg-emerald-100", text: "text-emerald-600" },
+  { bg: "bg-red-100", text: "text-red-500" },
+  { bg: "bg-amber-100", text: "text-amber-600" },
+  { bg: "bg-purple-100", text: "text-purple-600" },
+  { bg: "bg-teal-100", text: "text-teal-600" },
+];
+
+function getAvatarColor(name?: string) {
+  if (!name) return AVATAR_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function cleanAddress(address?: string): string {
+  if (!address) return "—";
+  return address.replace(/,?\s*United States of America$/i, "").trim();
+}
+
 function formatCurrency(amount: number | undefined): string {
   if (!amount) return "$0";
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
@@ -621,7 +642,7 @@ export default function DealsV2() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-[13px] font-semibold text-muted-foreground shrink-0" data-testid={`avatar-borrower-${deal.id}`}>
+                          <div className={`h-8 w-8 rounded-md flex items-center justify-center text-[13px] font-semibold shrink-0 ${getAvatarColor(deal.borrowerName).bg} ${getAvatarColor(deal.borrowerName).text}`} data-testid={`avatar-borrower-${deal.id}`}>
                             {(deal.borrowerName || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
                           </div>
                           <div>
@@ -631,7 +652,7 @@ export default function DealsV2() {
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <div className="text-[16px]">{deal.propertyAddress || "—"}</div>
+                        <div className="text-[16px]">{cleanAddress(deal.propertyAddress)}</div>
                         <div className="text-[13px] text-muted-foreground">
                           {[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ")}
                         </div>
@@ -699,7 +720,7 @@ export default function DealsV2() {
                             </div>
                             <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Address</span>
-                              <span className="font-semibold truncate max-w-[180px] text-right" title={deal.propertyAddress || "—"}>
+                              <span className="font-semibold truncate max-w-[180px] text-right" title={cleanAddress(deal.propertyAddress)}>
                                 {deal.propertyAddress ? deal.propertyAddress.split(",")[0] : "—"}
                               </span>
                             </div>
