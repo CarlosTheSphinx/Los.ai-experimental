@@ -251,7 +251,7 @@ export default function DealDetailV2() {
         <KpiRow deal={deal} documents={documents} tasks={tasks} />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="border rounded-lg mt-5 mb-5">
+          <div className="border rounded-lg mt-5 mb-5 bg-card">
             <TabsList className="bg-transparent rounded-none w-full justify-between p-0 h-auto">
               {[
                 { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
@@ -264,7 +264,7 @@ export default function DealDetailV2() {
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-[18px] font-semibold gap-2"
+                  className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-[16px] font-semibold gap-2"
                   data-testid={`tab-${tab.value}`}
                 >
                   <tab.icon className="h-4.5 w-4.5" />

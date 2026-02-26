@@ -154,6 +154,19 @@ export default function TabOverview({
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
+  const convertProgramMutation = useMutation({
+    mutationFn: async (programId: number | null) => {
+      return apiRequest("POST", `${apiBase}/projects/${deal.projectId || deal.id}/convert-program`, { programId });
+    },
+    onSuccess: () => {
+      invalidateDeal();
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/tasks`] });
+      toast({ title: "Loan program updated", description: "Documents and tasks have been synced to the new program." });
+    },
+    onError: () => toast({ title: "Failed to convert program", variant: "destructive" }),
+  });
+
   const { data: programsData } = useQuery<any[]>({
     queryKey: ["/api/admin/programs"],
     queryFn: async () => {
@@ -270,7 +283,7 @@ export default function TabOverview({
           <div className="mx-6 mt-2 mb-3 border-b border-muted" />
           <CardContent>
             {!editLoan ? (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3.5">
                 <Field label="Loan Amount" value={fmt(loanAmount)} />
                 <Field label="Property Value" value={fmt(propertyValue)} />
                 <Field label="LTV" value={ltv ? `${ltv}%` : "—"} tooltip="Loan-to-Value ratio" />
@@ -283,7 +296,7 @@ export default function TabOverview({
                 <Field label="Days in Stage" value={daysBetween(deal.createdAt)} />
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
                 <EditField label="Loan Amount" value={loanForm.loanAmount} onChange={(v) => setLoanForm({ ...loanForm, loanAmount: v })} type="number" />
                 <Field label="Property Value" value={fmt(propertyValue)} />
                 <Field label="LTV" value={ltv ? `${ltv}%` : "—"} tooltip="Loan-to-Value ratio" />
@@ -341,7 +354,7 @@ export default function TabOverview({
           <div className="mx-6 mt-2 mb-3 border-b border-muted" />
           <CardContent>
             {!editProperty ? (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3.5">
                 <Field label="Address" value={primaryProp?.address || deal.propertyAddress || "—"} />
                 <Field label="City / State" value={
                   primaryProp
@@ -356,7 +369,7 @@ export default function TabOverview({
                 <Field label="NOI" value={noi !== null && noi !== 0 ? fmt(noi) : "—"} tooltip="Net Operating Income" />
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
                 <EditField label="Address" value={propForm.address} onChange={(v) => setPropForm({ ...propForm, address: v })} />
                 <div className="grid grid-cols-2 gap-2">
                   <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
@@ -402,7 +415,7 @@ export default function TabOverview({
           <div className="mx-6 mt-2 mb-3 border-b border-muted" />
           <CardContent>
             {!editBorrower ? (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3.5">
                 <Field label="Full Name" value={deal.borrowerName || `${deal.customerFirstName || ""} ${deal.customerLastName || ""}`.trim() || "—"} />
                 <Field label="Email" value={deal.borrowerEmail || deal.customerEmail || "—"} />
                 <Field label="Phone" value={deal.borrowerPhone || deal.customerPhone || "—"} />
@@ -414,7 +427,7 @@ export default function TabOverview({
                 <Field label="Entity Type" value={appData.entityType || "—"} />
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
                 <EditField label="Full Name" value={borrowerForm.fullName} onChange={(v) => setBorrowerForm({ ...borrowerForm, fullName: v })} />
                 <EditField label="Email" value={borrowerForm.email} onChange={(v) => setBorrowerForm({ ...borrowerForm, email: v })} type="email" />
                 <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: v })} type="tel" />
@@ -439,7 +452,7 @@ export default function TabOverview({
           </CardHeader>
           <div className="mx-6 mt-2 mb-3 border-b border-muted" />
           <CardContent>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4">
               <div>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Deal Status</span>
                 <Select
@@ -476,7 +489,8 @@ export default function TabOverview({
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Loan Program</span>
                 <Select
                   value={deal.programId ? String(deal.programId) : "none"}
-                  onValueChange={(v) => saveControlMutation.mutate({ programId: v === "none" ? null : Number(v) })}
+                  onValueChange={(v) => convertProgramMutation.mutate(v === "none" ? null : Number(v))}
+                  disabled={convertProgramMutation.isPending}
                 >
                   <SelectTrigger className="h-9 mt-1 text-[13px]" data-testid="select-loan-program">
                     <SelectValue />
