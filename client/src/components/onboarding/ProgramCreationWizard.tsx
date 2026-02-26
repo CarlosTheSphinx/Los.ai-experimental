@@ -2606,6 +2606,14 @@ function DocumentsStep({
 
 // ─── Step 6: Tasks ──────────────────────────────────────────────
 
+const PRIORITY_LABELS: Record<string, string> = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
+const PRIORITY_COLORS: Record<string, string> = {
+  critical: 'bg-red-100 text-red-700',
+  high: 'bg-orange-100 text-orange-700',
+  medium: 'bg-blue-100 text-blue-700',
+  low: 'bg-gray-100 text-gray-600',
+};
+
 function TasksStep({
   tasks,
   setTasks,
@@ -2617,12 +2625,23 @@ function TasksStep({
   stages: StageEntry[];
   teamMembers: { id: number; fullName: string; role: string }[];
 }) {
+  const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
+  const newTaskRef = useRef<HTMLInputElement>(null);
 
-  const addTask = () => {
-    if (!newTaskName.trim()) return;
-    setTasks([...tasks, { taskName: newTaskName.trim(), taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex: null }]);
+  const startAdding = (target: number | 'unassigned') => {
+    setAddingToStage(target);
     setNewTaskName('');
+    setTimeout(() => newTaskRef.current?.focus(), 50);
+  };
+
+  const addTask = (target: number | 'unassigned') => {
+    const name = newTaskName.trim();
+    if (!name) return;
+    const stepIndex = typeof target === 'number' ? target : null;
+    setTasks([...tasks, { taskName: name, taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex }]);
+    setNewTaskName('');
+    setAddingToStage(null);
   };
 
   const removeTask = (i: number) => {
@@ -2635,97 +2654,236 @@ function TasksStep({
     setTasks(updated);
   };
 
+  const getAssigneeLabel = (value: string) => {
+    if (value.startsWith('user_')) {
+      const member = teamMembers.find((m) => `user_${m.id}` === value);
+      return member ? member.fullName : value;
+    }
+    const roleLabels: Record<string, string> = { admin: 'Admin', processor: 'Processor', user: 'Borrower', broker: 'Broker' };
+    return roleLabels[value] || value;
+  };
+
+  const tasksByStage = stages.map((_, si) => tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === si));
+  const unassigned = tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === null);
+
+  const renderTaskRow = (task: TaskEntry, globalIdx: number) => (
+    <div
+      key={globalIdx}
+      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 group transition-colors"
+      data-testid={`task-row-${globalIdx}`}
+    >
+      <ListChecks className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+      <input
+        className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+        value={task.taskName}
+        onChange={(e) => updateTask(globalIdx, 'taskName', e.target.value)}
+        placeholder="Task name"
+        data-testid={`input-task-name-${globalIdx}`}
+      />
+      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium)}>
+        {PRIORITY_LABELS[task.priority] || 'Medium'}
+      </span>
+      <Select value={task.priority} onValueChange={(v) => updateTask(globalIdx, 'priority', v)}>
+        <SelectTrigger className="w-[90px] h-7 text-[12px]" data-testid={`select-task-priority-${globalIdx}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="critical">Critical</SelectItem>
+          <SelectItem value="high">High</SelectItem>
+          <SelectItem value="medium">Medium</SelectItem>
+          <SelectItem value="low">Low</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={task.assignToRole} onValueChange={(v) => updateTask(globalIdx, 'assignToRole', v)}>
+        <SelectTrigger className="w-[140px] h-7 text-[12px]" data-testid={`select-task-assignee-${globalIdx}`}>
+          <SelectValue placeholder="Assign to..." />
+        </SelectTrigger>
+        <SelectContent>
+          {teamMembers.length > 0 && teamMembers.map((m) => (
+            <SelectItem key={m.id} value={`user_${m.id}`}>{m.fullName}</SelectItem>
+          ))}
+          <SelectItem value="admin">Admin (role)</SelectItem>
+          <SelectItem value="processor">Processor (role)</SelectItem>
+          <SelectItem value="user">Borrower</SelectItem>
+          <SelectItem value="broker">Broker</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select
+        value={task.stepIndex !== null ? task.stepIndex.toString() : 'none'}
+        onValueChange={(v) => updateTask(globalIdx, 'stepIndex', v === 'none' ? null : parseInt(v))}
+      >
+        <SelectTrigger className="h-7 text-[12px] w-[130px]" data-testid={`select-task-stage-${globalIdx}`}>
+          <SelectValue placeholder="Assign stage" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Unassigned</SelectItem>
+          {stages.map((s, si) => (
+            <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <button
+        className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
+        onClick={() => removeTask(globalIdx)}
+        data-testid={`button-remove-task-${globalIdx}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+
+  const renderAddTaskInline = (target: number | 'unassigned') => {
+    if (addingToStage !== target) return null;
+    return (
+      <div className="flex items-center gap-2 py-2 px-3 bg-muted/20 rounded-lg mt-1">
+        <ListChecks className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
+        <input
+          ref={newTaskRef}
+          className="text-[14px] bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40"
+          placeholder="Task name..."
+          value={newTaskName}
+          onChange={(e) => setNewTaskName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTask(target); } if (e.key === 'Escape') { setAddingToStage(null); setNewTaskName(''); } }}
+          data-testid="input-new-task"
+        />
+        <Button variant="ghost" size="sm" className="h-7 text-[12px] text-primary" onClick={() => addTask(target)} disabled={!newTaskName.trim()} data-testid="button-confirm-add-task">
+          <Check className="h-3.5 w-3.5 mr-1" /> Add
+        </Button>
+        <button className="text-muted-foreground/40 hover:text-muted-foreground p-0.5" onClick={() => { setAddingToStage(null); setNewTaskName(''); }}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <ListChecks className="h-4 w-4" />
-          Tasks
-        </CardTitle>
-        <CardDescription>
-          Define the action items that need to be completed at each stage. Assign a team member and the stage each task belongs to.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {tasks.length === 0 ? (
-          <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No tasks added yet. Add tasks below or configure them later from the program settings.
-          </div>
-        ) : (
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            <div className="flex items-center gap-3 px-3 pb-1">
-              <span className="flex-1" />
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs font-medium text-muted-foreground w-44">Assigned To</span>
-                <span className="text-xs font-medium text-muted-foreground w-36">Stage Assigned</span>
-                <span className="w-5" />
-              </div>
-            </div>
-            {tasks.map((task, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/30 group" data-testid={`task-row-${i}`}>
-                <span className="text-sm flex-1 min-w-0 truncate" title={task.taskName}>{task.taskName}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Select value={task.assignToRole} onValueChange={(v) => updateTask(i, 'assignToRole', v)}>
-                    <SelectTrigger className="h-7 text-xs w-44" data-testid={`select-task-assignee-${i}`}>
-                      <SelectValue placeholder="Assign to..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teamMembers.length > 0 ? (
-                        teamMembers.map((m) => (
-                          <SelectItem key={m.id} value={`user_${m.id}`}>{m.fullName} ({m.role})</SelectItem>
-                        ))
-                      ) : null}
-                      <SelectItem value="admin">Admin (role)</SelectItem>
-                      <SelectItem value="processor">Processor (role)</SelectItem>
-                      <SelectItem value="user">Borrower</SelectItem>
-                      <SelectItem value="broker">Broker</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={task.stepIndex !== null ? task.stepIndex.toString() : 'none'}
-                    onValueChange={(v) => updateTask(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-task-stage-${i}`}>
-                      <SelectValue placeholder="Select stage..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No stage</SelectItem>
-                      {stages.map((s, si) => (
-                        <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={() => removeTask(i)}
-                    data-testid={`button-remove-task-${i}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-[26px] font-bold leading-tight">Tasks & Checklist</h2>
+        <p className="text-[16px] text-muted-foreground mt-1">
+          Define the action items that need to be completed at each stage. Assign team members and set priority levels.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] text-muted-foreground">
+          {tasks.length} tasks configured
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => startAdding('unassigned')}
+          data-testid="button-add-task"
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Task
+        </Button>
+      </div>
+
+      <div className="relative pl-6">
+        {stages.length > 1 && (
+          <div
+            className="absolute left-[11px] top-[24px] w-[2px] bg-blue-200"
+            style={{ height: `calc(100% - 48px)` }}
+          />
         )}
 
-        <div className="flex gap-2">
-          <Input
-            className="h-8 text-sm flex-1"
-            placeholder="Add a task..."
-            value={newTaskName}
-            onChange={(e) => setNewTaskName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTask(); } }}
-            data-testid="input-new-task"
-          />
-          <Button variant="outline" size="sm" onClick={addTask} disabled={!newTaskName.trim()} data-testid="button-add-task">
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add
-          </Button>
+        <div className="space-y-0">
+          {stages.map((stage, si) => {
+            const color = STAGE_COLORS[si % STAGE_COLORS.length];
+            const stageTasks = tasksByStage[si];
+
+            return (
+              <div key={si} className="relative" data-testid={`task-stage-group-${si}`}>
+                <div
+                  className="absolute left-[-13px] top-[14px] w-3 h-3 rounded-full z-10 border-2 border-white"
+                  style={{ backgroundColor: color }}
+                />
+
+                <div className="ml-4 mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span style={{ color }} className="text-[13px]">●</span>
+                      <span className="text-[15px] font-bold text-foreground">
+                        {stage.stepName || `Stage ${si + 1}`}
+                      </span>
+                      <span className="text-[12px] text-muted-foreground">
+                        ({stageTasks.length} {stageTasks.length === 1 ? 'task' : 'tasks'})
+                      </span>
+                    </div>
+                    <button
+                      className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                      onClick={() => startAdding(si)}
+                      data-testid={`button-add-task-to-stage-${si}`}
+                    >
+                      <Plus className="h-3 w-3" /> Add
+                    </button>
+                  </div>
+
+                  <div className="rounded-[10px] border bg-white overflow-hidden">
+                    {stageTasks.length === 0 && addingToStage !== si ? (
+                      <div className="py-3 px-4 text-[13px] text-muted-foreground/60 text-center">
+                        No tasks for this stage yet
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border/40">
+                        {stageTasks.map((entry) => renderTaskRow(entry.task, entry.idx))}
+                      </div>
+                    )}
+                    {renderAddTaskInline(si)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {(unassigned.length > 0 || addingToStage === 'unassigned') && (
+            <div className="relative" data-testid="task-stage-group-unassigned">
+              <div className="absolute left-[-13px] top-[14px] w-3 h-3 rounded-full z-10 border-2 border-white bg-gray-400" />
+
+              <div className="ml-4 mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-gray-400">●</span>
+                    <span className="text-[15px] font-bold text-muted-foreground">Unassigned</span>
+                    {unassigned.length > 0 && (
+                      <span className="text-[12px] text-amber-600 font-medium">
+                        — assign these to a stage
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                    onClick={() => startAdding('unassigned')}
+                    data-testid="button-add-task-unassigned"
+                  >
+                    <Plus className="h-3 w-3" /> Add
+                  </button>
+                </div>
+
+                <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
+                  {unassigned.length > 0 && (
+                    <div className="divide-y divide-border/40">
+                      {unassigned.map((entry) => renderTaskRow(entry.task, entry.idx))}
+                    </div>
+                  )}
+                  {renderAddTaskInline('unassigned')}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
+        <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+        <div>
+          <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
+          <span className="text-[14px] text-blue-800">
+            Tasks assigned to a stage will appear in the deal checklist when the deal reaches that stage. Assign tasks to specific team members or roles so everyone knows what they're responsible for.
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
