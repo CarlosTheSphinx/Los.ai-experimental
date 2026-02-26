@@ -97,61 +97,77 @@ function ExpandedProgramDetails({
       <div className="grid grid-cols-3 gap-8">
         <div>
           <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-key-metrics-${program.id}`}>Key Metrics</h4>
-          <div className="grid grid-cols-[1fr_auto] gap-y-2 text-[16px]">
-            <span className="text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Base Rate</TooltipTrigger>
-                <TooltipContent>Starting interest rate for this program</TooltipContent>
-              </Tooltip>
-            </span>
-            <span className="font-medium text-right">{baseRate ? `${baseRate}%` : "—"}</span>
-            <span className="text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">YSP</TooltipTrigger>
-                <TooltipContent>Yield Spread Premium range</TooltipContent>
-              </Tooltip>
-            </span>
-            <span className="font-medium text-right">
-              {program.yspMin != null && program.yspMax != null
-                ? `${program.yspMin.toFixed(2)}% – ${program.yspMax.toFixed(2)}%`
-                : "—"}
-            </span>
-            <span className="text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Points</TooltipTrigger>
-                <TooltipContent>Origination points range</TooltipContent>
-              </Tooltip>
-            </span>
-            <span className="font-medium text-right">
-              {program.basePointsMin != null && program.basePointsMax != null
-                ? `${program.basePointsMin.toFixed(2)} – ${program.basePointsMax.toFixed(2)}`
-                : "—"}
-            </span>
-            <span className="text-muted-foreground">Min Loan</span>
-            <span className="font-medium text-right">{program.minLoanAmount ? `$${program.minLoanAmount.toLocaleString()}` : "—"}</span>
-            <span className="text-muted-foreground">Max Loan</span>
-            <span className="font-medium text-right">{program.maxLoanAmount ? `$${program.maxLoanAmount.toLocaleString()}` : "—"}</span>
+          <div className="divide-y divide-border/50 text-[16px]">
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">
+                <Tooltip>
+                  <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Base Rate</TooltipTrigger>
+                  <TooltipContent>Starting interest rate for this program</TooltipContent>
+                </Tooltip>
+              </span>
+              <span className="font-medium">{baseRate ? `${baseRate}%` : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">
+                <Tooltip>
+                  <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">YSP</TooltipTrigger>
+                  <TooltipContent>Yield Spread Premium range</TooltipContent>
+                </Tooltip>
+              </span>
+              <span className="font-medium">
+                {program.yspMin != null && program.yspMax != null
+                  ? `${program.yspMin.toFixed(2)}% – ${program.yspMax.toFixed(2)}%`
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">
+                <Tooltip>
+                  <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Points</TooltipTrigger>
+                  <TooltipContent>Origination points range</TooltipContent>
+                </Tooltip>
+              </span>
+              <span className="font-medium">
+                {program.basePointsMin != null && program.basePointsMax != null
+                  ? `${program.basePointsMin.toFixed(2)} – ${program.basePointsMax.toFixed(2)}`
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">Min Loan</span>
+              <span className="font-medium">{program.minLoanAmount ? `$${program.minLoanAmount.toLocaleString()}` : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">Max Loan</span>
+              <span className="font-medium">{program.maxLoanAmount ? `$${program.maxLoanAmount.toLocaleString()}` : "—"}</span>
+            </div>
           </div>
         </div>
 
         <div>
           <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-workflow-${program.id}`}>Workflow</h4>
-          <div className="grid grid-cols-[1fr_auto] gap-y-2 text-[16px]">
-            <span className="text-muted-foreground">Stages</span>
-            <span className="font-medium text-right">{steps.length || "—"}</span>
-            <span className="text-muted-foreground">Documents</span>
-            <span className="font-medium text-right">
-              {docs.length > 0
-                ? `${requiredDocs} required${optionalDocs > 0 ? `, ${optionalDocs} optional` : ""}`
-                : "—"}
-            </span>
-            <span className="text-muted-foreground">Tasks</span>
-            <span className="font-medium text-right">{tasks.length > 0 ? `${tasks.length} tasks` : "—"}</span>
+          <div className="divide-y divide-border/50 text-[16px]">
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">Stages</span>
+              <span className="font-medium">{steps.length || "—"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">Documents</span>
+              <span className="font-medium">
+                {docs.length > 0
+                  ? `${requiredDocs} required${optionalDocs > 0 ? `, ${optionalDocs} optional` : ""}`
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">Tasks</span>
+              <span className="font-medium">{tasks.length > 0 ? `${tasks.length} tasks` : "—"}</span>
+            </div>
             {program.creditPolicyId && (
-              <>
+              <div className="flex items-center justify-between py-1.5">
                 <span className="text-muted-foreground">Credit Policy</span>
-                <span className="font-medium text-right text-blue-600">{program.name} ↗</span>
-              </>
+                <span className="font-medium text-blue-600">{program.name} ↗</span>
+              </div>
             )}
           </div>
         </div>
