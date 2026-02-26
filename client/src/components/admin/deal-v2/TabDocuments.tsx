@@ -374,8 +374,8 @@ export default function TabDocuments({
           actionLabel="Upload"
           onAction={() => fileInputRef.current?.click()}
         />
-      ) : (
-        sortedStageKeys.map((stageId, idx) => {
+      ) : (() => {
+        const stageData = sortedStageKeys.map((stageId, idx) => {
           const stageDocs = docsByStage.get(stageId) || [];
           const stage = stageId !== null ? stageMap.get(stageId) : null;
           const stageOrder = stage?.stageOrder ?? idx + 1;
@@ -384,21 +384,24 @@ export default function TabDocuments({
             (d) => d.status === "approved" || d.status === "accepted"
           ).length;
           const allComplete = completedCount === stageDocs.length && stageDocs.length > 0;
+          return { stageId, stageOrder, stageName, completedCount, totalCount: stageDocs.length, allComplete, stageDocs };
+        });
+        const activeIdx = stageData.findIndex((s) => !s.allComplete);
 
-          return (
-            <StageSection
-              key={stageId ?? "general"}
-              stageOrder={stageOrder}
-              stageName={stageName}
-              completedCount={completedCount}
-              totalCount={stageDocs.length}
-              allComplete={allComplete}
-              documents={stageDocs}
-              dealId={dealId}
-            />
-          );
-        })
-      )}
+        return stageData.map((s, idx) => (
+          <StageSection
+            key={s.stageId ?? "general"}
+            stageOrder={s.stageOrder}
+            stageName={s.stageName}
+            completedCount={s.completedCount}
+            totalCount={s.totalCount}
+            allComplete={s.allComplete}
+            documents={s.stageDocs}
+            dealId={dealId}
+            defaultOpen={idx === activeIdx}
+          />
+        ));
+      })()}
     </div>
   );
 }
@@ -411,6 +414,7 @@ function StageSection({
   allComplete,
   documents,
   dealId,
+  defaultOpen = false,
 }: {
   stageOrder: number;
   stageName: string;
@@ -419,8 +423,9 @@ function StageSection({
   allComplete: boolean;
   documents: any[];
   dealId: string;
+  defaultOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div className="border rounded-md bg-card" data-testid={`stage-section-${stageOrder}`}>
