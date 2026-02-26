@@ -44,13 +44,13 @@ function KpiCard({
     <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
   );
   return (
-    <div className="bg-card border rounded-[10px] p-4">
-      <div className="flex items-center gap-2 mb-2">
+    <div className="bg-card border rounded-[10px] px-4 py-2.5">
+      <div className="flex items-center gap-2 mb-1">
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         {labelEl}
       </div>
       <div className={`text-2xl font-bold ${valueColor || ""}`}>{value}</div>
-      {subtitle && <p className="text-[12px] text-muted-foreground mt-1">{subtitle}</p>}
+      {subtitle && <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>}
     </div>
   );
 }
