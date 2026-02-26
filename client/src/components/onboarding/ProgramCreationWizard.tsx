@@ -1,5 +1,5 @@
 import type { DragEvent, ChangeEvent } from 'react';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';

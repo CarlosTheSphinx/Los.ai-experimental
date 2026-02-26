@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ProgramCreationWizard } from "@/components/onboarding/ProgramCreationWizard";
 
 interface LoanProgram {
   id: number;
@@ -52,6 +53,8 @@ export default function ProgramsV2() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<LoanProgram | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [editWizardProgram, setEditWizardProgram] = useState<{ id: number } | null>(null);
 
   const { data: programs = [], isLoading } = useQuery<LoanProgram[]>({
     queryKey: ["/api/admin/programs"],
@@ -103,6 +106,22 @@ export default function ProgramsV2() {
     setPanelOpen(true);
   };
 
+  if (showWizard || editWizardProgram) {
+    return (
+      <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <ProgramCreationWizard
+          onComplete={() => {
+            setShowWizard(false);
+            setEditWizardProgram(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+          }}
+          onCancel={() => { setShowWizard(false); setEditWizardProgram(null); }}
+          editProgram={editWizardProgram}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       {/* Header */}
@@ -113,7 +132,7 @@ export default function ProgramsV2() {
             Configure and manage your lending products.
           </p>
         </div>
-        <Button size="sm">
+        <Button size="sm" onClick={() => setShowWizard(true)} data-testid="button-new-program">
           <Plus className="h-4 w-4 mr-1" /> New Program
         </Button>
       </div>
@@ -179,6 +198,7 @@ export default function ProgramsV2() {
             title="No programs found"
             description={searchQuery ? "Try adjusting your search." : "Create your first loan program to get started."}
             actionLabel="+ New Program"
+            onAction={() => setShowWizard(true)}
           />
         ) : (
           <table className="w-full">
