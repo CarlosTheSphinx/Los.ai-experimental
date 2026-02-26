@@ -303,8 +303,8 @@ export default function DealsV2() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[22px] font-bold">Pipeline</h1>
-          <p className="text-[13px] text-muted-foreground mt-0.5">
+          <h1 className="text-[26px] font-bold">Pipeline</h1>
+          <p className="text-[16px] text-muted-foreground mt-0.5">
             Track and manage your loan deals.
           </p>
         </div>
@@ -364,13 +364,13 @@ export default function DealsV2() {
                   placeholder="Search by borrower, address, or loan #..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9 text-[13px]"
+                  className="pl-9 h-9 text-[16px]"
                   data-testid="input-search-deals"
                 />
               </div>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-1.5 text-[13px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                className="flex items-center gap-1.5 text-[16px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
                 data-testid="button-more-filters"
               >
                 <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${showFilters ? "rotate-90" : ""}`} />
@@ -381,7 +381,7 @@ export default function DealsV2() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
-                className="flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium border rounded-md bg-white hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 h-9 px-3 text-[16px] font-medium border rounded-md bg-white hover:bg-gray-50 transition-colors"
                 data-testid="button-sort-order"
               >
                 <ArrowUpDown className="h-3.5 w-3.5" />
@@ -420,7 +420,7 @@ export default function DealsV2() {
           {showFilters && (
             <div className="mt-3 pt-3 border-t border-border/50 animate-in slide-in-from-top-1 duration-200">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[13px] font-semibold">Filter Deals</span>
+                <span className="text-[16px] font-semibold">Filter Deals</span>
                 <button
                   onClick={() => {
                     setProgramFilter("all"); setTypeFilter("all"); setAssignedFilter("all");
@@ -428,7 +428,7 @@ export default function DealsV2() {
                     setStateFilter("all"); setBrokerFilter("all"); setDaysInStageFilter("all");
                     setStatusFilter("all");
                   }}
-                  className="text-[12px] text-blue-600 hover:text-blue-700 transition-colors"
+                  className="text-[14px] text-blue-600 hover:text-blue-700 transition-colors"
                   data-testid="button-clear-all-filters"
                 >
                   Clear all
@@ -436,9 +436,9 @@ export default function DealsV2() {
               </div>
               <div className="grid grid-cols-4 gap-x-4 gap-y-3">
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Loan Program</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Loan Program</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={programFilter}
                     onChange={(e) => setProgramFilter(e.target.value)}
                     data-testid="select-program-filter"
@@ -450,9 +450,9 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Loan Type</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Loan Type</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
                     data-testid="select-type-filter"
@@ -467,9 +467,9 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Assigned To</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Assigned To</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={assignedFilter}
                     onChange={(e) => setAssignedFilter(e.target.value)}
                     data-testid="select-assigned-filter"
@@ -481,14 +481,14 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Amount Range</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Amount Range</label>
                   <div className="flex gap-2">
                     <Input
                       type="number"
                       placeholder="Min"
                       value={amountMin}
                       onChange={(e) => setAmountMin(e.target.value)}
-                      className="h-9 text-[13px] w-1/2"
+                      className="h-9 text-[16px] w-1/2"
                       data-testid="input-amount-min"
                     />
                     <Input
@@ -496,15 +496,15 @@ export default function DealsV2() {
                       placeholder="Max"
                       value={amountMax}
                       onChange={(e) => setAmountMax(e.target.value)}
-                      className="h-9 text-[13px] w-1/2"
+                      className="h-9 text-[16px] w-1/2"
                       data-testid="input-amount-max"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Close Date</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Close Date</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={closeDateFilter}
                     onChange={(e) => setCloseDateFilter(e.target.value)}
                     data-testid="select-close-date-filter"
@@ -517,9 +517,9 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Property State</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Property State</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={stateFilter}
                     onChange={(e) => setStateFilter(e.target.value)}
                     data-testid="select-state-filter"
@@ -531,9 +531,9 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Broker / Partner</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Broker / Partner</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={brokerFilter}
                     onChange={(e) => setBrokerFilter(e.target.value)}
                     data-testid="select-broker-filter"
@@ -542,9 +542,9 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Days in Stage</label>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Days in Stage</label>
                   <select
-                    className="w-full h-9 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
                     value={daysInStageFilter}
                     onChange={(e) => setDaysInStageFilter(e.target.value)}
                     data-testid="select-days-in-stage-filter"
@@ -584,25 +584,25 @@ export default function DealsV2() {
             <thead>
               <tr className="border-b-2">
                 <th className="w-8" />
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Loan #
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Borrower
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Property
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Program
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Amount
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Status
                 </th>
-                <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Progress
                 </th>
               </tr>
@@ -616,25 +616,25 @@ export default function DealsV2() {
                   onToggle={(expanded) => setExpandedId(expanded ? deal.id : null)}
                   summary={
                     <>
-                      <td className="px-3 py-3 text-[13px] font-medium text-blue-600">
+                      <td className="px-3 py-3 text-[16px] font-medium text-blue-600">
                         {deal.dealNumber || deal.loanNumber || `#${deal.id}`}
                       </td>
                       <td className="px-3 py-3">
-                        <div className="text-[13px] font-medium">{deal.borrowerName || "—"}</div>
-                        <div className="text-[11px] text-muted-foreground">{deal.borrowerEmail || ""}</div>
+                        <div className="text-[16px] font-medium">{deal.borrowerName || "—"}</div>
+                        <div className="text-[13px] text-muted-foreground">{deal.borrowerEmail || ""}</div>
                       </td>
                       <td className="px-3 py-3">
-                        <div className="text-[13px]">{deal.propertyAddress || "—"}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-[16px]">{deal.propertyAddress || "—"}</div>
+                        <div className="text-[13px] text-muted-foreground">
                           {[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ")}
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge variant="outline" className="text-[11px] font-medium">
+                        <Badge variant="outline" className="text-[13px] font-medium">
                           {deal.programName || deal.loanType || "—"}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-[13px] font-semibold">
+                      <td className="px-3 py-3 text-[16px] font-semibold">
                         {formatCurrency(deal.loanAmount)}
                       </td>
                       <td className="px-3 py-3">
@@ -643,7 +643,7 @@ export default function DealsV2() {
                       <td className="px-3 py-3 w-[120px]">
                         <div className="flex items-center gap-2">
                           <Progress value={deal.completionPercentage || 0} className="h-1.5 flex-1" />
-                          <span className="text-[11px] text-muted-foreground w-8 text-right">
+                          <span className="text-[13px] text-muted-foreground w-8 text-right">
                             {deal.completionPercentage || 0}%
                           </span>
                         </div>
@@ -654,21 +654,21 @@ export default function DealsV2() {
                     <div>
                       <div className="grid grid-cols-3 gap-8">
                         <div>
-                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-loan-details-${deal.id}`}>Loan Details</h4>
+                          <h4 className="text-[16px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-loan-details-${deal.id}`}>Loan Details</h4>
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Loan Amount</span>
                               <span className="font-semibold">{formatCurrencyFull(deal.loanAmount)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">LTV</span>
                               <span className="font-semibold">{deal.ltv ? `${deal.ltv}%` : "—"}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Interest Rate</span>
                               <span className="font-semibold">{deal.interestRate ? `${deal.interestRate}%` : "—"}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Term</span>
                               <span className="font-semibold">{formatTerm(deal.loanTermMonths)}</span>
                             </div>
@@ -676,21 +676,21 @@ export default function DealsV2() {
                         </div>
 
                         <div>
-                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-property-${deal.id}`}>Property</h4>
+                          <h4 className="text-[16px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-property-${deal.id}`}>Property</h4>
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Type</span>
                               <span className="font-semibold">{getPropertyTypeLabel(deal.propertyType)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">State</span>
                               <span className="font-semibold">{deal.propertyState || extractState(deal.propertyAddress)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Purpose</span>
                               <span className="font-semibold">{getLoanPurpose(deal)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Address</span>
                               <span className="font-semibold truncate max-w-[180px] text-right" title={deal.propertyAddress || "—"}>
                                 {deal.propertyAddress ? deal.propertyAddress.split(",")[0] : "—"}
@@ -700,21 +700,21 @@ export default function DealsV2() {
                         </div>
 
                         <div>
-                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-timeline-${deal.id}`}>Timeline</h4>
+                          <h4 className="text-[16px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-timeline-${deal.id}`}>Timeline</h4>
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Created</span>
                               <span className="font-semibold">{formatDate(deal.createdAt)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Target Close</span>
                               <span className="font-semibold">{formatDate(deal.targetCloseDate)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Days in Stage</span>
                               <span className="font-semibold">{getDaysInStage(deal.createdAt)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-[13px]">
+                            <div className="flex items-center justify-between text-[16px]">
                               <span className="text-muted-foreground">Assigned To</span>
                               <span className="font-semibold">{deal.userName || "—"}</span>
                             </div>
@@ -724,34 +724,34 @@ export default function DealsV2() {
 
                       <div className="mt-5 pt-4 border-t border-border/50 flex items-center gap-3">
                         <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                          <Button size="default" className="text-[15px] shadow-md" data-testid={`button-open-deal-${deal.id}`}>
+                          <Button size="default" className="text-[18px] shadow-md" data-testid={`button-open-deal-${deal.id}`}>
                             Open Deal <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
                         </Link>
                         {deal.googleDriveFolderUrl ? (
                           <a href={deal.googleDriveFolderUrl} target="_blank" rel="noopener noreferrer">
-                            <Button variant="outline" size="default" className="text-[15px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-drive-${deal.id}`}>
+                            <Button variant="outline" size="default" className="text-[18px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-drive-${deal.id}`}>
                               <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="default" className="text-[15px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" disabled data-testid={`button-drive-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[18px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" disabled data-testid={`button-drive-${deal.id}`}>
                             <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                           </Button>
                         )}
                         {deal.borrowerEmail ? (
                           <a href={`mailto:${deal.borrowerEmail}`}>
-                            <Button variant="outline" size="default" className="text-[15px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-email-borrower-${deal.id}`}>
+                            <Button variant="outline" size="default" className="text-[18px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-email-borrower-${deal.id}`}>
                               <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="default" className="text-[15px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" disabled data-testid={`button-email-borrower-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[18px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" disabled data-testid={`button-email-borrower-${deal.id}`}>
                             <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                           </Button>
                         )}
                         <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                          <Button variant="outline" size="default" className="text-[15px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-documents-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[18px] [--button-outline:rgba(156,163,175,0.30)] border-[0.5px]" data-testid={`button-documents-${deal.id}`}>
                             <FileText className="h-4 w-4 mr-1.5" /> Documents ({deal.documents?.length || 0}/{deal.totalDocuments || 0})
                           </Button>
                         </Link>
@@ -766,11 +766,11 @@ export default function DealsV2() {
 
         {/* Footer */}
         {filteredDeals.length > 0 && (
-          <div className="px-4 py-3 border-t text-[12px] text-muted-foreground flex items-center justify-between">
+          <div className="px-4 py-3 border-t text-[14px] text-muted-foreground flex items-center justify-between">
             <span>
               Showing {filteredDeals.length} of {deals.length} deals
             </span>
-            <span className="text-[11px]">⌘K to search</span>
+            <span className="text-[13px]">⌘K to search</span>
           </div>
         )}
       </div>

@@ -275,7 +275,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                 <span className="text-2xl font-bold text-white">Lendry.</span>
                 <span className="text-2xl font-bold text-primary">AI</span>
               </div>
-              <span className="text-[13px] text-muted-foreground font-medium">
+              <span className="text-[16px] text-muted-foreground font-medium">
                 Loan Automation System
               </span>
             </div>
@@ -323,7 +323,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+            <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
               {(effectiveViewAsBorrower || isBorrower) ? 'My Loans' : 'Pipeline'}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -352,7 +352,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                             {'showBadge' in item && item.showBadge && <InboxBadge />}
                           </span>
                           {item.shortcut && (
-                            <span className="text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
+                            <span className="text-[12px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
                               {item.shortcut}
                             </span>
                           )}
@@ -367,7 +367,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           
           {showAdminSection && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Administration
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -396,7 +396,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                               {'showBadge' in item && item.showBadge && <InboxBadge />}
                             </span>
                             {item.shortcut && (
-                              <span className="text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
+                              <span className="text-[12px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
                                 {item.shortcut}
                               </span>
                             )}
@@ -413,7 +413,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           {/* Super Admin section — only visible to Lendry platform team */}
           {isSuperAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Super Admin (Lendry Only)
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -456,7 +456,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
               <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Eye className="h-3 w-3 text-[hsl(212,67%,51%)]" />
-                  <span className="text-[10px] uppercase tracking-wider font-medium text-[hsl(212,67%,51%)]">View As</span>
+                  <span className="text-[12px] uppercase tracking-wider font-medium text-[hsl(212,67%,51%)]">View As</span>
                 </div>
                 <Select
                   value={viewAsMode}
