@@ -272,10 +272,10 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           <div className="flex items-center justify-between gap-1">
             <div className="flex flex-col items-start gap-1 group-data-[collapsible=icon]:hidden">
               <div className="flex items-center gap-0">
-                <span className="text-2xl font-bold text-white">Lendry.</span>
-                <span className="text-2xl font-bold text-primary">AI</span>
+                <span className="text-[31px] font-bold text-white">Lendry.</span>
+                <span className="text-[31px] font-bold text-primary">AI</span>
               </div>
-              <span className="text-[16px] text-muted-foreground font-medium">
+              <span className="text-[21px] text-muted-foreground font-medium">
                 Loan Automation System
               </span>
             </div>
@@ -305,7 +305,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           <Button
             variant="outline"
             size="sm"
-            className="w-full justify-start text-muted-foreground text-xs group-data-[collapsible=icon]:hidden"
+            className="w-full justify-start text-muted-foreground text-[16px] group-data-[collapsible=icon]:hidden"
             onClick={() => setCommandPaletteOpen(true)}
           >
             <Search className="h-3.5 w-3.5 mr-2" />
@@ -323,7 +323,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+            <SidebarGroupLabel className="text-[21px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
               {(effectiveViewAsBorrower || isBorrower) ? 'My Loans' : 'Pipeline'}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -339,7 +339,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                         asChild
                         isActive={isActive}
                         tooltip={item.label}
-                        className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                        className={`text-[18px] ${isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}`}
                       >
                         <Link
                           href={item.href}
@@ -352,7 +352,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                             {'showBadge' in item && item.showBadge && <InboxBadge />}
                           </span>
                           {item.shortcut && (
-                            <span className="text-[12px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
+                            <span className="text-[21px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
                               {item.shortcut}
                             </span>
                           )}
@@ -367,7 +367,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           
           {showAdminSection && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
-              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+              <SidebarGroupLabel className="text-[21px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Administration
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -383,7 +383,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                           asChild
                           isActive={isActive}
                           tooltip={item.label}
-                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                          className={`text-[18px] ${isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}`}
                         >
                           <Link
                             href={item.href}
@@ -396,7 +396,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                               {'showBadge' in item && item.showBadge && <InboxBadge />}
                             </span>
                             {item.shortcut && (
-                              <span className="text-[12px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
+                              <span className="text-[21px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline">
                                 {item.shortcut}
                               </span>
                             )}
@@ -413,7 +413,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           {/* Super Admin section — only visible to Lendry platform team */}
           {isSuperAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
-              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+              <SidebarGroupLabel className="text-[21px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Super Admin (Lendry Only)
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -429,7 +429,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                           asChild
                           isActive={isActive}
                           tooltip={item.label}
-                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                          className={`text-[18px] ${isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}`}
                         >
                           <Link
                             href={item.href}
@@ -456,26 +456,26 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
               <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Eye className="h-3 w-3 text-[hsl(212,67%,51%)]" />
-                  <span className="text-[12px] uppercase tracking-wider font-medium text-[hsl(212,67%,51%)]">View As</span>
+                  <span className="text-[21px] uppercase tracking-wider font-medium text-[hsl(212,67%,51%)]">View As</span>
                 </div>
                 <Select
                   value={viewAsMode}
                   onValueChange={(value) => setViewAsMode(value as ViewAsMode)}
                 >
-                  <SelectTrigger className="h-8 text-xs text-[hsl(212,67%,51%)]" data-testid="select-view-as-mode">
+                  <SelectTrigger className="h-8 text-[16px] text-[hsl(212,67%,51%)]" data-testid="select-view-as-mode">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="super_admin" className="text-xs text-[hsl(212,67%,51%)]">Super Admin</SelectItem>
-                    <SelectItem value="lender" className="text-xs text-[hsl(212,67%,51%)]">Lender / Broker</SelectItem>
-                    <SelectItem value="borrower" className="text-xs text-[hsl(212,67%,51%)]">Borrower</SelectItem>
+                    <SelectItem value="super_admin" className="text-[16px] text-[hsl(212,67%,51%)]">Super Admin</SelectItem>
+                    <SelectItem value="lender" className="text-[16px] text-[hsl(212,67%,51%)]">Lender / Broker</SelectItem>
+                    <SelectItem value="borrower" className="text-[16px] text-[hsl(212,67%,51%)]">Borrower</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             )}
             {user && (
               <div className="px-2 py-2 flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-[16px] font-semibold shrink-0">
                   {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -483,7 +483,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                     {user.firstName} {user.lastName}
                   </div>
                   {isAdmin && (
-                    <Badge variant="default" className="mt-1 text-xs px-2 py-0.5 h-auto">
+                    <Badge variant="default" className="mt-1 text-[16px] px-2 py-0.5 h-auto">
                       <Shield className="h-3 w-3 mr-1" />
                       {user.role?.replace('_', ' ')}
                     </Badge>
@@ -511,7 +511,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/20 shrink-0">
             <div className="flex items-center gap-2">
               <Eye className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-              <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              <span className="text-[16px] font-medium text-amber-700 dark:text-amber-300">
                 Previewing as {viewAsMode === "borrower" ? "Borrower" : "Lender / Broker"}
               </span>
             </div>
@@ -519,7 +519,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
               variant="ghost"
               size="sm"
               onClick={() => setViewAsMode("super_admin")}
-              className="h-6 text-xs text-amber-700 dark:text-amber-300"
+              className="h-6 text-[16px] text-amber-700 dark:text-amber-300"
               data-testid="button-exit-preview"
             >
               <X className="h-3 w-3 mr-1" />

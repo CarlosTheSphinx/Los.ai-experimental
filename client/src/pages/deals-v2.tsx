@@ -331,8 +331,8 @@ export default function DealsV2() {
         </div>
         {isAdmin && (
           <Link href="/deals/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-1" /> New Deal
+            <Button size="default" className="text-[18px] px-5 py-2.5 h-auto">
+              <Plus className="h-5 w-5 mr-1.5" /> New Deal
             </Button>
           </Link>
         )}

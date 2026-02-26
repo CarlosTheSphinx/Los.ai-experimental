@@ -26,10 +26,10 @@ export function SummaryCard({ icon: Icon, label, value, subtitle, isActive, onCl
     >
       <div className="flex items-center gap-2 mb-1">
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
-        <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
+        <span className="text-[14px] font-medium text-muted-foreground">{label}</span>
       </div>
-      <div className="text-[22px] font-bold text-foreground">{value}</div>
-      {subtitle && <div className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</div>}
+      <div className="text-[26px] font-bold text-foreground">{value}</div>
+      {subtitle && <div className="text-[13px] text-muted-foreground mt-0.5">{subtitle}</div>}
     </button>
   );
 }
