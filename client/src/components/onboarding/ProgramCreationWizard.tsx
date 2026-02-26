@@ -2937,7 +2937,7 @@ function ReviewRulesStep({
           <span className="text-[12px] font-medium px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">Optional</span>
         </div>
         <p className="text-[16px] text-muted-foreground mt-1">
-          Define what the AI should check when reviewing each document. If a rule fails, the document is automatically flagged as Action Required for your team.
+          Define what the AI should check when reviewing each document. Your team will be notified when a rule fails.
         </p>
       </div>
 
@@ -2966,11 +2966,7 @@ function ReviewRulesStep({
             <div key={docName} data-testid={`doc-rules-section-${docName}`}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
-                  {docName === 'General' ? (
-                    <Sparkles className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                  ) : (
-                    <FileText className="h-4 w-4 text-muted-foreground/60 flex-shrink-0" />
-                  )}
+                  <Brain className="h-4 w-4 text-muted-foreground/60 flex-shrink-0" />
                   <span className="text-[15px] font-bold text-foreground">
                     {docName === 'General' ? 'General (all documents)' : docName}
                   </span>
@@ -3008,9 +3004,6 @@ function ReviewRulesStep({
                           placeholder="Rule description"
                           data-testid={`input-rule-title-${rule.origIdx}`}
                         />
-                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">
-                          Action Required
-                        </span>
                         <button
                           className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
                           onClick={() => removeRule(rule.origIdx)}
@@ -3049,14 +3042,11 @@ function ReviewRulesStep({
         })}
       </div>
 
-      <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
-        <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-        <div>
-          <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
-          <span className="text-[14px] text-blue-800">
-            When the AI reviews a document and a rule fails, it will automatically flag the document as Action Required so your team knows to take action. You can refine these rules later from program settings.
-          </span>
-        </div>
+      <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4">
+        <p className="text-[14px] text-blue-800">
+          <span className="font-semibold text-blue-700">Tip: </span>
+          When the AI reviews a document and a rule fails, your team will be notified so they can take action. You can refine these rules later from program settings.
+        </p>
       </div>
     </div>
   );
