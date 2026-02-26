@@ -440,6 +440,9 @@ export function ProgramCreationWizard({
   // Review rules — pre-populated
   const [reviewRules, setReviewRules] = useState<RuleEntry[]>([...dscrDefaultRules]);
 
+  // Activation mode for review step
+  const [activationMode, setActivationMode] = useState<'draft' | 'active'>('draft');
+
   const { data: editProgramData } = useQuery<{
     program: any;
     documents: any[];
@@ -602,48 +605,59 @@ export function ProgramCreationWizard({
     }
   };
 
+  const buildProgramPayload = (forceActive?: boolean) => ({
+    name: programName.trim(),
+    description: programDescription.trim(),
+    loanType,
+    minLoanAmount,
+    maxLoanAmount,
+    minLtv,
+    maxLtv,
+    minInterestRate,
+    maxInterestRate,
+    termOptions,
+    minDscr: minDscr ? parseFloat(minDscr) : null,
+    minFico: minFico ? parseInt(minFico) : null,
+    eligiblePropertyTypes,
+    quoteFormFields,
+    creditPolicyId: selectedCreditPolicyId,
+    isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
+    steps: stages.map((s) => ({
+      stepName: s.stepName,
+      isRequired: s.isRequired,
+      description: s.description || '',
+    })),
+    documents: documents.map((d) => ({
+      documentName: d.documentName,
+      documentCategory: d.documentCategory,
+      isRequired: d.isRequired,
+      stepIndex: d.stepIndex,
+    })),
+    tasks: tasks.map((t) => ({
+      taskName: t.taskName,
+      taskCategory: t.taskCategory,
+      priority: t.priority,
+      assignToRole: t.assignToRole,
+      stepIndex: t.stepIndex,
+    })),
+  });
+
   const handleCreate = () => {
     if (!programName.trim()) {
       toast({ title: 'Program name is required', variant: 'destructive' });
       return;
     }
 
-    createProgramMutation.mutate({
-      name: programName.trim(),
-      description: programDescription.trim(),
-      loanType,
-      minLoanAmount,
-      maxLoanAmount,
-      minLtv,
-      maxLtv,
-      minInterestRate,
-      maxInterestRate,
-      termOptions,
-      minDscr: minDscr ? parseFloat(minDscr) : null,
-      minFico: minFico ? parseInt(minFico) : null,
-      eligiblePropertyTypes,
-      quoteFormFields,
-      creditPolicyId: selectedCreditPolicyId,
-      isActive: true,
-      steps: stages.map((s) => ({
-        stepName: s.stepName,
-        isRequired: s.isRequired,
-        description: s.description || '',
-      })),
-      documents: documents.map((d) => ({
-        documentName: d.documentName,
-        documentCategory: d.documentCategory,
-        isRequired: d.isRequired,
-        stepIndex: d.stepIndex,
-      })),
-      tasks: tasks.map((t) => ({
-        taskName: t.taskName,
-        taskCategory: t.taskCategory,
-        priority: t.priority,
-        assignToRole: t.assignToRole,
-        stepIndex: t.stepIndex,
-      })),
-    });
+    createProgramMutation.mutate(buildProgramPayload());
+  };
+
+  const handleSaveAsDraft = () => {
+    if (!programName.trim()) {
+      toast({ title: 'Program name is required', variant: 'destructive' });
+      return;
+    }
+
+    createProgramMutation.mutate(buildProgramPayload(false));
   };
 
   const handleTemplateSelect = (templateId: string) => {
@@ -782,7 +796,9 @@ export function ProgramCreationWizard({
       {wizardStep === 'summary' && (
         <SummaryStep
           programName={programName}
+          programDescription={programDescription}
           loanType={loanType}
+          selectedTemplate={selectedTemplate}
           stages={stages}
           documents={documents}
           tasks={tasks}
@@ -790,6 +806,16 @@ export function ProgramCreationWizard({
           quoteFormFields={quoteFormFields}
           selectedCreditPolicyId={selectedCreditPolicyId}
           creditPolicies={creditPoliciesData?.policies || []}
+          eligiblePropertyTypes={eligiblePropertyTypes}
+          minLtv={minLtv}
+          maxLtv={maxLtv}
+          minLoanAmount={minLoanAmount}
+          maxLoanAmount={maxLoanAmount}
+          minDscr={minDscr}
+          minFico={minFico}
+          activationMode={activationMode}
+          setActivationMode={setActivationMode}
+          onEditStep={setWizardStep}
         />
       )}
     </>
@@ -901,24 +927,38 @@ export function ProgramCreationWizard({
               )}
 
               {wizardStep === 'summary' ? (
-                <Button
-                  onClick={handleCreate}
-                  disabled={createProgramMutation.isPending || !programName.trim()}
-                  className="text-[16px]"
-                  data-testid="button-wizard-create"
-                >
-                  {createProgramMutation.isPending ? (
-                    <>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleSaveAsDraft}
+                    disabled={createProgramMutation.isPending || !programName.trim()}
+                    className="text-[16px]"
+                    data-testid="button-wizard-save-draft"
+                  >
+                    {createProgramMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                      {isEditMode ? 'Updating...' : 'Creating...'}
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                      {isEditMode ? 'Update Program' : 'Create Program'}
-                    </>
-                  )}
-                </Button>
+                    ) : null}
+                    Save as Draft
+                  </Button>
+                  <Button
+                    onClick={handleCreate}
+                    disabled={createProgramMutation.isPending || !programName.trim()}
+                    className="text-[16px] bg-primary"
+                    data-testid="button-wizard-create"
+                  >
+                    {createProgramMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        {isEditMode ? 'Updating...' : 'Creating...'}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-1.5" />
+                        {isEditMode ? 'Update Program' : 'Create Program'}
+                      </>
+                    )}
+                  </Button>
+                </div>
               ) : (
                 <Button
                   onClick={() => {
@@ -3052,11 +3092,35 @@ function ReviewRulesStep({
   );
 }
 
-// ─── Step 8: Summary ────────────────────────────────────────────
+// ─── Step 10: Review & Create ────────────────────────────────────
+
+const PROPERTY_ABBREVIATIONS: Record<string, string> = {
+  'single-family': 'SFR',
+  '2-4-unit': '2-4',
+  'condo': 'Condo',
+  'townhouse': 'TH',
+  'pud': 'PUD',
+  'multi-family': 'MF',
+  'commercial': 'Comm',
+  'mixed-use': 'MU',
+  'other': 'Other',
+  'special-purpose': 'SP',
+};
+
+function formatLoanAmount(val: string): string {
+  if (!val) return '—';
+  const num = parseFloat(val);
+  if (isNaN(num)) return val;
+  if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `$${(num / 1000).toFixed(0)}K`;
+  return `$${num}`;
+}
 
 function SummaryStep({
   programName,
+  programDescription,
   loanType,
+  selectedTemplate,
   stages,
   documents,
   tasks,
@@ -3064,9 +3128,21 @@ function SummaryStep({
   quoteFormFields,
   selectedCreditPolicyId,
   creditPolicies,
+  eligiblePropertyTypes,
+  minLtv,
+  maxLtv,
+  minLoanAmount,
+  maxLoanAmount,
+  minDscr,
+  minFico,
+  activationMode,
+  setActivationMode,
+  onEditStep,
 }: {
   programName: string;
+  programDescription: string;
   loanType: string;
+  selectedTemplate: string;
   stages: StageEntry[];
   documents: DocEntry[];
   tasks: TaskEntry[];
@@ -3074,104 +3150,206 @@ function SummaryStep({
   quoteFormFields: QuoteFormField[];
   selectedCreditPolicyId: number | null;
   creditPolicies: any[];
+  eligiblePropertyTypes: string[];
+  minLtv: string;
+  maxLtv: string;
+  minLoanAmount: string;
+  maxLoanAmount: string;
+  minDscr: string;
+  minFico: string;
+  activationMode: 'draft' | 'active';
+  setActivationMode: (mode: 'draft' | 'active') => void;
+  onEditStep: (step: WizardStep) => void;
 }) {
   const policyName = selectedCreditPolicyId
     ? creditPolicies.find((p: any) => p.id === selectedCreditPolicyId)?.name || 'Unknown'
     : 'None';
 
+  const templateName = templateOptions.find((t) => t.id === selectedTemplate)?.title || selectedTemplate;
+
   const visibleFields = quoteFormFields.filter((f) => f.visible);
-  const requiredFields = quoteFormFields.filter((f) => f.required);
-  const conditionalFields = quoteFormFields.filter((f) => f.conditionalOn);
+  const requiredFields = visibleFields.filter((f) => f.required);
+  const optionalFields = visibleFields.filter((f) => !f.required);
+
+  const validStages = stages.filter((s) => s.stepName.trim());
+  const validDocs = documents.filter((d) => d.documentName.trim());
+  const requiredDocs = validDocs.filter((d) => d.isRequired);
+  const optionalDocs = validDocs.filter((d) => !d.isRequired);
+  const uniqueCategories = new Set(validDocs.map((d) => d.documentCategory).filter(Boolean));
+
+  const validTasks = tasks.filter((t) => t.taskName.trim());
+  const highPriorityTasks = validTasks.filter((t) => t.priority === 'high' || t.priority === 'critical');
+  const mediumTasks = validTasks.filter((t) => t.priority === 'medium');
+  const lowTasks = validTasks.filter((t) => t.priority === 'low');
+
+  const propertyAbbrevs = eligiblePropertyTypes.map((p) => PROPERTY_ABBREVIATIONS[p] || p).join(', ');
+
+  const ltvRange = minLtv && maxLtv ? `${minLtv}% – ${maxLtv}%` : minLtv ? `≥ ${minLtv}%` : maxLtv ? `≤ ${maxLtv}%` : '—';
+  const loanRange = minLoanAmount && maxLoanAmount ? `${formatLoanAmount(minLoanAmount)} – ${formatLoanAmount(maxLoanAmount)}` : minLoanAmount ? `≥ ${formatLoanAmount(minLoanAmount)}` : maxLoanAmount ? `≤ ${formatLoanAmount(maxLoanAmount)}` : '—';
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" />
-          Review & Create
-        </CardTitle>
-        <CardDescription>
-          Review your program configuration before creating it. You can always edit these settings later.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 text-sm">
+    <div className="space-y-6" data-testid="summary-step">
+      <div>
+        <h2 className="text-[26px] font-bold tracking-tight">Review & Create</h2>
+        <p className="text-[16px] text-muted-foreground mt-1">
+          Review your program configuration before creating. You can edit any section after creation.
+        </p>
+      </div>
+
+      <div className="border rounded-[10px] p-5" data-testid="summary-program-identity">
+        <div className="flex items-start justify-between">
           <div>
-            <span className="text-muted-foreground text-xs">Program Name</span>
-            <p className="font-medium">{programName || '(not set)'}</p>
+            <h3 className="text-[20px] font-bold">{programName || '(not set)'}</h3>
+            {programDescription && (
+              <p className="text-[14px] text-muted-foreground mt-0.5">{programDescription}</p>
+            )}
           </div>
-          <div>
-            <span className="text-muted-foreground text-xs">Loan Type</span>
-            <p className="font-medium">{loanType.toUpperCase()}</p>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[12px]",
+              activationMode === 'active'
+                ? "bg-blue-50 text-blue-700 border-blue-200"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+            )}
+            data-testid="badge-status"
+          >
+            {activationMode === 'active' ? 'Active' : 'Draft'}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-3 mt-3">
+          <Badge variant="secondary" className="text-[12px]" data-testid="badge-loan-type">{loanType.toUpperCase()}</Badge>
+          <span className="text-[13px] text-muted-foreground">Template: {templateName}</span>
+          <span className="text-[13px] text-muted-foreground">Policy: {policyName}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4" data-testid="summary-cards-grid">
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-loan-params">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Loan Parameters</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('program-details')} data-testid="button-edit-loan-params">Edit</button>
           </div>
-          <div>
-            <span className="text-muted-foreground text-xs">Credit Policy</span>
-            <p className="font-medium">{policyName}</p>
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">LTV Range</span><span className="font-semibold">{ltvRange}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Min DSCR</span><span className="font-semibold">{minDscr || '—'}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Loan Range</span><span className="font-semibold">{loanRange}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Min FICO</span><span className="font-semibold">{minFico || '—'}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Properties</span><span className="font-semibold">{propertyAbbrevs || '—'}</span></div>
           </div>
         </div>
 
-        <Separator />
-
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="bg-muted/50 rounded-md p-3 text-center">
-            <p className="text-2xl font-bold">{visibleFields.length}</p>
-            <p className="text-xs text-muted-foreground">Form Fields</p>
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-quote-form">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Quote Form</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('quote-form')} data-testid="button-edit-quote-form">Edit</button>
           </div>
-          <div className="bg-muted/50 rounded-md p-3 text-center">
-            <p className="text-2xl font-bold">{stages.filter((s) => s.stepName.trim()).length}</p>
-            <p className="text-xs text-muted-foreground">Stages</p>
-          </div>
-          <div className="bg-muted/50 rounded-md p-3 text-center">
-            <p className="text-2xl font-bold">{documents.filter((d) => d.documentName.trim()).length}</p>
-            <p className="text-xs text-muted-foreground">Documents</p>
-          </div>
-          <div className="bg-muted/50 rounded-md p-3 text-center">
-            <p className="text-2xl font-bold">{tasks.filter((t) => t.taskName.trim()).length}</p>
-            <p className="text-xs text-muted-foreground">Tasks</p>
-          </div>
-          <div className="bg-muted/50 rounded-md p-3 text-center">
-            <p className="text-2xl font-bold">{reviewRules.filter((r) => r.ruleTitle.trim()).length}</p>
-            <p className="text-xs text-muted-foreground">AI Rules</p>
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Required Fields</span><span className="font-semibold">{requiredFields.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Optional Fields</span><span className="font-semibold">{optionalFields.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Fields</span><span className="font-semibold">{visibleFields.length}</span></div>
           </div>
         </div>
 
-        {visibleFields.length > 0 && (
-          <div>
-            <Label className="text-xs text-muted-foreground">Quote Form ({requiredFields.length} required, {conditionalFields.length} conditional)</Label>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {visibleFields.map((f) => (
-                <Badge key={f.fieldKey} variant={f.required ? 'default' : 'outline'} className="text-xs">
-                  {f.label}
-                  {f.conditionalOn && ' *'}
-                </Badge>
-              ))}
-            </div>
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-workflow">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Workflow</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('stages')} data-testid="button-edit-workflow">Edit</button>
           </div>
-        )}
-
-        {stages.filter((s) => s.stepName.trim()).length > 0 && (
-          <div>
-            <Label className="text-xs text-muted-foreground">Pipeline Flow</Label>
-            <div className="flex flex-wrap items-center gap-1 mt-1">
-              {stages.filter((s) => s.stepName.trim()).map((s, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <Badge variant="outline" className="text-xs">{s.stepName}</Badge>
-                  {i < stages.filter((s) => s.stepName.trim()).length - 1 && (
-                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  )}
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Stages</span><span className="font-semibold">{validStages.length}</span></div>
+          </div>
+          {validStages.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {validStages.map((s, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STAGE_COLORS[i % STAGE_COLORS.length] }} />
+                  <span className="text-[13px]">{s.stepName}</span>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {!programName.trim() && (
-          <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-md">
-            <Info className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <p className="text-xs text-amber-700">Program name is required to create the program. Go back to Program Details to set it.</p>
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-documents">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Documents</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('documents')} data-testid="button-edit-documents">Edit</button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-semibold">{validDocs.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Required</span><span className="font-semibold">{requiredDocs.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Optional</span><span className="font-semibold">{optionalDocs.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Categories</span><span className="font-semibold">{uniqueCategories.size}</span></div>
+          </div>
+        </div>
+
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-tasks">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Tasks</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('tasks')} data-testid="button-edit-tasks">Edit</button>
+          </div>
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Tasks</span><span className="font-semibold">{validTasks.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">High Priority</span><span className="font-semibold">{highPriorityTasks.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Medium</span><span className="font-semibold">{mediumTasks.length}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Low</span><span className="font-semibold">{lowTasks.length}</span></div>
+          </div>
+        </div>
+
+        <div className="border rounded-[10px] p-5" data-testid="summary-card-pricing">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[16px] font-bold">Pricing</h4>
+            <button className="text-[13px] text-muted-foreground hover:text-primary" onClick={() => onEditStep('pricing')} data-testid="button-edit-pricing">Edit</button>
+          </div>
+          <div className="space-y-2 text-[14px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Mode</span><span className="font-semibold">Rule-Based</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Base Rate</span><span className="font-semibold">—</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">YSP</span><span className="font-semibold">—</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Points</span><span className="font-semibold">—</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Adjuster Groups</span><span className="font-semibold">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border rounded-[10px] p-5" data-testid="summary-activation">
+        <h4 className="text-[16px] font-bold mb-4">Activation</h4>
+        <div className="flex items-start gap-8">
+          <label className="flex items-start gap-3 cursor-pointer" data-testid="radio-save-as-draft">
+            <input
+              type="radio"
+              name="activation"
+              checked={activationMode === 'draft'}
+              onChange={() => setActivationMode('draft')}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <div>
+              <p className="text-[14px] font-semibold">Save as Draft</p>
+              <p className="text-[13px] text-muted-foreground">Program will not be visible to brokers</p>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer" data-testid="radio-activate-immediately">
+            <input
+              type="radio"
+              name="activation"
+              checked={activationMode === 'active'}
+              onChange={() => setActivationMode('active')}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <div>
+              <p className="text-[14px] font-semibold">Activate Immediately</p>
+              <p className="text-[13px] text-muted-foreground">Program will be live and accepting quotes</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {!programName.trim() && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-[10px]">
+          <Info className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          <p className="text-[13px] text-amber-700">Program name is required to create the program. Go back to Program Details to set it.</p>
+        </div>
+      )}
+    </div>
   );
 }
