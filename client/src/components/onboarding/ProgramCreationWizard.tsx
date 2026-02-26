@@ -2287,6 +2287,24 @@ function StagesStep({
 
 // ─── Step 5: Documents ──────────────────────────────────────────
 
+const DOC_CATEGORY_LABELS: Record<string, string> = {
+  borrower_docs: 'Borrower',
+  financial_docs: 'Financial',
+  entity_docs: 'Entity',
+  property_docs: 'Property',
+  closing_docs: 'Closing',
+  other: 'Other',
+};
+
+const DOC_CATEGORY_COLORS: Record<string, string> = {
+  borrower_docs: 'bg-blue-100 text-blue-700',
+  financial_docs: 'bg-emerald-100 text-emerald-700',
+  entity_docs: 'bg-purple-100 text-purple-700',
+  property_docs: 'bg-amber-100 text-amber-700',
+  closing_docs: 'bg-rose-100 text-rose-700',
+  other: 'bg-gray-100 text-gray-600',
+};
+
 function DocumentsStep({
   documents,
   setDocuments,
@@ -2296,13 +2314,26 @@ function DocumentsStep({
   setDocuments: (d: DocEntry[]) => void;
   stages: StageEntry[];
 }) {
+  const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
   const [newDocName, setNewDocName] = useState('');
+  const [newDocCategory, setNewDocCategory] = useState('borrower_docs');
+  const newDocRef = useRef<HTMLInputElement>(null);
 
-  const addDocument = (name?: string) => {
-    const docName = name || newDocName.trim();
-    if (!docName) return;
-    setDocuments([...documents, { documentName: docName, documentCategory: 'borrower_docs', isRequired: true, stepIndex: null }]);
+  const startAdding = (target: number | 'unassigned') => {
+    setAddingToStage(target);
     setNewDocName('');
+    setNewDocCategory('borrower_docs');
+    setTimeout(() => newDocRef.current?.focus(), 50);
+  };
+
+  const addDocument = (target: number | 'unassigned') => {
+    const docName = newDocName.trim();
+    if (!docName) return;
+    const stepIndex = typeof target === 'number' ? target : null;
+    setDocuments([...documents, { documentName: docName, documentCategory: newDocCategory, isRequired: true, stepIndex }]);
+    setNewDocName('');
+    setNewDocCategory('borrower_docs');
+    setAddingToStage(null);
   };
 
   const removeDocument = (i: number) => {
@@ -2325,88 +2356,251 @@ function DocumentsStep({
         documentName: d.name,
         documentCategory: category,
         isRequired: true,
-        stepIndex: null,
+        stepIndex: null as number | null,
       }));
     if (newDocs.length > 0) {
       setDocuments([...documents, ...newDocs]);
     }
   };
 
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <FileText className="h-4 w-4" />
-          Required Documents
-        </CardTitle>
-        <CardDescription>
-          Configure which documents are required for this program. Toggle each document on/off and assign the stage it belongs to.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {documents.length === 0 ? (
-          <div className="bg-muted/50 rounded-md p-4 text-sm text-muted-foreground text-center">
-            No documents added yet. Add one manually below.
-          </div>
-        ) : (
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            {documents.map((doc, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/30 group" data-testid={`doc-row-${i}`}>
-                <span className="text-sm flex-1 min-w-0 truncate" title={doc.documentName}>{doc.documentName}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      checked={doc.isRequired}
-                      onCheckedChange={(v) => updateDocument(i, 'isRequired', v)}
-                      data-testid={`switch-doc-required-${i}`}
-                    />
-                    <span className="text-xs text-muted-foreground w-16">{doc.isRequired ? 'Required' : 'Optional'}</span>
-                  </div>
-                  <Select
-                    value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
-                    onValueChange={(v) => updateDocument(i, 'stepIndex', v === 'none' ? null : parseInt(v))}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-doc-stage-${i}`}>
-                      <SelectValue placeholder="Select stage..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No stage</SelectItem>
-                      {stages.map((s, si) => (
-                        <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={() => removeDocument(i)}
-                    data-testid={`button-remove-doc-${i}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+  const docsByStage = stages.map((_, si) => documents.map((d, di) => ({ doc: d, idx: di })).filter((e) => e.doc.stepIndex === si));
+  const unassigned = documents.map((d, di) => ({ doc: d, idx: di })).filter((e) => e.doc.stepIndex === null);
+  const requiredCount = documents.filter((d) => d.isRequired).length;
+
+  const renderDocRow = (doc: DocEntry, globalIdx: number) => (
+    <div
+      key={globalIdx}
+      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 group transition-colors"
+      data-testid={`doc-row-${globalIdx}`}
+    >
+      <FileText className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+      <input
+        className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+        value={doc.documentName}
+        onChange={(e) => updateDocument(globalIdx, 'documentName', e.target.value)}
+        placeholder="Document name"
+        data-testid={`input-doc-name-${globalIdx}`}
+      />
+      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", DOC_CATEGORY_COLORS[doc.documentCategory] || DOC_CATEGORY_COLORS.other)}>
+        {DOC_CATEGORY_LABELS[doc.documentCategory] || 'Other'}
+      </span>
+      <Select
+        value={doc.isRequired ? 'required' : 'optional'}
+        onValueChange={(v) => updateDocument(globalIdx, 'isRequired', v === 'required')}
+      >
+        <SelectTrigger
+          className={cn("w-[100px] h-7 text-[12px]", doc.isRequired && "border-primary/30 text-primary")}
+          data-testid={`select-doc-required-${globalIdx}`}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="required">Required</SelectItem>
+          <SelectItem value="optional">Optional</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select
+        value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
+        onValueChange={(v) => updateDocument(globalIdx, 'stepIndex', v === 'none' ? null : parseInt(v))}
+      >
+        <SelectTrigger className="h-7 text-[12px] w-[130px]" data-testid={`select-doc-stage-${globalIdx}`}>
+          <SelectValue placeholder="Assign stage" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Unassigned</SelectItem>
+          {stages.map((s, si) => (
+            <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <button
+        className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
+        onClick={() => removeDocument(globalIdx)}
+        data-testid={`button-remove-doc-${globalIdx}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+
+  const renderAddDocInline = (target: number | 'unassigned') => {
+    if (addingToStage !== target) return null;
+    return (
+      <div className="flex items-center gap-2 py-2 px-3 bg-muted/20 rounded-lg mt-1">
+        <FileText className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
+        <input
+          ref={newDocRef}
+          className="text-[14px] bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40"
+          placeholder="Document name..."
+          value={newDocName}
+          onChange={(e) => setNewDocName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDocument(target); } if (e.key === 'Escape') { setAddingToStage(null); setNewDocName(''); } }}
+          data-testid="input-new-document"
+        />
+        <Select value={newDocCategory} onValueChange={setNewDocCategory}>
+          <SelectTrigger className="h-7 text-[12px] w-[110px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {standardDocuments.map((cat) => (
+              <SelectItem key={cat.category} value={cat.category}>{cat.categoryLabel}</SelectItem>
             ))}
-          </div>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" className="h-7 text-[12px] text-primary" onClick={() => addDocument(target)} disabled={!newDocName.trim()} data-testid="button-confirm-add-doc">
+          <Check className="h-3.5 w-3.5 mr-1" /> Add
+        </Button>
+        <button className="text-muted-foreground/40 hover:text-muted-foreground p-0.5" onClick={() => { setAddingToStage(null); setNewDocName(''); }}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-[26px] font-bold leading-tight">Required Documents</h2>
+        <p className="text-[16px] text-muted-foreground mt-1">
+          Configure which documents borrowers and brokers need to provide at each stage. Documents are organized by the stage where they'll be collected.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] text-muted-foreground">
+          {documents.length} documents configured &mdash; {requiredCount} required, {documents.length - requiredCount} optional
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => startAdding('unassigned')}
+          data-testid="button-add-document"
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Document
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {standardDocuments.map((cat) => (
+          <Button
+            key={cat.category}
+            variant="outline"
+            size="sm"
+            className="text-[12px] h-7"
+            onClick={() => addStandardDocs(cat.category)}
+            data-testid={`button-quickadd-${cat.category}`}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            {cat.categoryLabel}
+          </Button>
+        ))}
+      </div>
+
+      <div className="relative pl-6">
+        {stages.length > 1 && (
+          <div
+            className="absolute left-[11px] top-[24px] w-[2px] bg-blue-200"
+            style={{ height: `calc(100% - 48px)` }}
+          />
         )}
 
-        <div className="flex gap-2">
-          <Input
-            className="h-8 text-sm flex-1"
-            placeholder="Add a document..."
-            value={newDocName}
-            onChange={(e) => setNewDocName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDocument(); } }}
-            data-testid="input-new-document"
-          />
-          <Button variant="outline" size="sm" onClick={() => addDocument()} disabled={!newDocName.trim()} data-testid="button-add-document">
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add
-          </Button>
+        <div className="space-y-0">
+          {stages.map((stage, si) => {
+            const color = STAGE_COLORS[si % STAGE_COLORS.length];
+            const stageDocs = docsByStage[si];
+
+            return (
+              <div key={si} className="relative" data-testid={`doc-stage-group-${si}`}>
+                <div
+                  className="absolute left-[-13px] top-[14px] w-3 h-3 rounded-full z-10 border-2 border-white"
+                  style={{ backgroundColor: color }}
+                />
+
+                <div className="ml-4 mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span style={{ color }} className="text-[13px]">●</span>
+                      <span className="text-[15px] font-bold text-foreground">
+                        {stage.stepName || `Stage ${si + 1}`}
+                      </span>
+                      <span className="text-[12px] text-muted-foreground">
+                        ({stageDocs.length} {stageDocs.length === 1 ? 'doc' : 'docs'})
+                      </span>
+                    </div>
+                    <button
+                      className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                      onClick={() => startAdding(si)}
+                      data-testid={`button-add-doc-to-stage-${si}`}
+                    >
+                      <Plus className="h-3 w-3" /> Add
+                    </button>
+                  </div>
+
+                  <div className="rounded-[10px] border bg-white overflow-hidden">
+                    {stageDocs.length === 0 && addingToStage !== si ? (
+                      <div className="py-3 px-4 text-[13px] text-muted-foreground/60 text-center">
+                        No documents for this stage yet
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border/40">
+                        {stageDocs.map((entry) => renderDocRow(entry.doc, entry.idx))}
+                      </div>
+                    )}
+                    {renderAddDocInline(si)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {(unassigned.length > 0 || addingToStage === 'unassigned') && (
+            <div className="relative" data-testid="doc-stage-group-unassigned">
+              <div className="absolute left-[-13px] top-[14px] w-3 h-3 rounded-full z-10 border-2 border-white bg-gray-400" />
+
+              <div className="ml-4 mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-gray-400">●</span>
+                    <span className="text-[15px] font-bold text-muted-foreground">Unassigned</span>
+                    {unassigned.length > 0 && (
+                      <span className="text-[12px] text-amber-600 font-medium">
+                        — assign these to a stage
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                    onClick={() => startAdding('unassigned')}
+                    data-testid="button-add-doc-unassigned"
+                  >
+                    <Plus className="h-3 w-3" /> Add
+                  </button>
+                </div>
+
+                <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
+                  {unassigned.length > 0 && (
+                    <div className="divide-y divide-border/40">
+                      {unassigned.map((entry) => renderDocRow(entry.doc, entry.idx))}
+                    </div>
+                  )}
+                  {renderAddDocInline('unassigned')}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
+        <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+        <div>
+          <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
+          <span className="text-[14px] text-blue-800">
+            Documents assigned to a stage will appear in the deal checklist at the right time. Required documents must be uploaded before a deal can advance past that stage. Use the quick-add buttons above to bulk-add common document sets.
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
