@@ -378,10 +378,10 @@ const dscrDefaultTasks: TaskEntry[] = [
 const dscrDefaultRules: RuleEntry[] = [
   { ruleTitle: 'Verify borrower name matches across all submitted documents', documentType: 'General', severity: 'fail', stepIndex: null },
   { ruleTitle: 'Check that government ID is not expired', documentType: 'Government-Issued Photo ID', severity: 'fail', stepIndex: null },
-  { ruleTitle: 'Verify bank statements are from the most recent 2 months', documentType: '2 Months Personal Bank Statements', severity: 'warning', stepIndex: null },
+  { ruleTitle: 'Verify bank statements are from the most recent 2 months', documentType: '2 Months Personal Bank Statements', severity: 'fail', stepIndex: null },
   { ruleTitle: 'Confirm DSCR ratio meets minimum threshold of 1.0', documentType: 'Rent Roll', severity: 'fail', stepIndex: null },
-  { ruleTitle: 'Check that appraisal is dated within 120 days', documentType: 'Appraisal (if applicable)', severity: 'warning', stepIndex: null },
-  { ruleTitle: 'Verify property insurance coverage meets loan amount', documentType: 'Insurance Binder / Dec Page', severity: 'warning', stepIndex: null },
+  { ruleTitle: 'Check that appraisal is dated within 120 days', documentType: 'Appraisal (if applicable)', severity: 'fail', stepIndex: null },
+  { ruleTitle: 'Verify property insurance coverage meets loan amount', documentType: 'Insurance Binder / Dec Page', severity: 'fail', stepIndex: null },
   { ruleTitle: 'Confirm entity is in good standing in its state of formation', documentType: 'Certificate of Good Standing', severity: 'fail', stepIndex: null },
   { ruleTitle: 'Flag if LTV exceeds 80%', documentType: 'General', severity: 'fail', stepIndex: null },
 ];
@@ -511,7 +511,7 @@ export function ProgramCreationWizard({
       setReviewRules(editReviewRulesData.map((r: any) => ({
         ruleTitle: r.ruleTitle || '',
         documentType: r.documentType || 'General',
-        severity: r.severity || 'flag',
+        severity: 'fail',
         stepIndex: null,
       })));
     } else if (editProgram?.id) {
@@ -2902,13 +2902,18 @@ function ReviewRulesStep({
 }) {
   const [addingForDoc, setAddingForDoc] = useState<string | null>(null);
   const [newRuleTitle, setNewRuleTitle] = useState('');
-  const [newRuleSeverity, setNewRuleSeverity] = useState('warning');
+  const newRuleRef = useRef<HTMLInputElement>(null);
+
+  const startAdding = (docName: string) => {
+    setAddingForDoc(docName);
+    setNewRuleTitle('');
+    setTimeout(() => newRuleRef.current?.focus(), 50);
+  };
 
   const addRule = (docName: string) => {
     if (!newRuleTitle.trim()) return;
-    setReviewRules([...reviewRules, { ruleTitle: newRuleTitle.trim(), documentType: docName, severity: newRuleSeverity, stepIndex: null }]);
+    setReviewRules([...reviewRules, { ruleTitle: newRuleTitle.trim(), documentType: docName, severity: 'fail', stepIndex: null }]);
     setNewRuleTitle('');
-    setNewRuleSeverity('warning');
     setAddingForDoc(null);
   };
 
@@ -2924,133 +2929,136 @@ function ReviewRulesStep({
 
   const docNames = ['General', ...new Set(documents.map((d) => d.documentName).filter(Boolean))];
 
-  const severityConfig: Record<string, { label: string; color: string; desc: string }> = {
-    fail: { label: 'Action Required', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', desc: 'Blocks the deal if not passed' },
-    warning: { label: 'Action Required', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', desc: 'Alerts the internal team only' },
-    info: { label: 'Info', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', desc: 'Informational note for the team' },
-  };
-
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Sparkles className="h-4 w-4" />
-          AI Review Rules
-          <Badge className="text-xs bg-blue-500 text-white hover:bg-blue-600">Optional</Badge>
-        </CardTitle>
-        <CardDescription>
-          Define what the AI should check when reviewing each document type. Add rules to specific documents or general rules that apply to all. You can refine these later from program settings.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="space-y-1 max-h-[28rem] overflow-y-auto">
-          {docNames.map((docName) => {
-            const rulesForDoc = reviewRules
-              .map((r, origIdx) => ({ ...r, origIdx }))
-              .filter((r) => r.documentType === docName);
-            const isAdding = addingForDoc === docName;
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-3">
+          <h2 className="text-[26px] font-bold leading-tight">AI Review Rules</h2>
+          <span className="text-[12px] font-medium px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">Optional</span>
+        </div>
+        <p className="text-[16px] text-muted-foreground mt-1">
+          Define what the AI should check when reviewing each document. If a rule fails, the document is automatically flagged as Action Required for your team.
+        </p>
+      </div>
 
-            return (
-              <div key={docName} className="rounded-md border border-border/60" data-testid={`doc-rules-section-${docName}`}>
-                <div className="flex items-center justify-between px-3 py-2 bg-blue-600 dark:bg-blue-700 rounded-t-md">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-3.5 w-3.5 text-white/80 flex-shrink-0" />
-                    <span className="text-sm font-medium truncate text-white">{docName === 'General' ? 'General (all documents)' : docName}</span>
-                    {rulesForDoc.length > 0 && (
-                      <Badge className="text-xs h-5 px-1.5 bg-white/20 text-white border-0">{rulesForDoc.length}</Badge>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-xs text-white hover:text-white hover:bg-white/10"
-                    onClick={() => { setAddingForDoc(isAdding ? null : docName); setNewRuleTitle(''); setNewRuleSeverity('warning'); }}
-                    data-testid={`button-add-rule-${docName}`}
-                  >
-                    {isAdding ? <X className="h-3 w-3 mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
-                    {isAdding ? 'Cancel' : 'Add Rule'}
-                  </Button>
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] text-muted-foreground">
+          {reviewRules.length} rules configured across {docNames.filter((dn) => reviewRules.some((r) => r.documentType === dn)).length} documents
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => startAdding('General')}
+          data-testid="button-add-rule"
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Rule
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {docNames.map((docName) => {
+          const rulesForDoc = reviewRules
+            .map((r, origIdx) => ({ ...r, origIdx }))
+            .filter((r) => r.documentType === docName);
+          const isAdding = addingForDoc === docName;
+
+          return (
+            <div key={docName} data-testid={`doc-rules-section-${docName}`}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  {docName === 'General' ? (
+                    <Sparkles className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-muted-foreground/60 flex-shrink-0" />
+                  )}
+                  <span className="text-[15px] font-bold text-foreground">
+                    {docName === 'General' ? 'General (all documents)' : docName}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">
+                    ({rulesForDoc.length} {rulesForDoc.length === 1 ? 'rule' : 'rules'})
+                  </span>
                 </div>
+                <button
+                  className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                  onClick={() => startAdding(docName)}
+                  data-testid={`button-add-rule-${docName}`}
+                >
+                  <Plus className="h-3 w-3" /> Add
+                </button>
+              </div>
 
-                {rulesForDoc.length > 0 && (
-                  <div className="px-3 py-1 space-y-1">
+              <div className="rounded-[10px] border bg-white overflow-hidden">
+                {rulesForDoc.length === 0 && !isAdding ? (
+                  <div className="py-3 px-4 text-[13px] text-muted-foreground/60 text-center">
+                    No rules for this document yet
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/40">
                     {rulesForDoc.map((rule) => (
-                      <div key={rule.origIdx} className="flex items-center gap-2 py-1 group" data-testid={`rule-row-${rule.origIdx}`}>
-                        <span className="text-xs flex-1 min-w-0 truncate" title={rule.ruleTitle}>{rule.ruleTitle}</span>
-                        <Select value={rule.severity} onValueChange={(v) => updateRule(rule.origIdx, 'severity', v)}>
-                          <SelectTrigger className="h-6 text-xs w-24 flex-shrink-0" data-testid={`select-rule-severity-${rule.origIdx}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fail">
-                              <span className="text-red-600 font-medium">Action Required</span>
-                            </SelectItem>
-                            <SelectItem value="warning">
-                              <span className="text-yellow-600 font-medium">Action Required</span>
-                            </SelectItem>
-                            <SelectItem value="info">
-                              <span className="text-blue-600 font-medium">Info</span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      <div
+                        key={rule.origIdx}
+                        className="flex items-center gap-3 py-2.5 px-4 hover:bg-muted/30 group transition-colors"
+                        data-testid={`rule-row-${rule.origIdx}`}
+                      >
+                        <Brain className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+                        <input
+                          className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+                          value={rule.ruleTitle}
+                          onChange={(e) => updateRule(rule.origIdx, 'ruleTitle', e.target.value)}
+                          placeholder="Rule description"
+                          data-testid={`input-rule-title-${rule.origIdx}`}
+                        />
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">
+                          Action Required
+                        </span>
+                        <button
+                          className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
                           onClick={() => removeRule(rule.origIdx)}
                           data-testid={`button-remove-rule-${rule.origIdx}`}
                         >
-                          <X className="h-3 w-3" />
-                        </Button>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
 
                 {isAdding && (
-                  <div className="px-3 py-2 border-t border-border/40 bg-muted/10 space-y-2">
-                    <Input
-                      className="h-8 text-sm"
+                  <div className="flex items-center gap-2 py-2.5 px-4 bg-muted/20 border-t border-border/40">
+                    <Brain className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
+                    <input
+                      ref={newRuleRef}
+                      className="text-[14px] bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40"
                       placeholder="Describe what the AI should check..."
                       value={newRuleTitle}
                       onChange={(e) => setNewRuleTitle(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRule(docName); } }}
-                      autoFocus
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRule(docName); } if (e.key === 'Escape') { setAddingForDoc(null); setNewRuleTitle(''); } }}
                       data-testid="input-new-rule-title"
                     />
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1 flex-1">
-                        {Object.entries(severityConfig).map(([key, config]) => (
-                          <button
-                            key={key}
-                            type="button"
-                            className={cn(
-                              "px-2 py-1 rounded text-xs font-medium transition-all",
-                              newRuleSeverity === key ? config.color + ' ring-1 ring-offset-1 ring-current' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                            )}
-                            onClick={() => setNewRuleSeverity(key)}
-                            data-testid={`button-severity-${key}`}
-                          >
-                            {config.label}
-                          </button>
-                        ))}
-                      </div>
-                      <Button size="sm" className="h-7 text-xs" onClick={() => addRule(docName)} disabled={!newRuleTitle.trim()} data-testid="button-confirm-add-rule">
-                        <Plus className="h-3 w-3 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {severityConfig[newRuleSeverity]?.desc}
-                    </p>
+                    <Button variant="ghost" size="sm" className="h-7 text-[12px] text-primary" onClick={() => addRule(docName)} disabled={!newRuleTitle.trim()} data-testid="button-confirm-add-rule">
+                      <Check className="h-3.5 w-3.5 mr-1" /> Add
+                    </Button>
+                    <button className="text-muted-foreground/40 hover:text-muted-foreground p-0.5" onClick={() => { setAddingForDoc(null); setNewRuleTitle(''); }} data-testid="button-cancel-add-rule">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
+        <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+        <div>
+          <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
+          <span className="text-[14px] text-blue-800">
+            When the AI reviews a document and a rule fails, it will automatically flag the document as Action Required so your team knows to take action. You can refine these rules later from program settings.
+          </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
