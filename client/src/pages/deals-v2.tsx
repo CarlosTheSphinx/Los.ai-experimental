@@ -450,37 +450,37 @@ export default function DealsV2() {
                         </div>
                       </div>
 
-                      <div className="mt-5 pt-4 border-t border-border/50 flex items-center gap-2">
+                      <div className="mt-5 pt-4 border-t border-border/50 flex items-center gap-3">
                         <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                          <Button size="sm" className="text-[12px]" data-testid={`button-open-deal-${deal.id}`}>
-                            Open Deal <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          <Button size="default" className="text-[15px] shadow-md" data-testid={`button-open-deal-${deal.id}`}>
+                            Open Deal <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
                         </Link>
                         {deal.googleDriveFolderUrl ? (
                           <a href={deal.googleDriveFolderUrl} target="_blank" rel="noopener noreferrer">
-                            <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-drive-${deal.id}`}>
-                              <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Google Drive
+                            <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-drive-${deal.id}`}>
+                              <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="sm" className="text-[12px]" disabled data-testid={`button-drive-${deal.id}`}>
-                            <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Google Drive
+                          <Button variant="outline" size="default" className="text-[15px] border-border/40" disabled data-testid={`button-drive-${deal.id}`}>
+                            <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                           </Button>
                         )}
                         {deal.borrowerEmail ? (
                           <a href={`mailto:${deal.borrowerEmail}`}>
-                            <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-email-borrower-${deal.id}`}>
-                              <Mail className="h-3.5 w-3.5 mr-1.5" /> Email Borrower
+                            <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-email-borrower-${deal.id}`}>
+                              <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="sm" className="text-[12px]" disabled data-testid={`button-email-borrower-${deal.id}`}>
-                            <Mail className="h-3.5 w-3.5 mr-1.5" /> Email Borrower
+                          <Button variant="outline" size="default" className="text-[15px] border-border/40" disabled data-testid={`button-email-borrower-${deal.id}`}>
+                            <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                           </Button>
                         )}
                         <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                          <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-documents-${deal.id}`}>
-                            <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents ({deal.documents?.length || 0}/{deal.totalDocuments || 0})
+                          <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-documents-${deal.id}`}>
+                            <FileText className="h-4 w-4 mr-1.5" /> Documents ({deal.documents?.length || 0}/{deal.totalDocuments || 0})
                           </Button>
                         </Link>
                       </div>
