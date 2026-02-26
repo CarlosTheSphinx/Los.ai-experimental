@@ -292,7 +292,7 @@ export default function DealDetailV2() {
               <TabOverview deal={deal} properties={properties} dealId={dealId!} />
             </TabsContent>
             <TabsContent value="documents" className="m-0">
-              <TabDocuments deal={deal} documents={documents} dealId={dealId!} />
+              <TabDocuments deal={deal} documents={documents} dealId={dealId!} stages={dealData?.stages} />
             </TabsContent>
             <TabsContent value="tasks" className="m-0">
               <TabTasks deal={deal} tasks={tasks} dealId={dealId!} />

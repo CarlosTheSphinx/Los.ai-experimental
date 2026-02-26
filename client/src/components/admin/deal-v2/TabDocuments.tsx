@@ -1,48 +1,127 @@
 import { useState, useRef, useCallback } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Upload, FileText, CheckCircle2, Clock, AlertCircle, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import {
+  Upload, FileText, CheckCircle2, Clock, AlertCircle, Eye,
+  Loader2, Zap, Hand, FolderOpen, ChevronDown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CollapsibleSection } from "@/components/ui/phase1/collapsible-section";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 
-function getDocIcon(status: string) {
-  switch (status?.toLowerCase()) {
+function statusDisplay(status: string) {
+  const s = status?.toLowerCase();
+  switch (s) {
     case "approved":
     case "accepted":
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
+      return { dot: "bg-emerald-500", label: "Approved" };
+    case "ai_reviewed":
+      return { dot: "bg-blue-500", label: "AI Reviewed" };
     case "pending":
     case "in_review":
-      return <Clock className="h-3.5 w-3.5 text-amber-500" />;
+      return { dot: "bg-amber-500", label: "Pending" };
     case "rejected":
-      return <AlertCircle className="h-3.5 w-3.5 text-red-500" />;
+      return { dot: "bg-red-500", label: "Rejected" };
+    case "uploaded":
+      return { dot: "bg-blue-400", label: "Uploaded" };
+    case "waived":
+      return { dot: "bg-gray-400", label: "Waived" };
     default:
-      return <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
+      return { dot: "bg-gray-300", label: status || "Pending" };
   }
 }
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
+function fileCountLabel(doc: any) {
+  const count = doc.fileCount || (doc.filePath || doc.fileName ? 1 : 0);
+  if (count === 0) return "0 files";
+  return count === 1 ? "1 file" : `${count} files`;
 }
+
+const REVIEW_MODE_DESCRIPTIONS: Record<string, string> = {
+  automatic: "Documents are reviewed automatically on upload",
+  timed: "Documents are reviewed on a scheduled basis",
+  manual: "Documents are reviewed when manually triggered",
+};
 
 export default function TabDocuments({
   deal,
   documents,
   dealId,
+  stages: stagesProp,
 }: {
   deal: any;
   documents: any[];
   dealId: string;
+  stages?: any[];
 }) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
+
+  const apiBase = `/api/admin/deals`;
+  const numericDealId = parseInt(dealId);
+
+  const reviewModeQuery = useQuery<{
+    dealReviewMode: string;
+  }>({
+    queryKey: ["/api/projects", numericDealId, "review-mode"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${numericDealId}/review-mode`, { credentials: "include" });
+      if (!res.ok) return { dealReviewMode: "manual" };
+      return res.json();
+    },
+    enabled: !!dealId,
+  });
+
+  const currentMode = reviewModeQuery.data?.dealReviewMode ?? deal?.aiReviewMode ?? "manual";
+
+  const updateReviewMode = useMutation({
+    mutationFn: async (mode: string) => {
+      const res = await apiRequest("PUT", `/api/projects/${dealId}/review-mode`, {
+        aiReviewMode: mode,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", numericDealId, "review-mode"] });
+      toast({ title: "Review mode updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update review mode", variant: "destructive" });
+    },
+  });
+
+  const aiReviewedCount = documents.filter((d) => d.status === "ai_reviewed").length;
+
+  const approveAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `${apiBase}/${dealId}/documents/approve-all`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
+      toast({ title: `Approved ${data.approved || 0} documents` });
+    },
+    onError: () => {
+      toast({ title: "Failed to approve documents", variant: "destructive" });
+    },
+  });
+
+  const stagesQuery = useQuery<any[]>({
+    queryKey: ["/api/admin/deals", dealId, "stages"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/deals/${dealId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.stages || [];
+    },
+    enabled: !!dealId && !stagesProp?.length,
+  });
+  const stages = stagesProp?.length ? stagesProp : (stagesQuery.data || []);
 
   const handleFileUpload = useCallback(
     async (files: FileList) => {
@@ -88,32 +167,95 @@ export default function TabDocuments({
         }
       }
       queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
+      queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "documents"] });
     },
-    [dealId, toast]
+    [dealId, toast, apiBase]
   );
 
-  // Group documents by category
-  const grouped = documents.reduce<Record<string, any[]>>((acc, doc) => {
-    const cat = doc.documentCategory || doc.category || "General";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(doc);
-    return acc;
-  }, {});
+  const stageMap = new Map<number, any>();
+  stages.forEach((s: any) => {
+    stageMap.set(s.id, s);
+  });
 
-  const categories = Object.keys(grouped);
+  const docsByStage = new Map<number | null, any[]>();
+  documents.forEach((doc) => {
+    const key = doc.stageId || null;
+    if (!docsByStage.has(key)) docsByStage.set(key, []);
+    docsByStage.get(key)!.push(doc);
+  });
+
+  const sortedStageKeys: (number | null)[] = [];
+  const stageIds = stages
+    .sort((a: any, b: any) => (a.stageOrder ?? 0) - (b.stageOrder ?? 0))
+    .map((s: any) => s.id);
+  stageIds.forEach((id: number) => {
+    if (docsByStage.has(id)) sortedStageKeys.push(id);
+  });
+  if (docsByStage.has(null)) sortedStageKeys.push(null);
+  docsByStage.forEach((_, key) => {
+    if (!sortedStageKeys.includes(key)) sortedStageKeys.push(key);
+  });
+
   const uploaded = documents.filter((d) => d.filePath || d.fileName).length;
 
   return (
     <div className="space-y-4">
-      {/* Upload Area */}
       <Card>
-        <CardContent className="py-4">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              {[
+                { value: "automatic", label: "Automatic", icon: Zap },
+                { value: "timed", label: "Timed", icon: Clock },
+                { value: "manual", label: "Manual", icon: Hand },
+              ].map((mode) => (
+                <Button
+                  key={mode.value}
+                  variant={currentMode === mode.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => updateReviewMode.mutate(mode.value)}
+                  disabled={updateReviewMode.isPending}
+                  className={cn(
+                    currentMode === mode.value && mode.value === "automatic" &&
+                      "bg-emerald-600 text-white border-emerald-600"
+                  )}
+                  data-testid={`button-review-mode-${mode.value}`}
+                >
+                  <mode.icon className="h-3.5 w-3.5 mr-1.5" />
+                  {mode.label}
+                </Button>
+              ))}
+              <span className="text-[12px] text-muted-foreground ml-2">
+                {REVIEW_MODE_DESCRIPTIONS[currentMode] || REVIEW_MODE_DESCRIPTIONS.manual}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              className="bg-emerald-600 text-white border-emerald-600"
+              onClick={() => approveAllMutation.mutate()}
+              disabled={approveAllMutation.isPending || aiReviewedCount === 0}
+              data-testid="button-approve-all-docs"
+            >
+              {approveAllMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Approve All ({aiReviewedCount})
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="py-3 px-4">
           <div className="flex items-center justify-between">
             <div className="text-[13px]">
               <span className="font-medium">{uploaded}</span>
               <span className="text-muted-foreground"> of {documents.length} documents uploaded</span>
             </div>
-            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+            <Button size="sm" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-doc">
               <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload
             </Button>
             <input
@@ -121,6 +263,7 @@ export default function TabDocuments({
               type="file"
               multiple
               className="hidden"
+              data-testid="input-file-upload"
               onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
             />
           </div>
@@ -136,8 +279,7 @@ export default function TabDocuments({
         </CardContent>
       </Card>
 
-      {/* Documents by Category */}
-      {categories.length === 0 ? (
+      {sortedStageKeys.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No documents yet"
@@ -146,47 +288,148 @@ export default function TabDocuments({
           onAction={() => fileInputRef.current?.click()}
         />
       ) : (
-        categories.map((cat) => (
-          <CollapsibleSection
-            key={cat}
-            title={cat}
-            badge={`${grouped[cat].filter((d: any) => d.filePath || d.fileName).length}/${grouped[cat].length}`}
-            defaultOpen={true}
-          >
-            <div className="space-y-1">
-              {grouped[cat].map((doc: any) => (
-                <div
-                  key={doc.id}
-                  className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/50 text-[13px]"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    {getDocIcon(doc.status)}
-                    <span className="truncate font-medium">{doc.documentName || doc.fileName || "Untitled"}</span>
-                    {doc.isRequired && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        Required
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground shrink-0">
-                    {doc.fileSize && <span>{formatFileSize(doc.fileSize)}</span>}
-                    <Badge
-                      variant="secondary"
-                      className="text-[10px]"
-                    >
-                      {doc.status || "Pending"}
-                    </Badge>
-                    {doc.googleDriveFileUrl && (
-                      <a href={doc.googleDriveFileUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
+        sortedStageKeys.map((stageId, idx) => {
+          const stageDocs = docsByStage.get(stageId) || [];
+          const stage = stageId !== null ? stageMap.get(stageId) : null;
+          const stageOrder = stage?.stageOrder ?? idx + 1;
+          const stageName = stage?.stageName || "General Documents";
+          const completedCount = stageDocs.filter(
+            (d) => d.status === "approved" || d.status === "accepted"
+          ).length;
+          const allComplete = completedCount === stageDocs.length && stageDocs.length > 0;
+
+          return (
+            <StageSection
+              key={stageId ?? "general"}
+              stageOrder={stageOrder}
+              stageName={stageName}
+              completedCount={completedCount}
+              totalCount={stageDocs.length}
+              allComplete={allComplete}
+              documents={stageDocs}
+              dealId={dealId}
+            />
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function StageSection({
+  stageOrder,
+  stageName,
+  completedCount,
+  totalCount,
+  allComplete,
+  documents,
+  dealId,
+}: {
+  stageOrder: number;
+  stageName: string;
+  completedCount: number;
+  totalCount: number;
+  allComplete: boolean;
+  documents: any[];
+  dealId: string;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className="border rounded-md bg-card" data-testid={`stage-section-${stageOrder}`}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-4 py-3 hover-elevate transition-colors"
+        data-testid={`button-toggle-stage-${stageOrder}`}
+      >
+        <div className="flex items-center gap-2.5">
+          {allComplete ? (
+            <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+          ) : (
+            <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+              {stageOrder}
             </div>
-          </CollapsibleSection>
-        ))
+          )}
+          <span className="text-[13px] font-semibold">
+            Stage {stageOrder}: {stageName}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-muted-foreground">
+            {completedCount}/{totalCount} complete
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-muted-foreground transition-transform duration-200",
+              !isOpen && "-rotate-90"
+            )}
+          />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-border/50">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-border/30 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-2">Document</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Files</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {documents.map((doc) => {
+                const { dot, label } = statusDisplay(doc.status);
+                const downloadUrl = `/api/admin/deals/${dealId}/documents/${doc.id}/download`;
+
+                return (
+                  <tr
+                    key={doc.id}
+                    className="border-b border-border/20 last:border-0 hover:bg-muted/30"
+                    data-testid={`doc-row-${doc.id}`}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="truncate font-medium">
+                          {doc.documentName || doc.fileName || "Untitled"}
+                        </span>
+                        {doc.isRequired && (
+                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 shrink-0">
+                            REQ
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
+                        <span className="text-[12px]">{label}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground text-[12px]">
+                      {fileCountLabel(doc)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {(doc.filePath || doc.fileName || doc.googleDriveFileUrl) && (
+                        <a
+                          href={doc.googleDriveFileUrl || downloadUrl}
+                          target={doc.googleDriveFileUrl ? "_blank" : undefined}
+                          rel="noreferrer"
+                        >
+                          <Button variant="ghost" size="sm" data-testid={`button-view-doc-${doc.id}`}>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View
+                          </Button>
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
