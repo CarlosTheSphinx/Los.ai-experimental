@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   DollarSign, FolderOpen, Clock, CheckCircle2, Search, ChevronRight, Plus,
-  Building2, User, FileText, ExternalLink, Copy, MoreHorizontal
+  Building2, User, FileText, ExternalLink, Copy, MoreHorizontal, Mail
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,23 +20,39 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Deal {
   id: number;
   dealNumber?: string;
+  loanNumber?: string;
   borrowerName?: string;
   borrowerEmail?: string;
+  borrowerPhone?: string;
   propertyAddress?: string;
   propertyCity?: string;
   propertyState?: string;
+  propertyType?: string;
   loanAmount?: number;
   programName?: string;
   loanType?: string;
   status?: string;
   stage?: string;
+  currentStage?: string;
   ltv?: number;
+  dscr?: number;
   interestRate?: number;
+  loanTermMonths?: number;
   documents?: any[];
   tasks?: any[];
   createdAt?: string;
   updatedAt?: string;
+  targetCloseDate?: string;
   completionPercentage?: number;
+  progressPercentage?: number;
+  completedDocuments?: number;
+  totalDocuments?: number;
+  completedTasks?: number;
+  totalTasks?: number;
+  userName?: string;
+  googleDriveFolderUrl?: string;
+  driveSyncStatus?: string;
+  metadata?: any;
 }
 
 function formatCurrency(amount: number | undefined): string {
@@ -44,6 +60,67 @@ function formatCurrency(amount: number | undefined): string {
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
   if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
   return `$${amount.toLocaleString()}`;
+}
+
+function formatCurrencyFull(amount: number | undefined): string {
+  if (!amount) return "—";
+  return `$${Math.round(amount).toLocaleString()}`;
+}
+
+function getDaysInStage(createdAt?: string): string {
+  if (!createdAt) return "—";
+  const created = new Date(createdAt);
+  const now = new Date();
+  const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+  return `${days} days`;
+}
+
+function extractState(address?: string): string {
+  if (!address) return "—";
+  const match = address.match(/,\s*([A-Z]{2})\s+\d{5}/);
+  if (match) return match[1];
+  const parts = address.split(",").map((s) => s.trim());
+  if (parts.length >= 2) {
+    const stateZip = parts[parts.length - 2] || parts[parts.length - 1];
+    const stateMatch = stateZip.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)/);
+    if (stateMatch) return stateMatch[1];
+  }
+  return "—";
+}
+
+function getPropertyTypeLabel(type?: string): string {
+  if (!type) return "—";
+  const labels: Record<string, string> = {
+    "single-family-residence": "Single Family",
+    "single-family": "Single Family",
+    "multi-family": "Multi-Family",
+    "2-4-unit": "2-4 Unit",
+    "multifamily-5-plus": "5+ Units",
+    "condo": "Condo",
+    "townhouse": "Townhouse",
+    "mixed-use": "Mixed-Use",
+    "commercial": "Commercial",
+  };
+  return labels[type.toLowerCase()] || type;
+}
+
+function formatTerm(months?: number): string {
+  if (!months) return "—";
+  if (months >= 12 && months % 12 === 0) return `${months / 12} years`;
+  return `${months} months`;
+}
+
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getLoanPurpose(deal: Deal): string {
+  const purpose = deal.loanType;
+  if (!purpose) return "—";
+  return purpose.charAt(0).toUpperCase() + purpose.slice(1).replace(/[-_]/g, " ");
 }
 
 function getStatusVariant(status?: string): "active" | "pending" | "closed" | "inactive" {
@@ -267,8 +344,8 @@ export default function DealsV2() {
                   onToggle={(expanded) => setExpandedId(expanded ? deal.id : null)}
                   summary={
                     <>
-                      <td className="px-3 py-3 text-[13px] font-medium text-primary">
-                        {deal.dealNumber || `#${deal.id}`}
+                      <td className="px-3 py-3 text-[13px] font-medium text-blue-600">
+                        {deal.dealNumber || deal.loanNumber || `#${deal.id}`}
                       </td>
                       <td className="px-3 py-3">
                         <div className="text-[13px] font-medium">{deal.borrowerName || "—"}</div>
@@ -302,47 +379,110 @@ export default function DealsV2() {
                     </>
                   }
                   details={
-                    <div className="grid grid-cols-3 gap-6">
-                      {/* Col 1: Key Metrics */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold uppercase text-muted-foreground mb-2">Key Metrics</h4>
-                        <div className="grid grid-cols-2 gap-y-2 text-[12px]">
-                          <span className="text-muted-foreground">Stage</span>
-                          <span className="font-medium">{deal.stage || "—"}</span>
-                          <span className="text-muted-foreground">
-                            <Tooltip>
-                              <TooltipTrigger className="border-b border-dashed border-muted-foreground cursor-help">LTV</TooltipTrigger>
-                              <TooltipContent>Loan-to-Value ratio</TooltipContent>
-                            </Tooltip>
-                          </span>
-                          <span className="font-medium">{deal.ltv ? `${deal.ltv}%` : "—"}</span>
-                          <span className="text-muted-foreground">Rate</span>
-                          <span className="font-medium">{deal.interestRate ? `${deal.interestRate}%` : "—"}</span>
+                    <div>
+                      <div className="grid grid-cols-3 gap-8">
+                        <div>
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-loan-details-${deal.id}`}>Loan Details</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Loan Amount</span>
+                              <span className="font-semibold">{formatCurrencyFull(deal.loanAmount)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">LTV</span>
+                              <span className="font-semibold">{deal.ltv ? `${deal.ltv}%` : "—"}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Interest Rate</span>
+                              <span className="font-semibold">{deal.interestRate ? `${deal.interestRate}%` : "—"}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Term</span>
+                              <span className="font-semibold">{formatTerm(deal.loanTermMonths)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-property-${deal.id}`}>Property</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Type</span>
+                              <span className="font-semibold">{getPropertyTypeLabel(deal.propertyType)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">State</span>
+                              <span className="font-semibold">{deal.propertyState || extractState(deal.propertyAddress)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Purpose</span>
+                              <span className="font-semibold">{getLoanPurpose(deal)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Address</span>
+                              <span className="font-semibold truncate max-w-[180px] text-right" title={deal.propertyAddress || "—"}>
+                                {deal.propertyAddress ? deal.propertyAddress.split(",")[0] : "—"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-timeline-${deal.id}`}>Timeline</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Created</span>
+                              <span className="font-semibold">{formatDate(deal.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Target Close</span>
+                              <span className="font-semibold">{formatDate(deal.targetCloseDate)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Days in Stage</span>
+                              <span className="font-semibold">{getDaysInStage(deal.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px]">
+                              <span className="text-muted-foreground">Assigned To</span>
+                              <span className="font-semibold">{deal.userName || "—"}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      {/* Col 2: Property */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold uppercase text-muted-foreground mb-2">Property</h4>
-                        <div className="text-[12px]">
-                          <p className="font-medium">{deal.propertyAddress || "No address"}</p>
-                          <p className="text-muted-foreground">
-                            {[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ")}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Col 3: Quick Actions */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold uppercase text-muted-foreground mb-2">Quick Actions</h4>
-                        <div className="flex flex-col gap-1.5">
-                          <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]">
-                              <ExternalLink className="h-3 w-3 mr-2" /> View Deal
-                            </Button>
-                          </Link>
-                          <Button variant="outline" size="sm" className="w-full justify-start text-[12px]">
-                            <FileText className="h-3 w-3 mr-2" /> Documents ({deal.documents?.length || 0})
+
+                      <div className="mt-5 pt-4 border-t border-border/50 flex items-center gap-2">
+                        <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
+                          <Button size="sm" className="text-[12px]" data-testid={`button-open-deal-${deal.id}`}>
+                            Open Deal <ChevronRight className="h-3.5 w-3.5 ml-1" />
                           </Button>
-                        </div>
+                        </Link>
+                        {deal.googleDriveFolderUrl ? (
+                          <a href={deal.googleDriveFolderUrl} target="_blank" rel="noopener noreferrer">
+                            <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-drive-${deal.id}`}>
+                              <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Google Drive
+                            </Button>
+                          </a>
+                        ) : (
+                          <Button variant="outline" size="sm" className="text-[12px]" disabled data-testid={`button-drive-${deal.id}`}>
+                            <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Google Drive
+                          </Button>
+                        )}
+                        {deal.borrowerEmail ? (
+                          <a href={`mailto:${deal.borrowerEmail}`}>
+                            <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-email-borrower-${deal.id}`}>
+                              <Mail className="h-3.5 w-3.5 mr-1.5" /> Email Borrower
+                            </Button>
+                          </a>
+                        ) : (
+                          <Button variant="outline" size="sm" className="text-[12px]" disabled data-testid={`button-email-borrower-${deal.id}`}>
+                            <Mail className="h-3.5 w-3.5 mr-1.5" /> Email Borrower
+                          </Button>
+                        )}
+                        <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
+                          <Button variant="outline" size="sm" className="text-[12px]" data-testid={`button-documents-${deal.id}`}>
+                            <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents ({deal.documents?.length || 0}/{deal.totalDocuments || 0})
+                          </Button>
+                        </Link>
                       </div>
                     </div>
                   }

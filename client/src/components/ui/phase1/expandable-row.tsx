@@ -45,9 +45,9 @@ export function ExpandableRow({ summary, details, isExpanded: controlledExpanded
         {summary}
       </tr>
       {isExpanded && (
-        <tr className="bg-slate-50/80">
+        <tr className="bg-slate-50/80 border-b-2 border-b-blue-500">
           <td colSpan={columns + 1} className="p-0">
-            <div className="px-4 py-4 border-t border-border/50 animate-in slide-in-from-top-1 duration-200">
+            <div className="px-6 py-5 border-t border-border/50 animate-in slide-in-from-top-1 duration-200">
               {details}
             </div>
           </td>
