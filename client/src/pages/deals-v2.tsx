@@ -458,28 +458,28 @@ export default function DealsV2() {
                         </Link>
                         {deal.googleDriveFolderUrl ? (
                           <a href={deal.googleDriveFolderUrl} target="_blank" rel="noopener noreferrer">
-                            <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-drive-${deal.id}`}>
+                            <Button variant="outline" size="default" className="text-[15px] border-border/20" data-testid={`button-drive-${deal.id}`}>
                               <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="default" className="text-[15px] border-border/40" disabled data-testid={`button-drive-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[15px] border-border/20" disabled data-testid={`button-drive-${deal.id}`}>
                             <FolderOpen className="h-4 w-4 mr-1.5" /> Google Drive
                           </Button>
                         )}
                         {deal.borrowerEmail ? (
                           <a href={`mailto:${deal.borrowerEmail}`}>
-                            <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-email-borrower-${deal.id}`}>
+                            <Button variant="outline" size="default" className="text-[15px] border-border/20" data-testid={`button-email-borrower-${deal.id}`}>
                               <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                             </Button>
                           </a>
                         ) : (
-                          <Button variant="outline" size="default" className="text-[15px] border-border/40" disabled data-testid={`button-email-borrower-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[15px] border-border/20" disabled data-testid={`button-email-borrower-${deal.id}`}>
                             <Mail className="h-4 w-4 mr-1.5" /> Email Borrower
                           </Button>
                         )}
                         <Link href={isAdmin ? `/admin/deals/${deal.id}` : `/deals/${deal.id}`}>
-                          <Button variant="outline" size="default" className="text-[15px] border-border/40" data-testid={`button-documents-${deal.id}`}>
+                          <Button variant="outline" size="default" className="text-[15px] border-border/20" data-testid={`button-documents-${deal.id}`}>
                             <FileText className="h-4 w-4 mr-1.5" /> Documents ({deal.documents?.length || 0}/{deal.totalDocuments || 0})
                           </Button>
                         </Link>
