@@ -262,10 +262,10 @@ function getDefaultQuoteFields(loanType: string): QuoteFormField[] {
 // ─── Default stages ────────────────────────────────────────────
 
 const defaultStages = [
-  { stepName: 'Application', isRequired: true },
-  { stepName: 'Processing', isRequired: true },
-  { stepName: 'Underwriting', isRequired: true },
-  { stepName: 'Closing', isRequired: true },
+  { stepName: 'Application', isRequired: true, description: 'Default stage for new deals' },
+  { stepName: 'Processing', isRequired: true, description: 'Document collection and verification' },
+  { stepName: 'Underwriting', isRequired: true, description: 'Credit and risk analysis' },
+  { stepName: 'Closing', isRequired: true, description: 'Final documents and funding' },
 ];
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -273,6 +273,7 @@ const defaultStages = [
 interface StageEntry {
   stepName: string;
   isRequired: boolean;
+  description?: string;
 }
 
 interface DocEntry {
@@ -317,11 +318,11 @@ const wizardSteps: { key: WizardStep; label: string; number: number }[] = [
 // ─── DSCR Example Defaults ───────────────────────────────────────
 
 const dscrDefaultStages: StageEntry[] = [
-  { stepName: 'Application', isRequired: true },
-  { stepName: 'Processing', isRequired: true },
-  { stepName: 'Underwriting', isRequired: true },
-  { stepName: 'Appraisal & Title', isRequired: true },
-  { stepName: 'Closing', isRequired: true },
+  { stepName: 'Application', isRequired: true, description: 'Default stage for new deals' },
+  { stepName: 'Processing', isRequired: true, description: 'Document collection and verification' },
+  { stepName: 'Underwriting', isRequired: true, description: 'Credit and risk analysis' },
+  { stepName: 'Appraisal & Title', isRequired: true, description: 'Third-party valuation and title search' },
+  { stepName: 'Closing', isRequired: true, description: 'Final documents and funding' },
 ];
 
 const dscrDefaultDocuments: DocEntry[] = [
@@ -477,6 +478,7 @@ export function ProgramCreationWizard({
       setStages(editProgramData.workflowSteps.map((s: any) => ({
         stepName: s.definition?.name || '',
         isRequired: s.isRequired !== false,
+        description: s.definition?.description || s.description || '',
       })));
     } else {
       setStages([]);
@@ -626,6 +628,7 @@ export function ProgramCreationWizard({
       steps: stages.map((s) => ({
         stepName: s.stepName,
         isRequired: s.isRequired,
+        description: s.description || '',
       })),
       documents: documents.map((d) => ({
         documentName: d.documentName,
@@ -2095,6 +2098,8 @@ function QuoteFormBuilderStep({
 
 // ─── Step 4: Stages ─────────────────────────────────────────────
 
+const STAGE_COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EF4444', '#06B6D4', '#EC4899', '#6366F1'];
+
 function StagesStep({
   stages,
   setStages,
@@ -2103,13 +2108,18 @@ function StagesStep({
   setStages: (s: StageEntry[]) => void;
 }) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [editIdx, setEditIdx] = useState<number | null>(null);
 
   const addStage = () => {
-    setStages([...stages, { stepName: '', isRequired: true }]);
+    const newIdx = stages.length;
+    setStages([...stages, { stepName: '', isRequired: true, description: '' }]);
+    setEditIdx(newIdx);
   };
 
   const removeStage = (i: number) => {
     setStages(stages.filter((_, idx) => idx !== i));
+    if (editIdx === i) setEditIdx(null);
+    else if (editIdx !== null && editIdx > i) setEditIdx(editIdx - 1);
   };
 
   const updateStage = (i: number, field: keyof StageEntry, value: any) => {
@@ -2124,10 +2134,12 @@ function StagesStep({
     const [moved] = updated.splice(from, 1);
     updated.splice(to, 0, moved);
     setStages(updated);
+    if (editIdx === from) setEditIdx(to);
+    else if (editIdx !== null) {
+      if (from < editIdx && to >= editIdx) setEditIdx(editIdx - 1);
+      else if (from > editIdx && to <= editIdx) setEditIdx(editIdx + 1);
+    }
   };
-
-  const requiredCount = stages.filter((s) => s.isRequired).length;
-  const optionalCount = stages.length - requiredCount;
 
   return (
     <div className="space-y-5">
@@ -2140,7 +2152,7 @@ function StagesStep({
 
       <div className="flex items-center justify-between">
         <span className="text-[14px] text-muted-foreground">
-          {stages.length} stages configured &mdash; {requiredCount} required, {optionalCount} optional
+          {stages.length} stages configured
         </span>
         <Button variant="outline" onClick={addStage} data-testid="button-add-stage">
           <Plus className="h-4 w-4 mr-1.5" />
@@ -2148,98 +2160,117 @@ function StagesStep({
         </Button>
       </div>
 
-      <div className="rounded-[10px] border bg-white overflow-hidden">
-        {stages.map((stage, i) => (
+      <div className="relative pl-6">
+        {stages.length > 1 && (
           <div
-            key={i}
-            className={cn(
-              "flex items-center gap-3 py-3 px-4 border-b border-border/60 transition-colors",
-              dragIdx === i && "bg-primary/5 border-primary"
-            )}
-            draggable
-            onDragStart={() => setDragIdx(i)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => { if (dragIdx !== null) { moveStage(dragIdx, i); setDragIdx(null); } }}
-            onDragEnd={() => setDragIdx(null)}
-            data-testid={`stage-row-${i}`}
-          >
-            <GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab flex-shrink-0" />
+            className="absolute left-[11px] top-[24px] w-[2px] bg-blue-200"
+            style={{ height: `calc(100% - 48px)` }}
+          />
+        )}
 
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-[13px] font-semibold text-muted-foreground flex-shrink-0">
-              {i + 1}
-            </div>
+        <div className="space-y-0">
+          {stages.map((stage, i) => {
+            const color = STAGE_COLORS[i % STAGE_COLORS.length];
+            const isEditing = editIdx === i;
 
-            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-              <Input
-                className="h-8 text-[15px] font-semibold border-0 shadow-none px-0 focus-visible:ring-0"
-                placeholder="Stage name"
-                value={stage.stepName}
-                onChange={(e) => updateStage(i, 'stepName', e.target.value)}
-                data-testid={`input-stage-name-${i}`}
-              />
-              <span className={cn(
-                "text-[12px] font-medium",
-                stage.isRequired ? "text-red-500" : "text-muted-foreground"
-              )}>
-                {stage.isRequired ? 'Required' : 'Optional'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => i > 0 && moveStage(i, i - 1)}
-                  disabled={i === 0}
-                  data-testid={`button-move-up-stage-${i}`}
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => i < stages.length - 1 && moveStage(i, i + 1)}
-                  disabled={i === stages.length - 1}
-                  data-testid={`button-move-down-stage-${i}`}
-                >
-                  <ArrowDown className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-
-              <Select
-                value={stage.isRequired ? 'required' : 'optional'}
-                onValueChange={(v) => updateStage(i, 'isRequired', v === 'required')}
+            return (
+              <div
+                key={i}
+                className="relative"
+                draggable
+                onDragStart={() => setDragIdx(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragIdx !== null) { moveStage(dragIdx, i); setDragIdx(null); } }}
+                onDragEnd={() => setDragIdx(null)}
+                data-testid={`stage-row-${i}`}
               >
-                <SelectTrigger
+                <div
+                  className="absolute left-[-13px] top-[22px] w-3 h-3 rounded-full z-10 border-2 border-white"
+                  style={{ backgroundColor: color }}
+                />
+
+                <div
                   className={cn(
-                    "w-[120px] h-9 text-[13px]",
-                    stage.isRequired && "border-primary/40 text-primary"
+                    "ml-4 rounded-[10px] border bg-white py-3.5 px-5 mb-3 transition-all cursor-grab",
+                    dragIdx === i && "border-blue-400 shadow-md bg-blue-50/30"
                   )}
-                  data-testid={`select-stage-status-${i}`}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="required">Required</SelectItem>
-                  <SelectItem value="optional">Optional</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
-                onClick={() => removeStage(i)}
-                data-testid={`button-remove-stage-${i}`}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
+                  {isEditing ? (
+                    <div className="flex items-start gap-3">
+                      <div className="flex flex-col gap-2 flex-1 min-w-0">
+                        <Input
+                          className="h-9 text-[15px] font-bold"
+                          placeholder="Stage name"
+                          value={stage.stepName}
+                          onChange={(e) => updateStage(i, 'stepName', e.target.value)}
+                          autoFocus
+                          data-testid={`input-stage-name-${i}`}
+                        />
+                        <Input
+                          className="h-8 text-[13px] text-muted-foreground"
+                          placeholder="Stage description (optional)"
+                          value={stage.description || ''}
+                          onChange={(e) => updateStage(i, 'description', e.target.value)}
+                          data-testid={`input-stage-desc-${i}`}
+                        />
+                        <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer">
+                          <Checkbox
+                            checked={stage.isRequired}
+                            onCheckedChange={(v) => updateStage(i, 'isRequired', !!v)}
+                            data-testid={`checkbox-stage-required-${i}`}
+                          />
+                          Required stage
+                        </label>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[13px] text-primary h-8 mt-0.5"
+                        onClick={() => setEditIdx(null)}
+                        data-testid={`button-done-stage-${i}`}
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Done
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div>
+                          <span className="text-[15px] font-bold text-foreground flex items-center gap-1.5">
+                            <span style={{ color }} className="text-[15px]">●</span>
+                            {i + 1}. {stage.stepName || 'Untitled Stage'}
+                          </span>
+                          <p className="text-[13px] text-muted-foreground mt-0.5 ml-5">
+                            {stage.description || 'No description'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[13px] text-muted-foreground hover:text-foreground h-8"
+                          onClick={() => setEditIdx(i)}
+                          data-testid={`button-edit-stage-${i}`}
+                        >
+                          Edit
+                        </Button>
+                        <button
+                          className="text-red-400 hover:text-red-600 transition-colors p-1"
+                          onClick={() => removeStage(i)}
+                          data-testid={`button-remove-stage-${i}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
