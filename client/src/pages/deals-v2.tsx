@@ -382,7 +382,7 @@ export default function DealsV2() {
                     <div>
                       <div className="grid grid-cols-3 gap-8">
                         <div>
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-loan-details-${deal.id}`}>Loan Details</h4>
+                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-loan-details-${deal.id}`}>Loan Details</h4>
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-[13px]">
                               <span className="text-muted-foreground">Loan Amount</span>
@@ -404,7 +404,7 @@ export default function DealsV2() {
                         </div>
 
                         <div>
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-property-${deal.id}`}>Property</h4>
+                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-property-${deal.id}`}>Property</h4>
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-[13px]">
                               <span className="text-muted-foreground">Type</span>
@@ -428,7 +428,7 @@ export default function DealsV2() {
                         </div>
 
                         <div>
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-timeline-${deal.id}`}>Timeline</h4>
+                          <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-timeline-${deal.id}`}>Timeline</h4>
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-[13px]">
                               <span className="text-muted-foreground">Created</span>
