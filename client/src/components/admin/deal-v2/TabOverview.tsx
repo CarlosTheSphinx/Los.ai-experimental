@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Building2, DollarSign, Percent, TrendingUp, Calculator, Activity } from "lucide-react";
+import { DollarSign, Percent, TrendingUp, Calculator, Activity } from "lucide-react";
 
 function formatCurrency(amount: number | undefined): string {
   if (!amount) return "—";
@@ -115,48 +115,6 @@ export default function TabOverview({ deal }: { deal: any }) {
           subtitle={totalItems > 0 ? `${completedItems} of ${totalItems} items` : undefined}
           valueColor={progress >= 70 ? "text-green-600" : progress >= 40 ? "text-blue-600" : ""}
         />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px] flex items-center gap-2">
-              <User className="h-4 w-4" /> Borrower
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-[13px]">
-            <div className="grid grid-cols-[100px_1fr] gap-y-1.5">
-              <span className="text-muted-foreground">Name</span>
-              <span className="font-medium">{deal.borrowerName || "—"}</span>
-              <span className="text-muted-foreground">Email</span>
-              <span>{deal.borrowerEmail || "—"}</span>
-              <span className="text-muted-foreground">Phone</span>
-              <span>{deal.borrowerPhone || "—"}</span>
-              <span className="text-muted-foreground">Entity</span>
-              <span>{deal.entityName || "—"}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px] flex items-center gap-2">
-              <Building2 className="h-4 w-4" /> Property
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-[13px]">
-            <div className="grid grid-cols-[100px_1fr] gap-y-1.5">
-              <span className="text-muted-foreground">Address</span>
-              <span className="font-medium">{deal.propertyAddress || "—"}</span>
-              <span className="text-muted-foreground">City/State</span>
-              <span>{[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ") || "—"}</span>
-              <span className="text-muted-foreground">Type</span>
-              <span>{deal.propertyType || "—"}</span>
-              <span className="text-muted-foreground">Value</span>
-              <span>{formatCurrency(propertyValue)}</span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>

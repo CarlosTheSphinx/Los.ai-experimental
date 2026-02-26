@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  ArrowLeft, Play, FolderOpen, RefreshCw, ExternalLink,
+  ArrowLeft, FolderOpen, RefreshCw, ExternalLink,
   LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles,
-  User, Building2
+  MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -124,31 +124,38 @@ export default function DealDetailV2() {
   return (
     <div className="max-w-7xl mx-auto">
       {/* Fixed Header */}
-      <div className="sticky top-0 z-20 bg-white border-b px-6 py-3">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-20 bg-white border-b px-6 py-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-start gap-3">
             <Link href={isAdmin ? "/admin" : "/deals"}>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8 mt-0.5" data-testid="button-back">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[13px] text-muted-foreground font-medium" data-testid="text-deal-number">
                   {deal.dealNumber || `Deal #${deal.id}`}
-                </h1>
+                </span>
                 <StatusBadge
                   variant={deal.status === "active" ? "active" : deal.status === "closed" ? "closed" : "pending"}
                   label={deal.status || "Unknown"}
                 />
+                {(deal.programName || deal.loanType) && (
+                  <StatusBadge variant="pending" label={deal.programName || deal.loanType} />
+                )}
               </div>
-              <p className="text-[12px] text-muted-foreground">
-                {deal.borrowerName} · {deal.programName || deal.loanType} · {formatCurrency(deal.loanAmount)}
+              <h1 className="text-xl font-bold leading-tight" data-testid="text-deal-title">
+                {deal.propertyAddress
+                  ? `${deal.propertyAddress}${deal.propertyCity ? `, ${deal.propertyCity}` : ""}${deal.propertyState ? `, ${deal.propertyState}` : ""}${deal.propertyZip ? ` ${deal.propertyZip}` : ""}`
+                  : deal.dealNumber || `Deal #${deal.id}`}
+              </h1>
+              <p className="text-[13px] text-muted-foreground mt-0.5" data-testid="text-borrower-info">
+                {[deal.borrowerName, deal.borrowerEmail, deal.borrowerPhone].filter(Boolean).join(" \u00B7 ")}
               </p>
             </div>
           </div>
 
-          {/* Header Actions */}
           <div className="flex items-center gap-2">
             {deal.reviewMode && (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[11.5px] font-medium">
@@ -156,48 +163,15 @@ export default function DealDetailV2() {
                 Review Mode
               </div>
             )}
-            <Button variant="outline" size="sm">
-              <Play className="h-3.5 w-3.5 mr-1.5" /> Auto Process
-            </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" data-testid="button-drive">
               <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Drive
             </Button>
-          </div>
-        </div>
-
-        {/* Borrower & Property */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div className="bg-muted/40 border rounded-lg px-5 py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[14px] font-semibold">Borrower</span>
-            </div>
-            <div className="grid grid-cols-[80px_1fr] gap-y-2 text-[13px]">
-              <span className="text-muted-foreground">Name</span>
-              <span data-testid="text-borrower-name">{deal.borrowerName || "—"}</span>
-              <span className="text-muted-foreground">Email</span>
-              <span data-testid="text-borrower-email">{deal.borrowerEmail || "—"}</span>
-              <span className="text-muted-foreground">Phone</span>
-              <span data-testid="text-borrower-phone">{deal.borrowerPhone || "—"}</span>
-              <span className="text-muted-foreground">Entity</span>
-              <span data-testid="text-borrower-entity">{deal.entityName || "—"}</span>
-            </div>
-          </div>
-          <div className="bg-muted/40 border rounded-lg px-5 py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[14px] font-semibold">Property</span>
-            </div>
-            <div className="grid grid-cols-[80px_1fr] gap-y-2 text-[13px]">
-              <span className="text-muted-foreground">Address</span>
-              <span data-testid="text-property-address">{deal.propertyAddress || "—"}</span>
-              <span className="text-muted-foreground">City/State</span>
-              <span data-testid="text-property-city-state">{[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ") || "—"}</span>
-              <span className="text-muted-foreground">Type</span>
-              <span data-testid="text-property-type">{deal.propertyType || "—"}</span>
-              <span className="text-muted-foreground">Value</span>
-              <span data-testid="text-property-value">{deal.propertyValue ? `$${Number(deal.propertyValue).toLocaleString()}` : "—"}</span>
-            </div>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-auto-process">
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Auto Process
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" data-testid="button-more-actions">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
