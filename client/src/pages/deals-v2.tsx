@@ -4,7 +4,8 @@ import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   DollarSign, FolderOpen, Clock, CheckCircle2, Search, ChevronRight, Plus,
-  Building2, User, FileText, ExternalLink, Copy, MoreHorizontal, Mail
+  Building2, User, FileText, ExternalLink, Copy, MoreHorizontal, Mail,
+  List, LayoutGrid, SlidersHorizontal, ChevronDown, ArrowUpDown, Filter
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,9 @@ export default function DealsV2() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [viewMode, setViewMode] = useState<"list" | "board" | "compact">("list");
 
   const { data: dealsData, isLoading } = useQuery<{ projects: Deal[] }>({
     queryKey: ["/api/deals"],
@@ -197,8 +201,15 @@ export default function DealsV2() {
     // Status filter
     if (statusFilter !== "all") result = result.filter((d) => d.status?.toLowerCase() === statusFilter.toLowerCase());
 
+    // Sort
+    result.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+    });
+
     return result;
-  }, [deals, searchQuery, activeFilter, typeFilter, statusFilter]);
+  }, [deals, searchQuery, activeFilter, typeFilter, statusFilter, sortOrder]);
 
   const isAdmin = user?.role && ["admin", "staff", "super_admin"].includes(user.role);
 
@@ -259,37 +270,105 @@ export default function DealsV2() {
 
       {/* Table Card */}
       <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden">
-        {/* Search & Filters — Level 2 */}
-        <div className="px-4 py-3 border-b flex items-center gap-3">
-          <div className="relative flex-1 max-w-[280px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search deals..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-[13px]"
-            />
+        {/* Search & Toolbar */}
+        <div className="px-4 py-3 border-b">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="relative max-w-[320px] w-[320px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search by borrower, address, or loan #..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9 text-[13px]"
+                  data-testid="input-search-deals"
+                />
+              </div>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-1.5 text-[13px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                data-testid="button-more-filters"
+              >
+                <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${showFilters ? "rotate-90" : ""}`} />
+                More Filters
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
+                className="flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium border rounded-md bg-white hover:bg-gray-50 transition-colors"
+                data-testid="button-sort-order"
+              >
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                {sortOrder === "newest" ? "Newest First" : "Oldest First"}
+              </button>
+
+              <div className="flex items-center border rounded-md overflow-hidden" data-testid="view-toggle-group">
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`flex items-center justify-center h-9 w-9 transition-colors ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                  data-testid="button-view-list"
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode("board")}
+                  className={`flex items-center justify-center h-9 w-9 border-l transition-colors ${viewMode === "board" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                  data-testid="button-view-board"
+                  title="Board view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode("compact")}
+                  className={`flex items-center justify-center h-9 w-9 border-l transition-colors ${viewMode === "compact" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                  data-testid="button-view-compact"
+                  title="Compact view"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </div>
-          <select
-            className="h-8 px-3 text-[13px] border rounded-md bg-white text-foreground"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">All Programs</option>
-            <option value="dscr">DSCR</option>
-            <option value="rtl">RTL</option>
-            <option value="bridge">Bridge</option>
-          </select>
-          <select
-            className="h-8 px-3 text-[13px] border rounded-md bg-white text-foreground"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="pending">Pending</option>
-            <option value="closed">Closed</option>
-          </select>
+
+          {showFilters && (
+            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/50 animate-in slide-in-from-top-1 duration-200">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              <select
+                className="h-8 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                data-testid="select-type-filter"
+              >
+                <option value="all">All Programs</option>
+                <option value="dscr">DSCR</option>
+                <option value="rtl">RTL</option>
+                <option value="bridge">Bridge</option>
+              </select>
+              <select
+                className="h-8 px-3 text-[13px] border rounded-md bg-white text-foreground"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                data-testid="select-status-filter"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="closed">Closed</option>
+              </select>
+              {(typeFilter !== "all" || statusFilter !== "all") && (
+                <button
+                  onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }}
+                  className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="button-clear-filters"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Table */}
