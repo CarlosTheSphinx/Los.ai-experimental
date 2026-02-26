@@ -7,6 +7,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -66,23 +69,27 @@ export default function TabDocuments({
 
   const reviewModeQuery = useQuery<{
     dealReviewMode: string;
+    dealIntervalMinutes: number | null;
+    scheduledTime: string | null;
+    scheduledDays: string[] | null;
+    timezone: string | null;
+    communicationFrequencyMinutes: number | null;
   }>({
     queryKey: ["/api/projects", numericDealId, "review-mode"],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${numericDealId}/review-mode`, { credentials: "include" });
-      if (!res.ok) return { dealReviewMode: "manual" };
+      if (!res.ok) return { dealReviewMode: "manual", dealIntervalMinutes: null, scheduledTime: null, scheduledDays: null, timezone: null, communicationFrequencyMinutes: null };
       return res.json();
     },
     enabled: !!dealId,
   });
 
   const currentMode = reviewModeQuery.data?.dealReviewMode ?? deal?.aiReviewMode ?? "manual";
+  const reviewData = reviewModeQuery.data;
 
   const updateReviewMode = useMutation({
-    mutationFn: async (mode: string) => {
-      const res = await apiRequest("PUT", `/api/projects/${dealId}/review-mode`, {
-        aiReviewMode: mode,
-      });
+    mutationFn: async (payload: Record<string, any>) => {
+      const res = await apiRequest("PUT", `/api/projects/${dealId}/review-mode`, payload);
       return res.json();
     },
     onSuccess: () => {
@@ -202,7 +209,7 @@ export default function TabDocuments({
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="py-3 px-4">
+        <CardContent className="py-3 px-4 space-y-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               {[
@@ -214,7 +221,7 @@ export default function TabDocuments({
                   key={mode.value}
                   variant={currentMode === mode.value ? "default" : "outline"}
                   size="sm"
-                  onClick={() => updateReviewMode.mutate(mode.value)}
+                  onClick={() => updateReviewMode.mutate({ aiReviewMode: mode.value })}
                   disabled={updateReviewMode.isPending}
                   className={cn(
                     currentMode === mode.value && mode.value === "automatic" &&
@@ -245,6 +252,86 @@ export default function TabDocuments({
               Approve All ({aiReviewedCount})
             </Button>
           </div>
+
+          {currentMode === "automatic" && (
+            <div className="border-t pt-3 flex items-center gap-4 flex-wrap" data-testid="panel-automatic-settings">
+              <div className="flex items-center gap-2">
+                <Label className="text-[12px] text-muted-foreground whitespace-nowrap">Update message frequency</Label>
+                <Select
+                  value={String(reviewData?.communicationFrequencyMinutes ?? "30")}
+                  onValueChange={(val) =>
+                    updateReviewMode.mutate({
+                      aiReviewMode: "automatic",
+                      communicationFrequencyMinutes: parseInt(val),
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-[140px] h-8 text-[12px]" data-testid="select-comm-frequency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">Every 5 min</SelectItem>
+                    <SelectItem value="15">Every 15 min</SelectItem>
+                    <SelectItem value="30">Every 30 min</SelectItem>
+                    <SelectItem value="60">Every 1 hour</SelectItem>
+                    <SelectItem value="120">Every 2 hours</SelectItem>
+                    <SelectItem value="360">Every 6 hours</SelectItem>
+                    <SelectItem value="720">Every 12 hours</SelectItem>
+                    <SelectItem value="1440">Every 24 hours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {currentMode === "timed" && (
+            <div className="border-t pt-3 flex items-center gap-4 flex-wrap" data-testid="panel-timed-settings">
+              <div className="flex items-center gap-2">
+                <Label className="text-[12px] text-muted-foreground whitespace-nowrap">Review frequency</Label>
+                <Select
+                  value={String(reviewData?.dealIntervalMinutes ?? "60")}
+                  onValueChange={(val) =>
+                    updateReviewMode.mutate({
+                      aiReviewMode: "timed",
+                      intervalMinutes: parseInt(val),
+                      scheduledTime: reviewData?.scheduledTime || null,
+                      scheduledDays: reviewData?.scheduledDays || null,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-[140px] h-8 text-[12px]" data-testid="select-review-frequency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">Every 15 min</SelectItem>
+                    <SelectItem value="30">Every 30 min</SelectItem>
+                    <SelectItem value="60">Every 1 hour</SelectItem>
+                    <SelectItem value="120">Every 2 hours</SelectItem>
+                    <SelectItem value="360">Every 6 hours</SelectItem>
+                    <SelectItem value="720">Every 12 hours</SelectItem>
+                    <SelectItem value="1440">Daily</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-[12px] text-muted-foreground whitespace-nowrap">Scheduled time</Label>
+                <Input
+                  type="time"
+                  className="w-[120px] h-8 text-[12px]"
+                  value={reviewData?.scheduledTime || ""}
+                  onChange={(e) =>
+                    updateReviewMode.mutate({
+                      aiReviewMode: "timed",
+                      intervalMinutes: reviewData?.dealIntervalMinutes || 60,
+                      scheduledTime: e.target.value || null,
+                      scheduledDays: reviewData?.scheduledDays || null,
+                    })
+                  }
+                  data-testid="input-scheduled-time"
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

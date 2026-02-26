@@ -142,7 +142,7 @@ export default function DealDetailV2() {
     },
     enabled: !!dealId,
   });
-  const tasks = Array.isArray(tasksData) ? tasksData : [];
+  const tasks = Array.isArray(tasksData) ? tasksData : (tasksData as any)?.tasks ?? [];
 
   // Documents
   const { data: docsData } = useQuery<{ documents: any[] }>({
