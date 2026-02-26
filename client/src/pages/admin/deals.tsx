@@ -312,6 +312,7 @@ function ExpandedDealRow({ deal, stageStats }: { deal: Deal; stageStats?: StageI
     : '—';
   const daysInStage = getDaysInStage(deal.createdAt);
   const ltv = deal.loanData?.ltv || '—';
+  const dscr = deal.loanData?.dscr || '—';
   const rate = deal.interestRate && deal.interestRate !== '—' ? deal.interestRate : 'TBD';
   const term = deal.loanData?.loanTerm || '—';
   const propertyType = getPropertyTypeLabel(deal.loanData?.propertyType);
@@ -321,57 +322,60 @@ function ExpandedDealRow({ deal, stageStats }: { deal: Deal; stageStats?: StageI
     ? deal.loanData.loanPurpose.charAt(0).toUpperCase() + deal.loanData.loanPurpose.slice(1).replace(/_/g, ' ')
     : '—';
   const assignedTo = deal.userName || 'Unassigned';
+  const borrowerName = `${deal.customerFirstName || ''} ${deal.customerLastName || ''}`.trim() || '—';
+  const borrowerEmail = deal.customerEmail || '—';
+  const borrowerPhone = deal.customerPhone || '—';
 
   return (
-    <TableRow className="bg-slate-50/70 hover:bg-slate-50/70 border-b">
+    <TableRow className="hover:bg-slate-50/70 border-b-2 border-b-blue-500" data-testid={`expanded-deal-${deal.id}`}>
       <TableCell colSpan={7} className="p-0">
-        <div className="px-6 py-5">
-          <div className="grid grid-cols-3 gap-8">
+        <div className="px-6 py-5 bg-slate-50/50">
+          <div className="grid grid-cols-3 gap-10">
             <div>
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Loan Details</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">LTV</span><span className="font-medium">{ltv}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">DSCR</span><span className="font-medium">Pending</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Rate</span><span className="font-medium">{rate}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Term</span><span className="font-medium">{term}</span></div>
+              <h4 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-3" data-testid="text-section-loan-details">Loan Details</h4>
+              <div className="space-y-2.5">
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">LTV</span><span className="text-[14px] font-semibold">{ltv}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">DSCR</span><span className="text-[14px] font-semibold">{dscr}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Interest Rate</span><span className="text-[14px] font-semibold">{rate}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Term</span><span className="text-[14px] font-semibold">{term}</span></div>
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Property</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span className="font-medium">{propertyType}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Value</span><span className="font-medium">{propertyValue}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">State</span><span className="font-medium">{state}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Purpose</span><span className="font-medium">{purpose}</span></div>
+              <h4 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-3" data-testid="text-section-property">Property</h4>
+              <div className="space-y-2.5">
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Type</span><span className="text-[14px] font-semibold">{propertyType}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Value</span><span className="text-[14px] font-semibold">{propertyValue}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">State</span><span className="text-[14px] font-semibold">{state}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Purpose</span><span className="text-[14px] font-semibold">{purpose}</span></div>
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Timeline</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Created</span><span className="font-medium">{createdDate}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Target Close</span><span className="font-medium">{targetDate}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Days in Stage</span><span className="font-medium">{daysInStage} days</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Assigned To</span><span className="font-medium">{assignedTo}</span></div>
+              <h4 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-3" data-testid="text-section-timeline">Timeline</h4>
+              <div className="space-y-2.5">
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Created</span><span className="text-[14px] font-semibold">{createdDate}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Target Close</span><span className="text-[14px] font-semibold">{targetDate}</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Days in Stage</span><span className="text-[14px] font-semibold">{daysInStage} days</span></div>
+                <div className="flex justify-between"><span className="text-[14px] text-muted-foreground">Assigned To</span><span className="text-[14px] font-semibold">{assignedTo}</span></div>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3 mt-5 pt-4 border-t">
             <Link href={`/admin/deals/${deal.id}`}>
-              <Button size="sm" className="gap-1.5" data-testid={`button-open-deal-${deal.id}`}>
+              <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm px-5" data-testid={`button-open-deal-${deal.id}`}>
                 Open Deal <span className="ml-0.5">&rarr;</span>
               </Button>
             </Link>
             <DrivePushButton deal={deal} />
             {deal.customerEmail && (
               <a href={`mailto:${deal.customerEmail}`} onClick={(e) => e.stopPropagation()}>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                <Button size="sm" variant="outline" className="gap-1.5 text-[13px]">
                   <Mail className="h-3.5 w-3.5" />
                   Email Borrower
                 </Button>
               </a>
             )}
             <Link href={`/admin/deals/${deal.id}`}>
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <Button size="sm" variant="outline" className="gap-1.5 text-[13px]">
                 <FileText className="h-3.5 w-3.5" />
                 Documents ({deal.completedDocuments || 0}/{deal.totalDocuments || 0})
               </Button>
