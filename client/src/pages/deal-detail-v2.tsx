@@ -4,7 +4,8 @@ import { useRoute, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   ArrowLeft, Play, FolderOpen, RefreshCw, ExternalLink,
-  LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles
+  LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles,
+  User, Building2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -161,6 +162,42 @@ export default function DealDetailV2() {
             <Button variant="outline" size="sm">
               <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Drive
             </Button>
+          </div>
+        </div>
+
+        {/* Borrower & Property */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="bg-muted/40 border rounded-lg px-5 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="text-[14px] font-semibold">Borrower</span>
+            </div>
+            <div className="grid grid-cols-[80px_1fr] gap-y-2 text-[13px]">
+              <span className="text-muted-foreground">Name</span>
+              <span data-testid="text-borrower-name">{deal.borrowerName || "—"}</span>
+              <span className="text-muted-foreground">Email</span>
+              <span data-testid="text-borrower-email">{deal.borrowerEmail || "—"}</span>
+              <span className="text-muted-foreground">Phone</span>
+              <span data-testid="text-borrower-phone">{deal.borrowerPhone || "—"}</span>
+              <span className="text-muted-foreground">Entity</span>
+              <span data-testid="text-borrower-entity">{deal.entityName || "—"}</span>
+            </div>
+          </div>
+          <div className="bg-muted/40 border rounded-lg px-5 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span className="text-[14px] font-semibold">Property</span>
+            </div>
+            <div className="grid grid-cols-[80px_1fr] gap-y-2 text-[13px]">
+              <span className="text-muted-foreground">Address</span>
+              <span data-testid="text-property-address">{deal.propertyAddress || "—"}</span>
+              <span className="text-muted-foreground">City/State</span>
+              <span data-testid="text-property-city-state">{[deal.propertyCity, deal.propertyState].filter(Boolean).join(", ") || "—"}</span>
+              <span className="text-muted-foreground">Type</span>
+              <span data-testid="text-property-type">{deal.propertyType || "—"}</span>
+              <span className="text-muted-foreground">Value</span>
+              <span data-testid="text-property-value">{deal.propertyValue ? `$${Number(deal.propertyValue).toLocaleString()}` : "—"}</span>
+            </div>
           </div>
         </div>
 
