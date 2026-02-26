@@ -620,8 +620,15 @@ export default function DealsV2() {
                         {deal.dealNumber || deal.loanNumber || `#${deal.id}`}
                       </td>
                       <td className="px-3 py-3">
-                        <div className="text-[16px] font-medium">{deal.borrowerName || "—"}</div>
-                        <div className="text-[13px] text-muted-foreground">{deal.borrowerEmail || ""}</div>
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-[13px] font-semibold text-muted-foreground shrink-0" data-testid={`avatar-borrower-${deal.id}`}>
+                            {(deal.borrowerName || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className="text-[16px] font-medium">{deal.borrowerName || "—"}</div>
+                            <div className="text-[13px] text-muted-foreground">{deal.borrowerEmail || ""}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="text-[16px]">{deal.propertyAddress || "—"}</div>
