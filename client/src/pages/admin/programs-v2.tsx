@@ -98,15 +98,30 @@ function ExpandedProgramDetails({
         <div>
           <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3" data-testid={`heading-key-metrics-${program.id}`}>Key Metrics</h4>
           <div className="grid grid-cols-[1fr_auto] gap-y-2 text-[16px]">
-            <span className="text-muted-foreground">Base Rate</span>
+            <span className="text-muted-foreground">
+              <Tooltip>
+                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Base Rate</TooltipTrigger>
+                <TooltipContent>Starting interest rate for this program</TooltipContent>
+              </Tooltip>
+            </span>
             <span className="font-medium text-right">{baseRate ? `${baseRate}%` : "—"}</span>
-            <span className="text-muted-foreground">YSP</span>
+            <span className="text-muted-foreground">
+              <Tooltip>
+                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">YSP</TooltipTrigger>
+                <TooltipContent>Yield Spread Premium range</TooltipContent>
+              </Tooltip>
+            </span>
             <span className="font-medium text-right">
               {program.yspMin != null && program.yspMax != null
                 ? `${program.yspMin.toFixed(2)}% – ${program.yspMax.toFixed(2)}%`
                 : "—"}
             </span>
-            <span className="text-muted-foreground">Points</span>
+            <span className="text-muted-foreground">
+              <Tooltip>
+                <TooltipTrigger className="border-b border-dashed border-muted-foreground/40 cursor-help">Points</TooltipTrigger>
+                <TooltipContent>Origination points range</TooltipContent>
+              </Tooltip>
+            </span>
             <span className="font-medium text-right">
               {program.basePointsMin != null && program.basePointsMax != null
                 ? `${program.basePointsMin.toFixed(2)} – ${program.basePointsMax.toFixed(2)}`
