@@ -808,7 +808,7 @@ export function ProgramCreationWizard({
       )}
 
       <div className="flex gap-6">
-        <div className="w-72 min-w-[288px] shrink-0 flex flex-col">
+        <div className="w-72 min-w-[288px] shrink-0 flex flex-col border-r border-border pr-6">
           <h3 className="text-[16px] font-semibold mb-4">
             {isEditMode ? 'Edit Program' : 'New Program'}
           </h3>
