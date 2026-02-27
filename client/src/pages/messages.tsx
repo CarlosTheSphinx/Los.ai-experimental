@@ -87,9 +87,10 @@ import { MERGE_TAGS, type MessageTemplate } from "@shared/schema";
 import TeamChat, { TeamChatDetail } from "@/components/TeamChat";
 
 const QUICK_REPLIES = [
-  "Thanks, received!",
-  "I'll look into this",
-  "Can you send more details?"
+  { text: "Got it, thanks!", icon: CheckCircle2 },
+  { text: "Request insurance binder", icon: FileText },
+  { text: "Send Magic Link", icon: Sparkles },
+  { text: "Can you send more details?", icon: MessageCircle },
 ];
 
 export default function MessagesPage() {
@@ -132,6 +133,8 @@ export default function MessagesPage() {
   const [digestDate, setDigestDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [editingDraft, setEditingDraft] = useState<any>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
 
@@ -428,6 +431,8 @@ export default function MessagesPage() {
   const threads = threadsData?.threads || [];
 
   const unreadThreadCount = threads.filter((t: any) => t.unreadCount > 0).length;
+  const unreadEmailCount = emailThreads.filter((t: any) => t.isUnread).length;
+  const teamUnreadCount = teamChatUnreadData?.unreadCount || 0;
   const needsReplyCount = threads.filter((t: any) => {
     if (!t.lastMessageSenderId) return false;
     return t.lastMessageSenderId !== user?.id && t.unreadCount > 0;
@@ -540,6 +545,63 @@ export default function MessagesPage() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeThreadId) return;
+
+    setIsUploading(true);
+    try {
+      const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
+        name: file.name,
+        size: file.size,
+        contentType: file.type,
+      });
+      const urlData = await urlRes.json();
+
+      let objectPath = urlData.objectPath;
+
+      if (urlData.useDirectUpload) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadRes = await fetch(urlData.uploadURL, {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        objectPath = uploadData.objectPath || objectPath;
+      } else {
+        await fetch(urlData.uploadURL, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+      }
+
+      const fileSizeStr = file.size < 1024 * 1024
+        ? `${Math.round(file.size / 1024)} KB`
+        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+      await sendMessage(activeThreadId, `📎 ${file.name}`, "message", {
+        fileName: file.name,
+        fileType: file.type.includes("pdf") ? "PDF" : file.type.split("/")[1]?.toUpperCase() || "File",
+        fileSize: fileSizeStr,
+        objectPath,
+        uploadedAt: new Date().toISOString(),
+        status: "received",
+      });
+
+      refetchThread();
+      refetchThreads();
+      toast({ title: "File uploaded successfully" });
+    } catch (err) {
+      console.error("File upload error:", err);
+      toast({ title: "Failed to upload file", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -684,30 +746,36 @@ export default function MessagesPage() {
             </div>
 
             {isAdmin && (
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 {([
-                  { key: 'all' as const, label: 'All', icon: null },
-                  { key: 'in-app' as const, label: 'In-App', icon: MessageSquare },
-                  { key: 'email' as const, label: 'Email', icon: Mail },
-                  { key: 'team' as const, label: 'Team', icon: Users },
+                  { key: 'all' as const, label: 'All', icon: null, badge: 0 },
+                  { key: 'in-app' as const, label: 'In-App', icon: MessageSquare, badge: unreadThreadCount },
+                  { key: 'email' as const, label: 'Email', icon: Mail, badge: unreadEmailCount },
+                  { key: 'team' as const, label: 'Team', icon: Users, badge: teamUnreadCount },
                 ] as const).map((ch) => (
-                  <Button
-                    key={ch.key}
-                    variant={channelFilter === ch.key ? 'default' : 'outline'}
-                    size="sm"
-                    className={`rounded-full text-[13px] h-7 px-3 gap-1.5 ${channelFilter === ch.key ? '' : 'text-muted-foreground'}`}
-                    onClick={() => {
-                      setChannelFilter(ch.key);
-                      if (ch.key === 'email') { setInboxTab('email'); }
-                      else if (ch.key === 'team') { setInboxTab('team'); setActiveTeamChatId(null); }
-                      else if (ch.key === 'in-app') { setInboxTab('messages'); setActiveEmailThreadId(null); }
-                      else { setInboxTab('messages'); }
-                    }}
-                    data-testid={`filter-${ch.key}`}
-                  >
-                    {ch.icon && <ch.icon className="h-3 w-3" />}
-                    {ch.label}
-                  </Button>
+                  <div key={ch.key} className="relative">
+                    <Button
+                      variant={channelFilter === ch.key ? 'default' : 'outline'}
+                      size="sm"
+                      className={`rounded-full text-[13px] h-7 px-3 gap-1.5 ${channelFilter === ch.key ? '' : 'text-muted-foreground'}`}
+                      onClick={() => {
+                        setChannelFilter(ch.key);
+                        if (ch.key === 'email') { setInboxTab('email'); }
+                        else if (ch.key === 'team') { setInboxTab('team'); setActiveTeamChatId(null); }
+                        else if (ch.key === 'in-app') { setInboxTab('messages'); setActiveEmailThreadId(null); }
+                        else { setInboxTab('messages'); }
+                      }}
+                      data-testid={`filter-${ch.key}`}
+                    >
+                      {ch.icon && <ch.icon className="h-3 w-3" />}
+                      {ch.label}
+                    </Button>
+                    {ch.badge > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-bold leading-none shadow-sm" data-testid={`badge-${ch.key}`}>
+                        {ch.badge}
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -1012,36 +1080,40 @@ export default function MessagesPage() {
               <div className="p-2">
                 {filteredThreads.map((thread: any) => {
                   const t = thread;
+                  const isActive = thread.id === activeThreadId;
+                  const isRead = t.unreadCount === 0;
                   return (
                     <button
                       key={thread.id}
                       onClick={() => { setActiveThreadId(thread.id); setInboxTab('messages'); }}
-                      className={`group w-full text-left p-3 rounded-lg mb-1 transition-colors cursor-pointer ${
-                        thread.id === activeThreadId
-                          ? "bg-primary/5 border-l-[3px] border-l-primary border border-primary/20"
-                          : "hover:bg-muted border-l-[3px] border-l-transparent border border-transparent"
+                      className={`group w-full text-left p-3 rounded-xl mb-1.5 transition-colors cursor-pointer border ${
+                        isActive
+                          ? "bg-primary/5 border-l-[3px] border-l-primary border-primary/20"
+                          : isRead
+                            ? "bg-blue-50/60 dark:bg-blue-950/20 border-border/40 hover:bg-blue-100/60 dark:hover:bg-blue-950/30 border-l-[3px] border-l-transparent"
+                            : "bg-background border-border/40 hover:bg-muted border-l-[3px] border-l-transparent"
                       }`}
                       data-testid={`thread-item-${thread.id}`}
                     >
-                      <div className="flex items-start gap-2.5">
-                        <div className={`flex items-center justify-center h-9 w-9 rounded-full text-white text-[13px] font-semibold shrink-0 ${getAvatarColor(thread.id)}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`flex items-center justify-center h-10 w-10 rounded-full text-white text-[14px] font-bold shrink-0 ${getAvatarColor(thread.id)}`}>
                           {getInitials(t.propertyAddress || t.userName)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <div className={`text-[14px] truncate ${t.unreadCount > 0 ? 'font-bold' : 'font-semibold'}`}>
+                            <div className={`text-[15px] truncate ${t.unreadCount > 0 ? 'font-bold' : 'font-semibold'}`}>
                               {t.propertyAddress?.split(',')[0] || t.subject || "General"}
                             </div>
-                            <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">
+                            <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">
                               {format(new Date(thread.lastMessageAt), "h:mm a")}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {t.dealIdentifier && (
-                              <span className="text-[11px] font-medium text-muted-foreground">{t.dealIdentifier}</span>
+                              <span className="text-[12px] font-medium text-muted-foreground">{t.dealIdentifier}</span>
                             )}
                             {t.userType && (
-                              <Badge variant={t.userType === 'borrower' ? 'default' : 'secondary'} className={`text-[10px] h-4 px-1.5 shrink-0 ${t.userType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
+                              <Badge variant="secondary" className={`text-[10px] h-[18px] px-1.5 shrink-0 border-0 ${t.userType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
                                 {t.userType === 'borrower' ? 'Borrower' : 'Broker'}
                               </Badge>
                             )}
@@ -1054,7 +1126,7 @@ export default function MessagesPage() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 mt-1">
+                          <div className="flex items-center gap-1.5 mt-1">
                             <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
                             <span className="text-[12px] text-muted-foreground line-clamp-1">
                               {t.lastMessagePreview || "No messages yet"}
@@ -1402,72 +1474,66 @@ export default function MessagesPage() {
               <Separator />
 
               {activeMessages.length > 0 && (
-                <>
-                  <div className="px-4 pt-3 pb-0">
-                    <div className="flex gap-2 flex-wrap">
-                      {QUICK_REPLIES.map((reply) => (
-                        <Button
-                          key={reply}
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-8"
-                          onClick={() => setDraft(reply)}
-                        >
-                          {reply}
-                        </Button>
-                      ))}
-                    </div>
+                <div className="px-4 pt-3 pb-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {QUICK_REPLIES.map((reply) => (
+                      <Button
+                        key={reply.text}
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-[13px] h-8 px-3 gap-1.5 text-muted-foreground hover:text-foreground"
+                        onClick={() => setDraft(reply.text)}
+                        data-testid={`quick-reply-${reply.text}`}
+                      >
+                        <reply.icon className="h-3.5 w-3.5" />
+                        {reply.text}
+                      </Button>
+                    ))}
                   </div>
-                  <Separator className="mt-3" />
-                </>
+                </div>
               )}
 
-              <div className="p-4 space-y-3">
-                <div className="flex gap-2">
+              <div className="px-4 pb-4 pt-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.csv,.txt,.zip"
+                  data-testid="input-file-upload"
+                />
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-[42px] w-[42px] shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Attach file"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!activeThreadId || isUploading}
+                    data-testid="button-attach-file"
+                  >
+                    {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+                  </Button>
+
                   <Popover open={isTemplatePopoverOpen} onOpenChange={setIsTemplatePopoverOpen}>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        title="Message templates"
-                        data-testid="button-templates"
-                      >
-                        <FileText className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" className="h-[42px] w-[42px] shrink-0 text-muted-foreground hover:text-foreground" title="Message templates" data-testid="button-templates">
+                        <FileText className="h-5 w-5" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="w-64 p-2">
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
-                          Saved Templates
-                        </p>
+                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">Saved Templates</p>
                         {savedTemplates.length === 0 ? (
-                          <p className="text-xs text-muted-foreground px-2 py-2">
-                            No templates yet. Type a message and save it as a template.
-                          </p>
+                          <p className="text-xs text-muted-foreground px-2 py-2">No templates yet. Type a message and save it as a template.</p>
                         ) : (
                           savedTemplates.map((template) => (
-                            <div
-                              key={template.id}
-                              className="flex items-center gap-1 group"
-                              data-testid={`template-item-${template.id}`}
-                            >
-                              <button
-                                onClick={() => insertTemplate(template.content)}
-                                className="flex-1 text-left px-2 py-2 rounded hover:bg-muted transition-colors text-sm"
-                              >
+                            <div key={template.id} className="flex items-center gap-1 group" data-testid={`template-item-${template.id}`}>
+                              <button onClick={() => insertTemplate(template.content)} className="flex-1 text-left px-2 py-2 rounded hover:bg-muted transition-colors text-sm">
                                 <div className="font-medium">{template.name}</div>
-                                <div className="text-xs text-muted-foreground line-clamp-1">
-                                  {template.content.split("\n")[0]}
-                                </div>
+                                <div className="text-xs text-muted-foreground line-clamp-1">{template.content.split("\n")[0]}</div>
                               </button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => deleteTemplateMutation.mutate(template.id)}
-                                data-testid={`button-delete-template-${template.id}`}
-                              >
+                              <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteTemplateMutation.mutate(template.id)} data-testid={`button-delete-template-${template.id}`}>
                                 <Trash2 className="h-3 w-3 text-destructive" />
                               </Button>
                             </div>
@@ -1479,28 +1545,15 @@ export default function MessagesPage() {
 
                   <Popover open={isMergeTagPopoverOpen} onOpenChange={setIsMergeTagPopoverOpen}>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        title="Insert merge tag"
-                        data-testid="button-merge-tags"
-                      >
-                        <Tags className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" className="h-[42px] w-[42px] shrink-0 text-muted-foreground hover:text-foreground" title="Insert merge tag" data-testid="button-merge-tags">
+                        <Tags className="h-5 w-5" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="w-60 p-2">
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
-                          Merge Tags
-                        </p>
+                        <p className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">Merge Tags</p>
                         {MERGE_TAGS.map((mt) => (
-                          <button
-                            key={mt.tag}
-                            onClick={() => insertMergeTag(mt.tag)}
-                            className="w-full text-left px-2 py-1.5 rounded hover:bg-muted transition-colors text-sm"
-                            data-testid={`merge-tag-${mt.tag}`}
-                          >
+                          <button key={mt.tag} onClick={() => insertMergeTag(mt.tag)} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted transition-colors text-sm" data-testid={`merge-tag-${mt.tag}`}>
                             <div className="font-medium text-xs">{mt.label}</div>
                             <div className="text-xs text-muted-foreground font-mono">{mt.tag}</div>
                           </button>
@@ -1512,53 +1565,36 @@ export default function MessagesPage() {
                   {draft.trim() && (
                     <Popover open={isSaveTemplateOpen} onOpenChange={setIsSaveTemplateOpen}>
                       <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-9 w-9"
-                          title="Save as template"
-                          data-testid="button-save-template"
-                        >
-                          <Save className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-[42px] w-[42px] shrink-0 text-muted-foreground hover:text-foreground" title="Save as template" data-testid="button-save-template">
+                          <Save className="h-5 w-5" />
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="start" className="w-64 p-3">
                         <div className="space-y-2">
                           <p className="text-sm font-semibold">Save as Template</p>
-                          <Input
-                            placeholder="Template name..."
-                            value={saveTemplateName}
-                            onChange={(e) => setSaveTemplateName(e.target.value)}
-                            data-testid="input-template-name"
-                          />
-                          <Button
-                            size="sm"
-                            className="w-full"
-                            disabled={!saveTemplateName.trim() || createTemplateMutation.isPending}
-                            onClick={() => createTemplateMutation.mutate({ name: saveTemplateName.trim(), content: draft })}
-                            data-testid="button-confirm-save-template"
-                          >
+                          <Input placeholder="Template name..." value={saveTemplateName} onChange={(e) => setSaveTemplateName(e.target.value)} data-testid="input-template-name" />
+                          <Button size="sm" className="w-full" disabled={!saveTemplateName.trim() || createTemplateMutation.isPending} onClick={() => createTemplateMutation.mutate({ name: saveTemplateName.trim(), content: draft })} data-testid="button-confirm-save-template">
                             {createTemplateMutation.isPending ? "Saving..." : "Save Template"}
                           </Button>
                         </div>
                       </PopoverContent>
                     </Popover>
                   )}
-                </div>
 
-                <div className="flex gap-2">
                   <Input
                     ref={messageInputRef}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
-                    className="flex-1"
+                    className="flex-1 text-[15px] placeholder:text-muted-foreground/50 rounded-lg"
                     data-testid="input-message"
                   />
                   <Button
                     onClick={handleSend}
                     disabled={!draft.trim() || sendMutation.isPending}
+                    size="icon"
+                    className="h-9 w-9 rounded-full shrink-0"
                     data-testid="button-send-message"
                   >
                     <Send className="h-4 w-4" />
