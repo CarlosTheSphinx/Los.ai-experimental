@@ -7,10 +7,11 @@
   /* ================================================
      LENDRY.AI DESIGN SYSTEM — Brand Palette
      Navy (#1A3A52) + Blue (#2E7FD6) + Emerald (#10B981)
-     Fonts: Inter (body), Inter (headings), JetBrains Mono (code)
+     Fonts: Inter (body), Manrope (H1/H2), Plus Jakarta Sans (hero), JetBrains Mono (code)
      ================================================ */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Manrope', system-ui, -apple-system, sans-serif;
+  --font-hero: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Background: Warm light gray (modern, not harsh white) */

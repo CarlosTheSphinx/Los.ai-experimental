@@ -18,6 +18,8 @@ import {
   Bot,
   Eye,
   BarChart3,
+  Shield,
+  Play,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -138,100 +140,122 @@ export default function PublicHomePage() {
 
   return (
     <PublicLayout>
-      {/* Hero Section - Cinematic & Vast */}
-      <section className="relative h-screen w-full flex items-center justify-center overflow-hidden">
-        {/* Gradient Background with Radial Glow */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0F2438] via-[#1A3A52] to-[#0F1729]" />
-        <div className="absolute inset-0 bg-radial from-blue-500/10 via-transparent to-transparent" style={{
-          backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 70%)'
-        }} />
+      {/* Hero Section - Two Column Grid */}
+      <section className="relative bg-gradient-to-br from-navy via-blue/5 to-background overflow-hidden">
+        <div className="relative pt-20 pb-20 px-4 md:px-8 max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-12 items-center md:min-h-screen md:py-20">
 
-        {/* Subtle animated background elements */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-pulse opacity-20" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl animate-pulse opacity-20" style={{ animationDelay: '1s' }} />
-
-        {/* Content */}
-        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center w-full">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8 }}
-            className="space-y-8"
-          >
-            {/* Hero Headline - Massive & Punchy */}
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.1 }}
-              className="font-bold text-white leading-tight tracking-tight" style={{ fontSize: 'clamp(2rem, 5vw, 4.5rem)' }}
-            >
-              Stop Hiring.
-              <br />
-              <span className="whitespace-nowrap">Start{" "}
-              <span className="relative inline-block">
-                Automating
-                <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-8deg)' }}>
-                  <span className="block w-full" style={{ height: '10px', background: 'rgba(59, 130, 246, 0.85)', borderRadius: '3px' }}></span>
-                </span>
-              </span>
-              .</span>
-            </motion.h1>
-
-            {/* Subheadline */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-              className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto"
-            >
-              AI-powered loan processing that scales your business without scaling your team. Process more deals, faster.
-            </motion.p>
-
-            {/* World's First badge */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.25 }}
-              className="text-sm font-semibold text-blue-400 tracking-widest uppercase"
-            >
-              The World's First Loan Automation System
-            </motion.p>
-
-            {/* CTA Buttons */}
+            {/* Left: Copy */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="flex flex-col sm:flex-row gap-4 justify-center pt-4"
+              className="space-y-8"
+              initial={{ opacity: 0, x: -40 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.1 }}
             >
-              <Link href="/register">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Start Free Trial
-                </Button>
-              </Link>
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-white border-white/30 hover:border-white/60"
-                onClick={() => {
-                  const el = document.getElementById('how-it-works');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-              >
-                Watch Demo →
-              </Button>
-            </motion.div>
-          </motion.div>
-        </div>
+              {/* Main Headline - SPECIFIC */}
+              <div>
+                <h1 className="font-hero text-5xl md:text-6xl font-bold text-white leading-tight mb-4">
+                  Automate Your Entire Loan Pipeline
+                </h1>
 
-        {/* Scroll Indicator Chevron */}
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20"
-        >
-          <ChevronDown className="w-6 h-6 text-white/50 hover:text-white/80 transition-colors" />
-        </motion.div>
+                {/* Badge */}
+                <div className="inline-block bg-blue/20 border border-blue/50 rounded-full px-4 py-2 mb-6 mt-4">
+                  <span className="text-sm text-blue-300 font-medium">
+                    The World's First Loan Automation System
+                  </span>
+                </div>
+              </div>
+
+              {/* Subheadline - CAPABILITY-SPECIFIC */}
+              <motion.p
+                className="text-xl text-foreground/80 leading-relaxed"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+              >
+                <span className="font-semibold">Document Review</span> →
+                <span className="font-semibold"> Borrower Communication</span> →
+                <span className="font-semibold"> Deal Tracking</span>
+                <br />
+                All automated. No integrations. One platform.
+              </motion.p>
+
+              {/* Support Copy - TRUST + SPECIFICITY */}
+              <motion.div
+                className="flex items-center gap-3 text-sm text-foreground/70"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.25 }}
+              >
+                <Shield className="w-5 h-5 text-emerald flex-shrink-0" />
+                <span>SOC2 Type II • Bank-Grade Security • Zero Training on Your Data</span>
+              </motion.div>
+
+              {/* CTA */}
+              <motion.div
+                className="flex gap-4 pt-4 flex-col sm:flex-row"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+              >
+                <Link href="/register">
+                  <Button size="lg" className="bg-blue hover:bg-blue/90 text-white w-full sm:w-auto">
+                    Start Free Trial
+                  </Button>
+                </Link>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="text-foreground border-foreground/30 hover:border-foreground/60 w-full sm:w-auto"
+                  onClick={() => {
+                    const el = document.getElementById('how-it-works');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Schedule Demo
+                </Button>
+              </motion.div>
+            </motion.div>
+
+            {/* Right: Video Demo */}
+            <motion.div
+              className="relative"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+            >
+              {/* Video Container - Aspect Ratio 16:9 */}
+              <div className="relative bg-navy/30 border border-blue/30 rounded-2xl overflow-hidden">
+                <div className="aspect-video bg-gradient-to-br from-blue/20 to-navy/40 flex items-center justify-center group cursor-pointer">
+
+                  {/* Placeholder for video - will be replaced with actual video */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-900/50 to-navy/80 flex items-center justify-center">
+                    <Play className="w-16 h-16 text-white fill-white/80 group-hover:fill-white transition-all" />
+                  </div>
+                </div>
+
+                {/* Gradient border effect */}
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue/20 via-emerald/10 to-blue/20 pointer-events-none" />
+              </div>
+
+              {/* Trust Indicators Below Video */}
+              <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-white">200+</div>
+                  <div className="text-sm text-foreground/60">Lending Teams</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-white">$50M+</div>
+                  <div className="text-sm text-foreground/60">Processed</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-white">99.9%</div>
+                  <div className="text-sm text-foreground/60">Uptime</div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
       </section>
 
       {/* Trusted By Section */}
