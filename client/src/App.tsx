@@ -26,6 +26,7 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AcceptInvitePage from "@/pages/accept-invite";
 import AdminDashboard from "@/pages/admin/dashboard";
+import AdminOverview from "@/pages/admin/admin-overview";
 import AdminUsers from "@/pages/admin/users";
 import AdminSettings from "@/pages/admin/settings";
 import AdminTeamPermissions from "@/pages/admin/team-permissions";
@@ -229,6 +230,7 @@ function MainRoutes() {
           {/* Admin Routes */}
           <Route path="/admin/platform" component={() => <SuperAdminProtectedRoute component={SuperAdminDashboard} />} />
           <Route path="/admin/platform/tenants/:tenantId" component={() => <SuperAdminProtectedRoute component={TenantDetailPage} />} />
+          <Route path="/admin/overview" component={() => <AdminProtectedRoute component={AdminOverview} />} />
           <Route path="/admin" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
           <Route path="/admin/dashboard" component={() => <AdminProtectedRoute component={AdminDashboard} />} />
           <Route path="/admin/deals" component={() => <AdminProtectedRoute component={AdminDashboard} />} />

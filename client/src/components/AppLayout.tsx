@@ -24,6 +24,7 @@ import {
   Send,
 
   Target,
+  Gauge,
   BotMessageSquare,
   Pin,
   PinOff,
@@ -117,6 +118,7 @@ const adminNavItems: NavItem[] = [
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/credit-policies", label: "Credit Policies", icon: ShieldCheck, requiredPermission: "programs.view" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
+  { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/digests", label: "Communications", icon: CalendarDays, requiredPermission: "digests.view" },
   { href: "/admin/commercial-submissions", label: "Commercial Deals", icon: Building2, requiredPermission: "commercial.view" },
@@ -130,6 +132,7 @@ const adminNavItems: NavItem[] = [
 ];
 
 const adminNavItemsV2: NavItem[] = [
+  { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
