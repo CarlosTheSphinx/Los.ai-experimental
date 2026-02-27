@@ -263,7 +263,7 @@ export default function AdminOverview() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 px-2"
+              className="h-8 px-3 rounded-full"
               onClick={() => setWeekOffset(prev => prev - 1)}
               data-testid="button-prev-week"
             >
@@ -280,7 +280,7 @@ export default function AdminOverview() {
                   key={dateStr}
                   variant={selected ? 'default' : 'outline'}
                   size="sm"
-                  className={`h-8 px-3 text-[13px] ${today && !selected ? 'border-primary text-primary' : ''}`}
+                  className={`h-8 px-3 rounded-full text-[13px] ${today && !selected ? 'border-primary text-primary' : ''}`}
                   onClick={() => { setSelectedDate(dateStr); setTaskFilter('date'); }}
                   data-testid={`button-date-${dateStr}`}
                 >
@@ -294,7 +294,7 @@ export default function AdminOverview() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 px-2"
+              className="h-8 px-3 rounded-full"
               onClick={() => setWeekOffset(prev => prev + 1)}
               data-testid="button-next-week"
             >
@@ -369,13 +369,13 @@ export default function AdminOverview() {
                     data-testid={`checkbox-task-${task.id}`}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-[14px] font-medium ${isCompleted ? 'line-through' : ''}`}>
+                    <p className={`text-[16px] font-medium ${isCompleted ? 'line-through' : ''}`}>
                       {task.taskTitle}
                       {task.projectName && (
                         <span className="text-muted-foreground font-normal"> — {task.propertyAddress?.split(',')[0] || task.projectName}</span>
                       )}
                     </p>
-                    <p className="text-[13px] text-muted-foreground">
+                    <p className="text-[15px] text-muted-foreground">
                       {task.borrowerName && <>Borrower: {task.borrowerName}</>}
                       {task.programName && <> · {task.programName}</>}
                       {task.dueDate && <> · Due {new Date(task.dueDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</>}
@@ -383,16 +383,16 @@ export default function AdminOverview() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className={`text-[13px] font-medium flex items-center gap-1 ${status.color}`}>
-                      {status.label === 'Overdue' && <AlertCircle className="h-3 w-3" />}
-                      {status.label === 'Due Today' && <Clock className="h-3 w-3" />}
+                    <span className={`text-[15px] font-medium flex items-center gap-1 ${status.color}`}>
+                      {status.label === 'Overdue' && <AlertCircle className="h-3.5 w-3.5" />}
+                      {status.label === 'Due Today' && <Clock className="h-3.5 w-3.5" />}
                       {status.label}
                     </span>
                     {task.projectId && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 text-[13px] px-2 text-muted-foreground hover:text-primary"
+                        className="h-7 text-[15px] px-2 text-muted-foreground hover:text-primary"
                         onClick={() => navigate(`/admin/deals/${task.projectId}`)}
                         data-testid={`button-open-deal-${task.id}`}
                       >
