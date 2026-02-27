@@ -335,7 +335,7 @@ export default function AdminOverview() {
           </Button>
         </div>
 
-        <div className="divide-y" data-testid="task-list">
+        <div className="px-4 py-3 space-y-3" data-testid="task-list">
           {tasksLoading ? (
             <div className="px-5 py-8 text-center text-muted-foreground text-[14px]">
               Loading tasks...
@@ -348,10 +348,16 @@ export default function AdminOverview() {
             tasks.map((task: any) => {
               const status = getTaskStatus(task);
               const isCompleted = task.status === 'completed';
+              const priority = (task.priority || '').toLowerCase();
+              const borderColor = priority === 'high' || priority === 'critical'
+                ? 'border-l-red-500'
+                : priority === 'medium'
+                  ? 'border-l-amber-400'
+                  : 'border-l-emerald-500';
               return (
                 <div
                   key={task.id}
-                  className={`flex items-center gap-4 px-5 py-3 hover:bg-muted/30 transition-colors ${isCompleted ? 'opacity-60' : ''}`}
+                  className={`flex items-center gap-4 px-5 py-3.5 border rounded-[10px] border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isCompleted ? 'opacity-60' : ''}`}
                   data-testid={`task-row-${task.id}`}
                 >
                   <Checkbox
@@ -359,7 +365,7 @@ export default function AdminOverview() {
                     onCheckedChange={() => {
                       if (!isCompleted) completeTaskMutation.mutate(task.id);
                     }}
-                    className={`h-5 w-5 rounded-full ${isCompleted ? 'bg-emerald-500 border-emerald-500' : status.label === 'Overdue' ? 'border-red-400' : 'border-amber-400'}`}
+                    className={`h-5 w-5 rounded-full ${isCompleted ? 'bg-emerald-500 border-emerald-500' : priority === 'high' || priority === 'critical' ? 'border-red-400' : priority === 'medium' ? 'border-amber-400' : 'border-emerald-400'}`}
                     data-testid={`checkbox-task-${task.id}`}
                   />
                   <div className="flex-1 min-w-0">
