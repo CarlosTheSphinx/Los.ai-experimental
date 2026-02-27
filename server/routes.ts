@@ -14842,6 +14842,49 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
+  app.get('/api/esign/envelopes/bulk', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const quoteIdsParam = req.query.quoteIds as string;
+      if (!quoteIdsParam) {
+        return res.json({ envelopes: [] });
+      }
+      const quoteIds = quoteIdsParam.split(',').map(Number).filter(n => !isNaN(n));
+      if (quoteIds.length === 0) {
+        return res.json({ envelopes: [] });
+      }
+
+      const allEnvelopes = await db.select().from(esignEnvelopes)
+        .where(inArray(esignEnvelopes.quoteId, quoteIds))
+        .orderBy(esignEnvelopes.createdAt);
+
+      const eventsByEnvelope = new Map<number, any[]>();
+      if (allEnvelopes.length > 0) {
+        const envIds = allEnvelopes.map(e => e.id);
+        const events = await db.select().from(esignEvents)
+          .where(inArray(esignEvents.envelopeId, envIds))
+          .orderBy(esignEvents.createdAt);
+        for (const evt of events) {
+          if (!eventsByEnvelope.has(evt.envelopeId)) eventsByEnvelope.set(evt.envelopeId, []);
+          eventsByEnvelope.get(evt.envelopeId)!.push(evt);
+        }
+      }
+
+      const projectIds = allEnvelopes.filter(e => e.projectId).map(e => e.projectId!);
+      const projectSet = new Set(projectIds);
+
+      const envelopesWithMeta = allEnvelopes.map(env => ({
+        ...env,
+        events: eventsByEnvelope.get(env.id) || [],
+        hasProject: env.projectId != null && projectSet.has(env.projectId),
+      }));
+
+      res.json({ envelopes: envelopesWithMeta });
+    } catch (error: any) {
+      console.error('Bulk envelopes error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get envelopes for a quote
   app.get('/api/esign/envelopes/quote/:quoteId', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
