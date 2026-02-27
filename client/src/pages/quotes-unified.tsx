@@ -130,7 +130,7 @@ function QuoteCardEnvelope({ envelope, isBorrower, onSendTermSheet }: { envelope
   if (!envelope) {
     const noStatus = getEnvelopeStatusDisplay(null);
     return (
-      <div className="border-t border-border/50 px-5 py-3 bg-slate-50/50 dark:bg-muted/20">
+      <div className="px-5 py-3">
         <div className="flex items-center gap-3">
           <FileSignature className="h-4.5 w-4.5 text-muted-foreground" />
           <span className="text-[15px] font-medium text-muted-foreground" data-testid="text-pandadoc-label">PandaDoc:</span>
@@ -149,7 +149,7 @@ function QuoteCardEnvelope({ envelope, isBorrower, onSendTermSheet }: { envelope
   const viewCount = latest.events?.filter(e => e.eventType === 'document_viewed').length || 0;
 
   return (
-    <div className="border-t border-border/50 px-5 py-3 bg-slate-50/50 dark:bg-muted/20">
+    <div className="px-5 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <FileSignature className="h-4.5 w-4.5 text-muted-foreground" />
@@ -799,8 +799,10 @@ function QuoteCard({
             )}
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-4 gap-4 mt-5" data-testid={`grid-metrics-row1-${quote.id}`}>
+      <div className="border-t border-b border-border/50 bg-slate-50/70 dark:bg-muted/30 px-6 py-4">
+        <div className="grid grid-cols-4 gap-4" data-testid={`grid-metrics-row1-${quote.id}`}>
           <div>
             <div className="text-[15px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Program</div>
             <div className="text-[17px] font-semibold truncate">{programName}</div>
