@@ -404,7 +404,7 @@ export default function QuotesUnified() {
         {activeView === "quotes" && (
           <Button
             onClick={() => setActiveView("create")}
-            className="h-10 px-5 text-[15px] gap-2 shadow-md"
+            className="h-10 px-5 text-[15px] gap-2 rounded-full shadow-md"
             data-testid="button-new-quote"
           >
             <Plus className="h-4 w-4" />
