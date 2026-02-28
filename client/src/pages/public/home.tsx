@@ -142,8 +142,8 @@ export default function PublicHomePage() {
     <PublicLayout>
       {/* Hero Section - Two Column Grid */}
       <section className="relative bg-gradient-to-br from-[#0F1729] via-[#162040] to-[#1a2744] overflow-hidden">
-        <div className="relative pt-8 pb-16 px-4 md:px-8 max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center md:pt-8 md:pb-10">
+        <div className="relative pt-10 pb-16 px-4 md:px-8 max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-12 items-center md:pt-10 md:pb-10">
 
             {/* Left: Copy */}
             <motion.div

@@ -28,10 +28,10 @@ export function PublicLayout({ children }: PublicLayoutProps) {
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <Link href="/">
             <div className="flex items-center gap-0 cursor-pointer">
-              <span className="text-xl font-bold text-white">
+              <span className="text-3xl font-bold text-white">
                 Lendry.
               </span>
-              <span className="text-xl font-bold text-blue-500">
+              <span className="text-3xl font-bold text-blue-500">
                 AI
               </span>
             </div>
@@ -39,20 +39,19 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
           <div className="hidden md:flex items-center gap-14">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="text-base font-medium text-gray-400 hover:text-white transition-colors">
+              <Link key={link.href} href={link.href} className="text-2xl font-medium text-gray-400 hover:text-white transition-colors">
                 {link.label}
               </Link>
             ))}
           </div>
 
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/login" className="text-base font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
+            <Link href="/login" className="text-2xl font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
               Log in
             </Link>
             <Link href="/register">
               <Button
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 py-3 text-xl transition-colors"
               >
                 Sign Up
               </Button>
