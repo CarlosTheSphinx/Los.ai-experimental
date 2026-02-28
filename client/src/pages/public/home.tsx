@@ -275,8 +275,13 @@ export default function PublicHomePage() {
         </div>
       </section>
 
+<<<<<<< HEAD
       {/* Trust & Social Proof Section */}
       <section className="py-16 bg-gradient-to-b from-[#0F1729] to-white border-b border-gray-200">
+=======
+      {/* Trusted By Section */}
+      <section className="py-16 bg-gradient-to-b from-[#0F1729] to-[#1a2744]">
+>>>>>>> 1518548 (Update page background gradients and text colors for better visual consistency)
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0 }}
@@ -285,7 +290,7 @@ export default function PublicHomePage() {
             viewport={{ once: true }}
             className="text-center mb-12"
           >
-            <p className="text-gray-600 text-sm font-medium tracking-widest uppercase">
+            <p className="text-white/60 text-sm font-medium tracking-widest uppercase">
               Trusted by 200+ lending teams
             </p>
           </motion.div>
@@ -297,6 +302,7 @@ export default function PublicHomePage() {
             viewport={{ once: true }}
             className="space-y-8"
           >
+<<<<<<< HEAD
             {/* Security Badges */}
             <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10">
               {[
@@ -329,6 +335,21 @@ export default function PublicHomePage() {
                 </p>
               </Link>
             </div>
+=======
+            {[
+              { icon: '🔒', label: 'SOC2 Type II' },
+              { icon: '🛡️', label: 'SSL Encrypted' },
+              { icon: '🏦', label: 'Bank-Grade Security' },
+            ].map((badge, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20"
+              >
+                <span>{badge.icon}</span>
+                <span className="text-white/80 text-sm font-medium">{badge.label}</span>
+              </div>
+            ))}
+>>>>>>> 1518548 (Update page background gradients and text colors for better visual consistency)
           </motion.div>
         </div>
       </section>
