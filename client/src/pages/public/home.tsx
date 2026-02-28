@@ -142,12 +142,12 @@ export default function PublicHomePage() {
     <PublicLayout>
       {/* Hero Section - Two Column Grid */}
       <section className="relative bg-gradient-to-br from-[#0F1729] via-[#162040] to-[#1a2744] overflow-hidden">
-        <div className="relative pt-20 pb-20 px-4 md:px-8 max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center md:min-h-screen md:py-20">
+        <div className="relative pt-10 pb-20 px-4 md:px-8 max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-12 items-center md:min-h-screen md:py-10">
 
             {/* Left: Copy */}
             <motion.div
-              className="space-y-8"
+              className="space-y-8 text-center flex flex-col items-center"
               initial={{ opacity: 0, x: -40 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.1 }}
@@ -199,7 +199,7 @@ export default function PublicHomePage() {
 
               {/* Support Copy - TRUST + SPECIFICITY */}
               <motion.div
-                className="flex items-center gap-3 text-sm text-white/70"
+                className="flex items-center justify-center gap-3 text-sm text-white/70"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25 }}
@@ -210,7 +210,7 @@ export default function PublicHomePage() {
 
               {/* CTA */}
               <motion.div
-                className="flex gap-4 pt-4 flex-col sm:flex-row"
+                className="flex gap-4 pt-4 flex-col sm:flex-row justify-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
