@@ -39,19 +39,19 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
           <div className="hidden md:flex items-center gap-14">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="text-2xl font-medium text-gray-400 hover:text-white transition-colors">
+              <Link key={link.href} href={link.href} className="text-xl font-medium text-gray-400 hover:text-white transition-colors">
                 {link.label}
               </Link>
             ))}
           </div>
 
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/login" className="text-2xl font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
+            <Link href="/login" className="text-xl font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
               Log in
             </Link>
             <Link href="/register">
               <Button
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 py-3 text-xl transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-7 py-2.5 text-lg transition-colors"
               >
                 Sign Up
               </Button>
