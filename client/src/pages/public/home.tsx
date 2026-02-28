@@ -141,7 +141,7 @@ export default function PublicHomePage() {
   return (
     <PublicLayout>
       {/* Hero Section - Two Column Grid */}
-      <section className="relative bg-gradient-to-br from-navy via-blue/5 to-background overflow-hidden">
+      <section className="relative bg-gradient-to-br from-[#0F1729] via-[#162040] to-[#1a2744] overflow-hidden">
         <div className="relative pt-20 pb-20 px-4 md:px-8 max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center md:min-h-screen md:py-20">
 
@@ -170,7 +170,14 @@ export default function PublicHomePage() {
 
               {/* Primary Benefit */}
               <motion.p
-                className="text-xl text-white font-semibold leading-relaxed"
+  <motion.p
+    className="text-xl text-white/80 leading-relaxed"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.8, delay: 0.2 }}
+  >
+    Process 3x more loans with the same team.
+  </motion.p>
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
@@ -192,7 +199,7 @@ export default function PublicHomePage() {
 
               {/* Support Copy - TRUST + SPECIFICITY */}
               <motion.div
-                className="flex items-center gap-3 text-sm text-foreground/70"
+                className="flex items-center gap-3 text-sm text-white/70"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25 }}
@@ -216,7 +223,7 @@ export default function PublicHomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="text-foreground border-foreground/30 hover:border-foreground/60 w-full sm:w-auto"
+                  className="text-white border-white/30 hover:border-white/60 hover:bg-white/10 w-full sm:w-auto"
                   onClick={() => {
                     const el = document.getElementById('how-it-works');
                     if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -252,15 +259,15 @@ export default function PublicHomePage() {
               <div className="mt-8 grid grid-cols-3 gap-4 text-center">
                 <div>
                   <div className="text-2xl font-bold text-white">200+</div>
-                  <div className="text-sm text-foreground/60">Lending Teams</div>
+                  <div className="text-sm text-white/60">Lending Teams</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-white">$50M+</div>
-                  <div className="text-sm text-foreground/60">Processed</div>
+                  <div className="text-sm text-white/60">Processed</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-white">99.9%</div>
-                  <div className="text-sm text-foreground/60">Uptime</div>
+                  <div className="text-sm text-white/60">Uptime</div>
                 </div>
               </div>
             </motion.div>
