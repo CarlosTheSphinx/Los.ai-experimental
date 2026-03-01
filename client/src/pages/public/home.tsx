@@ -268,7 +268,7 @@ export default function PublicHomePage() {
         </div>
       </section>
 
-      {/* Trusted By Section */}
+      {/* Trust & Social Proof Section */}
       <section className="py-16 bg-gradient-to-b from-[#0F1729] to-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
@@ -288,21 +288,40 @@ export default function PublicHomePage() {
             whileInView={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.1 }}
             viewport={{ once: true }}
-            className="flex flex-wrap items-center justify-center gap-6 md:gap-10"
+            className="space-y-8"
           >
-            {[
-              { icon: '🔒', label: 'SOC2 Type II' },
-              { icon: '🛡️', label: 'SSL Encrypted' },
-              { icon: '🏦', label: 'Bank-Grade Security' },
-            ].map((badge, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm"
-              >
-                <span>{badge.icon}</span>
-                <span className="text-gray-700 text-sm font-medium">{badge.label}</span>
-              </div>
-            ))}
+            {/* Security Badges */}
+            <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10">
+              {[
+                { icon: '🔒', label: 'SOC2 Type II' },
+                { icon: '🛡️', label: 'SSL Encrypted' },
+                { icon: '🏦', label: 'Bank-Grade Security' },
+              ].map((badge, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm"
+                >
+                  <span>{badge.icon}</span>
+                  <span className="text-gray-700 text-sm font-medium">{badge.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Trust Callout */}
+            <div className="bg-blue/10 border border-blue/30 rounded-lg p-6 max-w-3xl mx-auto text-center">
+              <p className="text-gray-700 font-medium">
+                Bank-grade security. Zero training on your data. SOC2 Type II certified. Your loan programs, your data, your control. No vendor lock-in.
+              </p>
+            </div>
+
+            {/* Competitive Positioning Link */}
+            <div className="text-center">
+              <Link href="/how-we-compare">
+                <p className="text-blue-600 hover:text-blue-700 font-semibold cursor-pointer">
+                  See How Lendry Compares to the Big Guys →
+                </p>
+              </Link>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -826,20 +845,38 @@ export default function PublicHomePage() {
           >
             <div>
               <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4">
-                Ready to Process More Deals?
+                Like Hiring Unlimited 24/7 Loan Processors
               </h2>
+              <p className="text-xl text-blue-300 font-semibold mb-2">
+                In 5 Minutes. For a Fraction of the Cost of One.
+              </p>
               <p className="text-lg text-gray-300">
-                Join 200+ lending teams automating their operations. No credit card required.
+                No credit card required. No training needed. Start processing more deals today.
               </p>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Link href="/register">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Start Your Free Trial
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto">
+                  Start Free Trial
                 </Button>
               </Link>
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-white border-white/30 hover:border-white/60 w-full sm:w-auto"
+                onClick={() => {
+                  const el = document.getElementById('how-it-works');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                Schedule a Demo
+              </Button>
             </div>
+
+            <p className="text-sm text-gray-400 pt-4">
+              Join 200+ lending teams already automating their operations.
+            </p>
           </motion.div>
         </div>
       </section>
