@@ -47,18 +47,18 @@ export default function PublicHomePage() {
   const features = [
     {
       icon: FileText,
-      title: "Smart Document Review",
-      description: "AI reads documents 100x faster than humans. Automatically extracts key data, flags risks, and verifies compliance.",
+      title: "Instant Document Verification",
+      description: "Your borrower uploads a document. Lendry verifies it instantly. They see a green checkmark or a request for corrections in seconds. One portal for all loan status, updates, and document requests. Alerts sent instantly via email and portal. Nothing falls through the cracks.",
     },
     {
       icon: Zap,
-      title: "AI Assistant",
-      description: "Natural language interface. Ask questions about loans, get instant answers. No training required.",
+      title: "Borrowers Never Wonder What's Happening",
+      description: "Automatic updates whenever loan status changes. Borrowers see approvals, next steps, and document requests instantly. Less anxiety. Fewer 'what's the status?' calls. Higher close rates.",
     },
     {
       icon: Target,
-      title: "Smart Prospect Scoring",
-      description: "ML models predict loan quality before processing. Focus on high-probability deals first.",
+      title: "Set Up Once. (In 5 Minutes or Less.) Run Forever.",
+      description: "Define your loan programs, approval criteria, and communication flows once. Lendry executes them 24/7 on every deal. No manual tweaks. No monthly updates. Just pure automation running your programs perfectly.",
     },
   ];
 
@@ -152,10 +152,12 @@ export default function PublicHomePage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.1 }}
             >
-              {/* Main Headline - SPECIFIC */}
+              {/* Main Headline */}
               <div>
                 <h1 className="font-hero text-5xl md:text-6xl font-bold text-white leading-tight mb-4">
-                  Automate Your Entire Loan Pipeline
+                  Stop Hiring Processors.
+                  <br />
+                  <span className="text-blue-300">Start Growing Your Margins.</span>
                 </h1>
 
                 {/* Badge */}
@@ -166,19 +168,27 @@ export default function PublicHomePage() {
                 </div>
               </div>
 
-              {/* Subheadline - CAPABILITY-SPECIFIC */}
+              {/* Primary Benefit */}
               <motion.p
-                className="text-xl text-foreground/80 leading-relaxed"
+                className="text-xl text-white font-semibold leading-relaxed"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
               >
-                <span className="font-semibold">Document Review</span> →
-                <span className="font-semibold"> Borrower Communication</span> →
-                <span className="font-semibold"> Deal Tracking</span>
-                <br />
-                All automated. No integrations. One platform.
+                Process 3x more loans with the same team.
               </motion.p>
+
+              {/* Supporting Messaging */}
+              <motion.div
+                className="space-y-3 text-lg text-foreground/85"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.25 }}
+              >
+                <p><span className="font-semibold">Lendry replaces your processors — not your process.</span> Same loan programs. Same approval criteria. But now you process deals 24/7 without hiring.</p>
+                <p><span className="font-semibold">Lendry's AI handles document review, borrower comms, and deal routing — 24/7.</span></p>
+                <p className="text-base text-foreground/70">Zero disruption. No multi-month implementation. No training required.</p>
+              </motion.div>
 
               {/* Support Copy - TRUST + SPECIFICITY */}
               <motion.div
@@ -471,6 +481,105 @@ export default function PublicHomePage() {
                 </motion.div>
               );
             })}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Scalability Section */}
+      <section className="py-24 lg:py-32 bg-gradient-to-br from-navy via-navy/95 to-background">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+            viewport={{ once: true }}
+            className="text-center mb-16 will-change-transform"
+          >
+            <p className="text-sm font-semibold text-blue-300 tracking-wide uppercase mb-3">
+              Built to Scale
+            </p>
+            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4">
+              Handle 100 Loans or 10,000. Same Effort.
+            </h2>
+            <p className="text-lg text-gray-300 max-w-3xl mx-auto">
+              One loan or one hundred applicants per day—Lendry runs your programs identically. No slowdown. No scaling your team. Your rules scale, your costs don't.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+            viewport={{ once: true }}
+            className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto"
+          >
+            {/* Without Scaling Team */}
+            <div className="bg-white/5 border border-red/30 rounded-2xl p-8">
+              <h3 className="text-xl font-semibold text-white mb-4">Traditional Approach</h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-red/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-red text-sm font-bold">✕</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">Hire More Processors</p>
+                    <p className="text-gray-300 text-sm">Each 50-loan increase needs another FTE</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-red/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-red text-sm font-bold">✕</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">Margin Compression</p>
+                    <p className="text-gray-300 text-sm">Headcount grows faster than revenue</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-red/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-red text-sm font-bold">✕</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">Training & Turnover</p>
+                    <p className="text-gray-300 text-sm">Constant onboarding, process inconsistency</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* With Lendry */}
+            <div className="bg-emerald/10 border border-emerald/40 rounded-2xl p-8">
+              <h3 className="text-xl font-semibold text-white mb-4">With Lendry</h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-emerald text-sm font-bold">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">No New Hires</p>
+                    <p className="text-gray-300 text-sm">Same team, 3x volume, no hiring needed</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-emerald text-sm font-bold">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">Margin Growth</p>
+                    <p className="text-gray-300 text-sm">Revenue up, costs down, margins protected</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald/30 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-emerald text-sm font-bold">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">100% Consistency</p>
+                    <p className="text-gray-300 text-sm">Every deal processed the same way, every time</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>
