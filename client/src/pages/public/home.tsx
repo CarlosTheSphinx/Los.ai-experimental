@@ -168,26 +168,47 @@ export default function PublicHomePage() {
                 </div>
               </div>
 
-              {/* Primary Benefit */}
-              <motion.p
-                className="text-xl text-white font-semibold leading-relaxed"
+              {/* Value Proposition Cards */}
+              <motion.div
+                className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
               >
-                Process 3x more loans with the same team.
-              </motion.p>
-
-              {/* Supporting Messaging */}
-              <motion.div
-                className="space-y-3 text-lg text-white/85"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.25 }}
-              >
-                <p><span className="font-semibold">Lendry replaces your processors — not your process.</span> Same loan programs. Same approval criteria. But now you process deals 24/7 without hiring.</p>
-                <p><span className="font-semibold">Lendry's AI handles document review, borrower comms, and deal routing — 24/7.</span></p>
-                <p className="text-base text-white/70">Zero disruption. No multi-month implementation. No training required.</p>
+                {[
+                  {
+                    icon: TrendingUp,
+                    title: "3x More Loans",
+                    body: "Process 3x more loans with the same team. Same programs. Same criteria.",
+                  },
+                  {
+                    icon: Zap,
+                    title: "AI-Powered 24/7",
+                    body: "Document review, borrower comms, and deal routing — all handled by AI, around the clock.",
+                  },
+                  {
+                    icon: Check,
+                    title: "Zero Disruption",
+                    body: "No multi-month implementation. No training required. Your process stays the same.",
+                  },
+                ].map((card, idx) => {
+                  const CardIcon = card.icon;
+                  return (
+                    <motion.div
+                      key={idx}
+                      className="bg-white/5 border border-white/10 rounded-2xl p-5 text-left"
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.25 + idx * 0.1 }}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center mb-3">
+                        <CardIcon className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <h4 className="text-base font-bold text-white mb-1.5">{card.title}</h4>
+                      <p className="text-sm text-white/60 leading-relaxed">{card.body}</p>
+                    </motion.div>
+                  );
+                })}
               </motion.div>
 
               {/* Support Copy - TRUST + SPECIFICITY */}
