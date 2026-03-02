@@ -24,36 +24,34 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0F1729]">
+      <header className="sticky top-0 z-50 bg-[#0F1729]">
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <Link href="/">
             <div className="flex items-center gap-0 cursor-pointer">
-              <span className="text-lg font-bold text-white">
+              <span className="text-3xl font-bold text-white">
                 Lendry.
               </span>
-              <span className="text-lg font-bold text-blue-500">
+              <span className="text-3xl font-bold text-blue-500">
                 AI
               </span>
             </div>
           </Link>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-14">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="text-sm font-medium text-gray-400 hover:text-white transition-colors">
+              <Link key={link.href} href={link.href} className="text-xl font-medium text-gray-400 hover:text-white transition-colors">
                 {link.label}
               </Link>
             ))}
           </div>
 
-          <div className="hidden md:flex items-center gap-4">
-            <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
+          <div className="hidden md:flex items-center gap-6">
+            <Link href="/login" className="text-xl font-medium text-gray-400 hover:text-white transition-colors cursor-pointer">
               Log in
             </Link>
             <Link href="/register">
               <Button
-                variant="outline"
-                size="sm"
-                className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-7 py-2.5 text-lg transition-colors"
               >
                 Sign Up
               </Button>
@@ -77,19 +75,18 @@ export function PublicLayout({ children }: PublicLayoutProps) {
           <div className="md:hidden border-t border-white/10 bg-[#0F1729]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-4">
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
+                <Link key={link.href} href={link.href} className="text-base font-medium text-gray-400 hover:text-white transition-colors block py-2">
                   {link.label}
                 </Link>
               ))}
               <div className="flex flex-col gap-2 pt-4 border-t border-white/10">
-                <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition-colors block py-2">
+                <Link href="/login" className="text-base font-medium text-gray-400 hover:text-white transition-colors block py-2">
                   Log in
                 </Link>
                 <Link href="/register">
                   <Button
-                    variant="outline"
                     size="sm"
-                    className="border border-white text-white rounded-md hover:bg-white hover:text-[#0F1729] transition-colors w-full"
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 transition-colors w-full"
                   >
                     Sign Up
                   </Button>
