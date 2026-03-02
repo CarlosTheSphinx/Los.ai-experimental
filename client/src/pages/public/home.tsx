@@ -170,14 +170,7 @@ export default function PublicHomePage() {
 
               {/* Primary Benefit */}
               <motion.p
-  <motion.p
-    className="text-xl text-white/80 leading-relaxed"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.8, delay: 0.2 }}
-  >
-    Process 3x more loans with the same team.
-  </motion.p>
+                className="text-xl text-white font-semibold leading-relaxed"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
@@ -187,14 +180,14 @@ export default function PublicHomePage() {
 
               {/* Supporting Messaging */}
               <motion.div
-                className="space-y-3 text-lg text-foreground/85"
+                className="space-y-3 text-lg text-white/85"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25 }}
               >
                 <p><span className="font-semibold">Lendry replaces your processors — not your process.</span> Same loan programs. Same approval criteria. But now you process deals 24/7 without hiring.</p>
                 <p><span className="font-semibold">Lendry's AI handles document review, borrower comms, and deal routing — 24/7.</span></p>
-                <p className="text-base text-foreground/70">Zero disruption. No multi-month implementation. No training required.</p>
+                <p className="text-base text-white/70">Zero disruption. No multi-month implementation. No training required.</p>
               </motion.div>
 
               {/* Support Copy - TRUST + SPECIFICITY */}
@@ -275,13 +268,8 @@ export default function PublicHomePage() {
         </div>
       </section>
 
-<<<<<<< HEAD
       {/* Trust & Social Proof Section */}
-      <section className="py-16 bg-gradient-to-b from-[#0F1729] to-white border-b border-gray-200">
-=======
-      {/* Trusted By Section */}
       <section className="py-16 bg-gradient-to-b from-[#0F1729] to-[#1a2744]">
->>>>>>> 1518548 (Update page background gradients and text colors for better visual consistency)
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0 }}
@@ -302,7 +290,6 @@ export default function PublicHomePage() {
             viewport={{ once: true }}
             className="space-y-8"
           >
-<<<<<<< HEAD
             {/* Security Badges */}
             <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10">
               {[
@@ -312,17 +299,17 @@ export default function PublicHomePage() {
               ].map((badge, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20"
                 >
                   <span>{badge.icon}</span>
-                  <span className="text-gray-700 text-sm font-medium">{badge.label}</span>
+                  <span className="text-white/80 text-sm font-medium">{badge.label}</span>
                 </div>
               ))}
             </div>
 
             {/* Trust Callout */}
-            <div className="bg-blue/10 border border-blue/30 rounded-lg p-6 max-w-3xl mx-auto text-center">
-              <p className="text-gray-700 font-medium">
+            <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-6 max-w-3xl mx-auto text-center">
+              <p className="text-white/80 font-medium">
                 Bank-grade security. Zero training on your data. SOC2 Type II certified. Your loan programs, your data, your control. No vendor lock-in.
               </p>
             </div>
@@ -330,26 +317,11 @@ export default function PublicHomePage() {
             {/* Competitive Positioning Link */}
             <div className="text-center">
               <Link href="/how-we-compare">
-                <p className="text-blue-600 hover:text-blue-700 font-semibold cursor-pointer">
+                <p className="text-blue-400 hover:text-blue-300 font-semibold cursor-pointer">
                   See How Lendry Compares to the Big Guys →
                 </p>
               </Link>
             </div>
-=======
-            {[
-              { icon: '🔒', label: 'SOC2 Type II' },
-              { icon: '🛡️', label: 'SSL Encrypted' },
-              { icon: '🏦', label: 'Bank-Grade Security' },
-            ].map((badge, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20"
-              >
-                <span>{badge.icon}</span>
-                <span className="text-white/80 text-sm font-medium">{badge.label}</span>
-              </div>
-            ))}
->>>>>>> 1518548 (Update page background gradients and text colors for better visual consistency)
           </motion.div>
         </div>
       </section>
