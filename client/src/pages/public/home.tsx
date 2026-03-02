@@ -244,22 +244,21 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
             <motion.div variants={itemVariants} className="md:row-span-2">
-              <div className="h-full bg-gradient-to-br from-[#1a2744] to-[#1E293B] rounded-3xl p-8 flex flex-col">
+              <div className="h-full bg-gradient-to-br from-[#1e3a5f] to-[#253550] rounded-3xl p-8">
                 <AlertCircle className="w-8 h-8 text-red-400 mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">{problemCards[0].title}</h3>
                 <p className="text-white/60 text-sm leading-relaxed">{problemCards[0].description}</p>
-                <div className="flex-1 min-h-[120px]" />
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-blue-900/40 to-[#1a2744] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#243b63] to-[#1e3050] rounded-3xl p-8">
                 <TrendingDown className="w-8 h-8 text-red-400 mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">{problemCards[1].title}</h3>
                 <p className="text-white/60 text-sm leading-relaxed">{problemCards[1].description}</p>
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#162040] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#2a3f5f] to-[#1e3050] rounded-3xl p-8">
                 <Clock className="w-8 h-8 text-red-400 mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">{problemCards[2].title}</h3>
                 <p className="text-white/60 text-sm leading-relaxed">{problemCards[2].description}</p>
@@ -275,7 +274,7 @@ export default function PublicHomePage() {
             className="mt-5"
           >
             <motion.div variants={itemVariants}>
-              <div className="bg-gradient-to-r from-[#162040] to-[#1a2744] rounded-3xl p-8">
+              <div className="bg-gradient-to-r from-[#1d3557] to-[#253550] rounded-3xl p-8">
                 <AlertCircle className="w-8 h-8 text-red-400 mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">{problemCards[3].title}</h3>
                 <p className="text-white/60 text-sm leading-relaxed max-w-2xl">{problemCards[3].description}</p>
@@ -315,17 +314,16 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
             <motion.div variants={itemVariants} className="md:row-span-2">
-              <div className="h-full bg-gradient-to-br from-blue-600/20 to-[#1a2744] rounded-3xl p-8 flex flex-col">
+              <div className="h-full bg-gradient-to-br from-[#1e3a5f] to-[#253550] rounded-3xl p-8">
                 <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-4">
                   <FileText className="w-6 h-6 text-blue-400" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-3">{benefitCards[0].title}</h3>
                 <p className="text-white/60 leading-relaxed">{benefitCards[0].description}</p>
-                <div className="flex-1 min-h-[120px]" />
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-purple-900/30 to-[#1E293B] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#2d2b55] to-[#1e3050] rounded-3xl p-8">
                 <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4">
                   <Zap className="w-6 h-6 text-purple-400" />
                 </div>
@@ -334,7 +332,7 @@ export default function PublicHomePage() {
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#1a2744] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#1e4040] to-[#1e3050] rounded-3xl p-8">
                 <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-4">
                   <Target className="w-6 h-6 text-emerald-400" />
                 </div>
@@ -373,7 +371,7 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto"
           >
             {/* Before */}
-            <div className="bg-gradient-to-br from-red-900/20 to-[#1E293B] rounded-3xl p-8">
+            <div className="bg-gradient-to-br from-[#3d2020] to-[#253040] rounded-3xl p-8">
               <h3 className="text-xl font-bold text-white mb-6">Without Lendry</h3>
               <div className="space-y-4">
                 {[
@@ -391,7 +389,7 @@ export default function PublicHomePage() {
             </div>
 
             {/* After */}
-            <div className="bg-gradient-to-br from-emerald-900/20 to-[#1a2744] rounded-3xl p-8">
+            <div className="bg-gradient-to-br from-[#1e4040] to-[#253550] rounded-3xl p-8">
               <h3 className="text-xl font-bold text-white mb-6">With Lendry</h3>
               <div className="space-y-4">
                 {[
@@ -441,22 +439,21 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
             <motion.div variants={itemVariants} className="md:row-span-2">
-              <div className="h-full bg-gradient-to-br from-blue-600/20 to-[#162040] rounded-3xl p-8 flex flex-col">
+              <div className="h-full bg-gradient-to-br from-[#1e3a5f] to-[#253550] rounded-3xl p-8">
                 <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[0].number}</div>
                 <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[0].title}</h3>
                 <p className="text-white/60 leading-relaxed">{howItWorks[0].description}</p>
-                <div className="flex-1 min-h-[120px]" />
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-[#1a2744] to-[#1E293B] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#243b63] to-[#1e3050] rounded-3xl p-8">
                 <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[1].number}</div>
                 <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[1].title}</h3>
                 <p className="text-white/60 leading-relaxed">{howItWorks[1].description}</p>
               </div>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#1a2744] rounded-3xl p-8">
+              <div className="h-full bg-gradient-to-br from-[#2a3f5f] to-[#253550] rounded-3xl p-8">
                 <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[2].number}</div>
                 <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[2].title}</h3>
                 <p className="text-white/60 leading-relaxed">{howItWorks[2].description}</p>
