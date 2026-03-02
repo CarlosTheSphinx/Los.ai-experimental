@@ -235,26 +235,52 @@ export default function PublicHomePage() {
             </p>
           </motion.div>
 
-          {/* 4 Problem Cards */}
+          {/* 4 Problem Cards — Bento Grid */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
-            {problemCards.map((card, idx) => {
-              const Icon = card.icon;
-              return (
-                <motion.div key={idx} variants={itemVariants}>
-                  <div className="h-full bg-white/10 border border-white/20 rounded-lg p-6 hover:bg-white/15 transition-colors">
-                    <Icon className="w-8 h-8 text-red-400 mb-4" />
-                    <h3 className="text-lg font-semibold text-white mb-2">{card.title}</h3>
-                    <p className="text-gray-300 text-sm leading-relaxed">{card.description}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
+            <motion.div variants={itemVariants} className="md:row-span-2">
+              <div className="h-full bg-gradient-to-br from-[#1a2744] to-[#1E293B] rounded-3xl p-8 flex flex-col">
+                <AlertCircle className="w-8 h-8 text-red-400 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">{problemCards[0].title}</h3>
+                <p className="text-white/60 text-sm leading-relaxed">{problemCards[0].description}</p>
+                <div className="flex-1 min-h-[120px]" />
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-blue-900/40 to-[#1a2744] rounded-3xl p-8">
+                <TrendingDown className="w-8 h-8 text-red-400 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">{problemCards[1].title}</h3>
+                <p className="text-white/60 text-sm leading-relaxed">{problemCards[1].description}</p>
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#162040] rounded-3xl p-8">
+                <Clock className="w-8 h-8 text-red-400 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">{problemCards[2].title}</h3>
+                <p className="text-white/60 text-sm leading-relaxed">{problemCards[2].description}</p>
+              </div>
+            </motion.div>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            className="mt-5"
+          >
+            <motion.div variants={itemVariants}>
+              <div className="bg-gradient-to-r from-[#162040] to-[#1a2744] rounded-3xl p-8">
+                <AlertCircle className="w-8 h-8 text-red-400 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">{problemCards[3].title}</h3>
+                <p className="text-white/60 text-sm leading-relaxed max-w-2xl">{problemCards[3].description}</p>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
       </section>
@@ -280,28 +306,42 @@ export default function PublicHomePage() {
             </p>
           </motion.div>
 
-          {/* Benefit Cards Grid */}
+          {/* Benefit Cards — Bento Grid */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
-            {benefitCards.map((card, idx) => {
-              const Icon = card.icon;
-              return (
-                <motion.div key={idx} variants={itemVariants}>
-                  <div className="h-full bg-white/5 border border-white/10 rounded-lg p-8 hover:bg-white/10 transition-colors">
-                    <div className="w-12 h-12 bg-blue/10 rounded-lg flex items-center justify-center mb-4">
-                      <Icon className="w-6 h-6 text-blue" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-white mb-3">{card.title}</h3>
-                    <p className="text-white/60 leading-relaxed">{card.description}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
+            <motion.div variants={itemVariants} className="md:row-span-2">
+              <div className="h-full bg-gradient-to-br from-blue-600/20 to-[#1a2744] rounded-3xl p-8 flex flex-col">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-4">
+                  <FileText className="w-6 h-6 text-blue-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">{benefitCards[0].title}</h3>
+                <p className="text-white/60 leading-relaxed">{benefitCards[0].description}</p>
+                <div className="flex-1 min-h-[120px]" />
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-purple-900/30 to-[#1E293B] rounded-3xl p-8">
+                <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4">
+                  <Zap className="w-6 h-6 text-purple-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">{benefitCards[1].title}</h3>
+                <p className="text-white/60 leading-relaxed">{benefitCards[1].description}</p>
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#1a2744] rounded-3xl p-8">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-4">
+                  <Target className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">{benefitCards[2].title}</h3>
+                <p className="text-white/60 leading-relaxed">{benefitCards[2].description}</p>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
       </section>
@@ -333,8 +373,8 @@ export default function PublicHomePage() {
             className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto"
           >
             {/* Before */}
-            <div className="bg-red/10 border border-red/30 rounded-lg p-8">
-              <h3 className="text-xl font-semibold text-white mb-6">Without Lendry</h3>
+            <div className="bg-gradient-to-br from-red-900/20 to-[#1E293B] rounded-3xl p-8">
+              <h3 className="text-xl font-bold text-white mb-6">Without Lendry</h3>
               <div className="space-y-4">
                 {[
                   { icon: '❌', text: '1 person = 50 loans/month' },
@@ -344,15 +384,15 @@ export default function PublicHomePage() {
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-start gap-3">
                     <span className="text-xl">{item.icon}</span>
-                    <p className="text-gray-300">{item.text}</p>
+                    <p className="text-white/60">{item.text}</p>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* After */}
-            <div className="bg-emerald/10 border border-emerald/40 rounded-lg p-8">
-              <h3 className="text-xl font-semibold text-white mb-6">With Lendry</h3>
+            <div className="bg-gradient-to-br from-emerald-900/20 to-[#1a2744] rounded-3xl p-8">
+              <h3 className="text-xl font-bold text-white mb-6">With Lendry</h3>
               <div className="space-y-4">
                 {[
                   { icon: '✅', text: '1 person = 500 loans/month (10x)' },
@@ -362,7 +402,7 @@ export default function PublicHomePage() {
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-start gap-3">
                     <span className="text-xl">{item.icon}</span>
-                    <p className="text-gray-300">{item.text}</p>
+                    <p className="text-white/60">{item.text}</p>
                   </div>
                 ))}
               </div>
@@ -392,23 +432,36 @@ export default function PublicHomePage() {
             </p>
           </motion.div>
 
-          {/* 3 Steps */}
+          {/* 3 Steps — Bento Grid */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
-            {howItWorks.map((step, idx) => (
-              <motion.div key={idx} variants={itemVariants}>
-                <div className="h-full bg-white/5 border border-white/10 rounded-lg p-8">
-                  <div className="text-4xl font-bold text-blue mb-4">{step.number}</div>
-                  <h3 className="text-2xl font-semibold text-white mb-3">{step.title}</h3>
-                  <p className="text-white/60">{step.description}</p>
-                </div>
-              </motion.div>
-            ))}
+            <motion.div variants={itemVariants} className="md:row-span-2">
+              <div className="h-full bg-gradient-to-br from-blue-600/20 to-[#162040] rounded-3xl p-8 flex flex-col">
+                <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[0].number}</div>
+                <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[0].title}</h3>
+                <p className="text-white/60 leading-relaxed">{howItWorks[0].description}</p>
+                <div className="flex-1 min-h-[120px]" />
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-[#1a2744] to-[#1E293B] rounded-3xl p-8">
+                <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[1].number}</div>
+                <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[1].title}</h3>
+                <p className="text-white/60 leading-relaxed">{howItWorks[1].description}</p>
+              </div>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <div className="h-full bg-gradient-to-br from-[#1E293B] to-[#1a2744] rounded-3xl p-8">
+                <div className="text-4xl font-bold text-blue-400 mb-4">{howItWorks[2].number}</div>
+                <h3 className="text-2xl font-bold text-white mb-3">{howItWorks[2].title}</h3>
+                <p className="text-white/60 leading-relaxed">{howItWorks[2].description}</p>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
       </section>
