@@ -49,6 +49,7 @@ import { registerPortalRoutes } from './routes/portal';
 import { registerAdminProgramsRoutes } from './routes/admin-programs';
 import { setupPermissionsRoutes } from './routes/permissions';
 import { setupAuditRoutes } from './routes/audit';
+import { createAuditLog, getClientIp, logUserAction, AuditActions, ResourceTypes } from './utils/audit';
 
 import { registerProcessorRoutes } from './routes/processor';
 import { registerBrokerSdrRoutes } from './routes/broker-sdr';
