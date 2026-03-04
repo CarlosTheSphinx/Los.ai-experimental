@@ -238,10 +238,12 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
   const { isEnabled: isFlagEnabled } = useFeatureFlags();
   const useV2Nav = isFlagEnabled("phase1.sidebar");
 
+  const userIsSuperAdmin = isSuperAdmin || user?.role === 'super_admin';
+
   const filteredAdminItems = (useV2Nav ? adminNavItemsV2 : adminNavItems).filter(item => {
-    if (item.superAdminOnly && !isSuperAdmin) return false;
+    if (item.superAdminOnly && !userIsSuperAdmin) return false;
     if (!item.requiredPermission) return true;
-    if (isSuperAdmin) return true;
+    if (userIsSuperAdmin) return true;
     return hasPermission(item.requiredPermission);
   });
 
