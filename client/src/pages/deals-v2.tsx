@@ -816,7 +816,7 @@ export default function DealsV2() {
                   Loan #
                 </th>
                 <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Borrower
+                  Guarantor
                 </th>
                 <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Property
@@ -826,6 +826,9 @@ export default function DealsV2() {
                 </th>
                 <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Amount
+                </th>
+                <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Target Close
                 </th>
                 <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Status
@@ -839,7 +842,7 @@ export default function DealsV2() {
               {filteredDeals.map((deal) => (
                 <ExpandableRow
                   key={deal.id}
-                  columns={7}
+                  columns={8}
                   isExpanded={expandedId === deal.id}
                   onToggle={(expanded) => setExpandedId(expanded ? deal.id : null)}
                   summary={
@@ -870,7 +873,10 @@ export default function DealsV2() {
                         </Badge>
                       </td>
                       <td className="px-3 py-3 text-[16px] font-semibold">
-                        {formatCurrency(deal.loanAmount)}
+                        {formatCurrencyFull(deal.loanAmount)}
+                      </td>
+                      <td className="px-3 py-3 text-[14px] text-muted-foreground">
+                        {formatDate(deal.targetCloseDate)}
                       </td>
                       <td className="px-3 py-3">
                         <StatusBadge variant={getStatusVariant(deal.status)} label={deal.status || "Unknown"} />
