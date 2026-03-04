@@ -3,9 +3,18 @@ import { Input } from "@/components/ui/input";
 import { MapPin, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+interface StructuredAddress {
+  formatted: string;
+  addressLine1?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
 interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  onSelectStructured?: (data: StructuredAddress) => void;
   placeholder?: string;
   className?: string;
   id?: string;
@@ -25,9 +34,14 @@ interface AddressSuggestion {
   };
 }
 
+function stripUSA(formatted: string): string {
+  return formatted.replace(/,?\s*United States of America$/i, '').trim();
+}
+
 export function AddressAutocomplete({
   value,
   onChange,
+  onSelectStructured,
   placeholder = "Start typing an address...",
   className,
   id,
@@ -90,9 +104,21 @@ export function AddressAutocomplete({
   };
 
   const handleSelectAddress = (suggestion: AddressSuggestion) => {
-    const formatted = suggestion.properties?.formatted || suggestion.formatted;
+    const raw = suggestion.properties?.formatted || suggestion.formatted;
+    const formatted = stripUSA(raw);
     setInputValue(formatted);
     onChange(formatted);
+
+    if (onSelectStructured) {
+      onSelectStructured({
+        formatted,
+        addressLine1: suggestion.properties?.address_line1,
+        city: suggestion.properties?.city,
+        state: suggestion.properties?.state,
+        zip: suggestion.properties?.postcode,
+      });
+    }
+
     setShowDropdown(false);
     setSuggestions([]);
   };
@@ -128,7 +154,7 @@ export function AddressAutocomplete({
             >
               <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <span className="text-sm text-foreground">
-                {suggestion.properties?.formatted || suggestion.formatted}
+                {stripUSA(suggestion.properties?.formatted || suggestion.formatted)}
               </span>
             </button>
           ))}

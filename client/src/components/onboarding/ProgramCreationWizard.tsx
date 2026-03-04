@@ -183,7 +183,7 @@ type DisplayGroup = 'loan_details' | 'property_details' | 'borrower_details';
 type QuoteFormField = {
   fieldKey: string;
   label: string;
-  fieldType: 'text' | 'number' | 'currency' | 'email' | 'phone' | 'select' | 'yes_no' | 'percentage';
+  fieldType: 'text' | 'number' | 'currency' | 'email' | 'phone' | 'select' | 'yes_no' | 'percentage' | 'date' | 'radio' | 'address';
   required: boolean;
   visible: boolean;
   isDefault: boolean;
@@ -191,6 +191,11 @@ type QuoteFormField = {
   options?: string[];
   conditionalOn?: string;
   conditionalValue?: string;
+  readOnly?: boolean;
+  autoFilledFrom?: string;
+  computedFrom?: string[];
+  repeatable?: boolean;
+  repeatGroupKey?: string;
 };
 
 const DISPLAY_GROUP_OPTIONS: { value: DisplayGroup; label: string }[] = [
@@ -208,6 +213,9 @@ const FIELD_TYPE_OPTIONS: { value: QuoteFormField['fieldType']; label: string }[
   { value: 'percentage', label: 'Percentage (%)' },
   { value: 'select', label: 'Dropdown' },
   { value: 'yes_no', label: 'Yes / No' },
+  { value: 'date', label: 'Date' },
+  { value: 'radio', label: 'Radio (Yes/No)' },
+  { value: 'address', label: 'Address' },
 ];
 
 const CONTACT_FIELDS: QuoteFormField[] = [
@@ -219,18 +227,44 @@ const CONTACT_FIELDS: QuoteFormField[] = [
 ];
 
 const DSCR_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [
+  // ── Loan Details ──
   { fieldKey: 'loanAmount', label: 'Loan Amount', fieldType: 'currency', required: true, visible: true, displayGroup: 'loan_details' },
-  { fieldKey: 'propertyValue', label: 'Property Value', fieldType: 'currency', required: true, visible: true, displayGroup: 'property_details' },
   { fieldKey: 'loanPurpose', label: 'Loan Purpose', fieldType: 'select', required: true, visible: true, options: ['Purchase', 'Refinance', 'Cash-Out Refinance'], displayGroup: 'loan_details' },
   { fieldKey: 'loanType', label: 'Loan Type (Fixed/ARM)', fieldType: 'select', required: true, visible: true, options: ['Fixed', 'ARM'], displayGroup: 'loan_details' },
-  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family', '2-4 Unit', 'Condo', 'Townhouse', 'Multifamily 5+'], displayGroup: 'property_details' },
-  { fieldKey: 'ficoScore', label: 'FICO Score', fieldType: 'number', required: true, visible: true, displayGroup: 'borrower_details' },
-  { fieldKey: 'grossMonthlyRent', label: 'Gross Monthly Rent', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
-  { fieldKey: 'annualTaxes', label: 'Annual Taxes', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
-  { fieldKey: 'annualInsurance', label: 'Annual Insurance', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
   { fieldKey: 'interestOnly', label: 'Interest Only', fieldType: 'yes_no', required: false, visible: true, displayGroup: 'loan_details' },
   { fieldKey: 'prepaymentPenalty', label: 'Prepayment Penalty', fieldType: 'select', required: false, visible: true, options: ['None', '1 Year', '2 Years', '3 Years', '5 Years'], displayGroup: 'loan_details' },
-  { fieldKey: 'appraisalValue', label: 'Appraisal Value', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
+
+  // ── Property Details ──
+  { fieldKey: 'propertyAddress', label: 'Property Address', fieldType: 'address', required: true, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'propertyState', label: 'State', fieldType: 'text', required: false, visible: true, displayGroup: 'property_details', readOnly: true, autoFilledFrom: 'propertyAddress' },
+  { fieldKey: 'propertyZip', label: 'Zip Code', fieldType: 'text', required: false, visible: true, displayGroup: 'property_details', readOnly: true, autoFilledFrom: 'propertyAddress' },
+  { fieldKey: 'propertyType', label: 'Property Type', fieldType: 'select', required: true, visible: true, options: ['Single Family Residence', 'Duplex', 'Triplex', 'Quadplex', '5+ Unit Multifamily'], displayGroup: 'property_details' },
+  { fieldKey: 'propertyUnits', label: 'Number of Units', fieldType: 'number', required: false, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'originalPurchaseDate', label: 'Original Purchase Date', fieldType: 'date', required: false, visible: true, displayGroup: 'property_details', conditionalOn: 'loanPurpose', conditionalValue: 'Refinance' },
+  { fieldKey: 'originalPurchasePrice', label: 'Original Purchase Price', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details', conditionalOn: 'loanPurpose', conditionalValue: 'Refinance' },
+  { fieldKey: 'asIsValue', label: 'As-Is Value', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details', conditionalOn: 'loanPurpose', conditionalValue: 'Refinance' },
+  { fieldKey: 'purchasePrice', label: 'Purchase Price', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details', conditionalOn: 'loanPurpose', conditionalValue: 'Purchase' },
+  { fieldKey: 'grossMonthlyRent', label: 'Monthly Rent', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'annualTaxes', label: 'Annual Taxes', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'annualInsurance', label: 'Annual Insurance', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'annualHOA', label: 'Annual HOA', fieldType: 'currency', required: false, visible: true, displayGroup: 'property_details' },
+  { fieldKey: 'dscr', label: 'DSCR', fieldType: 'number', required: false, visible: true, displayGroup: 'property_details', readOnly: true, computedFrom: ['loanAmount', 'grossMonthlyRent', 'annualTaxes', 'annualInsurance', 'annualHOA', 'interestRate'] },
+
+  // ── Borrower Details ──
+  { fieldKey: 'entityName', label: 'Entity Name', fieldType: 'text', required: true, visible: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'entityType', label: 'Entity Type', fieldType: 'select', required: true, visible: true, options: ['LLC', 'Corporation', 'Limited Partnership', 'Trust'], displayGroup: 'borrower_details' },
+  { fieldKey: 'entityMemberCount', label: 'Number of Entity Members', fieldType: 'number', required: false, visible: true, displayGroup: 'borrower_details' },
+  { fieldKey: 'member1FirstName', label: 'Member 1 First Name', fieldType: 'text', required: true, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1LastName', label: 'Member 1 Last Name', fieldType: 'text', required: true, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1Email', label: 'Member 1 Email', fieldType: 'email', required: true, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1Phone', label: 'Member 1 Phone', fieldType: 'phone', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1MailingAddress', label: 'Member 1 Mailing Address', fieldType: 'address', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1CreditScore', label: 'Member 1 Credit Score', fieldType: 'number', required: true, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1NetWorth', label: 'Member 1 Estimated Net Worth', fieldType: 'currency', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1Liquidity', label: 'Member 1 Liquidity', fieldType: 'currency', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1PropertiesOwned', label: 'Member 1 Properties Owned', fieldType: 'number', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1PropertiesSold2Yrs', label: 'Member 1 Properties Sold (Last 2 Years)', fieldType: 'number', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
+  { fieldKey: 'member1IsGuarantor', label: 'Is Member 1 a Guarantor?', fieldType: 'yes_no', required: false, visible: true, displayGroup: 'borrower_details', repeatable: true, repeatGroupKey: 'member' },
 ];
 
 const RTL_QUOTE_FIELDS: Omit<QuoteFormField, 'isDefault'>[] = [

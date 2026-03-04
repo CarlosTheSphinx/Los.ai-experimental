@@ -19,6 +19,11 @@ type QuoteFormField = {
   visible: boolean;
   displayGroup?: string;
   options?: string[];
+  readOnly?: boolean;
+  autoFilledFrom?: string;
+  computedFrom?: string[];
+  repeatable?: boolean;
+  repeatGroupKey?: string;
 };
 
 const LOCKED_LOAN_FIELD_KEYS = new Set([
@@ -48,7 +53,12 @@ function formatFieldValue(value: any, fieldType: string): string {
     case 'percentage':
       return `${value}%`;
     case 'yes_no':
-      return value === true || value === 'yes' || value === 'Yes' || value === true ? 'Yes' : 'No';
+    case 'radio':
+      return value === true || value === 'yes' || value === 'Yes' ? 'Yes' : 'No';
+    case 'date':
+      return fmtDate(value);
+    case 'address':
+      return String(value).replace(/,?\s*United States of America$/i, '');
     default:
       return String(value);
   }
@@ -394,6 +404,23 @@ export default function TabOverview({
             value: formatFieldValue(getFieldValue(f.fieldKey), f.fieldType),
           });
         });
+
+      const memberCount = appData._memberCount || 1;
+      const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
+      for (let m = 2; m <= memberCount; m++) {
+        member1Templates.forEach(tmpl => {
+          const mKey = tmpl.fieldKey.replace('member1', `member${m}`);
+          const mLabel = tmpl.label.replace('Member 1', `Member ${m}`);
+          const val = appData[mKey];
+          if (val !== undefined && val !== null && val !== '') {
+            baseFields.push({
+              key: mKey,
+              label: mLabel,
+              value: formatFieldValue(val, tmpl.fieldType),
+            });
+          }
+        });
+      }
     } else {
       baseFields.push(
         { key: 'creditScore', label: "Credit Score", value: appData.creditScore || deal.creditScore || "—" },
