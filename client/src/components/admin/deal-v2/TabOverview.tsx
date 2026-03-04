@@ -471,8 +471,120 @@ export default function TabOverview({
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Loan Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+        {/* Left column: Borrower Details + Property Details */}
+        <div className="flex flex-col gap-5">
+          {/* Borrower Details */}
+          <Card>
+            <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-[22px] flex items-center gap-2">
+                <User className="h-5 w-5 text-muted-foreground" />
+                Borrower Details
+              </CardTitle>
+              {!editBorrower ? (
+                <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={startEditBorrower} data-testid="button-edit-borrower">
+                  <Pencil className="h-3 w-3" /> Edit
+                </Button>
+              ) : (
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditBorrower(false)} data-testid="button-cancel-borrower">Cancel</Button>
+                  <Button size="sm" className="text-xs h-7" disabled={saveBorrowerMutation.isPending} data-testid="button-save-borrower" onClick={() => {
+                    saveBorrowerMutation.mutate({
+                      borrowerName: borrowerForm.fullName,
+                      borrowerEmail: borrowerForm.email,
+                      borrowerPhone: borrowerForm.phone,
+                    });
+                  }}>
+                    {saveBorrowerMutation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              )}
+            </CardHeader>
+            <div className="mx-6 mt-2 mb-3 border-b border-muted" />
+            <CardContent>
+              {!editBorrower ? (
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                  {borrowerFields.map(f => (
+                    <Field key={f.key} label={f.label} value={f.value} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                  <EditField label="Full Name" value={borrowerForm.fullName} onChange={(v) => setBorrowerForm({ ...borrowerForm, fullName: v })} />
+                  <EditField label="Email" value={borrowerForm.email} onChange={(v) => setBorrowerForm({ ...borrowerForm, email: v })} type="email" />
+                  <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: v })} type="tel" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Property Details */}
+          <Card>
+            <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-[22px] flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-muted-foreground" />
+                Property Details
+              </CardTitle>
+              <div className="flex gap-1">
+                {!editProperty ? (
+                  <>
+                    <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={startEditProperty} data-testid="button-edit-property">
+                      <Pencil className="h-3 w-3" /> Edit
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-add-property">
+                      <Plus className="h-3 w-3" /> Add Property
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditProperty(false)} data-testid="button-cancel-property">Cancel</Button>
+                    <Button size="sm" className="text-xs h-7" disabled={savePropertyMutation.isPending} data-testid="button-save-property" onClick={() => {
+                      savePropertyMutation.mutate({
+                        address: propForm.address,
+                        city: propForm.city,
+                        state: propForm.state,
+                        propertyType: propForm.propertyType,
+                        units: propForm.units ? Number(propForm.units) : null,
+                        monthlyRent: propForm.monthlyRent ? Number(propForm.monthlyRent) : null,
+                        annualTaxes: propForm.annualTaxes ? Number(propForm.annualTaxes) : null,
+                        annualInsurance: propForm.annualInsurance ? Number(propForm.annualInsurance) : null,
+                        estimatedValue: propForm.estimatedValue ? Number(propForm.estimatedValue) : null,
+                      });
+                    }}>
+                      {savePropertyMutation.isPending ? "Saving..." : "Save"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </CardHeader>
+            <div className="mx-6 mt-2 mb-3 border-b border-muted" />
+            <CardContent>
+              {!editProperty ? (
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                  {propertyFields.map(f => (
+                    <Field key={f.key} label={f.label} value={f.value} tooltip={f.tooltip} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                  <EditField label="Address" value={propForm.address} onChange={(v) => setPropForm({ ...propForm, address: v })} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
+                    <EditField label="State" value={propForm.state} onChange={(v) => setPropForm({ ...propForm, state: v })} />
+                  </div>
+                  <EditField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
+                  <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
+                  <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
+                  <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
+                  <EditField label="Annual Insurance" value={propForm.annualInsurance} onChange={(v) => setPropForm({ ...propForm, annualInsurance: v })} type="number" />
+                  <EditField label="Estimated Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: Loan Details */}
         <Card>
           <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-[22px] flex items-center gap-2">
@@ -548,185 +660,76 @@ export default function TabOverview({
             )}
           </CardContent>
         </Card>
-
-        {/* Property Details */}
-        <Card>
-          <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-[22px] flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-muted-foreground" />
-              Property Details
-            </CardTitle>
-            <div className="flex gap-1">
-              {!editProperty ? (
-                <>
-                  <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={startEditProperty} data-testid="button-edit-property">
-                    <Pencil className="h-3 w-3" /> Edit
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-add-property">
-                    <Plus className="h-3 w-3" /> Add Property
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditProperty(false)} data-testid="button-cancel-property">Cancel</Button>
-                  <Button size="sm" className="text-xs h-7" disabled={savePropertyMutation.isPending} data-testid="button-save-property" onClick={() => {
-                    savePropertyMutation.mutate({
-                      address: propForm.address,
-                      city: propForm.city,
-                      state: propForm.state,
-                      propertyType: propForm.propertyType,
-                      units: propForm.units ? Number(propForm.units) : null,
-                      monthlyRent: propForm.monthlyRent ? Number(propForm.monthlyRent) : null,
-                      annualTaxes: propForm.annualTaxes ? Number(propForm.annualTaxes) : null,
-                      annualInsurance: propForm.annualInsurance ? Number(propForm.annualInsurance) : null,
-                      estimatedValue: propForm.estimatedValue ? Number(propForm.estimatedValue) : null,
-                    });
-                  }}>
-                    {savePropertyMutation.isPending ? "Saving..." : "Save"}
-                  </Button>
-                </>
-              )}
-            </div>
-          </CardHeader>
-          <div className="mx-6 mt-2 mb-3 border-b border-muted" />
-          <CardContent>
-            {!editProperty ? (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                {propertyFields.map(f => (
-                  <Field key={f.key} label={f.label} value={f.value} tooltip={f.tooltip} />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                <EditField label="Address" value={propForm.address} onChange={(v) => setPropForm({ ...propForm, address: v })} />
-                <div className="grid grid-cols-2 gap-2">
-                  <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
-                  <EditField label="State" value={propForm.state} onChange={(v) => setPropForm({ ...propForm, state: v })} />
-                </div>
-                <EditField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
-                <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
-                <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
-                <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
-                <EditField label="Annual Insurance" value={propForm.annualInsurance} onChange={(v) => setPropForm({ ...propForm, annualInsurance: v })} type="number" />
-                <EditField label="Estimated Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Borrower Details */}
-        <Card>
-          <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-[22px] flex items-center gap-2">
-              <User className="h-5 w-5 text-muted-foreground" />
-              Borrower Details
-            </CardTitle>
-            {!editBorrower ? (
-              <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={startEditBorrower} data-testid="button-edit-borrower">
-                <Pencil className="h-3 w-3" /> Edit
-              </Button>
-            ) : (
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditBorrower(false)} data-testid="button-cancel-borrower">Cancel</Button>
-                <Button size="sm" className="text-xs h-7" disabled={saveBorrowerMutation.isPending} data-testid="button-save-borrower" onClick={() => {
-                  saveBorrowerMutation.mutate({
-                    borrowerName: borrowerForm.fullName,
-                    borrowerEmail: borrowerForm.email,
-                    borrowerPhone: borrowerForm.phone,
-                  });
-                }}>
-                  {saveBorrowerMutation.isPending ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            )}
-          </CardHeader>
-          <div className="mx-6 mt-2 mb-3 border-b border-muted" />
-          <CardContent>
-            {!editBorrower ? (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                {borrowerFields.map(f => (
-                  <Field key={f.key} label={f.label} value={f.value} />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                <EditField label="Full Name" value={borrowerForm.fullName} onChange={(v) => setBorrowerForm({ ...borrowerForm, fullName: v })} />
-                <EditField label="Email" value={borrowerForm.email} onChange={(v) => setBorrowerForm({ ...borrowerForm, email: v })} type="email" />
-                <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: v })} type="tel" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Deal Controls */}
-        <Card>
-          <CardHeader className="pb-0">
-            <CardTitle className="text-[22px] flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-muted-foreground" />
-              Deal Controls
-            </CardTitle>
-          </CardHeader>
-          <div className="mx-6 mt-2 mb-3 border-b border-muted" />
-          <CardContent>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-              <div>
-                <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Deal Status</span>
-                <Select
-                  value={deal.projectStatus || deal.status || "active"}
-                  onValueChange={(v) => saveControlMutation.mutate({ status: v })}
-                >
-                  <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-deal-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Current Stage</span>
-                <Select
-                  value={deal.stage || deal.currentStage || "application"}
-                  onValueChange={(v) => saveControlMutation.mutate({ currentStage: v })}
-                >
-                  <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-current-stage">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stageOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Loan Program</span>
-                <Select
-                  value={deal.programId ? String(deal.programId) : "none"}
-                  onValueChange={(v) => convertProgramMutation.mutate(v === "none" ? null : Number(v))}
-                  disabled={convertProgramMutation.isPending}
-                >
-                  <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-loan-program">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Program</SelectItem>
-                    {programs.map((p: any) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Created</span>
-                <p className="text-[17px] font-bold mt-2.5">{fmtDate(deal.createdAt)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Deal Controls - full width below */}
+      <Card>
+        <CardHeader className="pb-0">
+          <CardTitle className="text-[22px] flex items-center gap-2">
+            <Settings2 className="h-5 w-5 text-muted-foreground" />
+            Deal Controls
+          </CardTitle>
+        </CardHeader>
+        <div className="mx-6 mt-2 mb-3 border-b border-muted" />
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-2.5">
+            <div>
+              <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Deal Status</span>
+              <Select
+                value={deal.projectStatus || deal.status || "active"}
+                onValueChange={(v) => saveControlMutation.mutate({ status: v })}
+              >
+                <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-deal-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Current Stage</span>
+              <Select
+                value={deal.stage || deal.currentStage || "application"}
+                onValueChange={(v) => saveControlMutation.mutate({ currentStage: v })}
+              >
+                <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-current-stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {stageOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Loan Program</span>
+              <Select
+                value={deal.programId ? String(deal.programId) : "none"}
+                onValueChange={(v) => convertProgramMutation.mutate(v === "none" ? null : Number(v))}
+                disabled={convertProgramMutation.isPending}
+              >
+                <SelectTrigger className="h-9 mt-1 text-[16px]" data-testid="select-loan-program">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Program</SelectItem>
+                  {programs.map((p: any) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Created</span>
+              <p className="text-[17px] font-bold mt-2.5">{fmtDate(deal.createdAt)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
