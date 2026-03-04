@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +41,15 @@ import {
   Check,
   Eye,
   EyeOff,
+  Webhook,
+  Globe,
+  Zap,
+  Send,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  XCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 const SCOPE_CATEGORIES = [
@@ -91,6 +102,61 @@ const SCOPE_CATEGORIES = [
   },
 ];
 
+const EVENT_CATEGORIES = [
+  {
+    name: "Deal Events",
+    resourceType: "deal",
+    events: [
+      { id: "deals.created", label: "Deal Created" },
+      { id: "deals.updated", label: "Deal Updated" },
+      { id: "deals.status_changed", label: "Status Changed" },
+      { id: "deals.deleted", label: "Deal Deleted", critical: true },
+    ],
+  },
+  {
+    name: "Document Events",
+    resourceType: "document",
+    events: [
+      { id: "documents.uploaded", label: "Document Uploaded" },
+      { id: "documents.signed", label: "Document Signed" },
+      { id: "documents.deleted", label: "Document Deleted", critical: true },
+    ],
+  },
+  {
+    name: "Borrower Events",
+    resourceType: "borrower",
+    events: [
+      { id: "borrowers.created", label: "Borrower Created" },
+      { id: "borrowers.updated", label: "Borrower Updated" },
+      { id: "borrowers.deleted", label: "Borrower Deleted", critical: true },
+    ],
+  },
+  {
+    name: "User Events",
+    resourceType: "user",
+    events: [
+      { id: "users.created", label: "User Created" },
+      { id: "users.updated", label: "User Updated" },
+    ],
+  },
+  {
+    name: "Audit Events",
+    resourceType: "audit",
+    events: [
+      { id: "audit.pii_accessed", label: "PII Accessed", critical: true },
+      { id: "audit.api_key_revoked", label: "API Key Revoked", critical: true },
+      { id: "audit.critical_action", label: "Critical Action", critical: true },
+    ],
+  },
+  {
+    name: "System Events",
+    resourceType: "system",
+    events: [
+      { id: "system.health", label: "System Health" },
+    ],
+  },
+];
+
 interface ApiKeyItem {
   id: number;
   name: string;
@@ -103,7 +169,30 @@ interface ApiKeyItem {
   createdAt: string;
 }
 
-export default function ApiKeysPage() {
+interface WebhookItem {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  rateLimitPerSecond: number;
+  createdAt: string;
+  updatedAt: string;
+  lastTriggeredAt: string | null;
+  failureCount: number;
+}
+
+interface DeliveryItem {
+  id: string;
+  eventId: string;
+  succeeded: boolean;
+  statusCode: number | null;
+  responseTime: number | null;
+  error: string | null;
+  timestamp: string;
+}
+
+function ApiKeysTab() {
   const { toast } = useToast();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
@@ -200,14 +289,11 @@ export default function ApiKeysPage() {
   const revokedKeys = keys.filter((k) => k.isRevoked);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[26px] font-bold" data-testid="text-page-title">API Keys</h1>
-          <p className="text-muted-foreground mt-1" data-testid="text-page-description">
-            Create and manage API keys for programmatic access to your account.
-          </p>
-        </div>
+        <p className="text-muted-foreground" data-testid="text-apikeys-description">
+          Create and manage API keys for programmatic access to your account.
+        </p>
         <Button
           onClick={() => setShowCreateDialog(true)}
           data-testid="button-create-api-key"
@@ -349,7 +435,7 @@ export default function ApiKeysPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950"
+                      className="text-red-600 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950"
                       onClick={() => setRevokeTarget(key)}
                       data-testid={`button-revoke-key-${key.id}`}
                     >
@@ -591,6 +677,486 @@ export default function ApiKeysPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function WebhooksTab() {
+  const { toast } = useToast();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WebhookItem | null>(null);
+  const [expandedWebhook, setExpandedWebhook] = useState<string | null>(null);
+  const [webhookName, setWebhookName] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
+  const [rateLimit, setRateLimit] = useState("10");
+
+  const { data, isLoading } = useQuery<{ webhooks: WebhookItem[] }>({
+    queryKey: ["/api/webhooks"],
+  });
+
+  const webhooks = data?.webhooks || [];
+  const activeWebhooks = webhooks.filter((w) => w.active);
+
+  const { data: deliveriesData } = useQuery<{ deliveries: DeliveryItem[] }>({
+    queryKey: ["/api/webhooks", expandedWebhook, "deliveries"],
+    enabled: !!expandedWebhook,
+    queryFn: async () => {
+      const res = await fetch(`/api/webhooks/${expandedWebhook}/deliveries?limit=20`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deliveries");
+      return res.json();
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (payload: { name: string; url: string; events: string[]; rateLimitPerSecond: number }) => {
+      const res = await apiRequest("POST", "/api/webhooks", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowCreateDialog(false);
+      setWebhookName("");
+      setWebhookUrl("");
+      setSelectedEvents([]);
+      setRateLimit("10");
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+      toast({ title: "Webhook created", description: "Your webhook is now active and will receive events." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to create webhook", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/webhooks/${id}`, { active });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/webhooks/${id}/test`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        toast({ title: "Test delivered", description: `Response: ${data.statusCode} (${data.responseTime}ms)` });
+      } else {
+        toast({ title: "Test failed", description: data.error || "Delivery failed", variant: "destructive" });
+      }
+    },
+    onError: () => {
+      toast({ title: "Test failed", description: "Could not send test event", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/webhooks/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
+      setDeleteTarget(null);
+      toast({ title: "Webhook deleted" });
+    },
+  });
+
+  const handleCreate = () => {
+    if (!webhookName.trim() || !webhookUrl.trim() || selectedEvents.length === 0) return;
+    createMutation.mutate({
+      name: webhookName.trim(),
+      url: webhookUrl.trim(),
+      events: selectedEvents,
+      rateLimitPerSecond: parseInt(rateLimit) || 10,
+    });
+  };
+
+  const toggleEvent = (eventId: string) => {
+    setSelectedEvents((prev) =>
+      prev.includes(eventId) ? prev.filter((e) => e !== eventId) : [...prev, eventId]
+    );
+  };
+
+  const totalDeliveries = webhooks.reduce((sum, w) => sum + (w.failureCount || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground" data-testid="text-webhooks-description">
+          Configure webhooks to receive real-time notifications when events occur in your account.
+        </p>
+        <Button
+          onClick={() => setShowCreateDialog(true)}
+          data-testid="button-create-webhook"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Create Webhook
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="rounded-[10px] shadow-sm" data-testid="card-stat-active-webhooks">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 rounded-lg">
+                <Webhook className="h-5 w-5 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Webhooks</p>
+                <p className="text-2xl font-bold" data-testid="text-active-webhooks-count">{activeWebhooks.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-[10px] shadow-sm" data-testid="card-stat-total-webhooks">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg">
+                <Globe className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Webhooks</p>
+                <p className="text-2xl font-bold" data-testid="text-total-webhooks-count">{webhooks.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-[10px] shadow-sm" data-testid="card-stat-failures">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-500/10 rounded-lg">
+                <Zap className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Recent Failures</p>
+                <p className="text-2xl font-bold" data-testid="text-total-failures">{totalDeliveries}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <Card key={i} className="rounded-[10px] shadow-sm animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-6 bg-muted rounded w-1/3 mb-3" />
+                <div className="h-4 bg-muted rounded w-1/2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : webhooks.length === 0 ? (
+        <Card className="rounded-[10px] shadow-sm" data-testid="card-webhooks-empty">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Webhook className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Webhooks Yet</h3>
+            <p className="text-muted-foreground max-w-md mb-6">
+              Create your first webhook to receive real-time event notifications at your endpoint.
+            </p>
+            <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first-webhook">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Your First Webhook
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {webhooks.map((wh) => (
+            <Card key={wh.id} className="rounded-[10px] shadow-sm" data-testid={`card-webhook-${wh.id}`}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-[17px] font-semibold" data-testid={`text-webhook-name-${wh.id}`}>
+                        {wh.name}
+                      </h3>
+                      <Badge
+                        variant="outline"
+                        className={wh.active
+                          ? "text-emerald-600 border-emerald-600/30 bg-emerald-500/10"
+                          : "text-gray-500 border-gray-400/30 bg-gray-500/10"
+                        }
+                      >
+                        {wh.active ? "Active" : "Paused"}
+                      </Badge>
+                      {wh.failureCount > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          {wh.failureCount} failures
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                      <span className="font-mono truncate max-w-md" data-testid={`text-webhook-url-${wh.id}`}>
+                        {wh.url}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Created {new Date(wh.createdAt).toLocaleDateString()}
+                      </span>
+                      {wh.lastTriggeredAt && (
+                        <span className="flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          Last triggered {new Date(wh.lastTriggeredAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {(wh.events || []).slice(0, 5).map((evt) => (
+                        <Badge key={evt} variant="secondary" className="text-xs">
+                          {evt}
+                        </Badge>
+                      ))}
+                      {(wh.events || []).length > 5 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{wh.events.length - 5} more
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Switch
+                      checked={wh.active}
+                      onCheckedChange={(checked) => toggleMutation.mutate({ id: wh.id, active: checked })}
+                      data-testid={`switch-webhook-active-${wh.id}`}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => testMutation.mutate(wh.id)}
+                      disabled={testMutation.isPending || !wh.active}
+                      data-testid={`button-test-webhook-${wh.id}`}
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Test
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setExpandedWebhook(expandedWebhook === wh.id ? null : wh.id)}
+                      data-testid={`button-deliveries-${wh.id}`}
+                    >
+                      {expandedWebhook === wh.id ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950"
+                      onClick={() => setDeleteTarget(wh)}
+                      data-testid={`button-delete-webhook-${wh.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {expandedWebhook === wh.id && (
+                  <div className="mt-4 pt-4 border-t space-y-2">
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                      Recent Deliveries
+                    </h4>
+                    {!deliveriesData?.deliveries || deliveriesData.deliveries.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        No deliveries recorded yet
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {deliveriesData.deliveries.map((d) => (
+                          <div
+                            key={d.id}
+                            className="flex items-center justify-between text-sm p-2 rounded-lg bg-muted/50"
+                            data-testid={`delivery-${d.id}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {d.succeeded ? (
+                                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              )}
+                              <Badge variant="secondary" className="text-xs">{d.eventId}</Badge>
+                            </div>
+                            <div className="flex items-center gap-3 text-muted-foreground">
+                              {d.statusCode && <span>HTTP {d.statusCode}</span>}
+                              {d.responseTime != null && <span>{d.responseTime}ms</span>}
+                              <span>{new Date(d.timestamp).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-create-webhook-title">Create New Webhook</DialogTitle>
+            <DialogDescription>
+              Configure your webhook endpoint to receive real-time event notifications.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="webhook-name">Webhook Name</Label>
+              <Input
+                id="webhook-name"
+                placeholder="e.g., Production Events Handler"
+                value={webhookName}
+                onChange={(e) => setWebhookName(e.target.value)}
+                data-testid="input-webhook-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="webhook-url">Endpoint URL</Label>
+              <Input
+                id="webhook-url"
+                placeholder="https://your-server.com/webhooks/lendry"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                data-testid="input-webhook-url"
+              />
+              <p className="text-xs text-muted-foreground">Must be HTTPS. Private/internal IPs are blocked for security.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rate-limit">Rate Limit (requests/second)</Label>
+              <Input
+                id="rate-limit"
+                type="number"
+                min="1"
+                max="100"
+                value={rateLimit}
+                onChange={(e) => setRateLimit(e.target.value)}
+                data-testid="input-webhook-rate-limit"
+              />
+            </div>
+            <div className="space-y-3">
+              <Label>Event Subscriptions</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {EVENT_CATEGORIES.map((cat) => (
+                  <Card key={cat.name} className="rounded-[10px]">
+                    <CardHeader className="pb-2 pt-4 px-4">
+                      <CardTitle className="text-[13px] uppercase tracking-wider text-muted-foreground">
+                        {cat.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 space-y-2">
+                      {cat.events.map((evt) => (
+                        <label
+                          key={evt.id}
+                          className="flex items-center gap-2 cursor-pointer text-sm"
+                          data-testid={`checkbox-event-${evt.id}`}
+                        >
+                          <Checkbox
+                            checked={selectedEvents.includes(evt.id)}
+                            onCheckedChange={() => toggleEvent(evt.id)}
+                          />
+                          <span>{evt.label}</span>
+                          {evt.critical && (
+                            <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                              Admin
+                            </Badge>
+                          )}
+                        </label>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              {selectedEvents.length > 0 && (
+                <p className="text-sm text-muted-foreground" data-testid="text-selected-events-count">
+                  {selectedEvents.length} event{selectedEvents.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)} data-testid="button-cancel-create-webhook">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending || !webhookName.trim() || !webhookUrl.trim() || selectedEvents.length === 0}
+              data-testid="button-confirm-create-webhook"
+            >
+              {createMutation.isPending ? "Creating..." : "Create Webhook"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="text-delete-webhook-title">Delete Webhook</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.name}"? This will stop all event deliveries
+              to this endpoint and remove its delivery history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-webhook">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              data-testid="button-confirm-delete-webhook"
+            >
+              Delete Webhook
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-[26px] font-bold" data-testid="text-page-title">Integrations</h1>
+        <p className="text-muted-foreground mt-1" data-testid="text-page-description">
+          Manage your API keys and webhook subscriptions for external integrations.
+        </p>
+      </div>
+
+      <Tabs defaultValue="api-keys" className="space-y-6">
+        <TabsList data-testid="tabs-integrations">
+          <TabsTrigger value="api-keys" data-testid="tab-api-keys">
+            <Key className="h-4 w-4 mr-2" />
+            API Keys
+          </TabsTrigger>
+          <TabsTrigger value="webhooks" data-testid="tab-webhooks">
+            <Webhook className="h-4 w-4 mr-2" />
+            Webhooks
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="api-keys">
+          <ApiKeysTab />
+        </TabsContent>
+
+        <TabsContent value="webhooks">
+          <WebhooksTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

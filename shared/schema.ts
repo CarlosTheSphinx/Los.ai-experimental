@@ -9,7 +9,10 @@ import {
   real,
   varchar,
   index,
+  uuid,
+  smallint,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -3837,3 +3840,61 @@ export const apiKeyUsage = pgTable("api_key_usage", {
 
 export type ApiKeyUsage = typeof apiKeyUsage.$inferSelect;
 export type InsertApiKeyUsage = typeof apiKeyUsage.$inferInsert;
+
+export const webhookEventDefs = pgTable("webhook_events", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  resourceType: varchar("resource_type", { length: 50 }).notNull(),
+  samplePayload: jsonb("sample_payload"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const webhookEndpoints = pgTable("webhooks", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  url: varchar("url", { length: 2048 }).notNull(),
+  events: text("events").array().notNull().default(sql`'{}'`),
+  active: boolean("active").notNull().default(true),
+  secret: varchar("secret", { length: 255 }).notNull(),
+  rateLimitPerSecond: integer("rate_limit_per_second").notNull().default(10),
+  retryPolicy: jsonb("retry_policy").notNull().default({ maxRetries: 5, backoffStrategy: "exponential" }),
+  headers: jsonb("headers"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+}, (table) => ({
+  userIdIdx: index("webhooks_user_id_idx").on(table.userId),
+  activeIdx: index("webhooks_active_idx").on(table.active),
+}));
+
+export const webhookDeliveryLogs = pgTable("webhook_deliveries", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  webhookId: uuid("webhook_id").references(() => webhookEndpoints.id, { onDelete: "cascade" }).notNull(),
+  eventId: varchar("event_id", { length: 100 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  statusCode: smallint("status_code"),
+  responseTimeMs: integer("response_time_ms"),
+  errorMessage: text("error_message"),
+  retriedAt: timestamp("retried_at", { mode: "date" }).array(),
+  succeeded: boolean("succeeded").notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+}, (table) => ({
+  webhookIdIdx: index("deliveries_webhook_id_idx").on(table.webhookId),
+  eventIdIdx: index("deliveries_event_id_idx").on(table.eventId),
+  timestampIdx: index("deliveries_timestamp_idx").on(table.timestamp),
+  succeededIdx: index("deliveries_succeeded_idx").on(table.succeeded),
+}));
+
+export const insertWebhookEventDefSchema = createInsertSchema(webhookEventDefs).omit({ createdAt: true });
+export const insertWebhookEndpointSchema = createInsertSchema(webhookEndpoints).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWebhookDeliveryLogSchema = createInsertSchema(webhookDeliveryLogs).omit({ id: true, timestamp: true });
+
+export type WebhookEventDef = typeof webhookEventDefs.$inferSelect;
+export type InsertWebhookEventDef = z.infer<typeof insertWebhookEventDefSchema>;
+export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
+export type InsertWebhookEndpoint = z.infer<typeof insertWebhookEndpointSchema>;
+export type WebhookDeliveryLog = typeof webhookDeliveryLogs.$inferSelect;
+export type InsertWebhookDeliveryLog = z.infer<typeof insertWebhookDeliveryLogSchema>;

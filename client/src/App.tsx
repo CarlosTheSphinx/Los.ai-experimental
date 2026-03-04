@@ -30,7 +30,7 @@ import AdminOverview from "@/pages/admin/admin-overview";
 import AdminUsers from "@/pages/admin/users";
 import AdminSettings from "@/pages/admin/settings";
 import AdminTeamPermissions from "@/pages/admin/team-permissions";
-import AdminApiKeys from "@/pages/admin/api-keys";
+import AdminIntegrations from "@/pages/admin/api-keys";
 import AdminDeals from "@/pages/admin/deals";
 
 import AdminDealDetail from "@/pages/admin/deal-detail";
@@ -243,7 +243,8 @@ function MainRoutes() {
           <Route path="/admin/projects" component={() => <Redirect to="/admin/deals" />} />
           <Route path="/admin/projects/:id">{(params) => <Redirect to={`/admin/deals/${params.id}`} />}</Route>
           <Route path="/admin/settings" component={() => <AdminProtectedRoute component={AdminSettings} />} />
-          <Route path="/admin/api-keys" component={() => <AdminProtectedRoute component={AdminApiKeys} />} />
+          <Route path="/admin/integrations" component={() => <AdminProtectedRoute component={AdminIntegrations} />} />
+          <Route path="/admin/api-keys" component={() => <Redirect to="/admin/integrations" />} />
           <Route path="/admin/onboarding" component={() => <AdminProtectedRoute component={AdminOnboarding} skipOnboardingRedirect />} />
           <Route path="/admin/digests" component={() => <AdminProtectedRoute component={AdminDigests} />} />
           <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
@@ -256,7 +257,7 @@ function MainRoutes() {
           <Route path="/admin/ai-agents" component={() => <AdminProtectedRoute component={AIAgentsPage} />} />
           <Route path="/admin/credit-policies" component={() => <AdminProtectedRoute component={AdminCreditPolicies} />} />
           <Route path="/admin/email" component={() => <AdminProtectedRoute component={EmailInboxPage} />} />
-          <Route path="/admin/integrations" component={() => <SuperAdminProtectedRoute component={IntegrationsPage} />} />
+          <Route path="/admin/platform-integrations" component={() => <SuperAdminProtectedRoute component={IntegrationsPage} />} />
           <Route path="/admin/onboarding-config" component={() => <SuperAdminProtectedRoute component={OnboardingConfigPage} />} />
 
 

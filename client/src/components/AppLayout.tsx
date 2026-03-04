@@ -41,7 +41,7 @@ import {
   Database,
   GraduationCap,
   Inbox,
-  KeyRound,
+  Blocks,
 } from "lucide-react";
 import {
   Select,
@@ -128,7 +128,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/team-permissions", label: "Permissions", icon: Shield, requiredPermission: "users.manage" },
   { href: "/admin/commercial/config", label: "Commercial Config", icon: ClipboardEdit, requiredPermission: "commercial.manage" },
-  { href: "/admin/api-keys", label: "API Keys", icon: KeyRound, requiredPermission: "settings.view" },
+  { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
 ];
@@ -141,7 +141,7 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/inbox", label: "Messages", icon: Inbox, showBadge: true, requiredPermission: "messages.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
-  { href: "/admin/api-keys", label: "API Keys", icon: KeyRound, requiredPermission: "settings.view" },
+  { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
 ];
 
@@ -149,7 +149,7 @@ const adminNavItemsV2: NavItem[] = [
 const superAdminNavItems: NavItem[] = [
   { href: "/admin/platform", label: "Platform Overview", icon: Globe },
   { href: "/admin/ai-agents", label: "AI Orchestration", icon: Sparkles },
-  { href: "/admin/integrations", label: "Integrations", icon: Plug },
+  { href: "/admin/platform-integrations", label: "Platform Integrations", icon: Plug },
   { href: "/admin/onboarding-config", label: "Broker/Borrower Links", icon: GraduationCap },
 ];
 
