@@ -1,9 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
-import { Mail, Phone, ExternalLink, Copy, Globe } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Mail, Phone, ExternalLink, Copy, Globe, Plus, Pencil, Trash2, X, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 const AVATAR_COLORS = [
@@ -31,19 +37,122 @@ function getAvatarColor(name: string, index: number) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+interface ThirdParty {
+  id: number;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: string;
+  company?: string;
+  notes?: string;
+}
+
+const THIRD_PARTY_ROLES = [
+  "Title Contact",
+  "Attorney",
+  "Appraiser",
+  "Insurance Agent",
+  "Escrow Officer",
+  "Contractor",
+  "Property Manager",
+  "CPA / Accountant",
+  "Other",
+];
+
+const emptyForm = { name: "", email: "", phone: "", role: "", company: "", notes: "" };
+
 export default function TabPeople({ deal }: { deal: any }) {
   const { toast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyForm);
+
+  const dealId = deal.projectId || deal.id;
 
   const { data: teamData } = useQuery<{ teamMembers: { id: number; fullName: string; email: string; role: string }[] }>({
     queryKey: ["/api/admin/team-members"],
   });
   const teamMembers = teamData?.teamMembers ?? [];
 
+  const { data: thirdPartiesData } = useQuery<ThirdParty[]>({
+    queryKey: ["/api/admin/deals", dealId, "third-parties"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/deals/${dealId}/third-parties`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : data.contacts || data.thirdParties || [];
+    },
+  });
+  const thirdParties = thirdPartiesData ?? [];
+
+  const addMutation = useMutation({
+    mutationFn: async (data: typeof emptyForm) => {
+      const res = await apiRequest("POST", `/api/admin/deals/${dealId}/third-parties`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "third-parties"] });
+      toast({ title: "Contact added" });
+      setShowForm(false);
+      setForm(emptyForm);
+    },
+    onError: () => toast({ title: "Failed to add contact", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof emptyForm }) => {
+      const res = await apiRequest("PATCH", `/api/admin/deals/${dealId}/third-parties/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "third-parties"] });
+      toast({ title: "Contact updated" });
+      setEditingId(null);
+      setForm(emptyForm);
+    },
+    onError: () => toast({ title: "Failed to update contact", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/admin/deals/${dealId}/third-parties/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "third-parties"] });
+      toast({ title: "Contact removed" });
+    },
+    onError: () => toast({ title: "Failed to remove contact", variant: "destructive" }),
+  });
+
+  const startEdit = (tp: ThirdParty) => {
+    setEditingId(tp.id);
+    setForm({ name: tp.name, email: tp.email || "", phone: tp.phone || "", role: tp.role, company: tp.company || "", notes: tp.notes || "" });
+    setShowForm(true);
+  };
+
+  const handleSubmit = () => {
+    if (!form.name || !form.role) {
+      toast({ title: "Name and role are required", variant: "destructive" });
+      return;
+    }
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: form });
+    } else {
+      addMutation.mutate(form);
+    }
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
   const borrowerName = deal.borrowerName || `${deal.customerFirstName || ""} ${deal.customerLastName || ""}`.trim();
   const borrowerEmail = deal.borrowerEmail || deal.customerEmail;
   const borrowerPhone = deal.borrowerPhone || deal.customerPhone;
   const borrowerPortalUrl = deal.borrowerPortalToken
-    ? `${window.location.origin}/borrower-portal/${deal.borrowerPortalToken}`
+    ? `${window.location.origin}/portal/${deal.borrowerPortalToken}`
     : null;
   const brokerPortalUrl = deal.brokerPortalToken
     ? `${window.location.origin}/broker-portal/${deal.brokerPortalToken}`

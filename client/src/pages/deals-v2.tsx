@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { ComposeEmailModal } from "@/components/ComposeEmailModal";
+import DealsKanbanView from "@/components/admin/DealsKanbanView";
 import { format } from "date-fns";
 
 interface Deal {
@@ -792,10 +793,11 @@ export default function DealsV2() {
         </div>
       </div>
 
-      {/* Table Card */}
-      <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden">
-        {/* Table */}
-        {isLoading ? (
+      {viewMode === "board" ? (
+        <DealsKanbanView />
+      ) : (
+        <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden">
+          {isLoading ? (
           <div className="p-6 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} className="h-12 w-full" />
@@ -1054,16 +1056,17 @@ export default function DealsV2() {
           </table>
         )}
 
-        {/* Footer */}
-        {filteredDeals.length > 0 && (
-          <div className="px-4 py-3 border-t text-[14px] text-muted-foreground flex items-center justify-between">
-            <span>
-              Showing {filteredDeals.length} of {deals.length} deals
-            </span>
-            <span className="text-[13px]">⌘K to search</span>
-          </div>
-        )}
-      </div>
+          {/* Footer */}
+          {filteredDeals.length > 0 && (
+            <div className="px-4 py-3 border-t text-[14px] text-muted-foreground flex items-center justify-between">
+              <span>
+                Showing {filteredDeals.length} of {deals.length} deals
+              </span>
+              <span className="text-[13px]">⌘K to search</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
