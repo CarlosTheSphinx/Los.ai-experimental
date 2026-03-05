@@ -23,6 +23,7 @@ import TabTasks from "@/components/admin/deal-v2/TabTasks";
 import TabPeople from "@/components/admin/deal-v2/TabPeople";
 import TabComms from "@/components/admin/deal-v2/TabComms";
 import TabAIInsights from "@/components/admin/deal-v2/TabAIInsights";
+import AIReviewResultsModal from "@/components/admin/deal-v2/AIReviewResultsModal";
 
 function formatCurrency(amount: number | undefined): string {
   if (!amount) return "$0";
@@ -111,6 +112,7 @@ export default function DealDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineProjectId, setPipelineProjectId] = useState<number | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const { toast } = useToast();
 
   const apiBase = isAdmin ? `/api/admin/deals` : `/api/deals`;
@@ -246,6 +248,7 @@ export default function DealDetailV2() {
     if (pipelineStatusValue === "completed") {
       toast({ title: "Pipeline Complete", description: "All AI agents have finished processing." });
       setPipelineRunning(false);
+      setShowReviewModal(true);
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "tasks"] });
@@ -374,6 +377,18 @@ export default function DealDetailV2() {
               )}
               {pipelineRunning ? "Processing..." : "Auto Process"}
             </Button>
+            {!pipelineRunning && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 px-3 text-[13px] font-medium"
+                data-testid="button-review-results"
+                onClick={() => setShowReviewModal(true)}
+              >
+                <Zap className="h-3.5 w-3.5 mr-1.5" />
+                Review Results
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="h-9 w-9" data-testid="button-more-actions">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -457,6 +472,13 @@ export default function DealDetailV2() {
           </div>
         </Tabs>
       </div>
+
+      <AIReviewResultsModal
+        open={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        dealId={dealId!}
+        deal={deal}
+      />
     </div>
   );
 }
