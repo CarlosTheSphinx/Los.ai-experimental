@@ -48,3 +48,5 @@ expertMode = true
 
 [userenv.shared]
 BASE_URL = "https://code-paste.replit.app"
+VITE_SITE_MODE = "landing"
+SITE_MODE = "landing"
