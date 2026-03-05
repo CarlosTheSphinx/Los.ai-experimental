@@ -26,6 +26,8 @@ import {
   GraduationCap,
   Inbox,
   Blocks,
+  MessageSquare,
+  BotMessageSquare,
 } from "lucide-react";
 import {
   Select,
