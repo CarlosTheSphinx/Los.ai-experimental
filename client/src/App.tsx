@@ -271,14 +271,88 @@ function MainRoutes() {
   );
 }
 
-function AppContent() {
-  if (SITE_MODE === 'landing') {
+function LandingModeContent() {
+  const [isLoginPage] = useRoute("/login");
+  const [isRegisterPage] = useRoute("/register");
+  const [isForgotPasswordPage] = useRoute("/forgot-password");
+  const [isResetPasswordPage] = useRoute("/reset-password/:token");
+  const [isAcceptInvitePage] = useRoute("/accept-invite/:token");
+  const [isSelectRolePage] = useRoute("/select-role");
+  const [isOnboardingPage] = useRoute("/onboarding");
+  const [isSignPage] = useRoute("/sign/:token");
+  const [isPortalPage] = useRoute("/portal/:token");
+  const [isBrokerPortalPage] = useRoute("/broker-portal/:token");
+  const [isJoinBorrowerPage] = useRoute("/join/borrower/:token");
+  const [isJoinBrokerPage] = useRoute("/join/broker/:token");
+  const [isApplyPage] = useRoute("/apply");
+  const [isApplyProgramPage] = useRoute("/apply/:programId");
+
+  const { isAuthenticated, isLoading } = useAuth();
+
+  const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
+
+  if (isResetPasswordPage) {
+    return <Switch><Route path="/reset-password/:token" component={ResetPasswordPage} /></Switch>;
+  }
+  if (isSignPage) {
+    return <Switch><Route path="/sign/:token" component={SignPage} /></Switch>;
+  }
+  if (isPortalPage) {
+    return <Switch><Route path="/portal/:token" component={BorrowerPortal} /></Switch>;
+  }
+  if (isBrokerPortalPage) {
+    return <Switch><Route path="/broker-portal/:token" component={BrokerPortal} /></Switch>;
+  }
+  if (isJoinBorrowerPage) {
+    return <Switch><Route path="/join/borrower/:token" component={JoinBorrowerPage} /></Switch>;
+  }
+  if (isJoinBrokerPage) {
+    return <Switch><Route path="/join/broker/:token" component={JoinBrokerPage} /></Switch>;
+  }
+  if (isPublicAuthPage) {
     return (
       <Switch>
-        <Route path="/" component={ComingSoonPage} />
-        <Route>{() => <Redirect to="/" />}</Route>
+        <Route path="/login" component={() => <AuthRoute component={LoginPage} />} />
+        <Route path="/register" component={() => <AuthRoute component={RegisterPage} />} />
+        <Route path="/forgot-password" component={() => <AuthRoute component={ForgotPasswordPage} />} />
+        <Route path="/reset-password/:token" component={ResetPasswordPage} />
+        <Route path="/accept-invite/:token" component={() => <AuthRoute component={AcceptInvitePage} />} />
       </Switch>
     );
+  }
+  if (isSelectRolePage) {
+    return <Switch><Route path="/select-role" component={SelectRolePage} /></Switch>;
+  }
+  if (isApplyPage || isApplyProgramPage) {
+    return <Switch><Route path="/apply/:programId?" component={PublicApplyPage} /></Switch>;
+  }
+  if (isOnboardingPage) {
+    return <Switch><Route path="/onboarding" component={() => <ProtectedRoute component={OnboardingPage} />} /></Switch>;
+  }
+
+  if (isAuthenticated && !isLoading) {
+    return <MainRoutes />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <Switch>
+      <Route path="/" component={ComingSoonPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function AppContent() {
+  if (SITE_MODE === 'landing') {
+    return <LandingModeContent />;
   }
 
   return <FullAppContent />;
