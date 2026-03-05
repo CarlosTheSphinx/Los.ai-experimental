@@ -3884,3 +3884,15 @@ export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
 export type InsertWebhookEndpoint = z.infer<typeof insertWebhookEndpointSchema>;
 export type WebhookDeliveryLog = typeof webhookDeliveryLogs.$inferSelect;
 export type InsertWebhookDeliveryLog = z.infer<typeof insertWebhookDeliveryLogSchema>;
+
+export const betaSignups = pgTable("beta_signups", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).unique().notNull(),
+  name: varchar("name", { length: 255 }),
+  company: varchar("company", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBetaSignupSchema = createInsertSchema(betaSignups).omit({ id: true, createdAt: true });
+export type BetaSignup = typeof betaSignups.$inferSelect;
+export type InsertBetaSignup = z.infer<typeof insertBetaSignupSchema>;

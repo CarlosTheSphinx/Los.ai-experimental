@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings, betaSignups, insertBetaSignupSchema } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -108,6 +108,54 @@ export async function registerRoutes(
   // Also handle /api/admin/deals → already has its own routes, but some sub-paths
   // like /api/admin/deals/:id/project need to keep working as-is (they are already
   // registered as /api/admin/deals routes, not /api/admin/projects)
+
+  // ==================== BETA SIGNUP (always accessible) ====================
+  app.post('/api/subscribe', async (req: Request, res: Response) => {
+    try {
+      const parsed = insertBetaSignupSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Valid email is required' });
+      }
+      const { email, name, company } = parsed.data;
+
+      const existing = await db.select().from(betaSignups).where(eq(betaSignups.email, email.toLowerCase())).limit(1);
+      if (existing.length > 0) {
+        return res.json({ success: true, message: "You're already on the list!" });
+      }
+
+      await db.insert(betaSignups).values({ email: email.toLowerCase(), name: name || null, company: company || null });
+
+      try {
+        const { getResendClient } = await import('./email');
+        const { client, fromEmail } = await getResendClient();
+        await client.emails.send({
+          from: fromEmail,
+          to: email.toLowerCase(),
+          subject: "Welcome to the Lendry.AI Beta Waitlist",
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+              <h1 style="color: #0F1729; font-size: 24px; margin-bottom: 8px;">Welcome to Lendry.AI</h1>
+              <p style="color: #64748b; font-size: 15px; line-height: 1.6;">
+                ${name ? `Hi ${name},` : 'Hi there,'}<br/><br/>
+                Thanks for joining the Lendry.AI beta waitlist! We're building the future of loan origination — AI-powered underwriting, smart deal pipelines, and enterprise-grade compliance.
+              </p>
+              <p style="color: #64748b; font-size: 15px; line-height: 1.6;">
+                We'll send you an invite as soon as we're ready for you.
+              </p>
+              <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">— The Lendry.AI Team</p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error('[Subscribe] Failed to send confirmation email:', emailErr);
+      }
+
+      return res.json({ success: true, message: "You're on the list!" });
+    } catch (err: any) {
+      console.error('[Subscribe] Error:', err);
+      return res.status(500).json({ error: 'Failed to subscribe' });
+    }
+  });
 
   // ==================== OBJECT STORAGE ROUTES ====================
   registerObjectStorageRoutes(app);

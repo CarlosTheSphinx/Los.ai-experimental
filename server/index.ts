@@ -77,6 +77,18 @@ app.use((req: Request, _res: Response, next: Function) => {
   next();
 });
 
+// Landing mode guard — blocks all API routes except /api/subscribe and /health
+const siteMode = process.env.SITE_MODE || 'full';
+if (siteMode === 'landing') {
+  console.log('🚧 Site running in LANDING mode — API routes restricted');
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (!req.path.startsWith('/api')) return next();
+    if (req.path === '/api/subscribe') return next();
+    if (req.path === '/api/health') return next();
+    return res.status(403).json({ error: 'Site is in preview mode' });
+  });
+}
+
 // Health check endpoint (no auth required)
 app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

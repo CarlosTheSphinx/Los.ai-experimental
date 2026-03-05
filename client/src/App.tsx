@@ -76,7 +76,10 @@ import PublicPricingPage from "@/pages/public/pricing";
 import PublicUseCasesPage from "@/pages/public/use-cases";
 import PublicContactPage from "@/pages/public/contact";
 import PublicApplyPage from "@/pages/public/apply";
+import ComingSoonPage from "@/pages/public/coming-soon";
 import { Loader2 } from "lucide-react";
+
+const SITE_MODE = import.meta.env.VITE_SITE_MODE || 'full';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -269,6 +272,19 @@ function MainRoutes() {
 }
 
 function AppContent() {
+  if (SITE_MODE === 'landing') {
+    return (
+      <Switch>
+        <Route path="/" component={ComingSoonPage} />
+        <Route>{() => <Redirect to="/" />}</Route>
+      </Switch>
+    );
+  }
+
+  return <FullAppContent />;
+}
+
+function FullAppContent() {
   const [isSignPage] = useRoute("/sign/:token");
   const [isPortalPage] = useRoute("/portal/:token");
   const [isBrokerPortalPage] = useRoute("/broker-portal/:token");
