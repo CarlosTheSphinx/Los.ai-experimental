@@ -24,9 +24,6 @@ function statusDisplay(status: string, aiReviewStatus?: string, driveStatus?: st
   const ai = aiReviewStatus?.toLowerCase();
   const drive = driveStatus?.toLowerCase();
 
-  if (drive === "ok" || drive === "synced") {
-    return { dot: "bg-emerald-600", label: "Synced to Drive", step: 5 };
-  }
   if (s === "approved" || s === "accepted") {
     return { dot: "bg-emerald-500", label: "Approved", step: 4 };
   }
@@ -877,7 +874,6 @@ function DocumentRow({
     { key: 2, label: "Uploaded", icon: CloudUpload },
     { key: 3, label: "Reviewed", icon: Bot },
     { key: 4, label: "Approved", icon: Shield },
-    { key: 5, label: "Drive", icon: FolderOpen },
   ];
 
   return (
