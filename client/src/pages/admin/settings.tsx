@@ -67,6 +67,7 @@ import EmailIntegrationConfig from "@/components/admin/config/EmailIntegrationCo
 import AICustomizationConfig from "@/components/admin/config/AICustomizationConfig";
 import MagicLinksConfig from "@/components/admin/config/MagicLinksConfig";
 import DocumentReviewConfig from "@/components/admin/config/DocumentReviewConfig";
+import InquiryFormTemplatesConfig from "@/components/admin/config/InquiryFormTemplatesConfig";
 
 interface DealStage {
   id: number;
@@ -120,6 +121,7 @@ const CONFIG_TABS = [
   { id: "ai-customization", label: "AI Customization", icon: Bot },
   { id: "doc-review", label: "Doc Review & Comms", icon: FileSearch },
   { id: "magic-links", label: "Magic Links", icon: Link2 },
+  { id: "inquiry-forms", label: "Inquiry Forms", icon: FileText },
   { id: "custom-fields", label: "Custom Fields", icon: LayoutList },
   { id: "billing", label: "Billing & Plans", icon: CreditCard },
 ] as const;
@@ -1210,6 +1212,8 @@ export default function AdminSettings() {
           {activeTab === "doc-review" && <DocumentReviewConfig />}
 
           {activeTab === "magic-links" && <MagicLinksConfig />}
+
+          {activeTab === "inquiry-forms" && <InquiryFormTemplatesConfig />}
 
           {activeTab === "custom-fields" && <CustomFieldsConfig />}
 

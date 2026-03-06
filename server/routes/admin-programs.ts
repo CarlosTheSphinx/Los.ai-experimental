@@ -270,6 +270,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
               priority: task.priority || 'medium',
               sortOrder: index,
               stepId: task.stepIndex !== null && task.stepIndex !== undefined && task.stepIndex >= 0 && task.stepIndex < createdStepIds.length && createdStepIds[task.stepIndex] > 0 ? createdStepIds[task.stepIndex] : null,
+              assignToRole: task.assignToRole || task.assignee || null,
+              formTemplateId: task.formTemplateId || null,
             }));
             await tx.insert(programTaskTemplates).values(taskEntries);
           }
@@ -490,6 +492,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
             priority: task.priority,
             sortOrder: task.sortOrder,
             stepId: task.stepId ? (stepIdMap.get(task.stepId) || null) : null,
+            assignToRole: task.assignToRole || null,
+            formTemplateId: task.formTemplateId || null,
           });
         }
 
@@ -948,7 +952,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     try {
       const { programId, taskId } = req.params;
       if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
-      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole } = req.body;
+      const { taskName, taskDescription, taskCategory, priority, sortOrder, stepId, assignToRole, formTemplateId } = req.body;
 
       const updateData: any = {};
       if (taskName !== undefined) updateData.taskName = taskName;
@@ -958,6 +962,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
       if (stepId !== undefined) updateData.stepId = stepId;
       if (assignToRole !== undefined) updateData.assignToRole = assignToRole;
+      if (formTemplateId !== undefined) updateData.formTemplateId = formTemplateId;
 
       const [task] = await db.update(programTaskTemplates)
         .set(updateData)

@@ -9,6 +9,7 @@ import { validateConfig } from "./utils/validateConfig";
 import { seedDefaultAgentConfigs } from "./routes/agents";
 import { db } from "./db";
 import { seedSuperAdmins } from "./seedAdmins";
+import { seedInquiryFormTemplates, registerInquiryFormRoutes } from "./routes/inquiryForms";
 import { initializePIIContext, autoDecryptResponseMiddleware } from "./middleware/piiDecryption";
 const app = express();
 app.set('trust proxy', 1);
@@ -160,6 +161,14 @@ app.use((req, res, next) => {
     await seedDefaultAgentConfigs(db);
   } catch (err) {
     console.error('⚠️ Failed to auto-seed agent configs:', err);
+  }
+
+  // Register inquiry form routes and seed templates
+  registerInquiryFormRoutes(app);
+  try {
+    await seedInquiryFormTemplates();
+  } catch (err) {
+    console.error('⚠️ Failed to seed inquiry form templates:', err);
   }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

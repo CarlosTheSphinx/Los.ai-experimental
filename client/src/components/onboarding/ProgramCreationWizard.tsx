@@ -339,6 +339,7 @@ interface TaskEntry {
   priority: string;
   assignToRole: string;
   stepIndex: number | null;
+  formTemplateId?: number | null;
 }
 
 interface RuleEntry {
@@ -556,6 +557,7 @@ export function ProgramCreationWizard({
         priority: t.priority || 'medium',
         assignToRole: t.assignToRole || 'admin',
         stepIndex: t.stepId != null ? editProgramData.workflowSteps.findIndex((s: any) => s.id === t.stepId) : null,
+        formTemplateId: t.formTemplateId || null,
       })));
     } else {
       setTasks([]);
@@ -690,6 +692,7 @@ export function ProgramCreationWizard({
       priority: t.priority,
       assignToRole: t.assignToRole,
       stepIndex: t.stepIndex,
+      formTemplateId: t.formTemplateId || null,
     })),
   });
 
@@ -2816,6 +2819,7 @@ function SortableTaskRow({
   globalIdx,
   stages,
   teamMembers,
+  formTemplates,
   updateTask,
   removeTask,
   getAssigneeLabel,
@@ -2825,12 +2829,14 @@ function SortableTaskRow({
   globalIdx: number;
   stages: StageEntry[];
   teamMembers: { id: number; fullName: string; role: string }[];
+  formTemplates: { id: number; name: string }[];
   updateTask: (i: number, field: keyof TaskEntry, value: any) => void;
   removeTask: (i: number) => void;
   getAssigneeLabel: (v: string) => string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const showFormDropdown = task.assignToRole === 'user' || task.assignToRole === 'all';
 
   return (
     <div
@@ -2843,13 +2849,21 @@ function SortableTaskRow({
         <GripVertical className="h-3.5 w-3.5" />
       </button>
       <ListChecks className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
-      <input
-        className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
-        value={task.taskName}
-        onChange={(e) => updateTask(globalIdx, 'taskName', e.target.value)}
-        placeholder="Task name"
-        data-testid={`input-task-name-${globalIdx}`}
-      />
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <input
+          className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+          value={task.taskName}
+          onChange={(e) => updateTask(globalIdx, 'taskName', e.target.value)}
+          placeholder="Task name"
+          data-testid={`input-task-name-${globalIdx}`}
+        />
+        {task.formTemplateId && (
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex-shrink-0 gap-1" data-testid={`badge-form-attached-${globalIdx}`}>
+            <FormInput className="h-2.5 w-2.5" />
+            Form
+          </Badge>
+        )}
+      </div>
       <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium)}>
         {PRIORITY_LABELS[task.priority] || 'Medium'}
       </span>
@@ -2878,6 +2892,22 @@ function SortableTaskRow({
           <SelectItem value="broker">Broker</SelectItem>
         </SelectContent>
       </Select>
+      {showFormDropdown && formTemplates.length > 0 && (
+        <Select
+          value={task.formTemplateId ? task.formTemplateId.toString() : 'none'}
+          onValueChange={(v) => updateTask(globalIdx, 'formTemplateId', v === 'none' ? null : parseInt(v))}
+        >
+          <SelectTrigger className="w-[130px] h-7 text-[12px]" data-testid={`select-task-form-${globalIdx}`}>
+            <SelectValue placeholder="Form..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No Form</SelectItem>
+            {formTemplates.map((ft) => (
+              <SelectItem key={ft.id} value={ft.id.toString()}>{ft.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <Select
         value={task.stepIndex !== null ? task.stepIndex.toString() : 'none'}
         onValueChange={(v) => updateTask(globalIdx, 'stepIndex', v === 'none' ? null : parseInt(v))}
@@ -2914,6 +2944,10 @@ function TasksStep({
   stages: StageEntry[];
   teamMembers: { id: number; fullName: string; role: string }[];
 }) {
+  const { data: formTemplatesData } = useQuery<{ templates: { id: number; name: string }[] }>({
+    queryKey: ['/api/admin/inquiry-form-templates'],
+  });
+  const formTemplates = formTemplatesData?.templates || [];
   const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
   const newTaskRef = useRef<HTMLInputElement>(null);
@@ -2928,7 +2962,7 @@ function TasksStep({
     const name = newTaskName.trim();
     if (!name) return;
     const stepIndex = typeof target === 'number' ? target : null;
-    setTasks([...tasks, { taskName: name, taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex }]);
+    setTasks([...tasks, { taskName: name, taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex, formTemplateId: null }]);
     setNewTaskName('');
     setAddingToStage(null);
   };
@@ -2983,6 +3017,7 @@ function TasksStep({
       globalIdx={globalIdx}
       stages={stages}
       teamMembers={teamMembers}
+      formTemplates={formTemplates}
       updateTask={updateTask}
       removeTask={removeTask}
       getAssigneeLabel={getAssigneeLabel}

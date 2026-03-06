@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings, betaSignups, insertBetaSignupSchema } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings, betaSignups, insertBetaSignupSchema, inquiryFormTemplates, taskFormSubmissions } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -5294,6 +5294,76 @@ export async function registerRoutes(
         console.error('Failed to send stage change notifications:', notifErr);
       }
 
+      try {
+        const formTasks = await db.select().from(projectTasks)
+          .where(and(
+            eq(projectTasks.projectId, projectId),
+            eq(projectTasks.stageId, targetStage.id),
+          ));
+        const borrowerFormTasks = formTasks.filter(t =>
+          t.formTemplateId &&
+          t.status !== 'completed' &&
+          (t.visibleToBorrower !== false || t.assignedTo === 'borrower' || t.assignedTo === 'user')
+        );
+
+        if (borrowerFormTasks.length > 0) {
+          const [stageProj] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+          if (stageProj?.borrowerEmail) {
+            const templateIds = [...new Set(borrowerFormTasks.map(t => t.formTemplateId!))];
+            const templates = await db.select().from(inquiryFormTemplates)
+              .where(inArray(inquiryFormTemplates.id, templateIds));
+            const tplMap = new Map(templates.map(t => [t.id, t]));
+
+            const formNames = borrowerFormTasks
+              .map(t => tplMap.get(t.formTemplateId!)?.name || t.taskTitle)
+              .join(', ');
+
+            const portalUrl = stageProj.borrowerPortalToken
+              ? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ''}/portal/${stageProj.borrowerPortalToken}`
+              : null;
+
+            const [borrowerUser] = await db.select({ id: users.id }).from(users)
+              .where(eq(users.email, stageProj.borrowerEmail));
+            if (borrowerUser) {
+              await createNotification({
+                userId: borrowerUser.id,
+                type: 'task_assigned',
+                title: 'Action Required: Form to Complete',
+                message: `Please complete the following: ${formNames} for ${stageProj.projectName || `DEAL-${projectId}`}.`,
+                dealId: projectId,
+                link: portalUrl || `/portal`,
+              });
+            }
+
+            try {
+              const { Resend } = await import('resend');
+              const resend = new Resend(process.env.RESEND_API_KEY);
+              if (process.env.RESEND_API_KEY) {
+                await resend.emails.send({
+                  from: process.env.RESEND_FROM_EMAIL || 'notifications@resend.dev',
+                  to: stageProj.borrowerEmail,
+                  subject: `Action Required: Please provide information for ${stageProj.projectName || 'your loan'}`,
+                  html: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                      <h2>Action Required</h2>
+                      <p>Hello ${stageProj.borrowerName || 'there'},</p>
+                      <p>We need you to complete the following form(s) for your loan <strong>${stageProj.projectName || `DEAL-${projectId}`}</strong>:</p>
+                      <ul>${borrowerFormTasks.map(t => `<li>${tplMap.get(t.formTemplateId!)?.name || t.taskTitle}</li>`).join('')}</ul>
+                      ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;padding:10px 20px;background:#0F1729;color:#fff;border-radius:6px;text-decoration:none;">Open Your Portal</a></p>` : ''}
+                      <p>Thank you,<br/>The Lendry.AI Team</p>
+                    </div>
+                  `,
+                });
+              }
+            } catch (emailErr) {
+              console.error('Form task email notification error:', emailErr);
+            }
+          }
+        }
+      } catch (formNotifErr) {
+        console.error('Form task notification error:', formNotifErr);
+      }
+
       res.json({ success: true, currentStage: targetStageKey });
     } catch (error) {
       console.error('Move stage error:', error);
@@ -7222,7 +7292,25 @@ export async function registerRoutes(
         });
       }
 
+      const taskIds = visibleTasks.filter(t => t.formTemplateId).map(t => t.id);
+      let formSubmissions: any[] = [];
+      if (taskIds.length > 0) {
+        formSubmissions = await db.select().from(taskFormSubmissions)
+          .where(inArray(taskFormSubmissions.taskId, taskIds));
+      }
+      const submissionMap = new Map(formSubmissions.map(s => [s.taskId, s]));
+
+      let formTemplateMap = new Map<number, any>();
+      const templateIds = [...new Set(visibleTasks.filter(t => t.formTemplateId).map(t => t.formTemplateId!))];
+      if (templateIds.length > 0) {
+        const templates = await db.select().from(inquiryFormTemplates)
+          .where(inArray(inquiryFormTemplates.id, templateIds));
+        formTemplateMap = new Map(templates.map(t => [t.id, t]));
+      }
+
       for (const task of visibleTasks) {
+        const submission = submissionMap.get(task.id);
+        const formTemplate = task.formTemplateId ? formTemplateMap.get(task.formTemplateId) : null;
         checklistItems.push({
           id: `task-${task.id}`,
           type: 'task' as const,
@@ -7241,6 +7329,9 @@ export async function registerRoutes(
           completedAt: task.completedAt,
           completedBy: task.completedBy,
           createdAt: task.createdAt,
+          formTemplateId: task.formTemplateId || null,
+          formTemplate: formTemplate || null,
+          formSubmission: submission || null,
         });
       }
 
@@ -7260,6 +7351,119 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Portal checklist error:', error);
       res.status(500).json({ error: 'Failed to load checklist' });
+    }
+  });
+
+  app.post('/api/portal/:token/tasks/:taskId/submit-form', async (req: Request, res: Response) => {
+    try {
+      const { token, taskId } = req.params;
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Deal not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+
+      const tId = parseInt(taskId);
+      const [task] = await db.select().from(projectTasks)
+        .where(and(eq(projectTasks.id, tId), eq(projectTasks.projectId, project.id)));
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (!task.formTemplateId) return res.status(400).json({ error: 'This task has no form attached' });
+
+      const taskAssignee = (task.assignedTo || '').toLowerCase();
+      const isBorrowerTask = task.visibleToBorrower !== false &&
+        (taskAssignee === '' || taskAssignee === 'borrower' || taskAssignee === 'user' || taskAssignee === 'all');
+      if (!isBorrowerTask) return res.status(403).json({ error: 'This task is not assigned to borrower' });
+      if (task.status === 'completed') return res.status(400).json({ error: 'This task is already completed' });
+
+      const [template] = await db.select().from(inquiryFormTemplates)
+        .where(eq(inquiryFormTemplates.id, task.formTemplateId));
+      if (!template) return res.status(404).json({ error: 'Form template not found' });
+
+      const { formData } = req.body;
+      if (!formData || typeof formData !== 'object') {
+        return res.status(400).json({ error: 'formData is required' });
+      }
+
+      const templateFields = template.fields as Array<{ fieldKey: string; label: string; required: boolean }>;
+      for (const field of templateFields) {
+        if (field.required && !formData[field.fieldKey]?.trim()) {
+          return res.status(400).json({ error: `${field.label} is required` });
+        }
+      }
+
+      const existingSub = await db.select().from(taskFormSubmissions)
+        .where(eq(taskFormSubmissions.taskId, tId))
+        .limit(1);
+
+      if (existingSub.length > 0) {
+        await db.update(taskFormSubmissions)
+          .set({ formData, status: 'submitted', submittedAt: new Date(), submittedByEmail: project.borrowerEmail })
+          .where(eq(taskFormSubmissions.id, existingSub[0].id));
+      } else {
+        await db.insert(taskFormSubmissions).values({
+          taskId: tId,
+          projectId: project.id,
+          formTemplateId: task.formTemplateId,
+          submittedByEmail: project.borrowerEmail,
+          formData,
+          status: 'submitted',
+          submittedAt: new Date(),
+        });
+      }
+
+      if (template.targetType === 'third_party' && template.targetRole) {
+        const existingThirdParty = await db.select().from(dealThirdParties)
+          .where(and(
+            eq(dealThirdParties.projectId, project.id),
+            eq(dealThirdParties.role, template.targetRole)
+          ))
+          .limit(1);
+
+        const thirdPartyData = {
+          name: formData.name || formData.contactName || 'Unknown',
+          email: formData.email || null,
+          phone: formData.phone || null,
+          company: formData.company || null,
+          notes: Object.entries(formData)
+            .filter(([k]) => !['name', 'contactName', 'email', 'phone', 'company'].includes(k))
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ') || null,
+          role: template.targetRole,
+          projectId: project.id,
+        };
+
+        if (existingThirdParty.length > 0) {
+          await db.update(dealThirdParties)
+            .set({ ...thirdPartyData, updatedAt: new Date() })
+            .where(eq(dealThirdParties.id, existingThirdParty[0].id));
+        } else {
+          await db.insert(dealThirdParties).values(thirdPartyData);
+        }
+      }
+
+      await db.update(projectTasks)
+        .set({ status: 'completed', completedAt: new Date(), completedBy: 'borrower', borrowerActionRequired: false })
+        .where(eq(projectTasks.id, tId));
+
+      try {
+        const adminUsers = await db.select({ id: users.id }).from(users)
+          .where(inArray(users.role, ['admin', 'super_admin', 'staff']));
+        for (const admin of adminUsers) {
+          await createNotification({
+            userId: admin.id,
+            type: 'document_uploaded',
+            title: `Form Submitted: ${template.name}`,
+            message: `${project.borrowerName || 'Borrower'} submitted "${template.name}" for ${project.projectName || 'a deal'}.`,
+            dealId: project.id,
+            link: `/admin/deals/${project.id}`,
+          });
+        }
+      } catch (notifErr) {
+        console.error('Form submission notification error:', notifErr);
+      }
+
+      res.json({ success: true, message: 'Form submitted successfully' });
+    } catch (error) {
+      console.error('Portal form submission error:', error);
+      res.status(500).json({ error: 'Failed to submit form' });
     }
   });
 
@@ -7317,7 +7521,25 @@ export async function registerRoutes(
         });
       }
 
+      const adminTaskIds = tasks.filter(t => t.formTemplateId).map(t => t.id);
+      let adminFormSubmissions: any[] = [];
+      if (adminTaskIds.length > 0) {
+        adminFormSubmissions = await db.select().from(taskFormSubmissions)
+          .where(inArray(taskFormSubmissions.taskId, adminTaskIds));
+      }
+      const adminSubMap = new Map(adminFormSubmissions.map(s => [s.taskId, s]));
+
+      let adminTemplateMap = new Map<number, any>();
+      const adminTemplateIds = [...new Set(tasks.filter(t => t.formTemplateId).map(t => t.formTemplateId!))];
+      if (adminTemplateIds.length > 0) {
+        const tpls = await db.select().from(inquiryFormTemplates)
+          .where(inArray(inquiryFormTemplates.id, adminTemplateIds));
+        adminTemplateMap = new Map(tpls.map(t => [t.id, t]));
+      }
+
       for (const task of tasks) {
+        const sub = adminSubMap.get(task.id);
+        const tpl = task.formTemplateId ? adminTemplateMap.get(task.formTemplateId) : null;
         checklistItems.push({
           id: `task-${task.id}`,
           type: 'task' as const,
@@ -7336,6 +7558,9 @@ export async function registerRoutes(
           completedAt: task.completedAt,
           completedBy: task.completedBy,
           createdAt: task.createdAt,
+          formTemplateId: task.formTemplateId || null,
+          formTemplate: tpl || null,
+          formSubmission: sub || null,
         });
       }
 

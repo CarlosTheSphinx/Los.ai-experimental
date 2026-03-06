@@ -588,6 +588,8 @@ export const projectTasks = pgTable("project_tasks", {
   visibleToBorrower: boolean("visible_to_borrower").default(true),
   borrowerActionRequired: boolean("borrower_action_required").default(false),
 
+  formTemplateId: integer("form_template_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1069,6 +1071,8 @@ export const programTaskTemplates = pgTable("program_task_templates", {
 
   priority: varchar("priority", { length: 20 }).default("medium"), // low, medium, high, critical
   sortOrder: integer("sort_order").default(0),
+
+  formTemplateId: integer("form_template_id"),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -3898,3 +3902,46 @@ export const betaSignups = pgTable("beta_signups", {
 export const insertBetaSignupSchema = createInsertSchema(betaSignups).omit({ id: true, createdAt: true });
 export type BetaSignup = typeof betaSignups.$inferSelect;
 export type InsertBetaSignup = z.infer<typeof insertBetaSignupSchema>;
+
+export const inquiryFormTemplates = pgTable("inquiry_form_templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  fields: jsonb("fields").notNull().$type<Array<{
+    fieldKey: string;
+    label: string;
+    fieldType: "text" | "email" | "phone" | "select" | "textarea";
+    required: boolean;
+    placeholder?: string;
+    options?: string[];
+  }>>(),
+  targetType: varchar("target_type", { length: 50 }).notNull().default("third_party"),
+  targetRole: varchar("target_role", { length: 100 }),
+  isSystem: boolean("is_system").default(false),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertInquiryFormTemplateSchema = createInsertSchema(inquiryFormTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InquiryFormTemplate = typeof inquiryFormTemplates.$inferSelect;
+export type InsertInquiryFormTemplate = z.infer<typeof insertInquiryFormTemplateSchema>;
+
+export const taskFormSubmissions = pgTable("task_form_submissions", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => projectTasks.id, { onDelete: "cascade" }).notNull(),
+  projectId: integer("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  formTemplateId: integer("form_template_id").references(() => inquiryFormTemplates.id).notNull(),
+  submittedBy: integer("submitted_by").references(() => users.id),
+  submittedByEmail: varchar("submitted_by_email", { length: 255 }),
+  formData: jsonb("form_data").notNull().$type<Record<string, string>>(),
+  status: varchar("status", { length: 50 }).default("pending").notNull(),
+  submittedAt: timestamp("submitted_at"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaskFormSubmissionSchema = createInsertSchema(taskFormSubmissions).omit({ id: true, createdAt: true });
+export type TaskFormSubmission = typeof taskFormSubmissions.$inferSelect;
+export type InsertTaskFormSubmission = z.infer<typeof insertTaskFormSubmissionSchema>;

@@ -37,6 +37,7 @@ The application uses a modern web stack: React 18 with TypeScript for the fronte
 -   **Enhanced Deal Controls**: Features processor assignment, dynamic status/stage dropdowns (program-specific or default), and confirmation for loan program changes.
 -   **Notification System**: Configurable notification preferences per tenant with fallback to global defaults, covering various app activities.
 -   **Program Creation Wizard**: Multi-step wizard for defining loan programs, including template selection, credit policies, quote forms, stages, tasks, AI rules, and pricing.
+-   **Smart Form Tasks**: Reusable inquiry form templates (`inquiry_form_templates`) that admins attach to program task templates via the wizard. When a deal's stage activates, borrowers see dynamic forms in their portal (LoanChecklist), submit data which auto-creates Third Party contacts, auto-completes the task, and notifies admins. Managed in Settings > Inquiry Forms tab. Submissions stored in `task_form_submissions`. Auto-email via Resend on stage move.
 -   **Site Modes**: Supports `landing` mode for a "Coming Soon" page with email collection and `full` mode for normal application access, controlled by feature flags.
 
 ## External Dependencies

@@ -94,6 +94,8 @@ export async function buildProjectPipelineFromProgram(
     for (const task of tasks) {
       const taskVisibility = task.visibility || 'all';
       const isBorrowerVisible = taskVisibility === 'all' || taskVisibility === 'borrower';
+      const assignRole = (task.assignToRole || '').toLowerCase();
+      const isBorrowerAssigned = assignRole === 'user' || assignRole === 'borrower';
       await dbOrTx.insert(projectTasks).values({
         projectId,
         stageId: stage.id,
@@ -102,10 +104,12 @@ export async function buildProjectPipelineFromProgram(
         taskDescription: task.taskDescription,
         taskType: task.taskCategory || 'general',
         priority: task.priority || 'medium',
+        assignedTo: isBorrowerAssigned ? 'borrower' : (assignRole || 'admin'),
         requiresDocument: false,
         visibleToBorrower: isBorrowerVisible,
-        borrowerActionRequired: false,
+        borrowerActionRequired: isBorrowerAssigned || !!task.formTemplateId,
         status: 'pending',
+        formTemplateId: task.formTemplateId || null,
       });
       tasksCreated++;
     }
@@ -497,6 +501,8 @@ async function syncSingleProject(
     } else {
       const taskVis = template.visibility || 'all';
       const borrowerVis = taskVis === 'all' || taskVis === 'borrower';
+      const syncAssignRole = (template.assignToRole || '').toLowerCase();
+      const syncIsBorrower = syncAssignRole === 'user' || syncAssignRole === 'borrower';
       await dbOrTx.insert(projectTasks).values({
         projectId,
         stageId,
@@ -505,10 +511,12 @@ async function syncSingleProject(
         taskDescription: template.taskDescription,
         taskType: template.taskCategory || 'general',
         priority: template.priority || 'medium',
+        assignedTo: syncIsBorrower ? 'borrower' : (syncAssignRole || 'admin'),
         requiresDocument: false,
         visibleToBorrower: borrowerVis,
-        borrowerActionRequired: false,
+        borrowerActionRequired: syncIsBorrower || !!template.formTemplateId,
         status: 'pending',
+        formTemplateId: template.formTemplateId || null,
       });
     }
   }
