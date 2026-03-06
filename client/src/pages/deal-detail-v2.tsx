@@ -545,13 +545,12 @@ export default function DealDetailV2() {
                   : deal.dealNumber || `Deal #${deal.id}`}
               </h1>
               {(() => {
-                const contactName = deal.borrowerName || [deal.customerFirstName, deal.customerLastName].filter(Boolean).join(" ");
-                const contactEmail = deal.borrowerEmail || deal.customerEmail;
-                const contactPhone = deal.borrowerPhone || deal.customerPhone;
-                const contactParts = [contactName, contactEmail, contactPhone].filter(Boolean);
-                return contactParts.length > 0 ? (
+                const borrowingEntity = deal.applicationData?.entityName || deal.borrowerName || [deal.customerFirstName, deal.customerLastName].filter(Boolean).join(" ");
+                const broker = deal.brokerName;
+                const parts = [borrowingEntity, broker].filter(Boolean);
+                return parts.length > 0 ? (
                   <p className="text-[12px] text-muted-foreground mt-0.5" data-testid="text-borrower-info">
-                    {contactParts.join(" \u00B7 ")}
+                    {parts.join(" · ")}
                   </p>
                 ) : null;
               })()}
