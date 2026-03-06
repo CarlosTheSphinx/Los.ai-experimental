@@ -44,7 +44,9 @@ function fmt(amount: number | string | undefined | null): string {
 
 function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatFieldValue(value: any, fieldType: string): string {
@@ -463,7 +465,11 @@ export default function TabOverview({
       })(),
       prepaymentPenalty: prepayPenalty || "",
       holdbackAmount: String(holdbackAmt ?? ""),
-      targetCloseDate: deal.targetCloseDate ? new Date(deal.targetCloseDate).toISOString().split('T')[0] : "",
+      targetCloseDate: (() => {
+        if (!deal.targetCloseDate) return "";
+        const d = new Date(deal.targetCloseDate);
+        return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
+      })(),
     };
     if (hasProgram) {
       const programLoanFields = getFieldsByGroup('loan_details');
