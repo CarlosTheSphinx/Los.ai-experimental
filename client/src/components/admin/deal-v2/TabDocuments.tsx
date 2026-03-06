@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Upload, FileText, CheckCircle2, Clock, AlertCircle, Eye,
@@ -542,66 +542,145 @@ export default function TabDocuments({
       })()}
 
       {previewDoc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-          onClick={() => setPreviewDoc(null)}
-          data-testid="preview-overlay"
-        >
-          <div
-            className="relative w-[90vw] h-[90vh] max-w-6xl bg-card rounded-lg shadow-2xl flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
-              <span className="text-[15px] font-semibold truncate mr-4">{previewDoc.fileName}</span>
-              <div className="flex items-center gap-2">
-                <a
-                  href={`${previewDoc.url}?download=true`}
-                  className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors"
-                  data-testid="button-download-preview"
-                >
-                  <Download className="h-4 w-4" />
-                </a>
-                <button
-                  onClick={() => setPreviewDoc(null)}
-                  className="h-8 w-8 rounded-full bg-muted hover:bg-muted/80 text-foreground flex items-center justify-center transition-colors"
-                  data-testid="button-close-preview"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto flex items-center justify-center p-4">
-              {previewDoc.mimeType?.startsWith("image/") ? (
-                <img
-                  src={previewDoc.url}
-                  alt={previewDoc.fileName}
-                  className="max-w-full max-h-full object-contain"
-                  data-testid="preview-image"
-                />
-              ) : previewDoc.mimeType === "application/pdf" ? (
-                <iframe
-                  src={previewDoc.url}
-                  title={previewDoc.fileName}
-                  className="w-full h-full border-0"
-                  data-testid="preview-pdf"
-                />
-              ) : (
-                <div className="text-center space-y-4" data-testid="preview-unsupported">
-                  <FileText className="h-16 w-16 text-muted-foreground mx-auto" />
-                  <p className="text-[16px] text-muted-foreground">Preview not available for this file type</p>
-                  <a
-                    href={`${previewDoc.url}?download=true`}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[14px] transition-colors"
-                    data-testid="link-download-unsupported"
-                  >
-                    <Download className="h-4 w-4" /> Download File
-                  </a>
-                </div>
-              )}
-            </div>
+        <DocumentPreviewModal
+          url={previewDoc.url}
+          fileName={previewDoc.fileName}
+          mimeType={previewDoc.mimeType}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DocumentPreviewModal({
+  url,
+  fileName,
+  mimeType,
+  onClose,
+}: {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  onClose: () => void;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let revoke: string | null = null;
+    const controller = new AbortController();
+
+    fetch(url, { credentials: "include", signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load file");
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        revoke = objectUrl;
+        setBlobUrl(objectUrl);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") setError(err.message);
+      })
+      .finally(() => setLoading(false));
+
+    return () => {
+      controller.abort();
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [url]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
+
+  const isImage = mimeType?.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+  const canPreview = isImage || isPdf;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      onClick={onClose}
+      data-testid="preview-overlay"
+    >
+      <div
+        className="relative w-[90vw] h-[90vh] max-w-6xl bg-card rounded-lg shadow-2xl flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
+          <span className="text-[15px] font-semibold truncate mr-4">{fileName}</span>
+          <div className="flex items-center gap-2">
+            <a
+              href={`${url}?download=true`}
+              className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors"
+              data-testid="button-download-preview"
+            >
+              <Download className="h-4 w-4" />
+            </a>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 rounded-full bg-muted hover:bg-muted/80 text-foreground flex items-center justify-center transition-colors"
+              data-testid="button-close-preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      )}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+          {loading ? (
+            <div className="flex flex-col items-center gap-3" data-testid="preview-loading">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+              <p className="text-[14px] text-muted-foreground">Loading preview...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center space-y-4" data-testid="preview-error">
+              <FileText className="h-16 w-16 text-muted-foreground mx-auto" />
+              <p className="text-[16px] text-muted-foreground">Failed to load preview</p>
+              <a
+                href={`${url}?download=true`}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[14px] transition-colors"
+                data-testid="link-download-error"
+              >
+                <Download className="h-4 w-4" /> Download File
+              </a>
+            </div>
+          ) : blobUrl && isImage ? (
+            <img
+              src={blobUrl}
+              alt={fileName}
+              className="max-w-full max-h-full object-contain"
+              data-testid="preview-image"
+            />
+          ) : blobUrl && isPdf ? (
+            <embed
+              src={blobUrl}
+              type="application/pdf"
+              className="w-full h-full"
+              data-testid="preview-pdf"
+            />
+          ) : (
+            <div className="text-center space-y-4" data-testid="preview-unsupported">
+              <FileText className="h-16 w-16 text-muted-foreground mx-auto" />
+              <p className="text-[16px] text-muted-foreground">Preview not available for this file type</p>
+              <a
+                href={`${url}?download=true`}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[14px] transition-colors"
+                data-testid="link-download-unsupported"
+              >
+                <Download className="h-4 w-4" /> Download File
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
