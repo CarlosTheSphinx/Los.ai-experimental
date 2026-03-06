@@ -345,7 +345,7 @@ function LandingModeContent() {
   return (
     <Switch>
       <Route path="/" component={ComingSoonPage} />
-      <Route component={NotFound} />
+      <Route>{() => <Redirect to="/" />}</Route>
     </Switch>
   );
 }
