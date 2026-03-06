@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, FolderOpen, RefreshCw, ExternalLink,
   LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles,
-  DollarSign,
+  DollarSign, Calendar, Percent,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -202,7 +202,7 @@ function DealStrip({
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
         <ControlCard label="Deal Status">
           <Select
@@ -251,6 +251,21 @@ function DealStrip({
             </SelectContent>
           </Select>
         </ControlCard>
+        <KpiCard
+          icon={Percent}
+          label="Origination"
+          value={(() => {
+            const lender = parseFloat(deal.lenderOriginationPoints) || 0;
+            const broker = parseFloat(deal.brokerOriginationPoints) || 0;
+            const total = lender + broker;
+            return total > 0 ? `${total.toFixed(2)}%` : "—";
+          })()}
+        />
+        <KpiCard
+          icon={Calendar}
+          label="Target Close"
+          value={deal.targetCloseDate ? new Date(deal.targetCloseDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+        />
       </div>
 
       <AlertDialog open={showProgramConfirm} onOpenChange={setShowProgramConfirm}>
