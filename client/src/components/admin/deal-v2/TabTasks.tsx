@@ -112,6 +112,11 @@ export default function TabTasks({
   const done = tasks.filter((t) => t.status === "completed" || t.status === "done");
 
   const getAssigneeName = (task: any) => {
+    if (task._assignedToBorrower || task.assignedTo === "borrower") {
+      return deal?.customerFirstName && deal?.customerLastName
+        ? `${deal.customerFirstName} ${deal.customerLastName} (Borrower)`
+        : deal?.customerEmail ? `${deal.customerEmail} (Borrower)` : "Borrower";
+    }
     if (task.assigneeName) return task.assigneeName;
     if (task.assignedTo) {
       const assignedId = typeof task.assignedTo === "string" ? parseInt(task.assignedTo) : task.assignedTo;
@@ -263,6 +268,13 @@ export default function TabTasks({
                     <SelectValue placeholder="Select member" />
                   </SelectTrigger>
                   <SelectContent>
+                    {deal?.customerEmail && (
+                      <SelectItem value="borrower">
+                        {deal.customerFirstName && deal.customerLastName
+                          ? `${deal.customerFirstName} ${deal.customerLastName} (Borrower)`
+                          : `${deal.customerEmail} (Borrower)`}
+                      </SelectItem>
+                    )}
                     {teamMembers.map((member) => (
                       <SelectItem key={member.id} value={String(member.id)}>
                         {member.fullName || member.email}

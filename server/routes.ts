@@ -8800,6 +8800,7 @@ export async function registerRoutes(
         createdAt: t.createdAt,
         formTemplateId: t.formTemplateId,
         borrowerActionRequired: t.borrowerActionRequired,
+        _assignedToBorrower: t.assignedTo === 'borrower',
         _source: 'projectTasks',
       }));
 
@@ -8823,6 +8824,8 @@ export async function registerRoutes(
       const dealId = parseInt(req.params.dealId);
       const { taskName, taskDescription, priority, assignedTo, dueDate, formTemplateId } = req.body;
 
+      const isBorrowerAssigned = assignedTo === "borrower";
+
       if (formTemplateId) {
         const [ptask] = await db.insert(projectTasks)
           .values({
@@ -8839,7 +8842,7 @@ export async function registerRoutes(
           })
           .returning();
 
-        res.json({ task: { ...ptask, taskName: ptask.taskTitle, formTemplateId: ptask.formTemplateId } });
+        res.json({ task: { ...ptask, taskName: ptask.taskTitle, formTemplateId: ptask.formTemplateId, _assignedToBorrower: true } });
       } else {
         const [task] = await db.insert(dealTasks)
           .values({
@@ -8847,7 +8850,7 @@ export async function registerRoutes(
             taskName,
             taskDescription,
             priority: priority || 'medium',
-            assignedTo: assignedTo ? parseInt(assignedTo) : null,
+            assignedTo: isBorrowerAssigned ? null : (assignedTo ? parseInt(assignedTo) : null),
             dueDate: dueDate ? new Date(dueDate) : null,
             createdBy: req.user!.id,
           })
