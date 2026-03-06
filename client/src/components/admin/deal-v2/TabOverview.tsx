@@ -34,6 +34,7 @@ type QuoteFormField = {
 const LOCKED_LOAN_FIELD_KEYS = new Set([
   'ltv', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints',
   'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term',
+  'targetCloseDate',
 ]);
 
 const CONTACT_FIELD_KEYS = new Set(['firstName', 'lastName', 'email', 'phone', 'address']);
@@ -441,7 +442,11 @@ export default function TabOverview({
       }));
   };
 
-  const allLoanFields = [...buildDynamicLoanFields(), ...buildLockedLoanFields()];
+  const allLoanFields = [
+    ...buildDynamicLoanFields(),
+    ...buildLockedLoanFields(),
+    { key: 'targetCloseDate', label: "Estimated Closing Date", value: fmtDate(deal.targetCloseDate) },
+  ];
 
   const buildPropertyFields = (): { label: string; value: string; key: string; tooltip?: string }[] => {
     const baseFields: { label: string; value: string; key: string; tooltip?: string }[] = [
@@ -553,6 +558,7 @@ export default function TabOverview({
       })(),
       prepaymentPenalty: prepayPenalty || "",
       holdbackAmount: String(holdbackAmt ?? ""),
+      targetCloseDate: deal.targetCloseDate ? new Date(deal.targetCloseDate).toISOString().split('T')[0] : "",
     };
     if (hasProgram) {
       const programLoanFields = getFieldsByGroup('loan_details');
@@ -835,7 +841,8 @@ export default function TabOverview({
           </Card>
         </div>
 
-        {/* Right column: Loan Details */}
+        {/* Right column: Loan Details + Deal Controls */}
+        <div className="flex flex-col gap-5">
         <Card>
           <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-[22px] flex items-center gap-2">
@@ -851,7 +858,7 @@ export default function TabOverview({
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditLoan(false)} data-testid="button-cancel-loan">Cancel</Button>
                 <Button size="sm" className="text-xs h-7" disabled={saveLoanMutation.isPending} data-testid="button-save-loan" onClick={() => {
                   const termVal = loanForm.loanTermMonths ? parseInt(loanForm.loanTermMonths.replace(/\D/g, ""), 10) : null;
-                  const staticLoanKeys = new Set(['loanAmount', 'interestRate', 'loanTermMonths', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'brokerName', 'prepaymentPenalty', 'holdbackAmount']);
+                  const staticLoanKeys = new Set(['loanAmount', 'interestRate', 'loanTermMonths', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'brokerName', 'prepaymentPenalty', 'holdbackAmount', 'targetCloseDate']);
                   const appDataUpdates: Record<string, any> = {};
                   Object.entries(loanForm).forEach(([k, v]) => {
                     if (!staticLoanKeys.has(k)) appDataUpdates[k] = v || null;
@@ -866,6 +873,7 @@ export default function TabOverview({
                     brokerName: loanForm.brokerName || null,
                     prepaymentPenalty: loanForm.prepaymentPenalty || null,
                     holdbackAmount: loanForm.holdbackAmount ? Number(loanForm.holdbackAmount) : null,
+                    targetCloseDate: loanForm.targetCloseDate || null,
                     ...(Object.keys(appDataUpdates).length > 0 ? { applicationData: appDataUpdates } : {}),
                   });
                 }}>
@@ -928,13 +936,12 @@ export default function TabOverview({
                 ) : (
                   <Field label="Holdback Amount" value="N/A" />
                 )}
+                <EditField label="Estimated Closing Date" value={loanForm.targetCloseDate} onChange={(v) => setLoanForm({ ...loanForm, targetCloseDate: v })} type="date" />
               </div>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Deal Controls - full width below */}
       <Card>
         <CardHeader className="pb-0">
           <CardTitle className="text-[22px] flex items-center gap-2">
@@ -1050,6 +1057,8 @@ export default function TabOverview({
           </div>
         </CardContent>
       </Card>
+      </div>
+      </div>
 
       <AlertDialog open={showProgramConfirm} onOpenChange={setShowProgramConfirm}>
         <AlertDialogContent>

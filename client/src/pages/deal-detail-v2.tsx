@@ -360,7 +360,22 @@ export default function DealDetailV2() {
                 Review Mode
               </div>
             )}
-            <Button variant="ghost" size="sm" className="h-9 px-4 text-[13px] font-medium" data-testid="button-drive">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-4 text-[13px] font-medium"
+              data-testid="button-drive"
+              disabled={!deal.googleDriveFolderUrl && !deal.googleDriveFolderId}
+              onClick={() => {
+                const driveUrl = deal.googleDriveFolderUrl
+                  || (deal.googleDriveFolderId ? `https://drive.google.com/drive/folders/${deal.googleDriveFolderId}` : null);
+                if (driveUrl) {
+                  window.open(driveUrl, "_blank", "noopener,noreferrer");
+                } else {
+                  toast({ title: "No Drive Folder", description: "This deal does not have a linked Google Drive folder.", variant: "destructive" });
+                }
+              }}
+            >
               <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Drive
             </Button>
             <Button

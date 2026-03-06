@@ -9047,7 +9047,7 @@ export async function registerRoutes(
         role: users.role,
       })
         .from(users)
-        .where(inArray(users.role, ['admin', 'staff', 'super_admin']));
+        .where(inArray(users.role, ['admin', 'staff', 'super_admin', 'processor']));
       
       res.json({ teamMembers });
     } catch (error) {
