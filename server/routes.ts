@@ -2910,11 +2910,15 @@ export async function registerRoutes(
         }
       }
 
-      const projectsWithStats = projectsList.map(project => ({
-        ...project,
-        completedTasks: taskStatsMap.get(project.id)?.completed || 0,
-        totalTasks: taskStatsMap.get(project.id)?.total || 0,
-      }));
+      const projectsWithStats = projectsList.map(project => {
+        const serialized: Record<string, any> = {};
+        for (const [k, v] of Object.entries(project)) {
+          serialized[k] = v instanceof Date ? v.toISOString() : v;
+        }
+        serialized.completedTasks = taskStatsMap.get(project.id)?.completed || 0;
+        serialized.totalTasks = taskStatsMap.get(project.id)?.total || 0;
+        return serialized;
+      });
 
       res.json({ projects: projectsWithStats });
     } catch (error) {
