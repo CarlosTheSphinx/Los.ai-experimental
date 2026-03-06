@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, FolderOpen, RefreshCw, ExternalLink,
   LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles,
-  MoreHorizontal, DollarSign,
+  DollarSign,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -529,14 +529,14 @@ export default function DealDetailV2() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[13px] text-muted-foreground font-medium" data-testid="text-deal-number">
-                  {deal.dealNumber || `Deal #${deal.id}`}
+                  {deal.loanNumber || deal.dealNumber || `Deal #${deal.id}`}
                 </span>
                 <StatusBadge
                   variant={(deal.projectStatus || "active") === "active" ? "active" : (deal.projectStatus || "active") === "closed" ? "closed" : "pending"}
                   label={deal.projectStatus || "Active"}
                 />
                 {(deal.programName || deal.loanType) && (
-                  <StatusBadge variant="pending" label={deal.programName || deal.loanType} />
+                  <StatusBadge variant="info" label={deal.programName || deal.loanType} />
                 )}
               </div>
               <h1 className="text-xl font-bold leading-tight" data-testid="text-deal-title">
@@ -596,10 +596,6 @@ export default function DealDetailV2() {
                 <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               )}
               {pipelineRunning ? "Processing..." : "Auto Process"}
-            </Button>
-            
-            <Button variant="ghost" size="icon" className="h-9 w-9" data-testid="button-more-actions">
-              <MoreHorizontal className="h-4 w-4" />
             </Button>
           </div>
         </div>
