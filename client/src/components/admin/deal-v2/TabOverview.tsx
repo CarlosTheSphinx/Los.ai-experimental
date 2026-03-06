@@ -121,6 +121,45 @@ function SelectField({ label, value, onChange, options }: { label: string; value
   );
 }
 
+function DynamicEditField({ field, value, onChange }: { field: QuoteFormField; value: string; onChange: (v: string) => void }) {
+  const testId = `input-edit-${field.label.toLowerCase().replace(/\s+/g, "-")}`;
+  if (field.fieldType === 'select' && field.options?.length) {
+    return (
+      <div>
+        <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{field.label}</span>
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="h-8 text-[16px] mt-0.5" data-testid={testId}>
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.map((o) => (
+              <SelectItem key={o} value={o}>{o}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+  if (field.fieldType === 'yes_no' || field.fieldType === 'radio') {
+    return (
+      <div>
+        <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{field.label}</span>
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="h-8 text-[16px] mt-0.5" data-testid={testId}>
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="yes">Yes</SelectItem>
+            <SelectItem value="no">No</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+  const inputType = (field.fieldType === 'currency' || field.fieldType === 'percentage' || field.fieldType === 'number') ? 'number' : field.fieldType === 'email' ? 'email' : field.fieldType === 'phone' ? 'tel' : 'text';
+  return <EditField label={field.label} value={value} onChange={onChange} type={inputType} />;
+}
+
 export default function TabOverview({
   deal,
   properties,
@@ -500,31 +539,54 @@ export default function TabOverview({
   const borrowerFields = buildBorrowerFields();
 
   const startEditLoan = () => {
-    setLoanForm({
+    const form: Record<string, string> = {
       loanAmount: String(loanAmount || ""),
       interestRate: rateNum,
       ysp: String(yspValue ?? ""),
       lenderOriginationPoints: String(lenderPts ?? ""),
       brokerOriginationPoints: String(brokerPts ?? ""),
       brokerName: brokerNameVal,
-      loanTermMonths: String(termMonths || ""),
+      loanTermMonths: (() => {
+        const raw = String(termMonths || "");
+        const digits = raw.replace(/\D/g, "");
+        return digits || "";
+      })(),
       prepaymentPenalty: prepayPenalty || "",
       holdbackAmount: String(holdbackAmt ?? ""),
-    });
+    };
+    if (hasProgram) {
+      const programLoanFields = getFieldsByGroup('loan_details');
+      programLoanFields
+        .filter(f => !LOCKED_LOAN_FIELD_KEYS.has(f.fieldKey))
+        .forEach(f => {
+          form[f.fieldKey] = String(getFieldValue(f.fieldKey) ?? "");
+        });
+    }
+    setLoanForm(form);
     setEditLoan(true);
   };
 
   const startEditBorrower = () => {
-    setBorrowerForm({
+    const form: Record<string, string> = {
       fullName: deal.borrowerName || `${deal.customerFirstName || ""} ${deal.customerLastName || ""}`.trim(),
       email: deal.borrowerEmail || deal.customerEmail || "",
       phone: deal.borrowerPhone || deal.customerPhone || "",
-    });
+    };
+    if (hasProgram) {
+      const programBorrowerFields = getFieldsByGroup('borrower_details');
+      const baseKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address', 'fullName']);
+      programBorrowerFields
+        .filter(f => !baseKeys.has(f.fieldKey))
+        .forEach(f => {
+          form[f.fieldKey] = String(getFieldValue(f.fieldKey) ?? "");
+        });
+    }
+    setBorrowerForm(form);
     setEditBorrower(true);
   };
 
   const startEditProperty = () => {
-    setPropForm({
+    const form: Record<string, string> = {
       address: primaryProp?.address || deal.propertyAddress || "",
       city: primaryProp?.city || "",
       state: primaryProp?.state || "",
@@ -534,7 +596,17 @@ export default function TabOverview({
       annualTaxes: String(primaryProp?.annualTaxes || ""),
       annualInsurance: String(primaryProp?.annualInsurance || ""),
       estimatedValue: String(primaryProp?.estimatedValue || ""),
-    });
+    };
+    if (hasProgram) {
+      const programPropertyFields = getFieldsByGroup('property_details');
+      const baseKeys = new Set(['address', 'city', 'state', 'cityState', 'propertyType', 'units', 'monthlyRent', 'annualTaxes', 'annualInsurance', 'estimatedValue', 'grossMonthlyRent', 'propertyUnits', 'propertyValue']);
+      programPropertyFields
+        .filter(f => !baseKeys.has(f.fieldKey))
+        .forEach(f => {
+          form[f.fieldKey] = String(getFieldValue(f.fieldKey) ?? "");
+        });
+    }
+    setPropForm(form);
     setEditProperty(true);
   };
 
@@ -614,11 +686,19 @@ export default function TabOverview({
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditBorrower(false)} data-testid="button-cancel-borrower">Cancel</Button>
                   <Button size="sm" className="text-xs h-7" disabled={saveBorrowerMutation.isPending} data-testid="button-save-borrower" onClick={() => {
+                    const staticFields = ['fullName', 'email', 'phone'];
+                    const appDataUpdates: Record<string, any> = {};
+                    Object.entries(borrowerForm).forEach(([k, v]) => {
+                      if (!staticFields.includes(k)) appDataUpdates[k] = v || null;
+                    });
                     saveBorrowerMutation.mutate({
                       borrowerName: borrowerForm.fullName,
                       borrowerEmail: borrowerForm.email,
                       borrowerPhone: borrowerForm.phone,
                     });
+                    if (Object.keys(appDataUpdates).length > 0) {
+                      saveLoanMutation.mutate({ applicationData: appDataUpdates });
+                    }
                   }}>
                     {saveBorrowerMutation.isPending ? "Saving..." : "Save"}
                   </Button>
@@ -638,6 +718,20 @@ export default function TabOverview({
                   <EditField label="Full Name" value={borrowerForm.fullName} onChange={(v) => setBorrowerForm({ ...borrowerForm, fullName: v })} />
                   <EditField label="Email" value={borrowerForm.email} onChange={(v) => setBorrowerForm({ ...borrowerForm, email: v })} type="email" />
                   <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: formatPhoneNumber(v) })} type="tel" />
+                  {hasProgram && (() => {
+                    const programBorrowerFields = getFieldsByGroup('borrower_details');
+                    const baseKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address', 'fullName']);
+                    return programBorrowerFields
+                      .filter(f => !baseKeys.has(f.fieldKey))
+                      .map(f => (
+                        <DynamicEditField
+                          key={f.fieldKey}
+                          field={f}
+                          value={borrowerForm[f.fieldKey] || ""}
+                          onChange={(v) => setBorrowerForm({ ...borrowerForm, [f.fieldKey]: v })}
+                        />
+                      ));
+                  })()}
                 </div>
               )}
             </CardContent>
@@ -664,6 +758,11 @@ export default function TabOverview({
                   <>
                     <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditProperty(false)} data-testid="button-cancel-property">Cancel</Button>
                     <Button size="sm" className="text-xs h-7" disabled={savePropertyMutation.isPending} data-testid="button-save-property" onClick={() => {
+                      const staticPropKeys = new Set(['address', 'city', 'state', 'propertyType', 'units', 'monthlyRent', 'annualTaxes', 'annualInsurance', 'estimatedValue']);
+                      const appDataUpdates: Record<string, any> = {};
+                      Object.entries(propForm).forEach(([k, v]) => {
+                        if (!staticPropKeys.has(k)) appDataUpdates[k] = v || null;
+                      });
                       savePropertyMutation.mutate({
                         address: propForm.address,
                         city: propForm.city,
@@ -675,6 +774,9 @@ export default function TabOverview({
                         annualInsurance: propForm.annualInsurance ? Number(propForm.annualInsurance) : null,
                         estimatedValue: propForm.estimatedValue ? Number(propForm.estimatedValue) : null,
                       });
+                      if (Object.keys(appDataUpdates).length > 0) {
+                        saveLoanMutation.mutate({ applicationData: appDataUpdates });
+                      }
                     }}>
                       {savePropertyMutation.isPending ? "Saving..." : "Save"}
                     </Button>
@@ -697,12 +799,36 @@ export default function TabOverview({
                     <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
                     <EditField label="State" value={propForm.state} onChange={(v) => setPropForm({ ...propForm, state: v })} />
                   </div>
-                  <EditField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
-                  <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
-                  <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
-                  <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
-                  <EditField label="Annual Insurance" value={propForm.annualInsurance} onChange={(v) => setPropForm({ ...propForm, annualInsurance: v })} type="number" />
-                  <EditField label="Estimated Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
+                  {!hasProgram ? (
+                    <>
+                      <EditField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
+                      <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
+                      <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
+                      <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
+                      <EditField label="Annual Insurance" value={propForm.annualInsurance} onChange={(v) => setPropForm({ ...propForm, annualInsurance: v })} type="number" />
+                      <EditField label="Estimated Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
+                    </>
+                  ) : (() => {
+                    const programPropertyFields = getFieldsByGroup('property_details');
+                    const baseKeys = new Set(['address', 'city', 'state', 'cityState']);
+                    return programPropertyFields
+                      .filter(f => !baseKeys.has(f.fieldKey))
+                      .map(f => {
+                        const mapKey = f.fieldKey === 'grossMonthlyRent' ? 'monthlyRent'
+                          : f.fieldKey === 'propertyUnits' ? 'units'
+                          : f.fieldKey === 'propertyValue' ? 'estimatedValue'
+                          : f.fieldKey;
+                        const formKey = propForm[f.fieldKey] !== undefined ? f.fieldKey : mapKey;
+                        return (
+                          <DynamicEditField
+                            key={f.fieldKey}
+                            field={f}
+                            value={propForm[formKey] || ""}
+                            onChange={(v) => setPropForm({ ...propForm, [formKey]: v })}
+                          />
+                        );
+                      });
+                  })()}
                 </div>
               )}
             </CardContent>
@@ -724,16 +850,23 @@ export default function TabOverview({
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditLoan(false)} data-testid="button-cancel-loan">Cancel</Button>
                 <Button size="sm" className="text-xs h-7" disabled={saveLoanMutation.isPending} data-testid="button-save-loan" onClick={() => {
+                  const termVal = loanForm.loanTermMonths ? parseInt(loanForm.loanTermMonths.replace(/\D/g, ""), 10) : null;
+                  const staticLoanKeys = new Set(['loanAmount', 'interestRate', 'loanTermMonths', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'brokerName', 'prepaymentPenalty', 'holdbackAmount']);
+                  const appDataUpdates: Record<string, any> = {};
+                  Object.entries(loanForm).forEach(([k, v]) => {
+                    if (!staticLoanKeys.has(k)) appDataUpdates[k] = v || null;
+                  });
                   saveLoanMutation.mutate({
                     loanAmount: loanForm.loanAmount ? Number(loanForm.loanAmount) : null,
                     interestRate: loanForm.interestRate ? Number(loanForm.interestRate) : null,
-                    loanTermMonths: loanForm.loanTermMonths || null,
+                    loanTermMonths: !isNaN(termVal as number) ? termVal : null,
                     ysp: loanForm.ysp ? Number(loanForm.ysp) : null,
                     lenderOriginationPoints: loanForm.lenderOriginationPoints ? Number(loanForm.lenderOriginationPoints) : null,
                     brokerOriginationPoints: loanForm.brokerOriginationPoints ? Number(loanForm.brokerOriginationPoints) : null,
                     brokerName: loanForm.brokerName || null,
                     prepaymentPenalty: loanForm.prepaymentPenalty || null,
                     holdbackAmount: loanForm.holdbackAmount ? Number(loanForm.holdbackAmount) : null,
+                    ...(Object.keys(appDataUpdates).length > 0 ? { applicationData: appDataUpdates } : {}),
                   });
                 }}>
                   {saveLoanMutation.isPending ? "Saving..." : "Save"}
@@ -751,7 +884,21 @@ export default function TabOverview({
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                <EditField label="Loan Amount" value={loanForm.loanAmount} onChange={(v) => setLoanForm({ ...loanForm, loanAmount: v })} type="number" />
+                {hasProgram ? (() => {
+                  const programLoanFields = getFieldsByGroup('loan_details');
+                  return programLoanFields
+                    .filter(f => !LOCKED_LOAN_FIELD_KEYS.has(f.fieldKey))
+                    .map(f => (
+                      <DynamicEditField
+                        key={f.fieldKey}
+                        field={f}
+                        value={loanForm[f.fieldKey] || ""}
+                        onChange={(v) => setLoanForm({ ...loanForm, [f.fieldKey]: v })}
+                      />
+                    ));
+                })() : (
+                  <EditField label="Loan Amount" value={loanForm.loanAmount} onChange={(v) => setLoanForm({ ...loanForm, loanAmount: v })} type="number" />
+                )}
                 <Field label="LTV" value={
                   loanForm.loanAmount && propertyValue && Number(propertyValue) > 0
                     ? `${((Number(loanForm.loanAmount) / Number(propertyValue)) * 100).toFixed(1)}%`

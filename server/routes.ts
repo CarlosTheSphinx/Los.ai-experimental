@@ -5512,6 +5512,20 @@ export async function registerRoutes(
         }
       }
 
+      const incomingAppData = req.body.applicationData;
+      if (incomingAppData && typeof incomingAppData === 'object') {
+        const [existing] = await db.select({ metadata: projects.metadata })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        const existingMeta = (existing?.metadata as Record<string, any>) || {};
+        const existingAppData = existingMeta.applicationData || {};
+        updateData.metadata = {
+          ...existingMeta,
+          applicationData: { ...existingAppData, ...incomingAppData },
+        };
+      }
+
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
       }
