@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useRef } from "react";
+import { formatPhoneNumber } from "@/lib/validation";
 import {
   CheckCircle2,
   Circle,
@@ -556,7 +557,7 @@ function FormTaskInline({
                     type={field.fieldType === "email" ? "email" : field.fieldType === "phone" ? "tel" : "text"}
                     placeholder={field.placeholder || ""}
                     value={formValues[field.fieldKey] || ""}
-                    onChange={e => setFormValues(prev => ({ ...prev, [field.fieldKey]: e.target.value }))}
+                    onChange={e => setFormValues(prev => ({ ...prev, [field.fieldKey]: field.fieldType === "phone" ? formatPhoneNumber(e.target.value) : e.target.value }))}
                     className="mt-1"
                     data-testid={`input-form-${field.fieldKey}-${item.id}`}
                   />

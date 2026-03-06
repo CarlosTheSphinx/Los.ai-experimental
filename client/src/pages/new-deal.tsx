@@ -439,7 +439,7 @@ export default function NewDeal() {
           <Label>{label}</Label>
           <Input
             value={formData[key] || ''}
-            onChange={(e) => updateField(key, e.target.value)}
+            onChange={(e) => updateField(key, formatPhoneNumber(e.target.value))}
             placeholder="(555) 555-5555"
             data-testid={`input-${key}`}
           />
@@ -607,7 +607,7 @@ export default function NewDeal() {
                   <Input
                     id="phone"
                     value={formData.phone || ''}
-                    onChange={(e) => updateField("phone", e.target.value)}
+                    onChange={(e) => updateField("phone", formatPhoneNumber(e.target.value))}
                     placeholder="(555) 555-5555"
                     data-testid="input-phone"
                   />

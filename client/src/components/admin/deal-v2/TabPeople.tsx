@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { formatPhoneNumber } from "@/lib/validation";
 
 const AVATAR_COLORS = [
   "bg-blue-500",
@@ -382,7 +383,7 @@ export default function TabPeople({ deal }: { deal: any }) {
                     className="h-8 text-[14px] mt-1"
                     placeholder="(555) 123-4567"
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => setForm({ ...form, phone: formatPhoneNumber(e.target.value) })}
                     data-testid="input-third-party-phone"
                   />
                 </div>

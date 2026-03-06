@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatPhoneNumber } from "@/lib/validation";
 
 type QuoteFormField = {
   fieldKey: string;
@@ -636,7 +637,7 @@ export default function TabOverview({
                 <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
                   <EditField label="Full Name" value={borrowerForm.fullName} onChange={(v) => setBorrowerForm({ ...borrowerForm, fullName: v })} />
                   <EditField label="Email" value={borrowerForm.email} onChange={(v) => setBorrowerForm({ ...borrowerForm, email: v })} type="email" />
-                  <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: v })} type="tel" />
+                  <EditField label="Phone" value={borrowerForm.phone} onChange={(v) => setBorrowerForm({ ...borrowerForm, phone: formatPhoneNumber(v) })} type="tel" />
                 </div>
               )}
             </CardContent>

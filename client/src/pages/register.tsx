@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Building2, Handshake, User, Check, Zap, Shield, Clock } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
+import { formatPhoneNumber } from '@/lib/validation';
 
 const registerSchema = z.object({
   userType: z.enum(['broker', 'borrower', 'lender'], { required_error: 'Please select your account type' }),
@@ -289,6 +290,7 @@ export default function RegisterPage() {
                             data-testid="input-phone"
                             className="h-11"
                             {...field}
+                            onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
                           />
                         </FormControl>
                         <FormMessage />

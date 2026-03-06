@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { formatPhoneNumber } from "@/lib/validation";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
 import { PortalSidebar, type PortalView } from "@/components/portal/PortalSidebar";
@@ -773,7 +774,7 @@ export default function BorrowerPortal() {
                           <div><Label className="text-xs">First Name</Label><Input value={profileForm.firstName || ''} onChange={(e) => setProfileForm({...profileForm, firstName: e.target.value})} /></div>
                           <div><Label className="text-xs">Last Name</Label><Input value={profileForm.lastName || ''} onChange={(e) => setProfileForm({...profileForm, lastName: e.target.value})} /></div>
                           <div><Label className="text-xs">Email</Label><Input value={profileForm.email || ''} disabled className="bg-muted" /></div>
-                          <div><Label className="text-xs">Phone</Label><Input value={profileForm.phone || ''} onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})} /></div>
+                          <div><Label className="text-xs">Phone</Label><Input value={profileForm.phone || ''} onChange={(e) => setProfileForm({...profileForm, phone: formatPhoneNumber(e.target.value)})} /></div>
                           <div><Label className="text-xs">Date of Birth</Label><Input type="date" value={profileForm.dateOfBirth || ''} onChange={(e) => setProfileForm({...profileForm, dateOfBirth: e.target.value})} /></div>
                         </div>
                       </div>
