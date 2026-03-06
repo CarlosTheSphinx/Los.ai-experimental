@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       refetch();
     },
+    onError: () => {},
   });
 
   const registerMutation = useMutation({

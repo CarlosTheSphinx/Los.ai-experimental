@@ -22,6 +22,8 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+let _persistedLoginError: string | null = null;
+
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -29,7 +31,12 @@ export default function LoginPage() {
   const { branding } = useBranding();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(_persistedLoginError);
+
+  const clearError = () => {
+    _persistedLoginError = null;
+    setLoginError(null);
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -58,12 +65,14 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
-    setLoginError(null);
+    clearError();
     try {
       await login(data.email, data.password);
       setLocation('/');
     } catch (error: any) {
-      setLoginError(error?.message || 'Invalid email or password');
+      const msg = error?.message || 'Invalid email or password';
+      _persistedLoginError = msg;
+      setLoginError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -126,7 +135,7 @@ export default function LoginPage() {
                         className="h-12 focus:ring-2 focus:ring-primary/20 transition-all duration-200"
                         data-testid="input-email"
                         {...field}
-                        onChange={(e) => { setLoginError(null); field.onChange(e); }}
+                        onChange={(e) => { clearError(); field.onChange(e); }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -151,7 +160,7 @@ export default function LoginPage() {
                         className="h-12 focus:ring-2 focus:ring-primary/20 transition-all duration-200"
                         data-testid="input-password"
                         {...field}
-                        onChange={(e) => { setLoginError(null); field.onChange(e); }}
+                        onChange={(e) => { clearError(); field.onChange(e); }}
                       />
                     </FormControl>
                     <FormMessage />
