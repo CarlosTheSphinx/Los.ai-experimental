@@ -533,8 +533,8 @@ export default function DealDetailV2() {
                   {deal.dealNumber || `Deal #${deal.id}`}
                 </span>
                 <StatusBadge
-                  variant={deal.status === "active" ? "active" : deal.status === "closed" ? "closed" : "pending"}
-                  label={deal.status || "Unknown"}
+                  variant={(deal.projectStatus || "active") === "active" ? "active" : (deal.projectStatus || "active") === "closed" ? "closed" : "pending"}
+                  label={deal.projectStatus || "Active"}
                 />
                 {(deal.programName || deal.loanType) && (
                   <StatusBadge variant="pending" label={deal.programName || deal.loanType} />
