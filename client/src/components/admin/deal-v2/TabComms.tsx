@@ -62,7 +62,6 @@ export default function TabComms({
   const isAdmin = user?.role && ["admin", "staff", "super_admin"].includes(user.role);
   const [showAddNote, setShowAddNote] = useState(false);
   const [noteContent, setNoteContent] = useState("");
-  const [showMessages, setShowMessages] = useState(false);
   const [newMessage, setNewMessage] = useState("");
 
   const apiBase = isAdmin ? `/api/admin/deals` : `/api/deals`;
@@ -190,175 +189,146 @@ export default function TabComms({
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const allActivityAndNotes = [
-    ...activityEntries.map(a => ({
-      id: `activity-${a.id}`,
-      type: "activity" as const,
-      content: a.activityDescription || a.description,
-      createdAt: a.createdAt,
-      author: a.userName || a.userEmail || null,
-      dotColor: getActivityDotColor(a.activityType),
-    })),
-    ...notes.map(n => ({
-      id: `note-${n.id}`,
-      type: "note" as const,
-      content: `${n.authorFullName || "User"} added note: "${n.content}"`,
-      createdAt: n.createdAt,
-      author: n.authorFullName || n.authorEmail || null,
-      dotColor: "bg-orange-400",
-    })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-[17px] flex items-center gap-2">
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              Email Digests
-            </CardTitle>
-            <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-configure-digests">
-              <Settings className="h-3 w-3" />
-              Configure
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {digestEntries.length === 0 ? (
-              <div className="text-center py-6">
-                <Mail className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No email digests sent yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Digests will appear here when emails are sent to the borrower</p>
-              </div>
-            ) : (
-              <div className="space-y-0">
-                {digestEntries.slice(0, 10).map((entry, idx) => {
-                  const desc = entry.activityDescription || entry.description || "";
-                  const parts = desc.split(" — ");
-                  const title = parts[0] || desc;
-                  const subtitle = parts[1] || "";
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* Row 1, Left: Email Digests */}
+      <Card className="flex flex-col min-h-[350px]">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-[17px] flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            Email Digests
+          </CardTitle>
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-configure-digests">
+            <Settings className="h-3 w-3" />
+            Configure
+          </Button>
+        </CardHeader>
+        <CardContent className="flex-1">
+          {digestEntries.length === 0 ? (
+            <div className="text-center py-6">
+              <Mail className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">No email digests sent yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Digests will appear here when emails are sent to the borrower</p>
+            </div>
+          ) : (
+            <div className="space-y-0 max-h-[280px] overflow-y-auto">
+              {digestEntries.slice(0, 10).map((entry, idx) => {
+                const desc = entry.activityDescription || entry.description || "";
+                const parts = desc.split(" — ");
+                const title = parts[0] || desc;
+                const subtitle = parts[1] || "";
 
-                  return (
-                    <div key={entry.id || idx} className="flex items-start gap-3 py-3 border-b last:border-0">
-                      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${getDigestDotColor(entry.activityType)}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[16px] font-semibold text-foreground leading-snug">{title}</p>
-                        <p className="text-[14px] text-muted-foreground mt-0.5">
-                          {formatDateTime(entry.createdAt)}
-                          {subtitle && ` — ${subtitle}`}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-[17px] flex items-center gap-2">
-              <StickyNote className="h-4 w-4 text-muted-foreground" />
-              Notes & Activity
-            </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1.5 h-7"
-              onClick={() => setShowAddNote(!showAddNote)}
-              data-testid="button-add-note"
-            >
-              <Plus className="h-3 w-3" />
-              Add Note
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {showAddNote && (
-              <div className="mb-4 p-3 bg-muted/50 rounded-lg space-y-2">
-                <Textarea
-                  placeholder="Write a note..."
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  className="text-[16px] min-h-[70px] resize-none bg-white"
-                  data-testid="input-note-content"
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => { setShowAddNote(false); setNoteContent(""); }}
-                    data-testid="button-cancel-note"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="text-xs h-7"
-                    disabled={!noteContent.trim() || addNoteMutation.isPending}
-                    onClick={() => addNoteMutation.mutate(noteContent)}
-                    data-testid="button-save-note"
-                  >
-                    {addNoteMutation.isPending ? "Saving..." : "Save Note"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {allActivityAndNotes.length === 0 ? (
-              <div className="text-center py-6">
-                <Activity className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No activity yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Activity will be logged as the deal progresses</p>
-              </div>
-            ) : (
-              <div className="space-y-0">
-                {allActivityAndNotes.slice(0, 10).map((entry, idx) => (
-                  <div key={entry.id} className="flex items-start gap-3 py-3 border-b last:border-0">
-                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${entry.dotColor}`} />
+                return (
+                  <div key={entry.id || idx} className="flex items-start gap-3 py-3 border-b last:border-0">
+                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${getDigestDotColor(entry.activityType)}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[16px] font-semibold text-foreground leading-snug">{entry.content}</p>
+                      <p className="text-[16px] font-semibold text-foreground leading-snug">{title}</p>
                       <p className="text-[14px] text-muted-foreground mt-0.5">
                         {formatDateTime(entry.createdAt)}
+                        {subtitle && ` — ${subtitle}`}
                       </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[17px] flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              Messages
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => setShowMessages(!showMessages)}
-              data-testid="button-toggle-messages"
-            >
-              {showMessages ? "Collapse" : "Show Messages"}
-            </Button>
-          </div>
+      {/* Row 1, Right: Notes */}
+      <Card className="flex flex-col min-h-[350px]">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-[17px] flex items-center gap-2">
+            <StickyNote className="h-4 w-4 text-muted-foreground" />
+            Notes
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5 h-7"
+            onClick={() => setShowAddNote(!showAddNote)}
+            data-testid="button-add-note"
+          >
+            <Plus className="h-3 w-3" />
+            Add Note
+          </Button>
         </CardHeader>
-        {showMessages && (
-          <CardContent className="space-y-3">
-            {messages.length === 0 && !currentThread ? (
-              <EmptyState
-                icon={MessageSquare}
-                title="No messages yet"
-                description="Start a conversation about this deal."
+        <CardContent className="flex-1">
+          {showAddNote && (
+            <div className="mb-4 p-3 bg-muted/50 rounded-lg space-y-2">
+              <Textarea
+                placeholder="Write a note..."
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+                className="text-[16px] min-h-[70px] resize-none bg-white"
+                data-testid="input-note-content"
               />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => { setShowAddNote(false); setNoteContent(""); }}
+                  data-testid="button-cancel-note"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="text-xs h-7"
+                  disabled={!noteContent.trim() || addNoteMutation.isPending}
+                  onClick={() => addNoteMutation.mutate(noteContent)}
+                  data-testid="button-save-note"
+                >
+                  {addNoteMutation.isPending ? "Saving..." : "Save Note"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {notes.length === 0 && !showAddNote ? (
+            <div className="text-center py-6">
+              <StickyNote className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">No notes yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Add notes to track important details about this deal</p>
+            </div>
+          ) : (
+            <div className="space-y-0 max-h-[280px] overflow-y-auto">
+              {notes.map((n: any) => (
+                <div key={n.id} className="flex items-start gap-3 py-3 border-b last:border-0">
+                  <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 bg-orange-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[16px] font-semibold text-foreground leading-snug">{n.content}</p>
+                    <p className="text-[14px] text-muted-foreground mt-0.5">
+                      {n.authorFullName || n.authorEmail || "User"} · {formatDateTime(n.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Row 2, Left: Messages */}
+      <Card className="flex flex-col min-h-[350px]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[17px] flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            Messages
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col">
+          <div className="flex-1 mb-3">
+            {messages.length === 0 && !currentThread ? (
+              <div className="text-center py-6">
+                <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No messages yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Start a conversation about this deal</p>
+              </div>
             ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
                 {messages.map((msg: any) => (
                   <div
                     key={msg.id}
@@ -383,33 +353,68 @@ export default function TabComms({
                 ))}
               </div>
             )}
+          </div>
 
-            <div className="flex gap-2">
-              <Textarea
-                placeholder="Type a message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                className="text-[16px] min-h-[60px] resize-none"
-                data-testid="input-message-content"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                className="self-end"
-                onClick={handleSend}
-                disabled={!newMessage.trim() || sendMessageMutation.isPending || createThreadMutation.isPending}
-                data-testid="button-send-message"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </Button>
+          <div className="flex gap-2">
+            <Textarea
+              placeholder="Type a message..."
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              className="text-[16px] min-h-[60px] resize-none"
+              data-testid="input-message-content"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="self-end"
+              onClick={handleSend}
+              disabled={!newMessage.trim() || sendMessageMutation.isPending || createThreadMutation.isPending}
+              data-testid="button-send-message"
+            >
+              <Send className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 2, Right: Activity */}
+      <Card className="flex flex-col min-h-[350px]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[17px] flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            Activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1">
+          {activityEntries.length === 0 ? (
+            <div className="text-center py-6">
+              <Activity className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">No activity yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Activity will be logged as the deal progresses</p>
             </div>
-          </CardContent>
-        )}
+          ) : (
+            <div className="space-y-0 max-h-[280px] overflow-y-auto">
+              {activityEntries.slice(0, 15).map((entry, idx) => (
+                <div key={entry.id || idx} className="flex items-start gap-3 py-3 border-b last:border-0">
+                  <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${getActivityDotColor(entry.activityType)}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[16px] font-semibold text-foreground leading-snug">
+                      {entry.activityDescription || entry.description}
+                    </p>
+                    <p className="text-[14px] text-muted-foreground mt-0.5">
+                      {formatDateTime(entry.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
