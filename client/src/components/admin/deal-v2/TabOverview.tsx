@@ -242,6 +242,7 @@ export default function TabOverview({
 
   const invalidateDeal = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
     queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
   };
 

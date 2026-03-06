@@ -3173,7 +3173,11 @@ export async function registerRoutes(
         );
       }
       
-      res.json({ project: updated });
+      const serialized: Record<string, any> = {};
+      for (const [k, v] of Object.entries(updated)) {
+        serialized[k] = v instanceof Date ? v.toISOString() : v;
+      }
+      res.json({ project: serialized });
     } catch (error) {
       console.error('Update project error:', error);
       res.status(500).json({ error: 'Failed to update project' });
@@ -5539,7 +5543,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      res.json({ project: updated });
+      const serialized: Record<string, any> = {};
+      for (const [k, v] of Object.entries(updated)) {
+        serialized[k] = v instanceof Date ? v.toISOString() : v;
+      }
+      res.json({ project: serialized });
     } catch (error) {
       console.error('Admin project update error:', error);
       res.status(500).json({ error: 'Failed to update project' });
@@ -6454,8 +6462,8 @@ export async function registerRoutes(
           projectStatus: p.status || 'active',
           currentStage: p.currentStage,
           progressPercentage: p.progressPercentage || 0,
-          createdAt: p.createdAt,
-          targetCloseDate: p.targetCloseDate,
+          createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+          targetCloseDate: p.targetCloseDate instanceof Date ? p.targetCloseDate.toISOString() : p.targetCloseDate,
           userName: p.userName,
           userEmail: p.userEmail,
           quoteId: p.quoteId,
@@ -6902,8 +6910,8 @@ export async function registerRoutes(
         projectStatus: project.status || 'active',
         currentStage: project.currentStage,
         progressPercentage: project.progressPercentage || 0,
-        createdAt: project.createdAt,
-        targetCloseDate: project.targetCloseDate,
+        createdAt: project.createdAt instanceof Date ? project.createdAt.toISOString() : project.createdAt,
+        targetCloseDate: project.targetCloseDate instanceof Date ? project.targetCloseDate.toISOString() : project.targetCloseDate,
         userName: project.userName,
         userEmail: project.userEmail,
         quoteId: project.quoteId,
