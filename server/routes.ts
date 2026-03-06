@@ -8082,6 +8082,9 @@ export async function registerRoutes(
       // Get the file and stream it
       const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
       
+      res.set('X-Frame-Options', 'SAMEORIGIN');
+      res.removeHeader('Content-Security-Policy');
+
       const safeDocName = doc.fileName ? doc.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/\\/g, '_').replace(/"/g, "'") : null;
       if (req.query.download === 'true' && safeDocName) {
         res.set('Content-Disposition', `attachment; filename="${safeDocName}"`);
@@ -8109,6 +8112,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'File not found' });
       }
       const objectFile = await objectStorageService.getObjectEntityFile(file.filePath);
+      res.set('X-Frame-Options', 'SAMEORIGIN');
+      res.removeHeader('Content-Security-Policy');
       const safeFileName = file.fileName ? file.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/\\/g, '_').replace(/"/g, "'") : null;
       if (req.query.download === 'true' && safeFileName) {
         res.set('Content-Disposition', `attachment; filename="${safeFileName}"`);
