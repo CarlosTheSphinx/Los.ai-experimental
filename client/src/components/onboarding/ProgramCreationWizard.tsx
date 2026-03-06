@@ -1583,7 +1583,7 @@ function ProgramDetailsStep({
 
       <div className="flex items-start gap-4">
         <div className="flex-1 space-y-1.5">
-          <Label className="text-[14px] underline decoration-muted-foreground/30">Program Name *</Label>
+          <Label className="text-[14px] underline decoration-muted-foreground/30">Program Name <span className="text-muted-foreground font-normal text-[12px]">(visible to Borrowers/Brokers)</span> *</Label>
           <Input
             className="h-11"
             placeholder="ex. 30-Year Rental Loan"
