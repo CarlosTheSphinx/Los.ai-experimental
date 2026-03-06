@@ -361,7 +361,7 @@ export default function DealDetailV2() {
               </div>
             )}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="h-9 px-4 text-[13px] font-medium"
               data-testid="button-drive"
