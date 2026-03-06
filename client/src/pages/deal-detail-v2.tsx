@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, FolderOpen, RefreshCw, ExternalLink,
   LayoutDashboard, FileText, CheckSquare, Users, MessageCircle, Sparkles,
-  MoreHorizontal, DollarSign, Activity,
+  MoreHorizontal, DollarSign,
   Loader2, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -66,9 +66,9 @@ function ControlCard({
 }
 
 function DealStrip({
-  deal, dealId, documents, tasks, isAdmin, stages: programStages,
+  deal, dealId, isAdmin, stages: programStages,
 }: {
-  deal: any; dealId: string; documents: any[]; tasks: any[]; isAdmin: boolean; stages?: any[];
+  deal: any; dealId: string; isAdmin: boolean; stages?: any[];
 }) {
   const { toast } = useToast();
   const projectId = deal.projectId || deal.id;
@@ -180,17 +180,10 @@ function DealStrip({
   const loanAmount = deal.loanAmount || deal.loanData?.loanAmount;
   const purpose = deal.loanPurpose || deal.loanData?.loanPurpose || deal.loanType;
   const purposeLabel = purpose ? purpose.charAt(0).toUpperCase() + purpose.slice(1).replace(/_/g, " ") : undefined;
-  const progress = deal.progressPercentage || deal.completionPercentage || 0;
-  const totalDocs = deal.totalDocuments || documents.length || 0;
-  const completedDocs = deal.completedDocuments || documents.filter((d: any) => d.status === "approved" || d.status === "ai_reviewed").length || 0;
-  const totalTasks = deal.totalTasks || tasks.length || 0;
-  const completedTasks = deal.completedTasks || tasks.filter((t: any) => t.status === "completed").length || 0;
-  const totalItems = totalDocs + totalTasks;
-  const completedItems = completedDocs + completedTasks;
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
         <ControlCard label="Deal Status">
           <Select
@@ -239,7 +232,6 @@ function DealStrip({
             </SelectContent>
           </Select>
         </ControlCard>
-        <KpiCard icon={Activity} label="Progress" value={`${progress}%`} subtitle={totalItems > 0 ? `${completedItems} of ${totalItems} items` : undefined} valueColor={progress >= 70 ? "text-green-600" : progress >= 40 ? "text-blue-600" : ""} />
       </div>
 
       <AlertDialog open={showProgramConfirm} onOpenChange={setShowProgramConfirm}>
@@ -584,7 +576,18 @@ export default function DealDetailV2() {
         </div>
 
         {/* Stage Progress Bar */}
-        <StageProgressBar stages={stages} />
+        <StageProgressBar
+          stages={stages}
+          progressPercent={deal.progressPercentage || deal.completionPercentage || 0}
+          completedItems={
+            (deal.completedDocuments || documents.filter((d: any) => d.status === "approved" || d.status === "ai_reviewed").length || 0) +
+            (deal.completedTasks || tasks.filter((t: any) => t.status === "completed").length || 0)
+          }
+          totalItems={
+            (deal.totalDocuments || documents.length || 0) +
+            (deal.totalTasks || tasks.length || 0)
+          }
+        />
 
         {pipelineRunning && (
           <div className="mt-3 space-y-1.5" data-testid="pipeline-progress">
@@ -607,7 +610,7 @@ export default function DealDetailV2() {
 
       {/* Deal Strip + Tabs */}
       <div className="px-6 py-5">
-        <DealStrip deal={deal} dealId={dealId!} documents={documents} tasks={tasks} isAdmin={!!isAdmin} stages={dealData?.stages} />
+        <DealStrip deal={deal} dealId={dealId!} isAdmin={!!isAdmin} stages={dealData?.stages} />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="border rounded-lg mt-5 mb-5 bg-card">

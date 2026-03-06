@@ -12,18 +12,21 @@ interface Stage {
 interface StageProgressBarProps {
   stages: Stage[];
   className?: string;
+  progressPercent?: number;
+  completedItems?: number;
+  totalItems?: number;
 }
 
-export function StageProgressBar({ stages, className }: StageProgressBarProps) {
+export function StageProgressBar({ stages, className, progressPercent: externalPercent, completedItems, totalItems }: StageProgressBarProps) {
   const completedCount = stages.filter((s) => s.completed).length;
-  const currentIndex = stages.findIndex((s) => s.current);
-  const progressPercent = stages.length > 0 ? Math.round((completedCount / stages.length) * 100) : 0;
+  const progressPercent = externalPercent ?? (stages.length > 0 ? Math.round((completedCount / stages.length) * 100) : 0);
+  const hasItemsInfo = typeof completedItems === "number" && typeof totalItems === "number";
 
   return (
     <div className={cn("bg-card border rounded-[10px] px-5 py-2.5", className)}>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[18px] font-medium text-muted-foreground">
-          Stage {currentIndex + 1} of {stages.length}
+          {hasItemsInfo ? `${completedItems} of ${totalItems} items` : `Stage ${stages.findIndex((s) => s.current) + 1} of ${stages.length}`}
         </span>
         <span className="text-[18px] font-medium text-muted-foreground">{progressPercent}% complete</span>
       </div>
