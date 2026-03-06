@@ -465,6 +465,23 @@ export default function TabAIInsights({
     enabled: !!dealId,
   });
 
+  const invalidateDocData = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents", "ai-reviews"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
+  };
+
+  const approveAllMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/admin/deals/${dealId}/documents/approve-all`);
+    },
+    onSuccess: () => {
+      invalidateDocData();
+      toast({ title: "All documents approved" });
+    },
+    onError: () => toast({ title: "Failed to approve documents", variant: "destructive" }),
+  });
+
   const isLoading = docsLoading || insightsLoading || commsLoading;
 
   if (isLoading) {
@@ -492,23 +509,6 @@ export default function TabAIInsights({
   const recommendations = insightsList.filter((i) => i.severity !== "warning" && i.type !== "risk");
 
   const hasAnyContent = reviewedDocs.length > 0 || insightsList.length > 0 || commsList.length > 0;
-
-  const invalidateDocData = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents", "ai-reviews"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
-  };
-
-  const approveAllMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", `/api/admin/deals/${dealId}/documents/approve-all`);
-    },
-    onSuccess: () => {
-      invalidateDocData();
-      toast({ title: "All documents approved" });
-    },
-    onError: () => toast({ title: "Failed to approve documents", variant: "destructive" }),
-  });
 
   if (!hasAnyContent) {
     return (
