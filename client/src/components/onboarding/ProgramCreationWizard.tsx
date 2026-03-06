@@ -3,6 +3,23 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { PricingConfiguration } from '@/components/onboarding/PricingConfiguration';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1090,8 +1107,11 @@ function CreditPolicyStep({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
   const [editingRuleData, setEditingRuleData] = useState<{ ruleTitle: string; ruleDescription: string }>({ ruleTitle: '', ruleDescription: '' });
+  const [justCreatedPolicy, setJustCreatedPolicy] = useState<{ id: number; name: string; ruleCount: number } | null>(null);
 
-  const selectedPolicy = selectedId ? creditPolicies.find((p: any) => p.id === selectedId) : null;
+  const selectedPolicy = selectedId
+    ? creditPolicies.find((p: any) => p.id === selectedId) || (justCreatedPolicy && justCreatedPolicy.id === selectedId ? { id: justCreatedPolicy.id, name: justCreatedPolicy.name, ruleCount: justCreatedPolicy.ruleCount } : null)
+    : null;
 
   const { data: policyDetails } = useQuery<any>({
     queryKey: [`/api/admin/credit-policies/${selectedId}`],
@@ -1109,6 +1129,7 @@ function CreditPolicyStep({
     },
     onSuccess: async (res) => {
       const data = await res.json();
+      setJustCreatedPolicy({ id: data.id, name: newPolicyName, ruleCount: extractedRules.length });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/credit-policies'] });
       onSelect(data.id);
       setShowCreateForm(false);
@@ -1557,6 +1578,7 @@ function ProgramDetailsStep({
         <p className="text-[16px] text-muted-foreground mt-0.5">
           Configure the core lending parameters for this program.
         </p>
+        <p className="text-[13px] text-muted-foreground/70 mt-2">Fields marked with * are required.</p>
       </div>
 
       <div className="flex items-start gap-4">
@@ -2380,6 +2402,82 @@ const DOC_CATEGORY_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-600',
 };
 
+function SortableDocRow({
+  id,
+  doc,
+  globalIdx,
+  stages,
+  updateDocument,
+  removeDocument,
+}: {
+  id: number;
+  doc: DocEntry;
+  globalIdx: number;
+  stages: StageEntry[];
+  updateDocument: (i: number, field: keyof DocEntry, value: any) => void;
+  removeDocument: (i: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 group transition-colors"
+      data-testid={`doc-row-${globalIdx}`}
+    >
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none p-0.5 text-muted-foreground/40 hover:text-muted-foreground flex-shrink-0" data-testid={`drag-doc-${globalIdx}`}>
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <FileText className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+      <input
+        className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+        value={doc.documentName}
+        onChange={(e) => updateDocument(globalIdx, 'documentName', e.target.value)}
+        placeholder="Document name"
+        data-testid={`input-doc-name-${globalIdx}`}
+      />
+      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", DOC_CATEGORY_COLORS[doc.documentCategory] || DOC_CATEGORY_COLORS.other)}>
+        {DOC_CATEGORY_LABELS[doc.documentCategory] || 'Other'}
+      </span>
+      <Select
+        value={doc.isRequired ? 'required' : 'optional'}
+        onValueChange={(v) => updateDocument(globalIdx, 'isRequired', v === 'required')}
+      >
+        <SelectTrigger className={cn("w-[100px] h-7 text-[12px]", doc.isRequired && "border-primary/30 text-primary")} data-testid={`select-doc-required-${globalIdx}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="required">Required</SelectItem>
+          <SelectItem value="optional">Optional</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select
+        value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
+        onValueChange={(v) => updateDocument(globalIdx, 'stepIndex', v === 'none' ? null : parseInt(v))}
+      >
+        <SelectTrigger className="h-7 text-[12px] w-[130px]" data-testid={`select-doc-stage-${globalIdx}`}>
+          <SelectValue placeholder="Assign stage" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Unassigned</SelectItem>
+          {stages.map((s, si) => (
+            <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <button
+        className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
+        onClick={() => removeDocument(globalIdx)}
+        data-testid={`button-remove-doc-${globalIdx}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function DocumentsStep({
   documents,
   setDocuments,
@@ -2442,60 +2540,36 @@ function DocumentsStep({
   const unassigned = documents.map((d, di) => ({ doc: d, idx: di })).filter((e) => e.doc.stepIndex === null);
   const requiredCount = documents.filter((d) => d.isRequired).length;
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDocDragEnd = (event: DragEndEvent, stageGroupIndices: number[]) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldLocalIdx = stageGroupIndices.indexOf(active.id as number);
+    const newLocalIdx = stageGroupIndices.indexOf(over.id as number);
+    if (oldLocalIdx === -1 || newLocalIdx === -1) return;
+    const itemsInGroup = stageGroupIndices.map(i => documents[i]);
+    const reorderedItems = arrayMove(itemsInGroup, oldLocalIdx, newLocalIdx);
+    const updated = [...documents];
+    stageGroupIndices.forEach((globalIdx, localIdx) => {
+      updated[globalIdx] = reorderedItems[localIdx];
+    });
+    setDocuments(updated);
+  };
+
   const renderDocRow = (doc: DocEntry, globalIdx: number) => (
-    <div
-      key={globalIdx}
-      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 group transition-colors"
-      data-testid={`doc-row-${globalIdx}`}
-    >
-      <FileText className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
-      <input
-        className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
-        value={doc.documentName}
-        onChange={(e) => updateDocument(globalIdx, 'documentName', e.target.value)}
-        placeholder="Document name"
-        data-testid={`input-doc-name-${globalIdx}`}
-      />
-      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", DOC_CATEGORY_COLORS[doc.documentCategory] || DOC_CATEGORY_COLORS.other)}>
-        {DOC_CATEGORY_LABELS[doc.documentCategory] || 'Other'}
-      </span>
-      <Select
-        value={doc.isRequired ? 'required' : 'optional'}
-        onValueChange={(v) => updateDocument(globalIdx, 'isRequired', v === 'required')}
-      >
-        <SelectTrigger
-          className={cn("w-[100px] h-7 text-[12px]", doc.isRequired && "border-primary/30 text-primary")}
-          data-testid={`select-doc-required-${globalIdx}`}
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="required">Required</SelectItem>
-          <SelectItem value="optional">Optional</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select
-        value={doc.stepIndex !== null ? doc.stepIndex.toString() : 'none'}
-        onValueChange={(v) => updateDocument(globalIdx, 'stepIndex', v === 'none' ? null : parseInt(v))}
-      >
-        <SelectTrigger className="h-7 text-[12px] w-[130px]" data-testid={`select-doc-stage-${globalIdx}`}>
-          <SelectValue placeholder="Assign stage" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="none">Unassigned</SelectItem>
-          {stages.map((s, si) => (
-            <SelectItem key={si} value={si.toString()}>{s.stepName || `Stage ${si + 1}`}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <button
-        className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0"
-        onClick={() => removeDocument(globalIdx)}
-        data-testid={`button-remove-doc-${globalIdx}`}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
+    <SortableDocRow
+      key={`doc-${globalIdx}`}
+      id={globalIdx}
+      doc={doc}
+      globalIdx={globalIdx}
+      stages={stages}
+      updateDocument={updateDocument}
+      removeDocument={removeDocument}
+    />
   );
 
   const renderAddDocInline = (target: number | 'unassigned') => {
@@ -2617,9 +2691,13 @@ function DocumentsStep({
                         No documents for this stage yet
                       </div>
                     ) : (
-                      <div className="divide-y divide-border/40">
-                        {stageDocs.map((entry) => renderDocRow(entry.doc, entry.idx))}
-                      </div>
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDocDragEnd(e, stageDocs.map(d => d.idx))}>
+                        <SortableContext items={stageDocs.map(d => d.idx)} strategy={verticalListSortingStrategy}>
+                          <div className="divide-y divide-border/40">
+                            {stageDocs.map((entry) => renderDocRow(entry.doc, entry.idx))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
                     )}
                     {renderAddDocInline(si)}
                   </div>
@@ -2654,9 +2732,13 @@ function DocumentsStep({
 
                 <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
                   {unassigned.length > 0 && (
-                    <div className="divide-y divide-border/40">
-                      {unassigned.map((entry) => renderDocRow(entry.doc, entry.idx))}
-                    </div>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDocDragEnd(e, unassigned.map(d => d.idx))}>
+                      <SortableContext items={unassigned.map(d => d.idx)} strategy={verticalListSortingStrategy}>
+                        <div className="divide-y divide-border/40">
+                          {unassigned.map((entry) => renderDocRow(entry.doc, entry.idx))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                   {renderAddDocInline('unassigned')}
                 </div>
@@ -2689,64 +2771,38 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: 'bg-gray-100 text-gray-600',
 };
 
-function TasksStep({
-  tasks,
-  setTasks,
+function SortableTaskRow({
+  id,
+  task,
+  globalIdx,
   stages,
   teamMembers,
+  updateTask,
+  removeTask,
+  getAssigneeLabel,
 }: {
-  tasks: TaskEntry[];
-  setTasks: (t: TaskEntry[]) => void;
+  id: number;
+  task: TaskEntry;
+  globalIdx: number;
   stages: StageEntry[];
   teamMembers: { id: number; fullName: string; role: string }[];
+  updateTask: (i: number, field: keyof TaskEntry, value: any) => void;
+  removeTask: (i: number) => void;
+  getAssigneeLabel: (v: string) => string;
 }) {
-  const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
-  const [newTaskName, setNewTaskName] = useState('');
-  const newTaskRef = useRef<HTMLInputElement>(null);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
-  const startAdding = (target: number | 'unassigned') => {
-    setAddingToStage(target);
-    setNewTaskName('');
-    setTimeout(() => newTaskRef.current?.focus(), 50);
-  };
-
-  const addTask = (target: number | 'unassigned') => {
-    const name = newTaskName.trim();
-    if (!name) return;
-    const stepIndex = typeof target === 'number' ? target : null;
-    setTasks([...tasks, { taskName: name, taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex }]);
-    setNewTaskName('');
-    setAddingToStage(null);
-  };
-
-  const removeTask = (i: number) => {
-    setTasks(tasks.filter((_, idx) => idx !== i));
-  };
-
-  const updateTask = (i: number, field: keyof TaskEntry, value: any) => {
-    const updated = [...tasks];
-    updated[i] = { ...updated[i], [field]: value };
-    setTasks(updated);
-  };
-
-  const getAssigneeLabel = (value: string) => {
-    if (value.startsWith('user_')) {
-      const member = teamMembers.find((m) => `user_${m.id}` === value);
-      return member ? member.fullName : value;
-    }
-    const roleLabels: Record<string, string> = { admin: 'Admin', processor: 'Processor', user: 'Borrower', broker: 'Broker' };
-    return roleLabels[value] || value;
-  };
-
-  const tasksByStage = stages.map((_, si) => tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === si));
-  const unassigned = tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === null);
-
-  const renderTaskRow = (task: TaskEntry, globalIdx: number) => (
+  return (
     <div
-      key={globalIdx}
+      ref={setNodeRef}
+      style={style}
       className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 group transition-colors"
       data-testid={`task-row-${globalIdx}`}
     >
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none p-0.5 text-muted-foreground/40 hover:text-muted-foreground flex-shrink-0" data-testid={`drag-task-${globalIdx}`}>
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
       <ListChecks className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
       <input
         className="text-[14px] text-foreground bg-transparent border-0 outline-none flex-1 min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
@@ -2805,6 +2861,93 @@ function TasksStep({
         <X className="h-3.5 w-3.5" />
       </button>
     </div>
+  );
+}
+
+function TasksStep({
+  tasks,
+  setTasks,
+  stages,
+  teamMembers,
+}: {
+  tasks: TaskEntry[];
+  setTasks: (t: TaskEntry[]) => void;
+  stages: StageEntry[];
+  teamMembers: { id: number; fullName: string; role: string }[];
+}) {
+  const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
+  const [newTaskName, setNewTaskName] = useState('');
+  const newTaskRef = useRef<HTMLInputElement>(null);
+
+  const startAdding = (target: number | 'unassigned') => {
+    setAddingToStage(target);
+    setNewTaskName('');
+    setTimeout(() => newTaskRef.current?.focus(), 50);
+  };
+
+  const addTask = (target: number | 'unassigned') => {
+    const name = newTaskName.trim();
+    if (!name) return;
+    const stepIndex = typeof target === 'number' ? target : null;
+    setTasks([...tasks, { taskName: name, taskCategory: 'other', priority: 'medium', assignToRole: 'admin', stepIndex }]);
+    setNewTaskName('');
+    setAddingToStage(null);
+  };
+
+  const removeTask = (i: number) => {
+    setTasks(tasks.filter((_, idx) => idx !== i));
+  };
+
+  const updateTask = (i: number, field: keyof TaskEntry, value: any) => {
+    const updated = [...tasks];
+    updated[i] = { ...updated[i], [field]: value };
+    setTasks(updated);
+  };
+
+  const getAssigneeLabel = (value: string) => {
+    if (value.startsWith('user_')) {
+      const member = teamMembers.find((m) => `user_${m.id}` === value);
+      return member ? member.fullName : value;
+    }
+    const roleLabels: Record<string, string> = { admin: 'Admin', processor: 'Processor', user: 'Borrower', broker: 'Broker' };
+    return roleLabels[value] || value;
+  };
+
+  const tasksByStage = stages.map((_, si) => tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === si));
+  const unassigned = tasks.map((t, ti) => ({ task: t, idx: ti })).filter((e) => e.task.stepIndex === null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleTaskDragEnd = (event: DragEndEvent, stageGroupIndices: number[]) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldLocalIdx = stageGroupIndices.indexOf(active.id as number);
+    const newLocalIdx = stageGroupIndices.indexOf(over.id as number);
+    if (oldLocalIdx === -1 || newLocalIdx === -1) return;
+    const itemsInGroup = stageGroupIndices.map(i => tasks[i]);
+    const reorderedItems = arrayMove(itemsInGroup, oldLocalIdx, newLocalIdx);
+    const updated = [...tasks];
+    stageGroupIndices.forEach((globalIdx, localIdx) => {
+      updated[globalIdx] = reorderedItems[localIdx];
+    });
+    setTasks(updated);
+  };
+
+  const renderTaskRow = (task: TaskEntry, globalIdx: number) => (
+    <SortableTaskRow
+      key={`task-${globalIdx}`}
+      id={globalIdx}
+      task={task}
+      globalIdx={globalIdx}
+      stages={stages}
+      teamMembers={teamMembers}
+      updateTask={updateTask}
+      removeTask={removeTask}
+      getAssigneeLabel={getAssigneeLabel}
+    />
   );
 
   const renderAddTaskInline = (target: number | 'unassigned') => {
@@ -2900,9 +3043,13 @@ function TasksStep({
                         No tasks for this stage yet
                       </div>
                     ) : (
-                      <div className="divide-y divide-border/40">
-                        {stageTasks.map((entry) => renderTaskRow(entry.task, entry.idx))}
-                      </div>
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleTaskDragEnd(e, stageTasks.map(t => t.idx))}>
+                        <SortableContext items={stageTasks.map(t => t.idx)} strategy={verticalListSortingStrategy}>
+                          <div className="divide-y divide-border/40">
+                            {stageTasks.map((entry) => renderTaskRow(entry.task, entry.idx))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
                     )}
                     {renderAddTaskInline(si)}
                   </div>
@@ -2937,9 +3084,13 @@ function TasksStep({
 
                 <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
                   {unassigned.length > 0 && (
-                    <div className="divide-y divide-border/40">
-                      {unassigned.map((entry) => renderTaskRow(entry.task, entry.idx))}
-                    </div>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleTaskDragEnd(e, unassigned.map(t => t.idx))}>
+                      <SortableContext items={unassigned.map(t => t.idx)} strategy={verticalListSortingStrategy}>
+                        <div className="divide-y divide-border/40">
+                          {unassigned.map((entry) => renderTaskRow(entry.task, entry.idx))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                   {renderAddTaskInline('unassigned')}
                 </div>
