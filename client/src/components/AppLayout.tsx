@@ -81,6 +81,14 @@ interface NavItem {
   superAdminOnly?: boolean;
 }
 
+function NavIcon({ icon: IconComponent, isActive }: { icon: any; isActive: boolean }) {
+  return (
+    <span className="flex shrink-0 items-center justify-center" style={{ width: 14, height: 14 }}>
+      <IconComponent size={14} color={isActive ? '#C9A84C' : 'rgba(255,255,255,0.3)'} />
+    </span>
+  );
+}
+
 const brokerNavItems: NavItem[] = [
   { href: "/quotes", label: "Quotes", icon: FileText, shortcut: undefined },
   { href: "/deals", label: "My Loans", icon: FolderKanban, shortcut: undefined },
@@ -343,7 +351,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                           data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                           onClick={handleNavClick}
                         >
-                          <Icon className="h-5 w-5 shrink-0" />
+                          <NavIcon icon={Icon} isActive={isActive} />
                           <span className="flex items-center gap-1 flex-1 text-[15px]">
                             {item.label}
                             {'showBadge' in item && item.showBadge && <InboxBadge />}
@@ -387,7 +395,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                             data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                             onClick={handleNavClick}
                           >
-                            <Icon className="h-5 w-5 shrink-0" />
+                            <NavIcon icon={Icon} isActive={isActive} />
                             <span className="flex items-center gap-1 flex-1 text-[15px]">
                               {item.label}
                               {'showBadge' in item && item.showBadge && <InboxBadge />}
@@ -433,7 +441,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                             data-testid={`nav-super-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                             onClick={handleNavClick}
                           >
-                            <Icon className="h-5 w-5 shrink-0" />
+                            <NavIcon icon={Icon} isActive={isActive} />
                             <span className="flex items-center gap-1 flex-1 text-[15px]">
                               {item.label}
                             </span>
