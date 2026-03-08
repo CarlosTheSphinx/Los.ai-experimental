@@ -113,7 +113,7 @@ export default function PublicHomePage() {
               transition={{ duration: 0.8, delay: 0.1 }}
             >
               <div>
-                <h1 className="font-hero text-5xl md:text-6xl font-bold text-white leading-tight mb-3">
+                <h1 className="font-display text-5xl md:text-6xl font-bold text-white leading-tight mb-3">
                   Automate Your Loan Processing
                   <br />
                   <span className="text-amber-300">in Less Than 10 Minutes.</span>

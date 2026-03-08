@@ -7,11 +7,10 @@
   /* ================================================
      LENDRY.AI DESIGN SYSTEM — Brand Palette
      Charcoal Navy (#1A202C) + Gold (#C9A84C) + Forest (#2A6B4A)
-     Fonts: DM Sans (body), Cormorant Garamond (H1/H2), Playfair Display (hero), JetBrains Mono (code)
+     Fonts: Cormorant Garamond (body/UI), Playfair Display (headings/hero), JetBrains Mono (code)
      ================================================ */
-  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-display: 'Cormorant Garamond', Georgia, serif;
-  --font-hero: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Cormorant Garamond', Georgia, serif;
+  --font-display: 'Playfair Display', Georgia, serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Background: Warm cream (premium, financial) */
@@ -162,18 +161,19 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased font-sans;
+    @apply bg-background text-foreground antialiased font-sans leading-relaxed;
+    font-size: 17px;
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight;
+    @apply font-display tracking-wide;
     font-weight: 600;
   }
   h1 { @apply text-3xl; }
-  h2 { @apply text-2xl; }
-  h3 { @apply text-xl; }
+  h2 { font-size: 32px; }
+  h3 { font-size: 22px; }
 }
 
 /* ================================================
