@@ -84,9 +84,9 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-[#0F2438] via-[#1A3A52] to-[#0F1729] text-background flex-col justify-between items-center p-12">
         {/* Centered Logo & Tagline */}
         <div className="flex flex-col items-center justify-center flex-1">
-          <div className="flex items-center gap-0 mb-4">
-            <span className="text-6xl font-bold text-white">Lendry.</span>
-            <span className="text-6xl font-bold text-amber-400">AI</span>
+          <div className="flex flex-col items-center leading-none mb-4">
+            <span className="text-6xl font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
+            <span className="text-3xl font-display font-bold text-amber-400 tracking-[0.25em]">.AI</span>
           </div>
           <p className="text-xl font-medium tracking-tight text-center text-white/70">
             Lending, Automated.
@@ -109,9 +109,9 @@ export default function LoginPage() {
         >
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-4">
-            <div className="flex items-center justify-center gap-0">
-              <span className="text-2xl font-bold text-foreground">Lendry.</span>
-              <span className="text-2xl font-bold text-primary">AI</span>
+            <div className="flex flex-col items-center leading-none">
+              <span className="text-2xl font-display font-bold text-foreground tracking-[0.3em]">LENDRY</span>
+              <span className="text-base font-display font-bold text-primary tracking-[0.25em]">.AI</span>
             </div>
           </div>
 

@@ -268,9 +268,9 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         <SidebarHeader className="p-3 border-b border-sidebar-border space-y-3">
           <div className="flex items-center justify-between gap-1">
             <div className="flex flex-col items-start gap-1 group-data-[collapsible=icon]:hidden">
-              <div className="flex items-center gap-0">
-                <span className="text-[28px] font-display font-bold text-white">Lendry.</span>
-                <span className="text-[28px] font-display font-bold text-primary">AI</span>
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[24px] font-display font-bold text-white tracking-[0.25em]">LENDRY</span>
+                <span className="text-[16px] font-display font-bold text-primary tracking-[0.2em]">.AI</span>
               </div>
               <span className="text-[16px] text-muted-foreground font-medium">
                 Loan Automation System

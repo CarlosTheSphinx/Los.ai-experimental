@@ -57,10 +57,9 @@ export default function ComingSoonPage() {
 
       <header className="relative z-10 px-6 py-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold tracking-tight">
-              Lendry<span className="text-amber-400">.AI</span>
-            </span>
+          <div className="flex flex-col items-start leading-none">
+            <span className="text-[22px] font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
+            <span className="text-[14px] font-display font-bold text-amber-400 tracking-[0.25em]">.AI</span>
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium" data-testid="badge-coming-soon">
             <Rocket className="h-3 w-3" />
