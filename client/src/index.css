@@ -6,7 +6,7 @@
 :root {
   /* ================================================
      LENDRY.AI DESIGN SYSTEM — Brand Palette
-     Navy (#1A3A52) + Blue (#2E7FD6) + Emerald (#10B981)
+     Navy (#1A3A52) + Gold (#C9A84C) + Forest (#2A6B4A)
      Fonts: Inter (body), Manrope (H1/H2), Plus Jakarta Sans (hero), JetBrains Mono (code)
      ================================================ */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -14,12 +14,12 @@
   --font-hero: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Background: Warm light gray (modern, not harsh white) */
-  --background: 220 14% 96%;        /* #F1F3F6 */
+  /* Background: Warm cream (premium, financial) */
+  --background: 33 36% 95%;         /* #F7F3EE */
   --foreground: 205 35% 21%;        /* #1A3A52 - Primary Navy */
 
-  /* Cards: Off-white (per UX playbook — no pure white) */
-  --card: 0 0% 98%;                 /* #FAFAFA */
+  /* Cards: Pure white (crisp contrast against warm cream bg) */
+  --card: 0 0% 100%;                /* #FFFFFF */
   --card-foreground: 205 35% 21%;   /* #1A3A52 */
   --card-border: 216 20% 90%;       /* subtle gray border */
 
@@ -28,10 +28,10 @@
   --popover-foreground: 205 35% 21%;
   --popover-border: 216 20% 90%;
 
-  /* Primary: Brand Blue (#2E7FD6) */
-  --primary: 212 67% 51%;           /* #2E7FD6 */
+  /* Primary: Warm Gold (#C9A84C) */
+  --primary: 44 54% 54%;            /* #C9A84C */
   --primary-foreground: 0 0% 100%;  /* White */
-  --primary-border: 212 67% 45%;
+  --primary-border: 45 59% 45%;
 
   /* Secondary: Soft blue-gray */
   --secondary: 214 20% 94%;         /* #EDF1F5 */
@@ -43,10 +43,10 @@
   --muted-foreground: 215 14% 50%;  /* #6B7F8E - readable gray */
   --muted-border: 214 20% 88%;
 
-  /* Accent: Emerald (#10B981) for success/growth */
-  --accent: 160 84% 39%;            /* #10B981 */
+  /* Accent: Deep Forest (#2A6B4A) for success/growth */
+  --accent: 150 44% 29%;            /* #2A6B4A */
   --accent-foreground: 0 0% 100%;
-  --accent-border: 160 84% 34%;
+  --accent-border: 148 46% 23%;
 
   /* Destructive: Clear red */
   --destructive: 0 84% 60%;         /* #EF4444 */
@@ -56,7 +56,7 @@
   /* Borders and inputs */
   --border: 216 20% 90%;            /* #E2E6EB */
   --input: 216 20% 90%;
-  --ring: 212 67% 51%;              /* Matches primary blue */
+  --ring: 44 54% 54%;               /* Matches primary gold */
 
   --radius: 0.625rem;               /* 10px - modern, slightly softer */
 
@@ -64,23 +64,23 @@
   --sidebar: 205 50% 13%;           /* #0F2438 */
   --sidebar-foreground: 210 25% 92%;
   --sidebar-border: 205 40% 20%;
-  --sidebar-ring: 212 67% 51%;
+  --sidebar-ring: 44 54% 54%;
   --sidebar-accent: 205 40% 20%;
   --sidebar-accent-foreground: 210 25% 92%;
-  --sidebar-primary: 212 67% 51%;
+  --sidebar-primary: 44 54% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
 
   /* Status colors (semantic) */
-  --success: 160 84% 39%;           /* Emerald #10B981 */
+  --success: 150 44% 29%;           /* Deep Forest #2A6B4A */
   --success-foreground: 0 0% 100%;
   --warning: 38 92% 50%;            /* Amber #F59E0B */
   --warning-foreground: 0 0% 100%;
-  --info: 212 67% 51%;              /* Blue #2E7FD6 */
+  --info: 44 54% 54%;               /* Gold #C9A84C */
   --info-foreground: 0 0% 100%;
 
   /* Chart colors */
-  --chart-1: 212 67% 51%;           /* Brand Blue */
-  --chart-2: 160 84% 39%;           /* Emerald */
+  --chart-1: 44 54% 54%;            /* Gold */
+  --chart-2: 150 44% 29%;           /* Forest */
   --chart-3: 205 35% 21%;           /* Navy */
   --chart-4: 38 92% 50%;            /* Amber */
   --chart-5: 280 60% 55%;           /* Purple accent */
@@ -200,10 +200,10 @@
 
 /* KPI stat card gradient accents */
 .stat-card-blue {
-  border-left: 3px solid hsl(212 67% 51%);
+  border-left: 3px solid hsl(44 54% 54%);
 }
 .stat-card-emerald {
-  border-left: 3px solid hsl(160 84% 39%);
+  border-left: 3px solid hsl(150 44% 29%);
 }
 .stat-card-navy {
   border-left: 3px solid hsl(205 35% 21%);
