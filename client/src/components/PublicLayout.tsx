@@ -29,7 +29,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
           <Link href="/">
             <div className="flex items-baseline gap-1 cursor-pointer">
               <span className="text-[26px] font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
-              <span className="text-[16px] font-display font-bold text-amber-500 tracking-[0.15em]">.AI</span>
+              <span className="text-[16px] font-display font-bold text-amber-500 tracking-[0.15em]">AI</span>
             </div>
           </Link>
 
@@ -101,7 +101,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
             <div className="md:col-span-1">
               <div className="flex items-baseline gap-0.5 mb-4">
                 <span className="text-sm font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
-                <span className="text-[10px] font-display font-bold text-amber-500 tracking-[0.15em]">.AI</span>
+                <span className="text-[10px] font-display font-bold text-amber-500 tracking-[0.15em]">AI</span>
               </div>
               <p className="text-xs text-gray-400">
                 The intelligent loan origination platform for modern lenders.

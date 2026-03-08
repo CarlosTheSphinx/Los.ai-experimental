@@ -59,7 +59,7 @@ export default function ComingSoonPage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-baseline gap-1">
             <span className="text-[22px] font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
-            <span className="text-[14px] font-display font-bold text-amber-400 tracking-[0.15em]">.AI</span>
+            <span className="text-[14px] font-display font-bold text-amber-400 tracking-[0.15em]">AI</span>
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium" data-testid="badge-coming-soon">
             <Rocket className="h-3 w-3" />

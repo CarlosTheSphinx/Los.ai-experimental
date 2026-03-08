@@ -86,7 +86,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center justify-center flex-1">
           <div className="flex items-baseline gap-1 mb-4">
             <span className="text-6xl font-display font-bold text-white tracking-[0.3em]">LENDRY</span>
-            <span className="text-3xl font-display font-bold text-amber-400 tracking-[0.15em]">.AI</span>
+            <span className="text-3xl font-display font-bold text-amber-400 tracking-[0.15em]">AI</span>
           </div>
           <p className="text-xl font-medium tracking-tight text-center text-white/70">
             Lending, Automated.
@@ -111,7 +111,7 @@ export default function LoginPage() {
           <div className="lg:hidden text-center mb-4">
             <div className="flex items-baseline gap-0.5">
               <span className="text-2xl font-display font-bold text-foreground tracking-[0.3em]">LENDRY</span>
-              <span className="text-base font-display font-bold text-primary tracking-[0.15em]">.AI</span>
+              <span className="text-base font-display font-bold text-primary tracking-[0.15em]">AI</span>
             </div>
           </div>
 
