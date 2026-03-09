@@ -586,9 +586,11 @@ const SIDEBAR_PINNED_KEY = "lendry_sidebar_pinned";
 export function AppLayout({ children }: AppLayoutProps) {
   const [pinned, setPinned] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem(SIDEBAR_PINNED_KEY) === "true";
+      const stored = localStorage.getItem(SIDEBAR_PINNED_KEY);
+      if (stored === null) return true;
+      return stored === "true";
     }
-    return false;
+    return true;
   });
 
   useEffect(() => {
