@@ -581,21 +581,8 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
   );
 }
 
-const SIDEBAR_PINNED_KEY = "lendry_sidebar_pinned";
-
 export function AppLayout({ children }: AppLayoutProps) {
-  const [pinned, setPinned] = useState(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(SIDEBAR_PINNED_KEY);
-      if (stored === null) return true;
-      return stored === "true";
-    }
-    return true;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_PINNED_KEY, String(pinned));
-  }, [pinned]);
+  const [pinned, setPinned] = useState(true);
 
   const style = {
     "--sidebar-width": "17rem",
