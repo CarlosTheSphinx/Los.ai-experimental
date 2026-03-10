@@ -11787,68 +11787,53 @@ If the user provides specific criteria, extract as many rules as you can from th
 
             await wait(2000);
 
-            // Step 1: Find all text-like inputs (text, number, tel, search, etc.)
-            log.info('Step 1: Finding text inputs...');
-            const textInputs = await page.evaluate(() => {
+            // Step 1: Find ALL inputs and classify them
+            log.info('Step 1: Finding and classifying all inputs...');
+            const allFields = await page.evaluate(() => {
               const textTypes = ['text', 'number', 'tel', 'search', 'email', 'url', ''];
               const inputs = Array.from(document.querySelectorAll('input'));
-              return inputs
-                .filter(inp => {
-                  const t = (inp.type || '').toLowerCase();
-                  if (!textTypes.includes(t)) return false;
-                  const parent = inp.closest('[role="combobox"]');
-                  const isInsideCombobox = !!parent;
-                  const hasListbox = inp.getAttribute('role') === 'combobox' || inp.getAttribute('aria-haspopup') === 'listbox';
-                  return !isInsideCombobox && !hasListbox;
-                })
-                .map(inp => ({
-                  id: inp.id || '',
-                  placeholder: inp.placeholder || '',
-                  label: inp.getAttribute('aria-label') || inp.placeholder || '',
-                  name: inp.name || '',
-                }))
-                .filter(inp => inp.id || inp.placeholder || inp.name);
-            });
+              const textInputs = [];
+              const potentialDropdowns = [];
 
-            log.info('Found ' + textInputs.length + ' text inputs: ' + JSON.stringify(textInputs));
-
-            // Step 2: Find all dropdowns (comboboxes)
-            log.info('Step 2: Finding dropdowns...');
-            const dropdownInputs = await page.evaluate(() => {
-              const inputs = Array.from(document.querySelectorAll('input'));
-              const results = [];
               for (const inp of inputs) {
-                const parent = inp.closest('[role="combobox"]');
-                const isCombobox = !!parent || inp.getAttribute('role') === 'combobox' || inp.getAttribute('aria-haspopup') === 'listbox';
-                if (isCombobox) {
-                  results.push({
-                    placeholder: inp.placeholder || '',
-                    label: inp.getAttribute('aria-label') || inp.placeholder || '',
-                    id: (parent ? parent.id : inp.id) || '',
-                    inputId: inp.id || '',
-                  });
+                const t = (inp.type || '').toLowerCase();
+                if (!textTypes.includes(t)) continue;
+                if (inp.offsetParent === null) continue;
+
+                const id = inp.id || '';
+                const placeholder = inp.placeholder || '';
+                const label = inp.getAttribute('aria-label') || placeholder || '';
+                const name = inp.name || '';
+
+                if (!id && !placeholder && !name) continue;
+
+                const hasPlaceholder = placeholder.length > 0;
+                const isCombobox = !!inp.closest('[role="combobox"]') || inp.getAttribute('role') === 'combobox' || inp.getAttribute('aria-haspopup') === 'listbox';
+
+                if (isCombobox || hasPlaceholder) {
+                  potentialDropdowns.push({ placeholder, label, id, inputId: id });
+                } else {
+                  textInputs.push({ id, placeholder, label, name });
                 }
               }
-              // Also check for native <select> elements
+
+              const nativeSelects = [];
               const selects = Array.from(document.querySelectorAll('select'));
               for (const sel of selects) {
                 const label = sel.getAttribute('aria-label') || sel.name || '';
                 const options = Array.from(sel.querySelectorAll('option')).map(o => o.textContent.trim()).filter(t => t.length > 0);
-                results.push({
-                  placeholder: label,
-                  label: label,
-                  id: sel.id || '',
-                  inputId: sel.id || '',
-                  nativeOptions: options,
-                });
+                nativeSelects.push({ placeholder: label, label, id: sel.id || '', inputId: sel.id || '', nativeOptions: options });
               }
-              return results;
+
+              return { textInputs, potentialDropdowns, nativeSelects };
             });
 
-            log.info('Found ' + dropdownInputs.length + ' dropdowns: ' + JSON.stringify(dropdownInputs));
+            log.info('Found ' + allFields.textInputs.length + ' text inputs, ' + allFields.potentialDropdowns.length + ' potential dropdowns, ' + allFields.nativeSelects.length + ' native selects');
+            const textInputs = allFields.textInputs;
+            const dropdownInputs = [...allFields.potentialDropdowns, ...allFields.nativeSelects];
 
-            // Step 3: For each dropdown, click to open and read options
-            log.info('Step 3: Reading dropdown options...');
+            // Step 2: For each potential dropdown, click to open and read options
+            log.info('Step 2: Reading dropdown options...');
             const dropdowns = [];
 
             for (let i = 0; i < dropdownInputs.length; i++) {
