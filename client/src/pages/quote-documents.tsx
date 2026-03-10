@@ -79,6 +79,7 @@ export default function QuoteDocuments() {
   const [editForm, setEditForm] = useState<EditFormData | null>(null);
   const [pdfVersion, setPdfVersion] = useState(0);
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [signatureSent, setSignatureSent] = useState(false);
   const [sendEmail, setSendEmail] = useState('');
   const [sendName, setSendName] = useState('');
 
@@ -263,6 +264,7 @@ export default function QuoteDocuments() {
     onSuccess: (data) => {
       toast({ title: "Sent", description: data.message || "Term sheet sent for signature." });
       setShowSendDialog(false);
+      setSignatureSent(true);
     },
     onError: (error) => {
       toast({
@@ -316,6 +318,29 @@ export default function QuoteDocuments() {
           <Button variant="outline" onClick={() => setLocation('/quotes')} data-testid="button-back-quotes">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Quotes
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (signatureSent) {
+    return (
+      <div className="h-full flex items-center justify-center" data-testid="signature-sent-confirmation">
+        <div className="text-center space-y-6 max-w-md">
+          <div className="mx-auto h-16 w-16 rounded-full bg-success/10 flex items-center justify-center">
+            <CheckCircle2 className="h-8 w-8 text-success" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold font-display text-foreground" data-testid="text-sent-title">
+              Term Sheet Sent
+            </h2>
+            <p className="text-muted-foreground" data-testid="text-sent-description">
+              The term sheet for <span className="font-medium text-foreground">{quote.loanNumber || `Quote #${quote.id}`}</span> has been sent for signature.
+            </p>
+          </div>
+          <Button onClick={() => setLocation('/quotes')} data-testid="button-go-to-quotes">
+            Go to Quotes
           </Button>
         </div>
       </div>
