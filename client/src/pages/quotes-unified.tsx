@@ -71,8 +71,8 @@ interface ProgramWithPricing {
   pricingMode?: string;
   externalPricingConfig?: {
     scraperUrl?: string;
-    textInputs?: Array<{ id: string; fieldKey: string; label: string; sourceType?: string; mappedFrom?: string }>;
-    dropdowns?: Array<{ label: string; fieldKey: string; options: string[]; sourceType?: string; mappedFrom?: string }>;
+    textInputs?: Array<{ id: string; fieldKey: string; label: string; sourceType?: string }>;
+    dropdowns?: Array<{ label: string; fieldKey: string; options: string[]; sourceType?: string }>;
   } | null;
 }
 
@@ -84,7 +84,7 @@ function buildPricingFields(program: ProgramWithPricing): any[] {
 
   (cfg.textInputs || []).forEach(ti => {
     if (ti.sourceType !== 'borrower') return;
-    const formKey = ti.mappedFrom || ti.fieldKey;
+    const formKey = ti.fieldKey;
     if (existingKeys.has(formKey)) return;
     const isCurrency = /amount|value|price|budget/i.test(ti.label);
     pricingFields.push({
@@ -100,7 +100,7 @@ function buildPricingFields(program: ProgramWithPricing): any[] {
 
   (cfg.dropdowns || []).forEach(dd => {
     if (dd.sourceType !== 'borrower') return;
-    const formKey = dd.mappedFrom || dd.fieldKey;
+    const formKey = dd.fieldKey;
     if (existingKeys.has(formKey)) return;
     pricingFields.push({
       fieldKey: formKey,

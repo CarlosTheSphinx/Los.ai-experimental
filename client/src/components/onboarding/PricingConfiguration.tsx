@@ -966,25 +966,6 @@ export function PricingConfiguration({
                       <SelectItem value="calculated">Calculated</SelectItem>
                     </SelectContent>
                   </Select>
-                  {ti.sourceType === 'borrower' && quoteFormVariables.length > 0 && (
-                    <Select
-                      value={ti.mappedFrom || ti.fieldKey || ''}
-                      onValueChange={(val) => {
-                        const updated = [...extTextInputs];
-                        updated[idx] = { ...updated[idx], mappedFrom: val === ti.fieldKey ? undefined : val };
-                        setExtTextInputs(updated);
-                      }}
-                    >
-                      <SelectTrigger className="w-40" data-testid={`select-text-mapped-${idx}`}>
-                        <SelectValue placeholder="Quote field" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {quoteFormVariables.map((qf, qi) => (
-                          <SelectItem key={qi} value={qf.key}>{qf.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1107,25 +1088,6 @@ export function PricingConfiguration({
                       <SelectItem value="calculated">Calculated</SelectItem>
                     </SelectContent>
                   </Select>
-                  {dd.sourceType === 'borrower' && quoteFormVariables.length > 0 && (
-                    <Select
-                      value={dd.mappedFrom || dd.fieldKey || ''}
-                      onValueChange={(val) => {
-                        const updated = [...extDropdowns];
-                        updated[ddIdx] = { ...updated[ddIdx], mappedFrom: val === dd.fieldKey ? undefined : val };
-                        setExtDropdowns(updated);
-                      }}
-                    >
-                      <SelectTrigger className="w-40" data-testid={`select-dd-mapped-${ddIdx}`}>
-                        <SelectValue placeholder="Quote field" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {quoteFormVariables.map((qf, qi) => (
-                          <SelectItem key={qi} value={qf.key}>{qf.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
                   <div className="flex-1" />
                   <Button
                     variant="ghost"
