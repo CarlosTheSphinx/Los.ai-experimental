@@ -2036,7 +2036,7 @@ function QuoteFormBuilderStep({
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<QuoteFormField['fieldType']>('text');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [configuringIndex, setConfiguringIndex] = useState<number | null>(null);
+  const [configuringIndex, setConfiguringIndex] = useState<string | null>(null);
 
   const contactFields = quoteFormFields.filter((f) => CONTACT_FIELD_KEYS.has(f.fieldKey));
   const programFields = quoteFormFields.filter((f) => !CONTACT_FIELD_KEYS.has(f.fieldKey));
@@ -2148,7 +2148,7 @@ function QuoteFormBuilderStep({
   const [showAddField, setShowAddField] = useState(false);
 
   const renderFieldRow = (field: QuoteFormField, pIdx: number, isDraggable: boolean) => {
-    const isConfiguring = configuringIndex === pIdx;
+    const isConfiguring = configuringIndex === field.fieldKey;
     const condField = field.conditionalOn
       ? quoteFormFields.find((f) => f.fieldKey === field.conditionalOn)
       : null;
@@ -2238,11 +2238,25 @@ function QuoteFormBuilderStep({
               </SelectContent>
             </Select>
 
+            <Select
+              value={field.displayGroup || 'loan_details'}
+              onValueChange={(v) => updateField(field.fieldKey, { displayGroup: v as DisplayGroup })}
+            >
+              <SelectTrigger className="w-[140px] h-9 text-[13px]" data-testid={`select-display-group-${field.fieldKey}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DISPLAY_GROUP_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => setConfiguringIndex(isConfiguring ? null : pIdx)}
+              onClick={() => setConfiguringIndex(isConfiguring ? null : field.fieldKey)}
               data-testid={`button-configure-${field.fieldKey}`}
             >
               <Settings2 className="h-3.5 w-3.5" />
@@ -2291,23 +2305,6 @@ function QuoteFormBuilderStep({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Display Section</Label>
-                <Select
-                  value={field.displayGroup || 'loan_details'}
-                  onValueChange={(v) => updateField(field.fieldKey, { displayGroup: v as DisplayGroup })}
-                >
-                  <SelectTrigger data-testid={`select-display-group-${field.fieldKey}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DISPLAY_GROUP_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-muted-foreground">Where this field appears on the deal detail page</p>
               </div>
             </div>
 
