@@ -1105,7 +1105,7 @@ export default function MessagesPage() {
                               {t.propertyAddress?.split(',')[0] || t.subject || "General"}
                             </div>
                             <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">
-                              {t.lastMessageAt ? format(new Date(t.lastMessageAt), "h:mm a") : ''}
+                              {t.lastMessageAt && !isNaN(new Date(t.lastMessageAt).getTime()) ? format(new Date(t.lastMessageAt), "h:mm a") : ''}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
