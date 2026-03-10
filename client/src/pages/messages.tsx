@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,13 @@ import {
 } from "@/lib/messagesApi";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
+
+function safeFormat(dateVal: any, fmt: string): string {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  return format(d, fmt);
+}
 import {
   Dialog,
   DialogContent,
@@ -883,7 +891,7 @@ export default function MessagesPage() {
                             )}
                           </div>
                           <span className={`text-[11px] whitespace-nowrap ${thread.isUnread ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                            {thread.lastMessageAt ? format(new Date(thread.lastMessageAt), "MMM d, h:mm a") : ""}
+                            {safeFormat(thread.lastMessageAt, "MMM d, h:mm a")}
                           </span>
                         </div>
                       </div>
@@ -923,7 +931,7 @@ export default function MessagesPage() {
                   </Button>
                   <div className="flex items-center gap-1.5 text-sm font-medium">
                     <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                    {format(new Date(digestDate + 'T12:00:00'), 'MMM d, yyyy')}
+                    {safeFormat(digestDate + 'T12:00:00', 'MMM d, yyyy')}
                   </div>
                   <Button
                     variant="ghost"
@@ -984,7 +992,7 @@ export default function MessagesPage() {
                             </div>
                           </div>
                           <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                            {digest.scheduledFor ? format(new Date(digest.scheduledFor), 'h:mm a') : ''}
+                            {safeFormat(digest.scheduledFor, 'h:mm a')}
                           </span>
                         </div>
 
@@ -1105,7 +1113,7 @@ export default function MessagesPage() {
                               {t.propertyAddress?.split(',')[0] || t.subject || "General"}
                             </div>
                             <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">
-                              {t.lastMessageAt && !isNaN(new Date(t.lastMessageAt).getTime()) ? format(new Date(t.lastMessageAt), "h:mm a") : ''}
+                              {safeFormat(t.lastMessageAt, "h:mm a")}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
@@ -1216,7 +1224,7 @@ export default function MessagesPage() {
                           </div>
                         </div>
                         <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                          {msg.internalDate ? format(new Date(msg.internalDate), "MMM d, h:mm a") : ""}
+                          {safeFormat(msg.internalDate, "MMM d, h:mm a")}
                         </span>
                       </div>
                       {msg.bodyHtml ? (
@@ -1382,14 +1390,14 @@ export default function MessagesPage() {
                       const fileAttachment = hasMeta && (msg.meta as any).fileName ? (msg.meta as any) : null;
 
                       const prevMsg = idx > 0 ? activeMessages[idx - 1] : null;
-                      const showDateHeader = !prevMsg || format(new Date(msg.createdAt), 'yyyy-MM-dd') !== format(new Date(prevMsg.createdAt), 'yyyy-MM-dd');
+                      const showDateHeader = !prevMsg || safeFormat(msg.createdAt, 'yyyy-MM-dd') !== safeFormat(prevMsg.createdAt, 'yyyy-MM-dd');
 
                       return (
                         <div key={msg.id}>
                           {showDateHeader && (
                             <div className="flex items-center justify-center py-3" data-testid={`date-header-${msg.id}`}>
                               <span className="text-[13px] text-muted-foreground font-medium">
-                                {format(new Date(msg.createdAt), "MMMM d, yyyy")}
+                                {safeFormat(msg.createdAt, "MMMM d, yyyy")}
                               </span>
                             </div>
                           )}
@@ -1407,7 +1415,7 @@ export default function MessagesPage() {
                                   <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                                   <span className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-400">AI Insight:</span>
                                   <span className="text-[11px] text-emerald-600/70 dark:text-emerald-400/60 ml-auto">
-                                    {format(new Date(msg.createdAt), "h:mm a")}
+                                    {safeFormat(msg.createdAt, "h:mm a")}
                                   </span>
                                 </div>
                                 <p className="text-[14px] text-emerald-900 dark:text-emerald-100 whitespace-pre-wrap">{msg.body}</p>
@@ -1441,7 +1449,7 @@ export default function MessagesPage() {
                                         <div className="text-[13px] font-medium truncate">{fileAttachment.fileName}</div>
                                         <div className="text-[11px] text-muted-foreground">
                                           {fileAttachment.fileType || 'PDF'} {fileAttachment.fileSize ? `${fileAttachment.fileSize}` : ''}
-                                          {fileAttachment.uploadedAt ? ` · Uploaded ${format(new Date(fileAttachment.uploadedAt), "h:mm a")}` : ''}
+                                          {fileAttachment.uploadedAt ? ` · Uploaded ${safeFormat(fileAttachment.uploadedAt, "h:mm a")}` : ''}
                                         </div>
                                       </div>
                                       {fileAttachment.status === 'received' && (
@@ -1451,7 +1459,7 @@ export default function MessagesPage() {
                                   )}
                                 </div>
                                 <span className={`text-[11px] text-muted-foreground mt-1 ${isOwnMessage ? 'text-right' : ''}`}>
-                                  {format(new Date(msg.createdAt), "h:mm a")}
+                                  {safeFormat(msg.createdAt, "h:mm a")}
                                 </span>
                               </div>
                               {isOwnMessage && (
