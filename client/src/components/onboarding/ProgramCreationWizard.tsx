@@ -20,7 +20,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PricingConfiguration } from '@/components/onboarding/PricingConfiguration';
+import { PricingConfiguration, type PricingConfigState } from '@/components/onboarding/PricingConfiguration';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -495,8 +495,8 @@ export function ProgramCreationWizard({
   // Review rules — pre-populated
   const [reviewRules, setReviewRules] = useState<RuleEntry[]>([...dscrDefaultRules]);
 
-  // Activation mode for review step
   const [activationMode, setActivationMode] = useState<'draft' | 'active'>('draft');
+  const pricingConfigRef = useRef<PricingConfigState | null>(null);
 
   const { data: editProgramData } = useQuery<{
     program: any;
@@ -671,46 +671,63 @@ export function ProgramCreationWizard({
     }
   };
 
-  const buildProgramPayload = (forceActive?: boolean) => ({
-    name: programName.trim(),
-    description: programDescription.trim(),
-    loanType,
-    minLoanAmount,
-    maxLoanAmount,
-    minLtv,
-    maxLtv,
-    minInterestRate,
-    maxInterestRate,
-    termOptions,
-    minDscr: minDscr ? parseFloat(minDscr) : null,
-    minFico: minFico ? parseInt(minFico) : null,
-    eligiblePropertyTypes,
-    quoteFormFields,
-    creditPolicyId: selectedCreditPolicyId,
-    isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
-    steps: stages.map((s) => ({
-      id: s.id,
-      stepName: s.stepName,
-      isRequired: s.isRequired,
-      description: s.description || '',
-    })),
-    documents: documents.map((d) => ({
-      id: d.id,
-      documentName: d.documentName,
-      documentCategory: d.documentCategory,
-      isRequired: d.isRequired,
-      stepIndex: d.stepIndex,
-    })),
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      taskName: t.taskName,
-      taskCategory: t.taskCategory,
-      priority: t.priority,
-      assignToRole: t.assignToRole,
-      stepIndex: t.stepIndex,
-      formTemplateId: t.formTemplateId || null,
-    })),
-  });
+  const buildProgramPayload = (forceActive?: boolean) => {
+    const pricing = pricingConfigRef.current;
+    return {
+      name: programName.trim(),
+      description: programDescription.trim(),
+      loanType,
+      minLoanAmount,
+      maxLoanAmount,
+      minLtv,
+      maxLtv,
+      minInterestRate,
+      maxInterestRate,
+      termOptions,
+      minDscr: minDscr ? parseFloat(minDscr) : null,
+      minFico: minFico ? parseInt(minFico) : null,
+      eligiblePropertyTypes,
+      quoteFormFields,
+      creditPolicyId: selectedCreditPolicyId,
+      isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
+      ...(pricing ? {
+        pricingMode: pricing.pricingMode,
+        externalPricingConfig: pricing.externalPricingConfig,
+        yspEnabled: pricing.yspEnabled,
+        yspMin: pricing.yspMin,
+        yspMax: pricing.yspMax,
+        yspStep: pricing.yspStep,
+        yspBrokerCanToggle: pricing.yspBrokerCanToggle,
+        basePoints: pricing.basePoints,
+        basePointsMin: pricing.basePointsMin,
+        basePointsMax: pricing.basePointsMax,
+        brokerPointsEnabled: pricing.brokerPointsEnabled,
+        brokerPointsStep: pricing.brokerPointsStep,
+      } : {}),
+      steps: stages.map((s) => ({
+        id: s.id,
+        stepName: s.stepName,
+        isRequired: s.isRequired,
+        description: s.description || '',
+      })),
+      documents: documents.map((d) => ({
+        id: d.id,
+        documentName: d.documentName,
+        documentCategory: d.documentCategory,
+        isRequired: d.isRequired,
+        stepIndex: d.stepIndex,
+      })),
+      tasks: tasks.map((t) => ({
+        id: t.id,
+        taskName: t.taskName,
+        taskCategory: t.taskCategory,
+        priority: t.priority,
+        assignToRole: t.assignToRole,
+        stepIndex: t.stepIndex,
+        formTemplateId: t.formTemplateId || null,
+      })),
+    };
+  };
 
   const handleCreate = () => {
     if (!programName.trim()) {
@@ -860,7 +877,7 @@ export function ProgramCreationWizard({
       )}
 
       {wizardStep === 'pricing' && (
-        <PricingConfiguration hideNavigation programId={isEditMode ? editProgram?.id : null} />
+        <PricingConfiguration hideNavigation programId={isEditMode ? editProgram?.id : null} onChange={(state) => { pricingConfigRef.current = state; }} />
       )}
 
       {wizardStep === 'summary' && (

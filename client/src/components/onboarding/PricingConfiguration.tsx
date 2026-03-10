@@ -166,16 +166,33 @@ function formatRate(val: string): string {
 
 // ─── Main Component ─────────────────────────────────────────────
 
+export interface PricingConfigState {
+  pricingMode: string;
+  externalPricingConfig: ExternalPricingConfig | null;
+  yspEnabled: boolean;
+  yspMin: number;
+  yspMax: number;
+  yspStep: number;
+  yspBrokerCanToggle: boolean;
+  basePoints: number;
+  basePointsMin: number;
+  basePointsMax: number;
+  brokerPointsEnabled: boolean;
+  brokerPointsStep: number;
+}
+
 export function PricingConfiguration({
   onNext,
   onBack,
   hideNavigation = false,
   programId: propProgramId,
+  onChange,
 }: {
   onNext?: () => void;
   onBack?: () => void;
   hideNavigation?: boolean;
   programId?: number | null;
+  onChange?: (state: PricingConfigState) => void;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -366,6 +383,28 @@ export function PricingConfiguration({
 
     setPricingDataLoaded(true);
   }, [effectiveProgramId, editProgramData, existingRuleset, hideNavigation, pricingDataLoaded, programFetched, rulesetsFetched]);
+
+  useEffect(() => {
+    if (!onChange) return;
+    const pricingModeDb = pricingMode === 'rule-based' ? 'rule_based' : pricingMode;
+    const extConfig: ExternalPricingConfig | null = pricingMode === 'external'
+      ? { scraperUrl: extScraperUrl, textInputs: extTextInputs, dropdowns: extDropdowns }
+      : null;
+    onChange({
+      pricingMode: pricingModeDb,
+      externalPricingConfig: extConfig,
+      yspEnabled,
+      yspMin: parseFloat(yspMin) || 0,
+      yspMax: parseFloat(yspMax) || 3,
+      yspStep: parseFloat(yspStep) || 0.125,
+      yspBrokerCanToggle: yspBrokerAdjustable,
+      basePoints: parseFloat(basePoints) || 1,
+      basePointsMin: parseFloat(pointsMin) || 0.5,
+      basePointsMax: parseFloat(pointsMax) || 3,
+      brokerPointsEnabled: pointsBrokerAdjustable,
+      brokerPointsStep: parseFloat(pointsStep) || 0.25,
+    });
+  }, [pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
 
   const hasExistingRuleset = (existingRuleset?.rulesets?.length || 0) > 0;
 
