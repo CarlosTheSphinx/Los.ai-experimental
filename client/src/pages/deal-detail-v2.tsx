@@ -234,6 +234,8 @@ function DealStrip({
             </SelectContent>
           </Select>
         </ControlCard>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
         <ControlCard label="Loan Program">
           <Select
             value={deal.programId ? String(deal.programId) : "none"}
@@ -251,8 +253,6 @@ function DealStrip({
             </SelectContent>
           </Select>
         </ControlCard>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
         <KpiCard
           icon={Percent}
           label="Origination"
