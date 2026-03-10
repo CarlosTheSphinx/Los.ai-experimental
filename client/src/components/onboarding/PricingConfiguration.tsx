@@ -1255,7 +1255,7 @@ export function PricingConfiguration({
                               <SelectValue placeholder="Choose option" />
                             </SelectTrigger>
                             <SelectContent>
-                              {dd.options.map((opt, oi) => (
+                              {dd.options.filter(o => o).map((opt, oi) => (
                                 <SelectItem key={oi} value={opt}>{opt}</SelectItem>
                               ))}
                             </SelectContent>
@@ -1290,7 +1290,7 @@ export function PricingConfiguration({
                             <SelectValue placeholder="Fallback option" />
                           </SelectTrigger>
                           <SelectContent>
-                            {dd.options.map((opt, oi) => (
+                            {dd.options.filter(o => o).map((opt, oi) => (
                               <SelectItem key={oi} value={opt}>{opt}</SelectItem>
                             ))}
                           </SelectContent>
