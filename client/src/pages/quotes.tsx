@@ -536,7 +536,7 @@ export default function Quotes() {
                       </div>
                       <TermSheetStatus quoteId={quote.id} />
                       <Button
-                        onClick={() => setSigningQuote(quote)}
+                        onClick={() => navigate(`/quotes/${quote.id}/documents`)}
                         className="w-full"
                         data-testid={`button-send-signature-${quote.id}`}
                       >

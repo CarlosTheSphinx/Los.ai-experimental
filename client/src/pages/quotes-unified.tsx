@@ -698,7 +698,7 @@ export default function QuotesUnified() {
                   latestEnvelope={envelopeMap.get(quote.id) || null}
                   onEdit={() => handleEditQuote(quote)}
                   onDelete={() => deleteMutation.mutate(quote.id)}
-                  onSendTermSheet={() => setSigningQuote(quote)}
+                  onSendTermSheet={() => navigate(`/quotes/${quote.id}/documents`)}
                   onMessage={() => navigate(`/messages?dealId=${quote.id}&new=true`)}
                   deleteIsPending={deleteMutation.isPending}
                 />
