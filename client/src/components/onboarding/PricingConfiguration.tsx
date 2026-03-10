@@ -54,6 +54,12 @@ interface ExternalTextInput {
   formula?: string;
 }
 
+interface ConditionalRule {
+  operator: '>=' | '>' | '<=' | '<' | '==';
+  value: string;
+  option: string;
+}
+
 interface ExternalDropdown {
   label: string;
   fieldKey: string;
@@ -61,6 +67,8 @@ interface ExternalDropdown {
   sourceType: FieldSourceType;
   defaultValue?: string;
   formula?: string;
+  conditionalRules?: ConditionalRule[];
+  fallbackOption?: string;
 }
 
 interface ExternalPricingConfig {
@@ -1082,37 +1090,154 @@ export function PricingConfiguration({
                   )}
                 </div>
                 {dd.sourceType === 'calculated' && (
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="{fieldA} / ({fieldB} * {fieldC} / 100)"
-                      value={dd.formula || ''}
-                      onChange={(e) => {
-                        const updated = [...extDropdowns];
-                        updated[ddIdx] = { ...updated[ddIdx], formula: e.target.value };
-                        setExtDropdowns(updated);
-                      }}
-                      className="font-mono text-[13px]"
-                      data-testid={`input-dd-formula-${ddIdx}`}
-                    />
-                    {(() => {
-                      const pricingVars = [...extTextInputs.map(f => ({ key: f.fieldKey, label: f.label })),
-                        ...extDropdowns.filter((_, i) => i !== ddIdx).map(f => ({ key: f.fieldKey, label: f.label }))].filter(f => f.key);
-                      const quoteVars = quoteFormVariables.filter(qf => !pricingVars.some(pv => pv.key === qf.key));
-                      const allVars = [...pricingVars, ...quoteVars];
-                      return allVars.length > 0 ? (
-                        <div>
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Available Variables</span>
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {allVars.map((f, fi) => (
-                              <button key={fi} type="button" className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-mono hover:bg-primary/20 transition-colors cursor-pointer" onClick={() => { const updated = [...extDropdowns]; updated[ddIdx] = { ...updated[ddIdx], formula: (updated[ddIdx].formula || '') + `{${f.key}}` }; setExtDropdowns(updated); }} data-testid={`chip-dd-var-${ddIdx}-${fi}`}>
-                                {`{${f.key}}`} <span className="opacity-60 font-sans">{f.label}</span>
-                              </button>
-                            ))}
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-[12px] text-muted-foreground uppercase tracking-wider">Formula</Label>
+                      <Input
+                        placeholder="{grossMonthlyRent} / (({loanAmount} * {interestRate} / 100 / 12) + {monthlyTaxes} + {monthlyInsurance})"
+                        value={dd.formula || ''}
+                        onChange={(e) => {
+                          const updated = [...extDropdowns];
+                          updated[ddIdx] = { ...updated[ddIdx], formula: e.target.value };
+                          setExtDropdowns(updated);
+                        }}
+                        className="font-mono text-[13px]"
+                        data-testid={`input-dd-formula-${ddIdx}`}
+                      />
+                      {(() => {
+                        const pricingVars = [...extTextInputs.map(f => ({ key: f.fieldKey, label: f.label })),
+                          ...extDropdowns.filter((_, i) => i !== ddIdx).map(f => ({ key: f.fieldKey, label: f.label }))].filter(f => f.key);
+                        const quoteVars = quoteFormVariables.filter(qf => !pricingVars.some(pv => pv.key === qf.key));
+                        const allVars = [...pricingVars, ...quoteVars];
+                        return allVars.length > 0 ? (
+                          <div>
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Available Variables</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {allVars.map((f, fi) => (
+                                <button key={fi} type="button" className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-mono hover:bg-primary/20 transition-colors cursor-pointer" onClick={() => { const updated = [...extDropdowns]; updated[ddIdx] = { ...updated[ddIdx], formula: (updated[ddIdx].formula || '') + `{${f.key}}` }; setExtDropdowns(updated); }} data-testid={`chip-dd-var-${ddIdx}-${fi}`}>
+                                  {`{${f.key}}`} <span className="opacity-60 font-sans">{f.label}</span>
+                                </button>
+                              ))}
+                            </div>
                           </div>
+                        ) : null;
+                      })()}
+                    </div>
+
+                    <div className="space-y-2 border-t pt-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[12px] text-muted-foreground uppercase tracking-wider">Conditional Rules</Label>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const updated = [...extDropdowns];
+                            const rules = [...(updated[ddIdx].conditionalRules || []), { operator: '>=' as const, value: '', option: '' }];
+                            updated[ddIdx] = { ...updated[ddIdx], conditionalRules: rules };
+                            setExtDropdowns(updated);
+                          }}
+                          data-testid={`button-add-rule-${ddIdx}`}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Add Rule
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">Rules are checked top-to-bottom. The first matching rule determines the dropdown selection.</p>
+
+                      {(dd.conditionalRules || []).map((rule, rIdx) => (
+                        <div key={rIdx} className="flex items-center gap-2 pl-2 border-l-2 border-primary/20">
+                          <span className="text-[12px] text-muted-foreground whitespace-nowrap">If result</span>
+                          <Select
+                            value={rule.operator}
+                            onValueChange={(val) => {
+                              const updated = [...extDropdowns];
+                              const rules = [...(updated[ddIdx].conditionalRules || [])];
+                              rules[rIdx] = { ...rules[rIdx], operator: val as ConditionalRule['operator'] };
+                              updated[ddIdx] = { ...updated[ddIdx], conditionalRules: rules };
+                              setExtDropdowns(updated);
+                            }}
+                          >
+                            <SelectTrigger className="w-20" data-testid={`select-rule-op-${ddIdx}-${rIdx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value=">=">≥</SelectItem>
+                              <SelectItem value=">">{'>'}</SelectItem>
+                              <SelectItem value="<=">≤</SelectItem>
+                              <SelectItem value="<">{'<'}</SelectItem>
+                              <SelectItem value="==">=</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            placeholder="value"
+                            value={rule.value}
+                            onChange={(e) => {
+                              const updated = [...extDropdowns];
+                              const rules = [...(updated[ddIdx].conditionalRules || [])];
+                              rules[rIdx] = { ...rules[rIdx], value: e.target.value };
+                              updated[ddIdx] = { ...updated[ddIdx], conditionalRules: rules };
+                              setExtDropdowns(updated);
+                            }}
+                            className="w-24 font-mono text-[13px]"
+                            data-testid={`input-rule-val-${ddIdx}-${rIdx}`}
+                          />
+                          <span className="text-[12px] text-muted-foreground whitespace-nowrap">then select</span>
+                          <Select
+                            value={rule.option || ''}
+                            onValueChange={(val) => {
+                              const updated = [...extDropdowns];
+                              const rules = [...(updated[ddIdx].conditionalRules || [])];
+                              rules[rIdx] = { ...rules[rIdx], option: val };
+                              updated[ddIdx] = { ...updated[ddIdx], conditionalRules: rules };
+                              setExtDropdowns(updated);
+                            }}
+                          >
+                            <SelectTrigger className="w-40" data-testid={`select-rule-opt-${ddIdx}-${rIdx}`}>
+                              <SelectValue placeholder="Choose option" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {dd.options.map((opt, oi) => (
+                                <SelectItem key={oi} value={opt}>{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updated = [...extDropdowns];
+                              const rules = (updated[ddIdx].conditionalRules || []).filter((_, i) => i !== rIdx);
+                              updated[ddIdx] = { ...updated[ddIdx], conditionalRules: rules };
+                              setExtDropdowns(updated);
+                            }}
+                            data-testid={`button-remove-rule-${ddIdx}-${rIdx}`}
+                          >
+                            <X className="h-4 w-4 text-muted-foreground" />
+                          </Button>
                         </div>
-                      ) : null;
-                    })()}
-                    <p className="text-[11px] text-muted-foreground">Use {'{fieldKey}'} to reference other fields. Supports +, -, *, /, parentheses.</p>
+                      ))}
+
+                      <div className="flex items-center gap-2 pl-2 border-l-2 border-muted-foreground/20 pt-1">
+                        <span className="text-[12px] text-muted-foreground whitespace-nowrap">Otherwise select</span>
+                        <Select
+                          value={dd.fallbackOption || ''}
+                          onValueChange={(val) => {
+                            const updated = [...extDropdowns];
+                            updated[ddIdx] = { ...updated[ddIdx], fallbackOption: val };
+                            setExtDropdowns(updated);
+                          }}
+                        >
+                          <SelectTrigger className="w-40" data-testid={`select-rule-fallback-${ddIdx}`}>
+                            <SelectValue placeholder="Fallback option" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {dd.options.map((opt, oi) => (
+                              <SelectItem key={oi} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
                 )}
 
