@@ -1,14 +1,16 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Check, AlertCircle, PenTool, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Check, AlertCircle, PenTool, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Document, Page, pdfjs } from "react-pdf";
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+const PDF_PAGE_WIDTH = 612;
 
 interface SigningData {
   success: boolean;
@@ -34,7 +36,7 @@ interface SigningData {
     width: number;
     height: number;
     label?: string;
-    value?: string | null; // Pre-filled value from document setup
+    value?: string | null;
   }>;
 }
 
@@ -47,29 +49,43 @@ export default function SignPage() {
   const [activeSignatureField, setActiveSignatureField] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [containerWidth, setContainerWidth] = useState<number>(600);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, error } = useQuery<SigningData>({
     queryKey: ['/api/sign', token],
     enabled: !!token
   });
 
-  // Initialize fieldValues with pre-filled values from server
   useEffect(() => {
     if (data?.fields) {
       const initialValues: Record<number, string> = {};
       const preFilledIds = new Set<number>();
-      
       data.fields.forEach(field => {
         if (field.value) {
           initialValues[field.id] = field.value;
           preFilledIds.add(field.id);
         }
       });
-      
       setFieldValues(prev => ({ ...initialValues, ...prev }));
       setPreFilledFieldIds(preFilledIds);
     }
   }, [data?.fields]);
+
+  useEffect(() => {
+    const container = pdfContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) setContainerWidth(w);
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const scale = containerWidth / PDF_PAGE_WIDTH;
 
   const completeMutation = useMutation({
     mutationFn: async () => {
@@ -101,16 +117,25 @@ export default function SignPage() {
     }
   }, [activeSignatureField]);
 
+  const getCanvasCoords = useCallback((canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  }, []);
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getCanvasCoords(canvas, e.clientX, e.clientY);
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.moveTo(x, y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -119,13 +144,43 @@ export default function SignPage() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    const { x, y } = getCanvasCoords(canvas, e.clientX, e.clientY);
+    ctx.lineTo(x, y);
     ctx.stroke();
   };
 
   const endDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    if (!canvas || !touch) return;
+    setIsDrawing(true);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { x, y } = getCanvasCoords(canvas, touch.clientX, touch.clientY);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    if (!canvas || !touch) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { x, y } = getCanvasCoords(canvas, touch.clientX, touch.clientY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     setIsDrawing(false);
   };
 
@@ -154,16 +209,12 @@ export default function SignPage() {
     setFieldValues(prev => ({ ...prev, [fieldId]: today }));
   };
 
-  const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number>(1);
-  const [pdfScale, setPdfScale] = useState(1);
-  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
   };
 
-  // Only check non-pre-filled fields for completion - pre-filled fields are already complete
   const allFieldsFilled = data?.fields?.every(f => preFilledFieldIds.has(f.id) || fieldValues[f.id]) ?? false;
 
   if (isLoading) {
@@ -211,9 +262,6 @@ export default function SignPage() {
   }
 
   const { document: doc, signer, fields } = data;
-  
-  // Get fields for current page
-  const currentPageFields = fields?.filter(f => f.pageNumber === currentPage) || [];
 
   return (
     <div className="min-h-screen bg-muted">
@@ -224,7 +272,7 @@ export default function SignPage() {
               <FileText className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-foreground">{doc?.name}</h1>
+              <h1 className="font-bold text-foreground" data-testid="text-doc-name">{doc?.name}</h1>
               <p className="text-sm text-muted-foreground">Signing as: {signer?.name}</p>
             </div>
           </div>
@@ -251,34 +299,8 @@ export default function SignPage() {
 
       <main className="flex-1 overflow-auto p-4">
         <div className="max-w-4xl mx-auto">
-          {/* Page Navigation */}
-          <div className="flex items-center justify-center gap-4 mb-4 bg-background rounded-lg p-3 shadow-sm">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage <= 1}
-              data-testid="button-prev-page"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} of {numPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-              disabled={currentPage >= numPages}
-              data-testid="button-next-page"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* PDF Document with Fields */}
           <div className="bg-background rounded-lg shadow-lg overflow-hidden">
-            <div ref={pdfContainerRef} className="relative flex justify-center p-4 bg-muted">
+            <div ref={pdfContainerRef} className="relative bg-muted">
               {doc?.fileData && (
                 <Document
                   file={doc.fileData}
@@ -289,84 +311,83 @@ export default function SignPage() {
                     </div>
                   }
                 >
-                  <div className="relative shadow-xl">
-                    <Page
-                      pageNumber={currentPage}
-                      width={600}
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                    />
-                    
-                    {/* Render fields on top of the PDF */}
-                    {currentPageFields.map((field) => {
-                      const isPreFilled = preFilledFieldIds.has(field.id);
-                      const hasValue = !!fieldValues[field.id];
-                      
-                      return (
-                        <div
-                          key={field.id}
-                          className={`absolute transition-all ${isPreFilled ? 'cursor-default' : 'cursor-pointer'}`}
-                          style={{
-                            left: field.x,
-                            top: field.y,
-                            width: field.width,
-                            height: field.height,
-                            border: isPreFilled 
-                              ? '2px solid #64748b' 
-                              : `2px solid ${signer?.color}`,
-                            backgroundColor: isPreFilled
-                              ? '#f1f5f9'
-                              : hasValue 
-                                ? `${signer?.color}20` 
-                                : `${signer?.color}40`,
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            overflow: 'hidden',
-                          }}
-                          onClick={() => {
-                            // Don't allow clicking on pre-filled fields
-                            if (isPreFilled) return;
-                            
-                            if (field.fieldType === 'signature' || field.fieldType === 'initial') {
-                              setActiveSignatureField(field.id);
-                            } else if (field.fieldType === 'date') {
-                              handleDateClick(field.id);
-                            }
-                          }}
-                          data-testid={`field-${field.id}`}
-                        >
-                          {hasValue ? (
-                            field.fieldType === 'signature' || field.fieldType === 'initial' ? (
-                              <img
-                                src={fieldValues[field.id]}
-                                alt="Signature"
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <span className={`text-xs font-medium px-1 truncate ${isPreFilled ? 'text-foreground' : ''}`}>
-                                {fieldValues[field.id]}
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-xs font-medium px-1" style={{ color: signer?.color }}>
-                              {field.fieldType === 'signature' ? 'Click to Sign' :
-                               field.fieldType === 'initial' ? 'Click to Initial' :
-                               field.fieldType === 'date' ? 'Click for Date' :
-                               'Click to Edit'}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+                    const pageFields = fields?.filter(f => f.pageNumber === pageNum) || [];
+                    return (
+                      <div key={pageNum} className="relative shadow-xl mb-4 last:mb-0">
+                        <Page
+                          pageNumber={pageNum}
+                          width={containerWidth}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                        />
+                        {pageFields.map((field) => {
+                          const isPreFilled = preFilledFieldIds.has(field.id);
+                          const hasValue = !!fieldValues[field.id];
+                          return (
+                            <div
+                              key={field.id}
+                              className={`absolute transition-all ${isPreFilled ? 'cursor-default' : 'cursor-pointer'}`}
+                              style={{
+                                left: field.x * scale,
+                                top: field.y * scale,
+                                width: field.width * scale,
+                                height: field.height * scale,
+                                border: isPreFilled
+                                  ? '2px solid #64748b'
+                                  : `2px solid ${signer?.color}`,
+                                backgroundColor: isPreFilled
+                                  ? '#f1f5f9'
+                                  : hasValue
+                                    ? `${signer?.color}20`
+                                    : `${signer?.color}40`,
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                              }}
+                              onClick={() => {
+                                if (isPreFilled) return;
+                                if (field.fieldType === 'signature' || field.fieldType === 'initial') {
+                                  setActiveSignatureField(field.id);
+                                } else if (field.fieldType === 'date') {
+                                  handleDateClick(field.id);
+                                }
+                              }}
+                              data-testid={`field-${field.id}`}
+                            >
+                              {hasValue ? (
+                                field.fieldType === 'signature' || field.fieldType === 'initial' ? (
+                                  <img
+                                    src={fieldValues[field.id]}
+                                    alt="Signature"
+                                    className="w-full h-full object-contain"
+                                  />
+                                ) : (
+                                  <span className={`text-xs font-medium px-1 truncate ${isPreFilled ? 'text-foreground' : ''}`}>
+                                    {fieldValues[field.id]}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-xs font-medium px-1" style={{ color: signer?.color }}>
+                                  {field.fieldType === 'signature' ? 'Click to Sign' :
+                                   field.fieldType === 'initial' ? 'Click to Initial' :
+                                   field.fieldType === 'date' ? 'Click for Date' :
+                                   'Click to Edit'}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </Document>
               )}
             </div>
           </div>
 
-          {/* Field Summary Panel */}
           <Card className="mt-6">
             <CardHeader className="bg-muted border-b border-border py-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -379,7 +400,6 @@ export default function SignPage() {
                 {fields?.map((field) => {
                   const isPreFilled = preFilledFieldIds.has(field.id);
                   const hasValue = !!fieldValues[field.id];
-                  
                   return (
                     <div
                       key={field.id}
@@ -390,7 +410,7 @@ export default function SignPage() {
                             ? 'bg-success/10 border-success/20'
                             : ''
                       }`}
-                      style={{ 
+                      style={{
                         borderColor: isPreFilled ? undefined : hasValue ? undefined : signer?.color,
                         backgroundColor: isPreFilled ? undefined : hasValue ? undefined : `${signer?.color}10`
                       }}
@@ -411,7 +431,6 @@ export default function SignPage() {
                           </span>
                           <span className="text-xs text-muted-foreground">Page {field.pageNumber}</span>
                         </div>
-                        
                         {field.fieldType === 'text' && !hasValue && !isPreFilled && (
                           <Input
                             value={fieldValues[field.id] || ''}
@@ -421,43 +440,38 @@ export default function SignPage() {
                             data-testid={`input-text-field-${field.id}`}
                           />
                         )}
-                      
-                      {(field.fieldType === 'signature' || field.fieldType === 'initial') && !hasValue && !isPreFilled && (
-                        <Button
-                          size="sm"
-                          onClick={() => setActiveSignatureField(field.id)}
-                          style={{ backgroundColor: signer?.color }}
-                          className="h-7 text-xs"
-                          data-testid={`button-sign-field-${field.id}`}
-                        >
-                          {field.fieldType === 'signature' ? 'Sign' : 'Initial'}
-                        </Button>
-                      )}
-                      
-                      {field.fieldType === 'date' && !hasValue && !isPreFilled && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDateClick(field.id)}
-                          className="h-7 text-xs"
-                          data-testid={`button-date-field-${field.id}`}
-                        >
-                          Add Date
-                        </Button>
-                      )}
-                      
-                      {/* Show pre-filled value for display */}
-                      {isPreFilled && hasValue && (
-                        <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                          {fieldValues[field.id]}
-                        </span>
-                      )}
+                        {(field.fieldType === 'signature' || field.fieldType === 'initial') && !hasValue && !isPreFilled && (
+                          <Button
+                            size="sm"
+                            onClick={() => setActiveSignatureField(field.id)}
+                            style={{ backgroundColor: signer?.color }}
+                            className="h-7 text-xs"
+                            data-testid={`button-sign-field-${field.id}`}
+                          >
+                            {field.fieldType === 'signature' ? 'Sign' : 'Initial'}
+                          </Button>
+                        )}
+                        {field.fieldType === 'date' && !hasValue && !isPreFilled && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDateClick(field.id)}
+                            className="h-7 text-xs"
+                            data-testid={`button-date-field-${field.id}`}
+                          >
+                            Add Date
+                          </Button>
+                        )}
+                        {isPreFilled && hasValue && (
+                          <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                            {fieldValues[field.id]}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   );
                 })}
               </div>
-
               {!allFieldsFilled && (
                 <p className="text-sm text-warning mt-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" />
@@ -476,27 +490,31 @@ export default function SignPage() {
               <CardTitle>Draw Your {fields?.find(f => f.id === activeSignatureField)?.fieldType === 'initial' ? 'Initials' : 'Signature'}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="border-2 border-border rounded-lg overflow-hidden bg-background">
+              <div className="border-2 border-border rounded-lg overflow-hidden bg-white">
                 <canvas
                   ref={canvasRef}
                   width={450}
                   height={150}
-                  className="w-full cursor-crosshair"
+                  className="w-full cursor-crosshair touch-none"
                   onMouseDown={startDrawing}
                   onMouseMove={draw}
                   onMouseUp={endDrawing}
                   onMouseLeave={endDrawing}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  data-testid="canvas-signature"
                 />
               </div>
               <div className="flex justify-between gap-2">
-                <Button variant="outline" onClick={clearSignature}>
+                <Button variant="outline" onClick={clearSignature} data-testid="button-clear-signature">
                   Clear
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setActiveSignatureField(null)}>
+                  <Button variant="outline" onClick={() => setActiveSignatureField(null)} data-testid="button-cancel-signature">
                     Cancel
                   </Button>
-                  <Button onClick={saveSignature} style={{ backgroundColor: signer?.color }}>
+                  <Button onClick={saveSignature} style={{ backgroundColor: signer?.color }} data-testid="button-apply-signature">
                     Apply Signature
                   </Button>
                 </div>
