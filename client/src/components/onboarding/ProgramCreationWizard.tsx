@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -1109,6 +1110,7 @@ function CreditPolicyStep({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const appendFileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -1121,15 +1123,21 @@ function CreditPolicyStep({
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
   const [editingRuleData, setEditingRuleData] = useState<{ ruleTitle: string; ruleDescription: string }>({ ruleTitle: '', ruleDescription: '' });
   const [justCreatedPolicy, setJustCreatedPolicy] = useState<{ id: number; name: string; ruleCount: number } | null>(null);
-
-  const selectedPolicy = selectedId
-    ? creditPolicies.find((p: any) => p.id === selectedId) || (justCreatedPolicy && justCreatedPolicy.id === selectedId ? { id: justCreatedPolicy.id, name: justCreatedPolicy.name, ruleCount: justCreatedPolicy.ruleCount } : null)
-    : null;
+  const [viewPolicyOpen, setViewPolicyOpen] = useState(false);
+  const [isAppending, setIsAppending] = useState(false);
+  const [appendExtractedRules, setAppendExtractedRules] = useState<{ documentType: string; ruleTitle: string; ruleDescription: string; category?: string }[]>([]);
+  const [appendFileName, setAppendFileName] = useState('');
 
   const { data: policyDetails } = useQuery<any>({
     queryKey: [`/api/admin/credit-policies/${selectedId}`],
     enabled: !!selectedId,
   });
+
+  const selectedPolicy = selectedId
+    ? creditPolicies.find((p: any) => p.id === selectedId)
+      || (justCreatedPolicy && justCreatedPolicy.id === selectedId ? { id: justCreatedPolicy.id, name: justCreatedPolicy.name, ruleCount: justCreatedPolicy.ruleCount } : null)
+      || (policyDetails ? { id: policyDetails.id, name: policyDetails.name, ruleCount: policyDetails.rules?.length || 0 } : null)
+    : null;
 
   const createPolicyMutation = useMutation({
     mutationFn: async () => {
@@ -1154,6 +1162,89 @@ function CreditPolicyStep({
     },
     onError: () => {
       toast({ title: 'Failed to create credit policy', variant: 'destructive' });
+    },
+  });
+
+  const handleAppendFileUpload = useCallback(async (file: File) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ];
+    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|doc|docx|txt)$/i)) {
+      toast({ title: 'Please upload a PDF, Word document, or text file', variant: 'destructive' });
+      return;
+    }
+
+    setIsAppending(true);
+    setAppendFileName(file.name);
+    setAppendExtractedRules([]);
+
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1] || result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const response = await apiRequest('POST', '/api/admin/credit-policies/extract-rules', {
+        fileContent: base64,
+        fileName: file.name,
+      });
+      const data = await response.json();
+      if (data.rules && Array.isArray(data.rules)) {
+        setAppendExtractedRules(data.rules);
+        toast({ title: `Extracted ${data.rules.length} additional rules from ${file.name}` });
+      }
+    } catch (error: any) {
+      let msg = 'Failed to extract rules';
+      try {
+        const jsonMatch = error.message?.match(/\{.*\}/s);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.error) msg = parsed.error;
+        } else if (error.message) {
+          msg = error.message;
+        }
+      } catch { /* use default msg */ }
+      toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
+      setAppendFileName('');
+    } finally {
+      setIsAppending(false);
+    }
+  }, [toast]);
+
+  const appendRulesMutation = useMutation({
+    mutationFn: async () => {
+      const existingRules = (policyDetails?.rules || []).map((r: any) => ({
+        documentType: r.documentType || 'General',
+        ruleTitle: r.ruleTitle,
+        ruleDescription: r.ruleDescription || null,
+        category: r.category || null,
+        isActive: r.isActive !== false,
+      }));
+      const mergedRules = [...existingRules, ...appendExtractedRules];
+      return apiRequest('PUT', `/api/admin/credit-policies/${selectedId}`, {
+        rules: mergedRules,
+      });
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/credit-policies/${selectedId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/credit-policies'] });
+      if (justCreatedPolicy && justCreatedPolicy.id === selectedId) {
+        setJustCreatedPolicy({ ...justCreatedPolicy, ruleCount: justCreatedPolicy.ruleCount + appendExtractedRules.length });
+      }
+      toast({ title: `${appendExtractedRules.length} rules added to policy` });
+      setAppendExtractedRules([]);
+      setAppendFileName('');
+    },
+    onError: () => {
+      toast({ title: 'Failed to add rules to policy', variant: 'destructive' });
     },
   });
 
@@ -1276,7 +1367,11 @@ function CreditPolicyStep({
               <Link2 className="h-4 w-4 text-blue-600" />
               <span className="text-[14px] font-semibold text-blue-700 dark:text-blue-400">Linked: {selectedPolicy.name}</span>
             </div>
-            <button className="text-[13px] text-blue-600 hover:text-blue-800 font-medium" data-testid="button-view-policy">
+            <button
+              className="text-[13px] text-blue-600 hover:text-blue-800 font-medium"
+              data-testid="button-view-policy"
+              onClick={() => setViewPolicyOpen(true)}
+            >
               View Policy →
             </button>
           </div>
@@ -1304,8 +1399,145 @@ function CreditPolicyStep({
               )}
             </div>
           </div>
+
+          <div className="border rounded-[10px] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[14px] font-medium">Add rules from another document</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => appendFileInputRef.current?.click()}
+                disabled={isAppending}
+                data-testid="button-add-document"
+              >
+                {isAppending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
+                Add Document
+              </Button>
+              <input
+                ref={appendFileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAppendFileUpload(file);
+                  e.target.value = '';
+                }}
+                data-testid="input-append-file"
+              />
+            </div>
+
+            {isAppending && (
+              <div className="flex items-center gap-3 py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <div>
+                  <p className="text-[13px] font-medium">Analyzing {appendFileName}...</p>
+                  <p className="text-[12px] text-muted-foreground">Extracting rules — this may take 60–90 seconds</p>
+                </div>
+              </div>
+            )}
+
+            {!isAppending && appendExtractedRules.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-2.5 bg-muted/50 rounded-md">
+                  <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                  <span className="text-[13px] font-medium flex-1 truncate">{appendFileName}</span>
+                  <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    {appendExtractedRules.length} new rules
+                  </Badge>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-5 w-5"
+                    onClick={() => { setAppendExtractedRules([]); setAppendFileName(''); }}
+                    data-testid="button-discard-append"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                  {appendExtractedRules.map((rule, idx) => (
+                    <div key={idx} className="px-3 py-2 text-[13px]">
+                      <p className="font-medium">{rule.ruleTitle}</p>
+                      {rule.ruleDescription && <p className="text-muted-foreground mt-0.5">{rule.ruleDescription}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => appendRulesMutation.mutate()}
+                    disabled={appendRulesMutation.isPending || !policyDetails?.rules}
+                    data-testid="button-merge-rules"
+                  >
+                    {appendRulesMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    Add {appendExtractedRules.length} Rules to Policy
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      <Dialog open={viewPolicyOpen} onOpenChange={setViewPolicyOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col" data-testid="dialog-view-policy">
+          <DialogHeader>
+            <DialogTitle className="text-[20px] font-bold">{selectedPolicy?.name || 'Credit Policy'}</DialogTitle>
+            {policyDetails?.sourceFileName && (
+              <p className="text-[13px] text-muted-foreground mt-1">
+                Source: {policyDetails.sourceFileName}
+              </p>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
+            {!policyDetails ? (
+              <div className="flex items-center justify-center gap-2 py-8">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <p className="text-[13px] text-muted-foreground">Loading policy rules...</p>
+              </div>
+            ) : policyDetails.rules && policyDetails.rules.length > 0 ? (
+              <div className="space-y-4 pb-4">
+                <p className="text-[13px] text-muted-foreground">{policyDetails.rules.length} rules total</p>
+                {(() => {
+                  const grouped = (policyDetails.rules as any[]).reduce<Record<string, any[]>>((acc, rule) => {
+                    const group = rule.documentType || 'General';
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(rule);
+                    return acc;
+                  }, {});
+                  return Object.entries(grouped).map(([group, rules]) => (
+                    <div key={group} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[14px] font-semibold">{group}</h4>
+                        <Badge variant="secondary" className="text-xs">{rules.length}</Badge>
+                      </div>
+                      <div className="space-y-1.5">
+                        {rules.map((rule: any, idx: number) => (
+                          <div key={idx} className="p-3 bg-muted/30 rounded-md text-[13px]">
+                            <p className="font-medium">{rule.ruleTitle}</p>
+                            {rule.ruleDescription && (
+                              <p className="text-muted-foreground mt-0.5">{rule.ruleDescription}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <p className="text-[13px] text-muted-foreground py-6 text-center">No rules found in this policy.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {!selectedPolicy && !showCreateForm && (
         <>
