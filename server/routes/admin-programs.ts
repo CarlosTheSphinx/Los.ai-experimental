@@ -339,9 +339,14 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           .where(eq(loanPrograms.id, programId))
           .returning();
 
-        let createdStepIds: number[] = [];
+        let stepIds: number[] = [];
         if (steps && Array.isArray(steps)) {
-          await tx.delete(programWorkflowSteps).where(eq(programWorkflowSteps.programId, programId));
+          const existingSteps = await tx.select()
+            .from(programWorkflowSteps)
+            .where(eq(programWorkflowSteps.programId, programId))
+            .orderBy(programWorkflowSteps.stepOrder);
+          const existingStepMap = new Map(existingSteps.map(s => [s.id, s]));
+          const keptStepIds = new Set<number>();
 
           for (let i = 0; i < steps.length; i++) {
             const step = steps[i];
@@ -366,63 +371,133 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
             }
 
             if (stepDefId) {
-              const [createdStep] = await tx.insert(programWorkflowSteps).values({
-                programId,
-                stepDefinitionId: stepDefId,
-                stepOrder: i + 1,
-                isRequired: step.isRequired !== false,
-                estimatedDays: step.estimatedDays ? parseInt(step.estimatedDays) : null,
-              }).returning();
-              createdStepIds.push(createdStep.id);
+              if (step.id && existingStepMap.has(step.id)) {
+                await tx.update(programWorkflowSteps)
+                  .set({
+                    stepDefinitionId: stepDefId,
+                    stepOrder: i + 1,
+                    isRequired: step.isRequired !== false,
+                    estimatedDays: step.estimatedDays ? parseInt(step.estimatedDays) : null,
+                  })
+                  .where(eq(programWorkflowSteps.id, step.id));
+                stepIds.push(step.id);
+                keptStepIds.add(step.id);
+              } else {
+                const [createdStep] = await tx.insert(programWorkflowSteps).values({
+                  programId,
+                  stepDefinitionId: stepDefId,
+                  stepOrder: i + 1,
+                  isRequired: step.isRequired !== false,
+                  estimatedDays: step.estimatedDays ? parseInt(step.estimatedDays) : null,
+                }).returning();
+                stepIds.push(createdStep.id);
+              }
             } else {
-              createdStepIds.push(-1);
+              stepIds.push(-1);
             }
+          }
+
+          const removedStepIds = existingSteps.filter(s => !keptStepIds.has(s.id)).map(s => s.id);
+          if (removedStepIds.length > 0) {
+            await tx.delete(programWorkflowSteps).where(inArray(programWorkflowSteps.id, removedStepIds));
           }
         }
 
-        if (createdStepIds.length === 0 && (documents || tasks)) {
+        if (stepIds.length === 0 && (documents || tasks)) {
           const existingSteps = await tx.select({ id: programWorkflowSteps.id })
             .from(programWorkflowSteps)
             .where(eq(programWorkflowSteps.programId, programId))
             .orderBy(programWorkflowSteps.stepOrder);
-          createdStepIds = existingSteps.map(s => s.id);
+          stepIds = existingSteps.map(s => s.id);
         }
 
         if (documents && Array.isArray(documents)) {
-          await tx.delete(programDocumentTemplates).where(eq(programDocumentTemplates.programId, programId));
+          const existingDocs = await tx.select()
+            .from(programDocumentTemplates)
+            .where(eq(programDocumentTemplates.programId, programId));
+          const existingDocMap = new Map(existingDocs.map(d => [d.id, d]));
+          const keptDocIds = new Set<number>();
 
           const validDocs = documents.filter((doc: any) => doc.documentName?.trim());
-          if (validDocs.length > 0) {
-            const documentEntries = validDocs.map((doc: any, index: number) => ({
-              programId,
-              documentName: doc.documentName.trim(),
-              documentCategory: doc.documentCategory || 'other',
-              documentDescription: doc.documentDescription || null,
-              isRequired: doc.isRequired !== false,
-              sortOrder: index,
-              stepId: doc.stepIndex !== null && doc.stepIndex !== undefined && doc.stepIndex >= 0 && doc.stepIndex < createdStepIds.length && createdStepIds[doc.stepIndex] > 0 ? createdStepIds[doc.stepIndex] : null,
-            }));
-            await tx.insert(programDocumentTemplates).values(documentEntries);
+          for (let i = 0; i < validDocs.length; i++) {
+            const doc = validDocs[i];
+            const resolvedStepId = doc.stepIndex !== null && doc.stepIndex !== undefined && doc.stepIndex >= 0 && doc.stepIndex < stepIds.length && stepIds[doc.stepIndex] > 0 ? stepIds[doc.stepIndex] : null;
+
+            if (doc.id && existingDocMap.has(doc.id)) {
+              await tx.update(programDocumentTemplates)
+                .set({
+                  documentName: doc.documentName.trim(),
+                  documentCategory: doc.documentCategory || 'other',
+                  documentDescription: doc.documentDescription || null,
+                  isRequired: doc.isRequired !== false,
+                  sortOrder: i,
+                  stepId: resolvedStepId,
+                })
+                .where(eq(programDocumentTemplates.id, doc.id));
+              keptDocIds.add(doc.id);
+            } else {
+              await tx.insert(programDocumentTemplates).values({
+                programId,
+                documentName: doc.documentName.trim(),
+                documentCategory: doc.documentCategory || 'other',
+                documentDescription: doc.documentDescription || null,
+                isRequired: doc.isRequired !== false,
+                sortOrder: i,
+                stepId: resolvedStepId,
+              });
+            }
+          }
+
+          const removedDocIds = existingDocs.filter(d => !keptDocIds.has(d.id)).map(d => d.id);
+          if (removedDocIds.length > 0) {
+            await tx.delete(programDocumentTemplates).where(inArray(programDocumentTemplates.id, removedDocIds));
           }
         }
 
         if (tasks && Array.isArray(tasks)) {
-          await tx.delete(programTaskTemplates).where(eq(programTaskTemplates.programId, programId));
+          const existingTasks = await tx.select()
+            .from(programTaskTemplates)
+            .where(eq(programTaskTemplates.programId, programId));
+          const existingTaskMap = new Map(existingTasks.map(t => [t.id, t]));
+          const keptTaskIds = new Set<number>();
 
           const validTasks = tasks.filter((task: any) => task.taskName?.trim());
-          if (validTasks.length > 0) {
-            const taskEntries = validTasks.map((task: any, index: number) => ({
-              programId,
-              taskName: task.taskName.trim(),
-              taskDescription: task.taskDescription || null,
-              taskCategory: task.taskCategory || 'other',
-              priority: task.priority || 'medium',
-              sortOrder: index,
-              stepId: task.stepIndex !== null && task.stepIndex !== undefined && task.stepIndex >= 0 && task.stepIndex < createdStepIds.length && createdStepIds[task.stepIndex] > 0 ? createdStepIds[task.stepIndex] : null,
-              assignToRole: task.assignToRole || task.assignee || null,
-              formTemplateId: task.formTemplateId || null,
-            }));
-            await tx.insert(programTaskTemplates).values(taskEntries);
+          for (let i = 0; i < validTasks.length; i++) {
+            const task = validTasks[i];
+            const resolvedStepId = task.stepIndex !== null && task.stepIndex !== undefined && task.stepIndex >= 0 && task.stepIndex < stepIds.length && stepIds[task.stepIndex] > 0 ? stepIds[task.stepIndex] : null;
+
+            if (task.id && existingTaskMap.has(task.id)) {
+              await tx.update(programTaskTemplates)
+                .set({
+                  taskName: task.taskName.trim(),
+                  taskDescription: task.taskDescription || null,
+                  taskCategory: task.taskCategory || 'other',
+                  priority: task.priority || 'medium',
+                  sortOrder: i,
+                  stepId: resolvedStepId,
+                  assignToRole: task.assignToRole || task.assignee || null,
+                  formTemplateId: task.formTemplateId || null,
+                })
+                .where(eq(programTaskTemplates.id, task.id));
+              keptTaskIds.add(task.id);
+            } else {
+              await tx.insert(programTaskTemplates).values({
+                programId,
+                taskName: task.taskName.trim(),
+                taskDescription: task.taskDescription || null,
+                taskCategory: task.taskCategory || 'other',
+                priority: task.priority || 'medium',
+                sortOrder: i,
+                stepId: resolvedStepId,
+                assignToRole: task.assignToRole || task.assignee || null,
+                formTemplateId: task.formTemplateId || null,
+              });
+            }
+          }
+
+          const removedTaskIds = existingTasks.filter(t => !keptTaskIds.has(t.id)).map(t => t.id);
+          if (removedTaskIds.length > 0) {
+            await tx.delete(programTaskTemplates).where(inArray(programTaskTemplates.id, removedTaskIds));
           }
         }
 

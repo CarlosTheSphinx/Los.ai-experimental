@@ -321,12 +321,14 @@ const defaultStages = [
 // ─── Types ──────────────────────────────────────────────────────
 
 interface StageEntry {
+  id?: number;
   stepName: string;
   isRequired: boolean;
   description?: string;
 }
 
 interface DocEntry {
+  id?: number;
   documentName: string;
   documentCategory: string;
   isRequired: boolean;
@@ -334,6 +336,7 @@ interface DocEntry {
 }
 
 interface TaskEntry {
+  id?: number;
   taskName: string;
   taskCategory: string;
   priority: string;
@@ -531,6 +534,7 @@ export function ProgramCreationWizard({
 
     if (editProgramData.workflowSteps?.length > 0) {
       setStages(editProgramData.workflowSteps.map((s: any) => ({
+        id: s.id,
         stepName: s.definition?.name || '',
         isRequired: s.isRequired !== false,
         description: s.definition?.description || s.description || '',
@@ -541,6 +545,7 @@ export function ProgramCreationWizard({
 
     if (editProgramData.documents?.length > 0) {
       setDocuments(editProgramData.documents.map((d: any) => ({
+        id: d.id,
         documentName: d.documentName || '',
         documentCategory: d.documentCategory || 'other',
         isRequired: d.isRequired !== false,
@@ -552,6 +557,7 @@ export function ProgramCreationWizard({
 
     if (editProgramData.tasks?.length > 0) {
       setTasks(editProgramData.tasks.map((t: any) => ({
+        id: t.id,
         taskName: t.taskName || '',
         taskCategory: t.taskCategory || 'other',
         priority: t.priority || 'medium',
@@ -676,17 +682,20 @@ export function ProgramCreationWizard({
     creditPolicyId: selectedCreditPolicyId,
     isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
     steps: stages.map((s) => ({
+      id: s.id,
       stepName: s.stepName,
       isRequired: s.isRequired,
       description: s.description || '',
     })),
     documents: documents.map((d) => ({
+      id: d.id,
       documentName: d.documentName,
       documentCategory: d.documentCategory,
       isRequired: d.isRequired,
       stepIndex: d.stepIndex,
     })),
     tasks: tasks.map((t) => ({
+      id: t.id,
       taskName: t.taskName,
       taskCategory: t.taskCategory,
       priority: t.priority,
