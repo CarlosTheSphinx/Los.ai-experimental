@@ -1262,7 +1262,7 @@ export function PricingConfiguration({
         </div>
       </div>
 
-      {!hideNavigation && (pricingMode === 'rule-based' || pricingMode === 'external') && selectedProgramId && (
+      {(pricingMode === 'rule-based' || pricingMode === 'external') && (selectedProgramId || effectiveProgramId) && (
         <div className="flex items-center gap-3">
           <Button
             onClick={() => saveRulesetMutation.mutate()}
