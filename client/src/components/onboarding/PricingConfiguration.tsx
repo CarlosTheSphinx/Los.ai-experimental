@@ -865,30 +865,9 @@ export function PricingConfiguration({
 
       {pricingMode === 'external' && (
         <div className="border-t pt-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[13px] uppercase tracking-wider font-semibold text-muted-foreground" data-testid="section-external-config">
-              External Pricing Configuration
-            </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={scanFieldsMutation.isPending}
-              onClick={() => {
-                if (!extScraperUrl.trim()) {
-                  toast({ title: 'Enter a URL first', description: 'Paste the external pricing page URL above, then click Extract Form Fields.', variant: 'destructive' });
-                  return;
-                }
-                scanFieldsMutation.mutate(extScraperUrl.trim());
-              }}
-              data-testid="button-load-defaults"
-            >
-              {scanFieldsMutation.isPending ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Scanning Page...</>
-              ) : (
-                <><Search className="h-3.5 w-3.5 mr-1.5" />Extract Form Fields</>
-              )}
-            </Button>
-          </div>
+          <h3 className="text-[13px] uppercase tracking-wider font-semibold text-muted-foreground" data-testid="section-external-config">
+            External Pricing Configuration
+          </h3>
 
           <div className="rounded-[10px] border bg-white p-5 space-y-4">
             <h4 className="text-[16px] font-bold">Scraper URL</h4>
@@ -898,6 +877,25 @@ export function PricingConfiguration({
               onChange={(e) => setExtScraperUrl(e.target.value)}
               data-testid="input-scraper-url"
             />
+            <Button
+              size="sm"
+              disabled={scanFieldsMutation.isPending}
+              onClick={() => {
+                if (!extScraperUrl.trim()) {
+                  toast({ title: 'Enter a URL first', description: 'Paste the external pricing page URL above, then click Extract Form Fields.', variant: 'destructive' });
+                  return;
+                }
+                scanFieldsMutation.mutate(extScraperUrl.trim());
+              }}
+              className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white font-semibold shadow-md"
+              data-testid="button-load-defaults"
+            >
+              {scanFieldsMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Scanning Page...</>
+              ) : (
+                <><Search className="h-4 w-4 mr-2" />Extract Form Fields</>
+              )}
+            </Button>
           </div>
 
           <div className="rounded-[10px] border bg-white p-5 space-y-4">
