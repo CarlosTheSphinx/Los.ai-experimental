@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from 'pdf-lib';
 import type { QuotePdfData } from './quoteGenerator';
+import type { LoiDefaults } from '@shared/schema';
 
 function normalizeKey(key: string): string {
   return key.replace(/[-_\s]/g, '').toLowerCase();
@@ -191,7 +192,43 @@ function drawTableRow(
   return y - rowHeight;
 }
 
-export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
+const DEFAULT_LOI_INTRO = 'Thank you for providing Sphinx Capital ("Originator") information regarding your request for business purpose real estate financing. Based on our preliminary and limited review of the information provided, we are pleased to inform you of our interest in pursuing this opportunity further, subject to the terms and conditions set forth below. If the below terms are acceptable, please sign this preliminary approval letter and return it to us no later than one business day. If accepted within this time frame, the terms outlined herein shall expire 45 calendar days from the date of this Letter.';
+
+const DEFAULT_LOI_RATE_LOCK_NOTE = '*The Interest Rate will be locked following the execution date of this Letter of Intent or after all appraisals have been received (indicated based on the box checked above), and the rate lock will be for 45 calendar days. Your Loan Interest Rate is based on loan credit parameters, represented by you (and stated in this Letter), and may be changed if differences are found in underwriting, at Originator\'s sole discretion.';
+
+const DEFAULT_LOI_DISCLAIMER = 'The proposed Loan Interest Rate and terms may be unilaterally withdrawn or adjusted by Originator in its sole discretion at any time in the event, during the underwriting process, certain loan parameters are determined to be materially and adversely different compared to those presented at the time this Letter was issued.';
+
+const DEFAULT_LOI_DISCLAIMER2 = 'Please note this Preliminary Approval Letter serves to outline the terms of the proposed financing of the referenced transaction. This Preliminary Approval Letter is merely a general proposal and is neither a binding offer nor a contract. Borrower understands and agrees that Originator is not obligated to enter into the transaction contemplated by this Preliminary Approval Letter, on the terms set forth herein, or on any other terms, unless and until Originator obtains internal committee approval, which committee approval shall be predicated on multiple factors including but not limited to satisfactory appraisal, environmental screening report (documenting no environmental risks), specific historical and current operating expense explanations, satisfactory credit review of the borrowing entity and Key Principals, and satisfactory review of the property\'s market and submarket, and Originator or its capital partner executes and delivers to Borrower final definitive loan documents, the terms of which shall supersede in their entirety the terms set forth herein. No party shall have any legal rights or obligations with respect to the other unless and until a formal application for the potential loan is signed by both Originator and Borrower.';
+
+const DEFAULT_LOI_VENDOR_TEXT = 'We have a Title/Escrow vendor with whom we have a strong relationship, and we believe using this vendor is the cheapest and most efficient option. However, if you have a strong preference to use another vendor, please let us know.';
+
+const DEFAULT_LOI_CLOSING = 'I appreciate the opportunity to present this proposal and look forward to the possibility of discussing the details of this structure at your convenience. To accept this proposal, please sign the acknowledgment on the following page.';
+
+const DEFAULT_LOI_APPRAISAL_NOTE = 'Costs can vary based on several factors including geographic region, the service provider and the type of report ordered. Costs are controlled by independent third parties, subject to change without notice. Borrower to pay appraiser directly.';
+
+const DEFAULT_LOI_FEES_FOOTNOTE = '^ The above estimates do not include title fees, borrower\'s legal fees, or any other third-party costs incurred while closing the loan.';
+
+export const LOI_DEFAULT_VALUES: Required<LoiDefaults> = {
+  loanProgram: 'BPL Term',
+  loanTerm: '360 Months',
+  loanType: '30 Year Fixed, P&I',
+  escrowAccount: 'Yes (Taxes and Insurance)',
+  amortizationTerm: '360 Months (P&I Loan)',
+  rateBuydown: '0 % of the Loan Amount',
+  underwritingFee: '$1,500',
+  legalDocFee: '$750',
+  introText: DEFAULT_LOI_INTRO,
+  disclaimerText: DEFAULT_LOI_DISCLAIMER,
+  disclaimerText2: DEFAULT_LOI_DISCLAIMER2,
+  closingText: DEFAULT_LOI_CLOSING,
+  vendorText: DEFAULT_LOI_VENDOR_TEXT,
+  rateLockNote: DEFAULT_LOI_RATE_LOCK_NOTE,
+  appraisalNote: DEFAULT_LOI_APPRAISAL_NOTE,
+  feesFootnote: DEFAULT_LOI_FEES_FOOTNOTE,
+};
+
+export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaults): Promise<Uint8Array> {
+  const d = { ...LOI_DEFAULT_VALUES, ...loiDefaults };
   const pdfDoc = await PDFDocument.create();
 
   const fonts: Fonts = {
@@ -262,8 +299,7 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
   }
   y -= 18;
 
-  const introText = 'Thank you for providing Sphinx Capital ("Originator") information regarding your request for business purpose real estate financing. Based on our preliminary and limited review of the information provided, we are pleased to inform you of our interest in pursuing this opportunity further, subject to the terms and conditions set forth below. If the below terms are acceptable, please sign this preliminary approval letter and return it to us no later than one business day. If accepted within this time frame, the terms outlined herein shall expire 45 calendar days from the date of this Letter.';
-  y = drawWrappedText(page1, introText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
+  y = drawWrappedText(page1, d.introText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
   y -= 14;
 
   const sectionTitleSize = 10;
@@ -280,17 +316,16 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
 
   y = drawTableRow(page1, y, 'Loan Amount', loanAmount ? formatCurrency(loanAmount) : '', 'Stated Borrower/Sponsor FICO', ficoScore, fonts);
   y = drawTableRow(page1, y, 'Interest Rate*', interestRate, 'Estimated Property Value', propertyValue ? formatCurrency(propertyValue) : '', fonts);
-  y = drawTableRow(page1, y, 'Loan Program', 'BPL Term', 'Loan-to-Value Ratio (LTV)', ltv, fonts);
+  y = drawTableRow(page1, y, 'Loan Program', d.loanProgram, 'Loan-to-Value Ratio (LTV)', ltv, fonts);
   y = drawTableRow(page1, y, 'Property Type', propertyType, 'Prepayment Penalty', prepaymentPenalty, fonts);
-  y = drawTableRow(page1, y, 'Loan Term', '360 Months', 'Estimated DSCR', dscr, fonts);
-  y = drawTableRow(page1, y, 'Loan Purpose', loanPurpose, 'Escrow Account', 'Yes (Taxes and Insurance)', fonts);
-  y = drawTableRow(page1, y, 'Loan Type', '30 Year Fixed, P&I', 'Amortization Term', '360 Months (P&I Loan)', fonts);
+  y = drawTableRow(page1, y, 'Loan Term', d.loanTerm, 'Estimated DSCR', dscr, fonts);
+  y = drawTableRow(page1, y, 'Loan Purpose', loanPurpose, 'Escrow Account', d.escrowAccount, fonts);
+  y = drawTableRow(page1, y, 'Loan Type', d.loanType, 'Amortization Term', d.amortizationTerm, fonts);
   y = drawTableRow(page1, y, 'Borrowing Entity', entityName, 'Rate Lock Preference', 'Signed LOI', fonts);
   y = drawTableRow(page1, y, 'Personal Guaranty', borrowerName ? `Full from ${borrowerName}` : '', '', '', fonts);
 
   y -= 6;
-  const rateLockNote = '*The Interest Rate will be locked following the execution date of this Letter of Intent or after all appraisals have been received (indicated based on the box checked above), and the rate lock will be for 45 calendar days. Your Loan Interest Rate is based on loan credit parameters, represented by you (and stated in this Letter), and may be changed if differences are found in underwriting, at Originator\'s sole discretion.';
-  y = drawWrappedText(page1, rateLockNote, MARGIN, y, fonts.italic, 6.5, CONTENT_W, 9, GRAY);
+  y = drawWrappedText(page1, d.rateLockNote, MARGIN, y, fonts.italic, 6.5, CONTENT_W, 9, GRAY);
   y -= 14;
 
   const feesTitle = 'Estimated Fees & Other Details*';
@@ -305,10 +340,10 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
   y -= 8;
 
   const feeRows: Array<[string, string]> = [
-    ['Rate Buydown:', '0 % of the Loan Amount'],
+    ['Rate Buydown:', d.rateBuydown],
     ['Origination Fee:', originationFee ? `${originationFee} % of the Loan Amount` : '__ % of the Loan Amount'],
-    ['Underwriting Fee:', '$1,500'],
-    ['Legal/Doc Fee:', '$750'],
+    ['Underwriting Fee:', d.underwritingFee],
+    ['Legal/Doc Fee:', d.legalDocFee],
   ];
 
   for (const [label, value] of feeRows) {
@@ -339,7 +374,8 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
     y -= rowH;
   }
 
-  const appraisalH = 28;
+  const appraisalLines = wrapText(d.appraisalNote, fonts.italic, 6.5, CONTENT_W - 124);
+  const appraisalH = Math.max(28, appraisalLines.length * 8 + 8);
   page1.drawRectangle({
     x: MARGIN,
     y: y - appraisalH,
@@ -356,40 +392,21 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
     font: fonts.bold,
     color: DARK_GRAY,
   });
-  page1.drawText('Costs can vary based on several factors including geographic region, the service provider', {
-    x: MARGIN + 120,
-    y: y - 8,
-    size: 6.5,
-    font: fonts.italic,
-    color: GRAY,
-  });
-  page1.drawText('and the type of report ordered. Costs are controlled by independent third parties, subject', {
-    x: MARGIN + 120,
-    y: y - 16,
-    size: 6.5,
-    font: fonts.italic,
-    color: GRAY,
-  });
-  page1.drawText('to change without notice. Borrower to pay appraiser directly.', {
-    x: MARGIN + 120,
-    y: y - 24,
-    size: 6.5,
-    font: fonts.italic,
-    color: GRAY,
-  });
+  let apY = y - 8;
+  for (const line of appraisalLines) {
+    page1.drawText(line, { x: MARGIN + 120, y: apY, size: 6.5, font: fonts.italic, color: GRAY });
+    apY -= 8;
+  }
   y -= appraisalH;
 
   y -= 6;
-  const feesFootnote = '^ The above estimates do not include title fees, borrower\'s legal fees, or any other third-party costs incurred while closing the loan.';
-  y = drawWrappedText(page1, feesFootnote, MARGIN, y, fonts.italic, 6.5, CONTENT_W, 9, GRAY);
+  y = drawWrappedText(page1, d.feesFootnote, MARGIN, y, fonts.italic, 6.5, CONTENT_W, 9, GRAY);
   y -= 10;
 
-  const vendorText = 'We have a Title/Escrow vendor with whom we have a strong relationship, and we believe using this vendor is the cheapest and most efficient option. However, if you have a strong preference to use another vendor, please let us know.';
-  y = drawWrappedText(page1, vendorText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
+  y = drawWrappedText(page1, d.vendorText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
   y -= 10;
 
-  const closingText = 'I appreciate the opportunity to present this proposal and look forward to the possibility of discussing the details of this structure at your convenience. To accept this proposal, please sign the acknowledgment on the following page.';
-  y = drawWrappedText(page1, closingText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
+  y = drawWrappedText(page1, d.closingText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
 
   // ==================== PAGE 2 ====================
   const page2 = pdfDoc.addPage([PAGE_W, PAGE_H]);
@@ -423,12 +440,10 @@ export async function generateLoiPdf(data: QuotePdfData): Promise<Uint8Array> {
   });
   y -= 14;
 
-  const disclaimerText = 'The proposed Loan Interest Rate and terms may be unilaterally withdrawn or adjusted by Originator in its sole discretion at any time in the event, during the underwriting process, certain loan parameters are determined to be materially and adversely different compared to those presented at the time this Letter was issued.';
-  y = drawWrappedText(page2, disclaimerText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
+  y = drawWrappedText(page2, d.disclaimerText, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
   y -= 10;
 
-  const disclaimerText2 = 'Please note this Preliminary Approval Letter serves to outline the terms of the proposed financing of the referenced transaction. This Preliminary Approval Letter is merely a general proposal and is neither a binding offer nor a contract. Borrower understands and agrees that Originator is not obligated to enter into the transaction contemplated by this Preliminary Approval Letter, on the terms set forth herein, or on any other terms, unless and until Originator obtains internal committee approval, which committee approval shall be predicated on multiple factors including but not limited to satisfactory appraisal, environmental screening report (documenting no environmental risks), specific historical and current operating expense explanations, satisfactory credit review of the borrowing entity and Key Principals, and satisfactory review of the property\'s market and submarket, and Originator or its capital partner executes and delivers to Borrower final definitive loan documents, the terms of which shall supersede in their entirety the terms set forth herein. No party shall have any legal rights or obligations with respect to the other unless and until a formal application for the potential loan is signed by both Originator and Borrower.';
-  y = drawWrappedText(page2, disclaimerText2, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
+  y = drawWrappedText(page2, d.disclaimerText2, MARGIN, y, fonts.regular, 8, CONTENT_W, 11, DARK_GRAY);
   y -= 30;
 
   const acceptTitle = 'Borrower Acceptance';

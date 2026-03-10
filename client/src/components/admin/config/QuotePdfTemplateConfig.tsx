@@ -24,11 +24,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Plus, Trash2, Edit, Star, ArrowLeft, Save, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, X, FileText, Info,
+  Plus, Trash2, Edit, Star, ArrowLeft, Save, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown, X, FileText, Info, Maximize2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { QuotePdfTemplate, QuotePdfTemplateConfig as TemplateConfig, QuotePdfSection } from "@shared/schema";
+import type { QuotePdfTemplate, QuotePdfTemplateConfig as TemplateConfig, QuotePdfSection, LoiDefaults } from "@shared/schema";
 
 const DEFAULT_CONFIG: TemplateConfig = {
   companyName: "LENDRY AI",
@@ -183,9 +183,288 @@ function LoiPreview() {
   );
 }
 
-function TemplatePreview({ config }: { config: TemplateConfig }) {
+const LOI_FIELD_DEFAULTS: Required<LoiDefaults> = {
+  loanProgram: "BPL Term",
+  loanTerm: "360 Months",
+  loanType: "30 Year Fixed, P&I",
+  escrowAccount: "Yes (Taxes and Insurance)",
+  amortizationTerm: "360 Months (P&I Loan)",
+  rateBuydown: "0 % of the Loan Amount",
+  underwritingFee: "$1,500",
+  legalDocFee: "$750",
+  introText: 'Thank you for providing Sphinx Capital ("Originator") information regarding your request for business purpose real estate financing. Based on our preliminary and limited review of the information provided, we are pleased to inform you of our interest in pursuing this opportunity further, subject to the terms and conditions set forth below. If the below terms are acceptable, please sign this preliminary approval letter and return it to us no later than one business day. If accepted within this time frame, the terms outlined herein shall expire 45 calendar days from the date of this Letter.',
+  disclaimerText: "The proposed Loan Interest Rate and terms may be unilaterally withdrawn or adjusted by Originator in its sole discretion at any time in the event, during the underwriting process, certain loan parameters are determined to be materially and adversely different compared to those presented at the time this Letter was issued.",
+  disclaimerText2: "Please note this Preliminary Approval Letter serves to outline the terms of the proposed financing of the referenced transaction. This Preliminary Approval Letter is merely a general proposal and is neither a binding offer nor a contract. Borrower understands and agrees that Originator is not obligated to enter into the transaction contemplated by this Preliminary Approval Letter, on the terms set forth herein, or on any other terms, unless and until Originator obtains internal committee approval, which committee approval shall be predicated on multiple factors including but not limited to satisfactory appraisal, environmental screening report (documenting no environmental risks), specific historical and current operating expense explanations, satisfactory credit review of the borrowing entity and Key Principals, and satisfactory review of the property's market and submarket, and Originator or its capital partner executes and delivers to Borrower final definitive loan documents, the terms of which shall supersede in their entirety the terms set forth herein. No party shall have any legal rights or obligations with respect to the other unless and until a formal application for the potential loan is signed by both Originator and Borrower.",
+  closingText: "I appreciate the opportunity to present this proposal and look forward to the possibility of discussing the details of this structure at your convenience. To accept this proposal, please sign the acknowledgment on the following page.",
+  vendorText: "We have a Title/Escrow vendor with whom we have a strong relationship, and we believe using this vendor is the cheapest and most efficient option. However, if you have a strong preference to use another vendor, please let us know.",
+  rateLockNote: "*The Interest Rate will be locked following the execution date of this Letter of Intent or after all appraisals have been received (indicated based on the box checked above), and the rate lock will be for 45 calendar days. Your Loan Interest Rate is based on loan credit parameters, represented by you (and stated in this Letter), and may be changed if differences are found in underwriting, at Originator's sole discretion.",
+  appraisalNote: "Costs can vary based on several factors including geographic region, the service provider and the type of report ordered. Costs are controlled by independent third parties, subject to change without notice. Borrower to pay appraiser directly.",
+  feesFootnote: "^ The above estimates do not include title fees, borrower's legal fees, or any other third-party costs incurred while closing the loan.",
+};
+
+function LoiEditableRow({ label, value, onChange, autoFilled }: { label: string; value: string; onChange?: (v: string) => void; autoFilled?: boolean }) {
+  return (
+    <div className="flex border-b border-border last:border-b-0">
+      <div className="w-[40%] py-2 px-3 text-sm text-muted-foreground bg-muted/30 border-r border-border font-medium">{label}</div>
+      <div className="w-[60%] py-1 px-2">
+        {autoFilled ? (
+          <div className="text-sm text-muted-foreground italic py-1">[Auto-filled from quote]</div>
+        ) : (
+          <Input
+            value={value}
+            onChange={(e) => onChange?.(e.target.value)}
+            className="h-8 text-sm border-0 shadow-none focus-visible:ring-1 bg-transparent"
+            data-testid={`loi-field-${label.toLowerCase().replace(/\s+/g, "-")}`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoiFullPreviewModal({
+  open,
+  onOpenChange,
+  loiDefaults,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  loiDefaults: LoiDefaults;
+  onSave: (defaults: LoiDefaults) => void;
+}) {
+  const [draft, setDraft] = useState<Required<LoiDefaults>>({ ...LOI_FIELD_DEFAULTS, ...loiDefaults });
+
+  useEffect(() => {
+    if (open) {
+      setDraft({ ...LOI_FIELD_DEFAULTS, ...loiDefaults });
+    }
+  }, [open, loiDefaults]);
+
+  const upd = (key: keyof LoiDefaults, value: string) => {
+    setDraft(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => {
+    const cleaned: LoiDefaults = {};
+    for (const [key, val] of Object.entries(draft)) {
+      const defaultVal = LOI_FIELD_DEFAULTS[key as keyof LoiDefaults];
+      if (val !== defaultVal) {
+        (cleaned as any)[key] = val;
+      }
+    }
+    onSave(cleaned);
+    onOpenChange(false);
+  };
+
+  const navy = "#0F1729";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0" data-testid="loi-full-preview-modal">
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Letter of Intent — Full Preview & Edit
+          </DialogTitle>
+          <DialogDescription>
+            Edit default values for the LOI document. Auto-filled fields pull from quote data at download time.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="px-6 pb-2 space-y-6">
+          <div className="border rounded-lg overflow-hidden bg-white" style={{ fontFamily: "Helvetica, Arial, sans-serif" }}>
+            <div className="text-center py-2 border-b" style={{ backgroundColor: navy }}>
+              <span className="font-bold text-white text-xs tracking-[0.2em]">SPHINX CAPITAL</span>
+            </div>
+
+            <div className="px-6 pt-4 pb-2 text-center">
+              <h2 className="font-bold text-lg" style={{ color: navy }}>Letter of Intent – BPL Term Loan</h2>
+            </div>
+
+            <div className="px-6 pb-2 space-y-1 text-sm text-muted-foreground">
+              <div>Date: <span className="italic">[Auto-filled or blank]</span></div>
+              <div>Re: Loan # <span className="italic">[Auto-filled or blank]</span></div>
+              <div className="text-xs">Property Addresses – See Exhibit A</div>
+            </div>
+
+            <div className="px-6 pb-2 text-sm text-muted-foreground">
+              Dear <span className="italic">[Auto-filled from quote]</span>,
+            </div>
+
+            <div className="px-6 pb-3">
+              <Label className="text-xs text-muted-foreground mb-1 block">Intro Paragraph</Label>
+              <Textarea
+                value={draft.introText}
+                onChange={(e) => upd("introText", e.target.value)}
+                rows={4}
+                className="text-sm"
+                data-testid="loi-field-intro-text"
+              />
+            </div>
+
+            <div className="px-6 pb-3">
+              <div className="rounded-sm px-3 py-1.5 mb-2" style={{ backgroundColor: navy }}>
+                <span className="font-bold text-sm text-white">Preliminary Transaction Details</span>
+              </div>
+              <div className="border rounded-md overflow-hidden">
+                <LoiEditableRow label="Loan Amount" value="" autoFilled />
+                <LoiEditableRow label="Interest Rate*" value="" autoFilled />
+                <LoiEditableRow label="Loan Program" value={draft.loanProgram} onChange={(v) => upd("loanProgram", v)} />
+                <LoiEditableRow label="Borrower FICO" value="" autoFilled />
+                <LoiEditableRow label="Est. Property Value" value="" autoFilled />
+                <LoiEditableRow label="LTV" value="" autoFilled />
+                <LoiEditableRow label="Property Type" value="" autoFilled />
+                <LoiEditableRow label="Loan Term" value={draft.loanTerm} onChange={(v) => upd("loanTerm", v)} />
+                <LoiEditableRow label="Prepayment Penalty" value="" autoFilled />
+                <LoiEditableRow label="Est. DSCR" value="" autoFilled />
+                <LoiEditableRow label="Loan Purpose" value="" autoFilled />
+                <LoiEditableRow label="Escrow Account" value={draft.escrowAccount} onChange={(v) => upd("escrowAccount", v)} />
+                <LoiEditableRow label="Loan Type" value={draft.loanType} onChange={(v) => upd("loanType", v)} />
+                <LoiEditableRow label="Amortization Term" value={draft.amortizationTerm} onChange={(v) => upd("amortizationTerm", v)} />
+                <LoiEditableRow label="Borrowing Entity" value="" autoFilled />
+                <LoiEditableRow label="Rate Lock Preference" value="Signed LOI" autoFilled />
+                <LoiEditableRow label="Personal Guaranty" value="" autoFilled />
+              </div>
+            </div>
+
+            <div className="px-6 pb-2">
+              <Label className="text-xs text-muted-foreground mb-1 block">Rate Lock Footnote</Label>
+              <Textarea
+                value={draft.rateLockNote}
+                onChange={(e) => upd("rateLockNote", e.target.value)}
+                rows={3}
+                className="text-xs italic"
+                data-testid="loi-field-rate-lock-note"
+              />
+            </div>
+
+            <div className="px-6 pb-3">
+              <div className="rounded-sm px-3 py-1.5 mb-2" style={{ backgroundColor: navy }}>
+                <span className="font-bold text-sm text-white">Estimated Fees & Other Details*</span>
+              </div>
+              <div className="border rounded-md overflow-hidden">
+                <LoiEditableRow label="Rate Buydown" value={draft.rateBuydown} onChange={(v) => upd("rateBuydown", v)} />
+                <LoiEditableRow label="Origination Fee" value="" autoFilled />
+                <LoiEditableRow label="Underwriting Fee" value={draft.underwritingFee} onChange={(v) => upd("underwritingFee", v)} />
+                <LoiEditableRow label="Legal/Doc Fee" value={draft.legalDocFee} onChange={(v) => upd("legalDocFee", v)} />
+              </div>
+            </div>
+
+            <div className="px-6 pb-2">
+              <Label className="text-xs text-muted-foreground mb-1 block">Appraisal Note</Label>
+              <Textarea
+                value={draft.appraisalNote}
+                onChange={(e) => upd("appraisalNote", e.target.value)}
+                rows={2}
+                className="text-xs italic"
+                data-testid="loi-field-appraisal-note"
+              />
+            </div>
+
+            <div className="px-6 pb-2">
+              <Label className="text-xs text-muted-foreground mb-1 block">Fees Footnote</Label>
+              <Textarea
+                value={draft.feesFootnote}
+                onChange={(e) => upd("feesFootnote", e.target.value)}
+                rows={2}
+                className="text-xs italic"
+                data-testid="loi-field-fees-footnote"
+              />
+            </div>
+
+            <div className="px-6 pb-2">
+              <Label className="text-xs text-muted-foreground mb-1 block">Vendor Text</Label>
+              <Textarea
+                value={draft.vendorText}
+                onChange={(e) => upd("vendorText", e.target.value)}
+                rows={2}
+                className="text-sm"
+                data-testid="loi-field-vendor-text"
+              />
+            </div>
+
+            <div className="px-6 pb-3">
+              <Label className="text-xs text-muted-foreground mb-1 block">Closing Paragraph</Label>
+              <Textarea
+                value={draft.closingText}
+                onChange={(e) => upd("closingText", e.target.value)}
+                rows={2}
+                className="text-sm"
+                data-testid="loi-field-closing-text"
+              />
+            </div>
+
+            <div className="border-t-2 border-dashed border-gray-300 mx-6" />
+            <div className="text-center py-1 text-xs text-muted-foreground font-medium">— Page 2 —</div>
+
+            <div className="px-6 pb-3">
+              <h3 className="font-bold text-base mb-2" style={{ color: navy }}>Disclaimer</h3>
+              <Label className="text-xs text-muted-foreground mb-1 block">Disclaimer Paragraph 1</Label>
+              <Textarea
+                value={draft.disclaimerText}
+                onChange={(e) => upd("disclaimerText", e.target.value)}
+                rows={3}
+                className="text-sm mb-3"
+                data-testid="loi-field-disclaimer-text"
+              />
+              <Label className="text-xs text-muted-foreground mb-1 block">Disclaimer Paragraph 2</Label>
+              <Textarea
+                value={draft.disclaimerText2}
+                onChange={(e) => upd("disclaimerText2", e.target.value)}
+                rows={5}
+                className="text-sm"
+                data-testid="loi-field-disclaimer-text-2"
+              />
+            </div>
+
+            <div className="px-6 pb-4">
+              <h3 className="font-bold text-base mb-3 text-center" style={{ color: navy }}>Borrower Acceptance</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                <div>Name: ___________________________</div>
+                <div>Date: ___________________________</div>
+              </div>
+              <div className="text-sm text-muted-foreground mt-2">Signature: ___________________________</div>
+            </div>
+
+            <div className="border-t-2 border-dashed border-gray-300 mx-6" />
+            <div className="text-center py-1 text-xs text-muted-foreground font-medium">— Page 3 —</div>
+
+            <div className="px-6 pb-4">
+              <h3 className="font-bold text-base mb-2 text-center" style={{ color: navy }}>Exhibit A – Property Address</h3>
+              <div className="text-sm text-muted-foreground">
+                Addresses: <span className="italic">[Auto-filled from quote data]</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="px-6 pb-6 pt-2 border-t">
+          <p className="text-xs text-muted-foreground mr-auto">Changes are applied to the editor. Remember to save the template to persist.</p>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} data-testid="button-save-loi-defaults">
+            <Save className="h-4 w-4 mr-2" />
+            Apply Defaults
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TemplatePreview({ config, onExpandLoi }: { config: TemplateConfig; onExpandLoi?: () => void }) {
   if ((config.templateType || "summary") === "loi") {
-    return <LoiPreview />;
+    return (
+      <div className="space-y-2">
+        <LoiPreview />
+        {onExpandLoi && (
+          <Button variant="outline" size="sm" className="w-full" onClick={onExpandLoi} data-testid="button-expand-loi-preview">
+            <Maximize2 className="h-3 w-3 mr-2" />
+            Full Preview & Edit
+          </Button>
+        )}
+      </div>
+    );
   }
 
   const primary = hexToRgb(config.primaryColor) || { r: 15, g: 23, b: 41 };
@@ -415,6 +694,7 @@ function TemplateEditor({
   const [config, setConfig] = useState<TemplateConfig>(
     template?.config || { ...DEFAULT_CONFIG }
   );
+  const [loiPreviewOpen, setLoiPreviewOpen] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -721,11 +1001,18 @@ function TemplateEditor({
               <CardDescription>Simplified preview of the PDF layout</CardDescription>
             </CardHeader>
             <CardContent>
-              <TemplatePreview config={config} />
+              <TemplatePreview config={config} onExpandLoi={() => setLoiPreviewOpen(true)} />
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <LoiFullPreviewModal
+        open={loiPreviewOpen}
+        onOpenChange={setLoiPreviewOpen}
+        loiDefaults={config.loiDefaults || {}}
+        onSave={(defaults) => updateConfig("loiDefaults", defaults)}
+      />
     </div>
   );
 }

@@ -1305,7 +1305,7 @@ export async function registerRoutes(
       };
 
       const pdfBytes = templateConfig.templateType === 'loi'
-        ? await generateLoiPdf(pdfData)
+        ? await generateLoiPdf(pdfData, templateConfig.loiDefaults)
         : await generateQuotePdf(pdfData, templateConfig);
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -1351,7 +1351,7 @@ export async function registerRoutes(
       };
 
       const pdfBytes = templateConfig.templateType === 'loi'
-        ? await generateLoiPdf(pdfData)
+        ? await generateLoiPdf(pdfData, templateConfig.loiDefaults)
         : await generateQuotePdf(pdfData, templateConfig);
 
       res.setHeader('Content-Type', 'application/pdf');

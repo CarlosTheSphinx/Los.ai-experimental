@@ -3969,6 +3969,25 @@ export interface QuotePdfSection {
   fields: Array<{ key: string; label: string; aliases?: string[] }>;
 }
 
+export interface LoiDefaults {
+  loanProgram?: string;
+  loanTerm?: string;
+  loanType?: string;
+  escrowAccount?: string;
+  amortizationTerm?: string;
+  rateBuydown?: string;
+  underwritingFee?: string;
+  legalDocFee?: string;
+  introText?: string;
+  disclaimerText?: string;
+  disclaimerText2?: string;
+  closingText?: string;
+  vendorText?: string;
+  rateLockNote?: string;
+  appraisalNote?: string;
+  feesFootnote?: string;
+}
+
 export interface QuotePdfTemplateConfig {
   templateType?: 'summary' | 'loi';
   companyName: string;
@@ -3982,6 +4001,7 @@ export interface QuotePdfTemplateConfig {
   showYsp: boolean;
   showPoints: boolean;
   showCommission: boolean;
+  loiDefaults?: LoiDefaults;
 }
 
 export const quotePdfTemplates = pgTable("quote_pdf_templates", {
