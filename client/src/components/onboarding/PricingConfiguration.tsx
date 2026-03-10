@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -113,10 +113,12 @@ export function PricingConfiguration({
   onNext,
   onBack,
   hideNavigation = false,
+  programId: propProgramId,
 }: {
   onNext?: () => void;
   onBack?: () => void;
   hideNavigation?: boolean;
+  programId?: number | null;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -136,7 +138,7 @@ export function PricingConfiguration({
             : [])
     : [];
 
-  const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
+  const [selectedProgramId, setSelectedProgramId] = useState<number | null>(propProgramId ?? null);
   const [pricingMode, setPricingMode] = useState<PricingMode>('rule-based');
 
   const [baseRate, setBaseRate] = useState('7.125');
@@ -160,14 +162,90 @@ export function PricingConfiguration({
   const [pointsStep, setPointsStep] = useState('0.25');
   const [pointsBrokerAdjustable, setPointsBrokerAdjustable] = useState(true);
 
-  const { data: existingRuleset } = useQuery<{ rulesets: any[] }>({
-    queryKey: ['/api/admin/programs', selectedProgramId, 'rulesets'],
-    enabled: !!selectedProgramId && !hideNavigation,
+  const effectiveProgramId = selectedProgramId ?? propProgramId ?? null;
+
+  const { data: existingRuleset, isFetched: rulesetsFetched } = useQuery<{ rulesets: any[] }>({
+    queryKey: ['/api/admin/programs', effectiveProgramId, 'rulesets'],
+    enabled: !!effectiveProgramId,
     queryFn: async () => {
-      const res = await fetch(`/api/admin/programs/${selectedProgramId}/rulesets`);
+      const res = await fetch(`/api/admin/programs/${effectiveProgramId}/rulesets`);
       return res.json();
     },
   });
+
+  const { data: editProgramData, isFetched: programFetched } = useQuery<any>({
+    queryKey: ['/api/admin/programs', effectiveProgramId],
+    enabled: !!effectiveProgramId && hideNavigation,
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/programs/${effectiveProgramId}`);
+      return res.json();
+    },
+  });
+
+  const [pricingDataLoaded, setPricingDataLoaded] = useState(false);
+  useEffect(() => {
+    if (pricingDataLoaded || !effectiveProgramId) return;
+    if (!hideNavigation) return;
+    if (!programFetched || !rulesetsFetched) return;
+
+    const prog = editProgramData?.program;
+    if (prog) {
+      setSelectedProgramId(effectiveProgramId);
+      setYspEnabled(prog.yspEnabled ?? true);
+      setYspBrokerAdjustable(prog.yspBrokerCanToggle ?? true);
+      setYspMin(String(prog.yspMin ?? '0.50'));
+      setYspMax(String(prog.yspMax ?? '2.00'));
+      setYspStep(String(prog.yspStep ?? '0.125'));
+      setBasePoints(String(prog.basePoints ?? '1.00'));
+      setPointsMin(String(prog.basePointsMin ?? '1.00'));
+      setPointsMax(String(prog.basePointsMax ?? '3.00'));
+      setPointsBrokerAdjustable(prog.brokerPointsEnabled ?? true);
+      setPointsStep(String(prog.brokerPointsStep ?? '0.25'));
+    }
+
+    const activeRuleset = existingRuleset?.rulesets?.find((r: any) => r.status === 'active') || existingRuleset?.rulesets?.[0];
+    if (activeRuleset?.rulesJson) {
+      const rj = activeRuleset.rulesJson;
+      if (rj.baseRates) {
+        const firstRate = Object.values(rj.baseRates)[0];
+        if (firstRate != null) setBaseRate(String(firstRate));
+      }
+      if (rj.rateFloor != null) setRateFloor(String(rj.rateFloor));
+      if (rj.rateCeiling != null) setRateCeiling(String(rj.rateCeiling));
+
+      if (rj.adjusters && Array.isArray(rj.adjusters) && rj.adjusters.length > 0) {
+        setCategories(prev => {
+          const updated = prev.map(cat => {
+            const matchingAdjusters = rj.adjusters.filter((a: any) => a.category === cat.name);
+            const matchingEligibility = (rj.eligibilityRules || []).filter((e: any) => e.category === cat.name);
+            if (matchingAdjusters.length === 0 && matchingEligibility.length === 0) return cat;
+            const tiers: TierEntry[] = [
+              ...matchingAdjusters.map((a: any) => ({
+                id: a.id || `${cat.id}-${a.label}`,
+                label: a.label || '',
+                condition: '',
+                value: '',
+                rateAdd: String(a.rateAdd ?? 0),
+                isDisqualified: false,
+              })),
+              ...matchingEligibility.map((e: any) => ({
+                id: e.id || `${cat.id}-${e.label}-dq`,
+                label: e.label || '',
+                condition: '',
+                value: '',
+                rateAdd: '0',
+                isDisqualified: true,
+              })),
+            ];
+            return { ...cat, tiers: tiers.length > 0 ? tiers : cat.tiers };
+          });
+          return updated;
+        });
+      }
+    }
+
+    setPricingDataLoaded(true);
+  }, [effectiveProgramId, editProgramData, existingRuleset, hideNavigation, pricingDataLoaded, programFetched, rulesetsFetched]);
 
   const hasExistingRuleset = (existingRuleset?.rulesets?.length || 0) > 0;
 
@@ -179,8 +257,9 @@ export function PricingConfiguration({
 
   const saveRulesetMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedProgramId) throw new Error('Select a program first');
-      const program = programs.find((p: any) => p.id === selectedProgramId);
+      const saveProgramId = selectedProgramId || effectiveProgramId;
+      if (!saveProgramId) throw new Error('Select a program first');
+      const program = programs.find((p: any) => p.id === saveProgramId) || editProgramData?.program;
       const loanType = program?.loanType || 'rtl';
 
       const allAdjusters = categories.flatMap((cat) =>
@@ -210,7 +289,7 @@ export function PricingConfiguration({
         eligibilityRules,
       };
 
-      const res = await apiRequest('POST', `/api/admin/programs/${selectedProgramId}/rulesets`, {
+      const res = await apiRequest('POST', `/api/admin/programs/${saveProgramId}/rulesets`, {
         name: 'Initial Pricing Rules',
         description: 'Created during onboarding',
         rulesJson,
@@ -218,10 +297,10 @@ export function PricingConfiguration({
       const data = await res.json();
 
       if (data.ruleset?.id) {
-        await apiRequest('PATCH', `/api/admin/programs/${selectedProgramId}/rulesets/${data.ruleset.id}`, { status: 'active' });
+        await apiRequest('PATCH', `/api/admin/programs/${saveProgramId}/rulesets/${data.ruleset.id}`, { status: 'active' });
       }
 
-      await apiRequest('PUT', `/api/admin/programs/${selectedProgramId}`, {
+      await apiRequest('PUT', `/api/admin/programs/${saveProgramId}`, {
         yspEnabled,
         yspMin: parseFloat(yspMin) || 0,
         yspMax: parseFloat(yspMax) || 3,

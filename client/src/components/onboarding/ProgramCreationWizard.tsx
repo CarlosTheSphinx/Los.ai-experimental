@@ -570,6 +570,13 @@ export function ProgramCreationWizard({
       setTasks([]);
     }
 
+    setEditDataLoaded(true);
+  }, [editProgram?.id, editProgramData, editDataLoaded]);
+
+  const [editRulesLoaded, setEditRulesLoaded] = useState(false);
+  useEffect(() => {
+    if (!editProgram?.id || editRulesLoaded) return;
+    if (editReviewRulesData === undefined) return;
     if (editReviewRulesData && editReviewRulesData.length > 0) {
       setReviewRules(editReviewRulesData.map((r: any) => ({
         ruleTitle: r.ruleTitle || '',
@@ -577,12 +584,11 @@ export function ProgramCreationWizard({
         severity: 'fail',
         stepIndex: null,
       })));
-    } else if (editProgram?.id) {
+    } else {
       setReviewRules([]);
     }
-
-    setEditDataLoaded(true);
-  }, [editProgram?.id, editProgramData, editReviewRulesData, editDataLoaded]);
+    setEditRulesLoaded(true);
+  }, [editProgram?.id, editReviewRulesData, editRulesLoaded]);
 
   // Fetch credit policies
   const { data: creditPoliciesData } = useQuery<{ policies: any[] }>({
@@ -854,7 +860,7 @@ export function ProgramCreationWizard({
       )}
 
       {wizardStep === 'pricing' && (
-        <PricingConfiguration hideNavigation />
+        <PricingConfiguration hideNavigation programId={isEditMode ? editProgram?.id : null} />
       )}
 
       {wizardStep === 'summary' && (
