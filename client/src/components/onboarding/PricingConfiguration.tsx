@@ -43,16 +43,22 @@ interface AdjusterCategory {
 
 // ─── External Pricing Config Types ──────────────────────────────
 
+type FieldSourceType = 'borrower' | 'default' | 'calculated';
+
 interface ExternalTextInput {
   id: string;
   fieldKey: string;
   label: string;
+  sourceType: FieldSourceType;
+  defaultValue?: string;
 }
 
 interface ExternalDropdown {
   label: string;
   fieldKey: string;
   options: string[];
+  sourceType: FieldSourceType;
+  defaultValue?: string;
 }
 
 interface ExternalPricingConfig {
@@ -218,6 +224,7 @@ export function PricingConfiguration({
           label: dd.label || '',
           fieldKey: (dd.label || '').toLowerCase().replace(/[^a-z0-9]+/g, ''),
           options: dd.options || [],
+          sourceType: 'borrower' as FieldSourceType,
         }));
         const dropdownLabels = new Set(scannedDropdowns.map(d => d.label.toLowerCase()));
         const dropdownKeys = new Set(scannedDropdowns.map(d => d.fieldKey));
@@ -231,6 +238,7 @@ export function PricingConfiguration({
             id: ti.id || '',
             fieldKey: (ti.placeholder || ti.label || ti.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ''),
             label: ti.label || ti.placeholder || ti.name || '',
+            sourceType: 'borrower' as FieldSourceType,
           }));
         setExtTextInputs(scannedTextInputs);
         setExtDropdowns(scannedDropdowns);
@@ -291,8 +299,8 @@ export function PricingConfiguration({
       if (prog.externalPricingConfig) {
         const cfg = prog.externalPricingConfig as ExternalPricingConfig;
         setExtScraperUrl(cfg.scraperUrl || '');
-        setExtTextInputs(cfg.textInputs || []);
-        setExtDropdowns(cfg.dropdowns || []);
+        setExtTextInputs((cfg.textInputs || []).map(ti => ({ ...ti, sourceType: ti.sourceType || 'borrower' })));
+        setExtDropdowns((cfg.dropdowns || []).map(dd => ({ ...dd, sourceType: dd.sourceType || 'borrower' })));
       }
     }
 
@@ -523,8 +531,8 @@ export function PricingConfiguration({
                     if (prog.externalPricingConfig) {
                       const cfg = prog.externalPricingConfig as ExternalPricingConfig;
                       setExtScraperUrl(cfg.scraperUrl || '');
-                      setExtTextInputs(cfg.textInputs || []);
-                      setExtDropdowns(cfg.dropdowns || []);
+                      setExtTextInputs((cfg.textInputs || []).map(ti => ({ ...ti, sourceType: ti.sourceType || 'borrower' })));
+                      setExtDropdowns((cfg.dropdowns || []).map(dd => ({ ...dd, sourceType: dd.sourceType || 'borrower' })));
                     } else {
                       setExtScraperUrl('');
                       setExtTextInputs([]);
@@ -837,7 +845,7 @@ export function PricingConfiguration({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setExtTextInputs(prev => [...prev, { id: '', fieldKey: '', label: '' }])}
+                onClick={() => setExtTextInputs(prev => [...prev, { id: '', fieldKey: '', label: '', sourceType: 'borrower' }])}
                 data-testid="button-add-text-input"
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
@@ -846,48 +854,85 @@ export function PricingConfiguration({
             </div>
             <p className="text-[13px] text-muted-foreground">Map element IDs on the external site to field keys in the quote form.</p>
             {extTextInputs.map((ti, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <Input
-                  placeholder="Element ID (e.g. :r0:)"
-                  value={ti.id}
-                  onChange={(e) => {
-                    const updated = [...extTextInputs];
-                    updated[idx] = { ...updated[idx], id: e.target.value };
-                    setExtTextInputs(updated);
-                  }}
-                  className="w-36"
-                  data-testid={`input-text-id-${idx}`}
-                />
-                <Input
-                  placeholder="Field Key"
-                  value={ti.fieldKey}
-                  onChange={(e) => {
-                    const updated = [...extTextInputs];
-                    updated[idx] = { ...updated[idx], fieldKey: e.target.value };
-                    setExtTextInputs(updated);
-                  }}
-                  className="w-36"
-                  data-testid={`input-text-fieldkey-${idx}`}
-                />
-                <Input
-                  placeholder="Label"
-                  value={ti.label}
-                  onChange={(e) => {
-                    const updated = [...extTextInputs];
-                    updated[idx] = { ...updated[idx], label: e.target.value };
-                    setExtTextInputs(updated);
-                  }}
-                  className="flex-1"
-                  data-testid={`input-text-label-${idx}`}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExtTextInputs(prev => prev.filter((_, i) => i !== idx))}
-                  data-testid={`button-remove-text-${idx}`}
-                >
-                  <X className="h-4 w-4 text-muted-foreground" />
-                </Button>
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Element ID (e.g. :r0:)"
+                    value={ti.id}
+                    onChange={(e) => {
+                      const updated = [...extTextInputs];
+                      updated[idx] = { ...updated[idx], id: e.target.value };
+                      setExtTextInputs(updated);
+                    }}
+                    className="w-32"
+                    data-testid={`input-text-id-${idx}`}
+                  />
+                  <Input
+                    placeholder="Field Key"
+                    value={ti.fieldKey}
+                    onChange={(e) => {
+                      const updated = [...extTextInputs];
+                      updated[idx] = { ...updated[idx], fieldKey: e.target.value };
+                      setExtTextInputs(updated);
+                    }}
+                    className="w-32"
+                    data-testid={`input-text-fieldkey-${idx}`}
+                  />
+                  <Input
+                    placeholder="Label"
+                    value={ti.label}
+                    onChange={(e) => {
+                      const updated = [...extTextInputs];
+                      updated[idx] = { ...updated[idx], label: e.target.value };
+                      setExtTextInputs(updated);
+                    }}
+                    className="w-36"
+                    data-testid={`input-text-label-${idx}`}
+                  />
+                  <Select
+                    value={ti.sourceType || 'borrower'}
+                    onValueChange={(val) => {
+                      const updated = [...extTextInputs];
+                      updated[idx] = { ...updated[idx], sourceType: val as FieldSourceType, defaultValue: val === 'borrower' ? undefined : updated[idx].defaultValue };
+                      setExtTextInputs(updated);
+                    }}
+                  >
+                    <SelectTrigger className="w-36" data-testid={`select-text-source-${idx}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="borrower">Borrower Input</SelectItem>
+                      <SelectItem value="default">Fixed Default</SelectItem>
+                      <SelectItem value="calculated">Calculated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExtTextInputs(prev => prev.filter((_, i) => i !== idx))}
+                    data-testid={`button-remove-text-${idx}`}
+                  >
+                    <X className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+                {ti.sourceType === 'default' && (
+                  <div className="pl-[calc(8rem+0.5rem)]">
+                    <Input
+                      placeholder="Default value"
+                      value={ti.defaultValue || ''}
+                      onChange={(e) => {
+                        const updated = [...extTextInputs];
+                        updated[idx] = { ...updated[idx], defaultValue: e.target.value };
+                        setExtTextInputs(updated);
+                      }}
+                      className="w-48"
+                      data-testid={`input-text-default-${idx}`}
+                    />
+                  </div>
+                )}
+                {ti.sourceType === 'calculated' && (
+                  <p className="pl-[calc(8rem+0.5rem)] text-[12px] text-muted-foreground italic">Value will be calculated from other fields automatically.</p>
+                )}
               </div>
             ))}
             {extTextInputs.length === 0 && (
@@ -901,7 +946,7 @@ export function PricingConfiguration({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setExtDropdowns(prev => [...prev, { label: '', fieldKey: '', options: [] }])}
+                onClick={() => setExtDropdowns(prev => [...prev, { label: '', fieldKey: '', options: [], sourceType: 'borrower' }])}
                 data-testid="button-add-dropdown"
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
@@ -921,7 +966,7 @@ export function PricingConfiguration({
                       updated[ddIdx] = { ...updated[ddIdx], label: e.target.value };
                       setExtDropdowns(updated);
                     }}
-                    className="w-48"
+                    className="w-40"
                     data-testid={`input-dd-label-${ddIdx}`}
                   />
                   <Input
@@ -932,9 +977,26 @@ export function PricingConfiguration({
                       updated[ddIdx] = { ...updated[ddIdx], fieldKey: e.target.value };
                       setExtDropdowns(updated);
                     }}
-                    className="w-48"
+                    className="w-40"
                     data-testid={`input-dd-fieldkey-${ddIdx}`}
                   />
+                  <Select
+                    value={dd.sourceType || 'borrower'}
+                    onValueChange={(val) => {
+                      const updated = [...extDropdowns];
+                      updated[ddIdx] = { ...updated[ddIdx], sourceType: val as FieldSourceType, defaultValue: val === 'borrower' ? undefined : updated[ddIdx].defaultValue };
+                      setExtDropdowns(updated);
+                    }}
+                  >
+                    <SelectTrigger className="w-36" data-testid={`select-dd-source-${ddIdx}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="borrower">Borrower Input</SelectItem>
+                      <SelectItem value="default">Fixed Default</SelectItem>
+                      <SelectItem value="calculated">Calculated</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div className="flex-1" />
                   <Button
                     variant="ghost"
@@ -953,7 +1015,31 @@ export function PricingConfiguration({
                     <X className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>
-                <div className="text-[12px] text-muted-foreground">{dd.options.length} option{dd.options.length !== 1 ? 's' : ''}</div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[12px] text-muted-foreground">{dd.options.length} option{dd.options.length !== 1 ? 's' : ''}</span>
+                  {dd.sourceType === 'default' && (
+                    <Select
+                      value={dd.defaultValue || ''}
+                      onValueChange={(val) => {
+                        const updated = [...extDropdowns];
+                        updated[ddIdx] = { ...updated[ddIdx], defaultValue: val };
+                        setExtDropdowns(updated);
+                      }}
+                    >
+                      <SelectTrigger className="w-48" data-testid={`select-dd-default-${ddIdx}`}>
+                        <SelectValue placeholder="Select default value" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dd.options.map((opt, oi) => (
+                          <SelectItem key={oi} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {dd.sourceType === 'calculated' && (
+                    <span className="text-[12px] text-muted-foreground italic">Calculated from other fields</span>
+                  )}
+                </div>
 
                 {extExpandedDropdown === ddIdx && (
                   <div className="pl-4 space-y-2 border-l-2 border-primary/20">
