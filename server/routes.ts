@@ -1280,6 +1280,43 @@ export async function registerRoutes(
     }
   });
 
+  const updateQuoteSchema = z.object({
+    customerFirstName: z.string().optional(),
+    customerLastName: z.string().optional(),
+    customerCompanyName: z.string().nullable().optional(),
+    propertyAddress: z.string().optional(),
+    interestRate: z.string().optional(),
+    pointsCharged: z.number().optional(),
+    loanData: z.record(z.any()).optional(),
+  });
+
+  app.patch('/api/quotes/:id', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const parsed = updateQuoteSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
+      }
+
+      const existing = await storage.getQuoteById(id, req.user!.id);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Quote not found' });
+      }
+
+      const updates: any = { ...parsed.data };
+
+      if (parsed.data.loanData && existing.loanData) {
+        updates.loanData = { ...(existing.loanData as Record<string, any>), ...parsed.data.loanData };
+      }
+
+      const updated = await storage.updateQuote(id, req.user!.id, updates);
+      res.json({ success: true, quote: updated });
+    } catch (error) {
+      console.error('Error updating quote:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
   // Download PDF for a saved quote
   app.get('/api/quotes/:id/pdf', authenticateUser, async (req: AuthRequest, res) => {
     try {

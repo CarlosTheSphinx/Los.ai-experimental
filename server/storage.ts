@@ -57,6 +57,7 @@ export interface IStorage {
   saveQuote(quote: InsertSavedQuote, userId: number): Promise<SavedQuote>;
   getQuotes(userId: number): Promise<SavedQuote[]>;
   getQuoteById(id: number, userId: number): Promise<SavedQuote | undefined>;
+  updateQuote(id: number, userId: number, updates: Partial<SavedQuote>): Promise<SavedQuote | undefined>;
   deleteQuote(id: number, userId: number): Promise<void>;
   
   // Document methods
@@ -234,6 +235,14 @@ export class DatabaseStorage implements IStorage {
       and(eq(savedQuotes.id, id), eq(savedQuotes.userId, userId))
     );
     return quote;
+  }
+
+  async updateQuote(id: number, userId: number, updates: Partial<SavedQuote>): Promise<SavedQuote | undefined> {
+    const [updated] = await db.update(savedQuotes)
+      .set(updates)
+      .where(and(eq(savedQuotes.id, id), eq(savedQuotes.userId, userId)))
+      .returning();
+    return updated;
   }
 
   async deleteQuote(id: number, userId: number): Promise<void> {
