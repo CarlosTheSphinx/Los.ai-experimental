@@ -1130,6 +1130,8 @@ function CreditPolicyStep({
   const [editingRuleData, setEditingRuleData] = useState<{ ruleTitle: string; ruleDescription: string }>({ ruleTitle: '', ruleDescription: '' });
   const [justCreatedPolicy, setJustCreatedPolicy] = useState<{ id: number; name: string; ruleCount: number } | null>(null);
   const [viewPolicyOpen, setViewPolicyOpen] = useState(false);
+  const [editablePolicyRules, setEditablePolicyRules] = useState<{ documentType: string; ruleTitle: string; ruleDescription: string; category?: string; isActive?: boolean }[]>([]);
+  const [policyRulesDirty, setPolicyRulesDirty] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
   const [appendExtractedRules, setAppendExtractedRules] = useState<{ documentType: string; ruleTitle: string; ruleDescription: string; category?: string }[]>([]);
   const [appendFileName, setAppendFileName] = useState('');
@@ -1254,6 +1256,47 @@ function CreditPolicyStep({
     },
   });
 
+  const updatePolicyRulesMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest('PUT', `/api/admin/credit-policies/${selectedId}`, {
+        rules: editablePolicyRules,
+      });
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/credit-policies/${selectedId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/credit-policies'] });
+      if (justCreatedPolicy && justCreatedPolicy.id === selectedId) {
+        setJustCreatedPolicy({ ...justCreatedPolicy, ruleCount: editablePolicyRules.length });
+      }
+      setPolicyRulesDirty(false);
+      toast({ title: 'Policy rules updated' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update policy rules', variant: 'destructive' });
+    },
+  });
+
+  const [policyRulesInitialized, setPolicyRulesInitialized] = useState(false);
+
+  const openViewPolicy = () => {
+    setPolicyRulesInitialized(false);
+    setPolicyRulesDirty(false);
+    setViewPolicyOpen(true);
+  };
+
+  useEffect(() => {
+    if (viewPolicyOpen && policyDetails?.rules && !policyRulesInitialized && !policyRulesDirty) {
+      setEditablePolicyRules(policyDetails.rules.map((r: any) => ({
+        documentType: r.documentType || 'General',
+        ruleTitle: r.ruleTitle || '',
+        ruleDescription: r.ruleDescription || '',
+        category: r.category || null,
+        isActive: r.isActive !== false,
+      })));
+      setPolicyRulesInitialized(true);
+    }
+  }, [viewPolicyOpen, policyDetails, policyRulesInitialized, policyRulesDirty]);
+
   const handleFileUpload = useCallback(async (file: File) => {
     const allowedTypes = [
       'application/pdf',
@@ -1376,7 +1419,7 @@ function CreditPolicyStep({
             <button
               className="text-[13px] text-blue-600 hover:text-blue-800 font-medium"
               data-testid="button-view-policy"
-              onClick={() => setViewPolicyOpen(true)}
+              onClick={openViewPolicy}
             >
               View Policy →
             </button>
@@ -1492,7 +1535,15 @@ function CreditPolicyStep({
         </div>
       )}
 
-      <Dialog open={viewPolicyOpen} onOpenChange={setViewPolicyOpen}>
+      <Dialog open={viewPolicyOpen} onOpenChange={(open) => {
+        if (!open) {
+          setPolicyRulesDirty(false);
+          setPolicyRulesInitialized(false);
+          setViewPolicyOpen(false);
+        } else {
+          setViewPolicyOpen(open);
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col" data-testid="dialog-view-policy">
           <DialogHeader>
             <DialogTitle className="text-[20px] font-bold">{selectedPolicy?.name || 'Credit Policy'}</DialogTitle>
@@ -1503,34 +1554,77 @@ function CreditPolicyStep({
             )}
           </DialogHeader>
           <div className="flex-1 overflow-y-auto -mx-6 px-6">
-            {!policyDetails ? (
+            {!policyRulesInitialized ? (
               <div className="flex items-center justify-center gap-2 py-8">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 <p className="text-[13px] text-muted-foreground">Loading policy rules...</p>
               </div>
-            ) : policyDetails.rules && policyDetails.rules.length > 0 ? (
+            ) : editablePolicyRules.length > 0 ? (
               <div className="space-y-4 pb-4">
-                <p className="text-[13px] text-muted-foreground">{policyDetails.rules.length} rules total</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] text-muted-foreground">{editablePolicyRules.length} rules total</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditablePolicyRules(prev => [...prev, { documentType: 'General', ruleTitle: '', ruleDescription: '', isActive: true }]);
+                      setPolicyRulesDirty(true);
+                    }}
+                    data-testid="button-add-policy-rule"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Rule
+                  </Button>
+                </div>
                 {(() => {
-                  const grouped = (policyDetails.rules as any[]).reduce<Record<string, any[]>>((acc, rule) => {
+                  const grouped = editablePolicyRules.reduce<Record<string, { rule: typeof editablePolicyRules[0]; globalIndex: number }[]>>((acc, rule, index) => {
                     const group = rule.documentType || 'General';
                     if (!acc[group]) acc[group] = [];
-                    acc[group].push(rule);
+                    acc[group].push({ rule, globalIndex: index });
                     return acc;
                   }, {});
-                  return Object.entries(grouped).map(([group, rules]) => (
+                  return Object.entries(grouped).map(([group, groupRules]) => (
                     <div key={group} className="space-y-2">
                       <div className="flex items-center gap-2">
                         <h4 className="text-[14px] font-semibold">{group}</h4>
-                        <Badge variant="secondary" className="text-xs">{rules.length}</Badge>
+                        <Badge variant="secondary" className="text-xs">{groupRules.length}</Badge>
                       </div>
                       <div className="space-y-1.5">
-                        {rules.map((rule: any, idx: number) => (
-                          <div key={idx} className="p-3 bg-muted/30 rounded-md text-[13px]">
-                            <p className="font-medium">{rule.ruleTitle}</p>
-                            {rule.ruleDescription && (
-                              <p className="text-muted-foreground mt-0.5">{rule.ruleDescription}</p>
-                            )}
+                        {groupRules.map(({ rule, globalIndex }) => (
+                          <div key={globalIndex} className="p-3 bg-muted/30 rounded-md text-[13px] group relative">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 space-y-1.5">
+                                <input
+                                  className="text-[13px] font-medium bg-transparent border-0 outline-none w-full placeholder:text-muted-foreground/40 focus:bg-muted/40 focus:px-2 rounded transition-all px-0"
+                                  value={rule.ruleTitle}
+                                  onChange={(e) => {
+                                    setEditablePolicyRules(prev => prev.map((r, i) => i === globalIndex ? { ...r, ruleTitle: e.target.value } : r));
+                                    setPolicyRulesDirty(true);
+                                  }}
+                                  placeholder="Rule title"
+                                  data-testid={`input-policy-rule-title-${globalIndex}`}
+                                />
+                                <input
+                                  className="text-[13px] text-muted-foreground bg-transparent border-0 outline-none w-full placeholder:text-muted-foreground/40 focus:bg-muted/40 focus:px-2 rounded transition-all px-0"
+                                  value={rule.ruleDescription}
+                                  onChange={(e) => {
+                                    setEditablePolicyRules(prev => prev.map((r, i) => i === globalIndex ? { ...r, ruleDescription: e.target.value } : r));
+                                    setPolicyRulesDirty(true);
+                                  }}
+                                  placeholder="Rule description (optional)"
+                                  data-testid={`input-policy-rule-desc-${globalIndex}`}
+                                />
+                              </div>
+                              <button
+                                className="text-muted-foreground/40 hover:text-red-500 transition-colors p-0.5 opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5"
+                                onClick={() => {
+                                  setEditablePolicyRules(prev => prev.filter((_, i) => i !== globalIndex));
+                                  setPolicyRulesDirty(true);
+                                }}
+                                data-testid={`button-delete-policy-rule-${globalIndex}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1539,9 +1633,58 @@ function CreditPolicyStep({
                 })()}
               </div>
             ) : (
-              <p className="text-[13px] text-muted-foreground py-6 text-center">No rules found in this policy.</p>
+              <div className="py-6 text-center space-y-3">
+                <p className="text-[13px] text-muted-foreground">No rules in this policy yet.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditablePolicyRules([{ documentType: 'General', ruleTitle: '', ruleDescription: '', isActive: true }]);
+                    setPolicyRulesDirty(true);
+                  }}
+                  data-testid="button-add-first-policy-rule"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Rule
+                </Button>
+              </div>
             )}
           </div>
+          {policyRulesDirty && (
+            <div className="flex items-center justify-end gap-2 pt-3 border-t -mx-6 px-6">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (policyDetails?.rules) {
+                    setEditablePolicyRules(policyDetails.rules.map((r: any) => ({
+                      documentType: r.documentType || 'General',
+                      ruleTitle: r.ruleTitle || '',
+                      ruleDescription: r.ruleDescription || '',
+                      category: r.category || null,
+                      isActive: r.isActive !== false,
+                    })));
+                  }
+                  setPolicyRulesDirty(false);
+                }}
+                data-testid="button-discard-policy-changes"
+              >
+                Discard
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => updatePolicyRulesMutation.mutate()}
+                disabled={updatePolicyRulesMutation.isPending || editablePolicyRules.some(r => !r.ruleTitle.trim())}
+                data-testid="button-save-policy-rules"
+              >
+                {updatePolicyRulesMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : (
+                  <Check className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Save Changes
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
