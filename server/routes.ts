@@ -11790,6 +11790,42 @@ If the user provides specific criteria, extract as many rules as you can from th
             // Step 1: Find ALL inputs and classify them
             log.info('Step 1: Finding and classifying all inputs...');
             const allFields = await page.evaluate(() => {
+              function findLabel(el) {
+                const ariaLabel = el.getAttribute('aria-label');
+                if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
+
+                if (el.placeholder && el.placeholder.trim()) return el.placeholder.trim();
+
+                if (el.id) {
+                  const linkedLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                  if (linkedLabel && linkedLabel.textContent.trim()) return linkedLabel.textContent.trim();
+                }
+
+                const labelledBy = el.getAttribute('aria-labelledby');
+                if (labelledBy) {
+                  const refEl = document.getElementById(labelledBy);
+                  if (refEl && refEl.textContent.trim()) return refEl.textContent.trim();
+                }
+
+                const parent = el.closest('.MuiFormControl-root, .MuiTextField-root, [class*="form-group"], [class*="field"], [class*="input-wrapper"]');
+                if (parent) {
+                  const parentLabel = parent.querySelector('label, .MuiInputLabel-root, .MuiFormLabel-root');
+                  if (parentLabel && parentLabel.textContent.trim()) return parentLabel.textContent.trim();
+                }
+
+                let prev = el.closest('div');
+                while (prev) {
+                  const lbl = prev.querySelector('label, .MuiInputLabel-root, .MuiFormLabel-root');
+                  if (lbl && lbl.textContent.trim()) return lbl.textContent.trim();
+                  prev = prev.parentElement ? prev.parentElement.closest('div') : null;
+                  if (prev === document.body) break;
+                }
+
+                if (el.name && el.name.trim()) return el.name.trim();
+
+                return '';
+              }
+
               const textTypes = ['text', 'number', 'tel', 'search', 'email', 'url', ''];
               const inputs = Array.from(document.querySelectorAll('input'));
               const textInputs = [];
@@ -11802,10 +11838,10 @@ If the user provides specific criteria, extract as many rules as you can from th
 
                 const id = inp.id || '';
                 const placeholder = inp.placeholder || '';
-                const label = inp.getAttribute('aria-label') || placeholder || '';
+                const label = findLabel(inp);
                 const name = inp.name || '';
 
-                if (!id && !placeholder && !name) continue;
+                if (!id && !placeholder && !name && !label) continue;
 
                 const hasPlaceholder = placeholder.length > 0;
                 const isCombobox = !!inp.closest('[role="combobox"]') || inp.getAttribute('role') === 'combobox' || inp.getAttribute('aria-haspopup') === 'listbox';
@@ -11820,7 +11856,7 @@ If the user provides specific criteria, extract as many rules as you can from th
               const nativeSelects = [];
               const selects = Array.from(document.querySelectorAll('select'));
               for (const sel of selects) {
-                const label = sel.getAttribute('aria-label') || sel.name || '';
+                const label = findLabel(sel);
                 const options = Array.from(sel.querySelectorAll('option')).map(o => o.textContent.trim()).filter(t => t.length > 0);
                 nativeSelects.push({ placeholder: label, label, id: sel.id || '', inputId: sel.id || '', nativeOptions: options });
               }
