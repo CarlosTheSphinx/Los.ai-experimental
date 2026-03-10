@@ -314,7 +314,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   });
   y -= 8;
 
-  y = drawTableRow(page1, y, 'Loan Amount', loanAmount ? formatCurrency(loanAmount) : '', 'Stated Borrower/Sponsor FICO', ficoScore, fonts);
+  y = drawTableRow(page1, y, 'Loan Amount', loanAmount ? formatCurrency(loanAmount) : '', 'Sponsor FICO', ficoScore, fonts);
   y = drawTableRow(page1, y, 'Interest Rate*', interestRate, 'Estimated Property Value', propertyValue ? formatCurrency(propertyValue) : '', fonts);
   y = drawTableRow(page1, y, 'Loan Program', d.loanProgram, 'Loan-to-Value Ratio (LTV)', ltv, fonts);
   y = drawTableRow(page1, y, 'Property Type', propertyType, 'Prepayment Penalty', prepaymentPenalty, fonts);
