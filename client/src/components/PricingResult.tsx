@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { PricingResponse, LoanPricingFormData } from "@shared/schema";
-import { CheckCircle2, ArrowLeft, Download, AlertCircle, FileText, Save, DollarSign, Percent, User, Info, Loader2 } from "lucide-react";
+import { CheckCircle2, ArrowLeft, AlertCircle, FileText, Save, DollarSign, Percent, Info } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -66,12 +66,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const [showQuoteForm, setShowQuoteForm] = useState(false);
-  const [customerFirstName, setCustomerFirstName] = useState("");
-  const [customerLastName, setCustomerLastName] = useState("");
-  const [customerCompanyName, setCustomerCompanyName] = useState("");
   const propertyAddress = resolveField(formData, 'propertyAddress', 'property_address', 'address') || "";
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Determine user role
   const isLender = user?.role === 'admin' || user?.role === 'super_admin';
@@ -139,6 +134,10 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   // Commission = broker's additional points + YSP dollar amount
   const brokerCommission = brokerPointsAmount + yspDollarAmount;
 
+  const customerFirstName = resolveField(fd, 'firstName', 'borrowerFirstName', 'first_name') || "";
+  const customerLastName = resolveField(fd, 'lastName', 'borrowerLastName', 'last_name') || "";
+  const customerCompanyName = resolveField(fd, 'companyName', 'entityName', 'company_name', 'company') || "";
+
   const saveQuoteMutation = useMutation({
     mutationFn: async () => {
       const rate = result.interestRate;
@@ -153,7 +152,6 @@ export function PricingResult({ result, formData, onReset, programId, programCon
         interestRate: formattedRate,
         pointsCharged: totalPointsCharged,
         programId: programId || null,
-        // New YSP + split points fields
         yspAmount: totalYspValue,
         yspRateImpact: yspRateImpactEstimate,
         yspDollarAmount,
@@ -168,7 +166,6 @@ export function PricingResult({ result, formData, onReset, programId, programCon
         description: "Your quote has been saved successfully.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
-      setShowQuoteForm(false);
       setLocation('/quotes');
     },
     onError: (error) => {
@@ -179,55 +176,6 @@ export function PricingResult({ result, formData, onReset, programId, programCon
       });
     }
   });
-
-  const handleDownloadPdf = async () => {
-    setDownloadingPdf(true);
-    try {
-      const rate = result.interestRate;
-      const formattedRate = typeof rate === 'string' ? rate : (rate ? `${rate.toFixed(3)}%` : "N/A");
-      const res = await fetch('/api/pricing/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          formData,
-          result: { ...result, interestRate: formattedRate },
-          pointsCharged: totalPointsCharged,
-          yspAmount: totalYspValue,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to generate PDF');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `quote-${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to download PDF",
-        variant: "destructive",
-      });
-    } finally {
-      setDownloadingPdf(false);
-    }
-  };
-
-  const handleSaveQuote = () => {
-    if (!customerFirstName.trim() || !customerLastName.trim()) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all customer details.",
-        variant: "destructive"
-      });
-      return;
-    }
-    saveQuoteMutation.mutate();
-  };
 
   if (result.error || !result.success) {
     return (
@@ -313,56 +261,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
             </dl>
           </div>
 
-          {!showQuoteForm ? (
-            <Button
-              onClick={() => setShowQuoteForm(true)}
-              className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-success to-success shadow-lg shadow-success/20"
-              data-testid="button-save-quote"
-            >
-              <Save className="mr-2 h-5 w-5" />
-              Save as Quote
-            </Button>
-          ) : (
-            <div className="bg-info/10 rounded-xl p-5 border border-info/20 space-y-5">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <User className="w-4 h-4 text-primary" />
-                Customer Details
-              </h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    value={customerFirstName}
-                    onChange={(e) => setCustomerFirstName(e.target.value)}
-                    placeholder="John"
-                    data-testid="input-first-name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    value={customerLastName}
-                    onChange={(e) => setCustomerLastName(e.target.value)}
-                    placeholder="Doe"
-                    data-testid="input-last-name"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="companyName">Company Name</Label>
-                <Input
-                  id="companyName"
-                  value={customerCompanyName}
-                  onChange={(e) => setCustomerCompanyName(e.target.value)}
-                  placeholder="ABC Investments LLC"
-                  data-testid="input-company-name"
-                />
-              </div>
-
+          <div className="space-y-5">
               {/* ═══ ORIGINATION POINTS ═══ */}
               <div className="space-y-4">
                 <Label className="flex items-center gap-1 text-base font-semibold">
@@ -642,26 +541,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowQuoteForm(false)}
-                  className="flex-1"
-                  data-testid="button-cancel-quote"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveQuote}
-                  disabled={saveQuoteMutation.isPending}
-                  className="flex-1 bg-gradient-to-r from-success to-success"
-                  data-testid="button-confirm-save"
-                >
-                  {saveQuoteMutation.isPending ? "Saving..." : "Save Quote"}
-                </Button>
-              </div>
-            </div>
-          )}
+          </div>
 
 
           <div className="text-xs text-muted-foreground text-center px-4">
@@ -676,22 +556,19 @@ export function PricingResult({ result, formData, onReset, programId, programCon
             onClick={onReset}
             variant="outline"
             className="flex-1 h-12 text-lg font-semibold"
+            data-testid="button-edit-loan"
           >
             <ArrowLeft className="mr-2 h-5 w-5" />
             Edit Loan
           </Button>
           <Button
-            onClick={handleDownloadPdf}
-            disabled={downloadingPdf}
-            className="flex-1 h-12 text-lg font-semibold shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary"
-            data-testid="button-download-pdf"
+            onClick={() => saveQuoteMutation.mutate()}
+            disabled={saveQuoteMutation.isPending}
+            className="flex-1 h-12 text-lg font-semibold bg-gradient-to-r from-success to-success shadow-lg shadow-success/20"
+            data-testid="button-save-quote"
           >
-            {downloadingPdf ? (
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            ) : (
-              <Download className="mr-2 h-5 w-5" />
-            )}
-            {downloadingPdf ? "Generating..." : "Download PDF"}
+            <Save className="mr-2 h-5 w-5" />
+            {saveQuoteMutation.isPending ? "Saving..." : "Save as Quote"}
           </Button>
         </div>
       </CardFooter>
