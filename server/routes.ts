@@ -420,15 +420,100 @@ export async function registerRoutes(
         { label: 'TPO Premium', fieldKey: 'tpoPremium' },
       ];
 
+      const normalizeKey = (k: string) => k.replace(/[-_]/g, '').toLowerCase();
+      const loanDataNormalized: Record<string, any> = {};
+      for (const [k, v] of Object.entries(loanData as any)) {
+        loanDataNormalized[normalizeKey(k)] = v;
+      }
+
+      const resolveFieldValue = (fieldKey: string, sourceType?: string, defaultValue?: string, formula?: string, options?: string[]) => {
+        const exactVal = (loanData as any)[fieldKey];
+        if (exactVal !== undefined && exactVal !== null && exactVal !== '') return String(exactVal);
+
+        const normalizedVal = loanDataNormalized[normalizeKey(fieldKey)];
+        if (normalizedVal !== undefined && normalizedVal !== null && normalizedVal !== '') return String(normalizedVal);
+
+        if (sourceType === 'calculated') {
+          if (!formula && normalizeKey(fieldKey) === 'ltv') {
+            const la = Number(loanDataNormalized['loanamount'] || 0);
+            const pv = Number(loanDataNormalized['estvaluepurchaseprice'] || loanDataNormalized['propertyvalue'] || loanDataNormalized['asIsvalue'] || loanDataNormalized['purchaseprice'] || 0);
+            if (la > 0 && pv > 0) {
+              const ltvVal = (la / pv) * 100;
+              if (options && options.length > 0) {
+                for (const opt of options) {
+                  const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
+                  if (rangeMatch) {
+                    const low = parseFloat(rangeMatch[1]);
+                    const high = parseFloat(rangeMatch[2]);
+                    if (ltvVal >= low && ltvVal <= high) return opt;
+                  }
+                  const lteMatch = opt.match(/[≤<]=?\s*([\d.]+)%?/);
+                  if (lteMatch && ltvVal <= parseFloat(lteMatch[1])) return opt;
+                }
+                return options[options.length - 1];
+              }
+              return String(Math.round(ltvVal)) + '%';
+            }
+          }
+        }
+        if (sourceType === 'calculated' && formula) {
+          try {
+            const evaluated = formula.replace(/\{([^}]+)\}/g, (_: string, varName: string) => {
+              const v = (loanData as any)[varName] ?? loanDataNormalized[normalizeKey(varName)] ?? 0;
+              return String(Number(v) || 0);
+            });
+            const result = Function('"use strict"; return (' + evaluated + ')')();
+            if (options && options.length > 0) {
+              const numResult = Number(result);
+              for (const opt of options) {
+                const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
+                if (rangeMatch) {
+                  const low = parseFloat(rangeMatch[1]);
+                  const high = parseFloat(rangeMatch[2]);
+                  if (numResult >= low && numResult <= high) return opt;
+                }
+                const lteMatch = opt.match(/[≤<]=?\s*([\d.]+)%?/);
+                if (lteMatch && numResult <= parseFloat(lteMatch[1])) return opt;
+                const gteMatch = opt.match(/[≥>]=?\s*([\d.]+)%?/);
+                if (gteMatch && numResult >= parseFloat(gteMatch[1])) return opt;
+              }
+              const closest = options.reduce((best, opt) => {
+                const nums = opt.match(/[\d.]+/g);
+                if (!nums) return best;
+                const optNum = parseFloat(nums[nums.length - 1]);
+                const bestNums = best.match(/[\d.]+/g);
+                const bestNum = bestNums ? parseFloat(bestNums[bestNums.length - 1]) : Infinity;
+                return Math.abs(optNum - numResult) < Math.abs(bestNum - numResult) ? opt : best;
+              }, options[0]);
+              return closest;
+            }
+            return String(result);
+          } catch (e) {
+            console.warn('Formula evaluation failed for', fieldKey, ':', e);
+          }
+        }
+
+        if (sourceType === 'default' && defaultValue) return defaultValue;
+
+        return '';
+      };
+
       const dynamicTextInputs = configTextInputs.map((ti: any) => ({
         id: ti.id,
-        value: String((loanData as any)[ti.mappedFrom || ti.fieldKey] ?? (loanData as any)[ti.fieldKey] ?? ''),
+        value: resolveFieldValue(ti.fieldKey, ti.sourceType, ti.defaultValue, ti.formula),
         label: ti.label,
       }));
       const dynamicDropdowns = configDropdowns.map((dd: any) => ({
         label: dd.label,
-        value: String((loanData as any)[dd.mappedFrom || dd.fieldKey] ?? (loanData as any)[dd.fieldKey] ?? ''),
+        value: resolveFieldValue(dd.fieldKey, dd.sourceType, dd.defaultValue, dd.formula, dd.options),
       }));
+
+      const scraperPayload = {
+        url: scraperUrl,
+        textInputs: dynamicTextInputs.map((ti: any) => ({ label: ti.label, value: ti.value })),
+        dropdowns: dynamicDropdowns.map((dd: any) => ({ label: dd.label, value: dd.value })),
+      };
+      console.log('Scraper payload:', JSON.stringify(scraperPayload, null, 2));
       
       // Run the Apify Puppeteer Scraper actor
       const run = await client.actor('apify/puppeteer-scraper').call({
@@ -966,7 +1051,8 @@ export async function registerRoutes(
             isIneligible: true,
             message: 'Loan is ineligible',
             loanData: result.loanData,
-            apifyRunId: run.id
+            apifyRunId: run.id,
+            scraperPayload,
           });
         } else if (result.success && result.interestRate) {
           let parsedRate = parseFloat(String(result.interestRate).replace('%', ''));
@@ -974,14 +1060,16 @@ export async function registerRoutes(
             success: true,
             interestRate: parsedRate,
             loanData: result.loanData,
-            apifyRunId: run.id
+            apifyRunId: run.id,
+            scraperPayload,
           });
         } else {
           res.status(400).json({
             success: false,
             error: 'Could not extract interest rate from page',
             apifyRunId: run.id,
-            debug: result
+            debug: result,
+            scraperPayload,
           });
         }
       } else {

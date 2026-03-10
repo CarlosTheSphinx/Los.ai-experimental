@@ -23,6 +23,9 @@ import {
   Plus,
   ArrowLeft,
   Download,
+  ChevronDown,
+  ChevronUp,
+  Bug,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -374,6 +377,15 @@ export default function QuotesUnified() {
   const [searchQuery, setSearchQuery] = useState('');
   const [testDataKey, setTestDataKey] = useState(0);
   const [generatedTestData, setGeneratedTestData] = useState<Record<string, any> | null>(null);
+  const [scraperDebug, setScraperDebug] = useState<{
+    url?: string;
+    textInputs?: Array<{ label: string; value: string }>;
+    dropdowns?: Array<{ label: string; value: string }>;
+    formResult?: any;
+    bodySnippet?: string;
+    error?: string;
+  } | null>(null);
+  const [showScraperDebug, setShowScraperDebug] = useState(false);
   const [signingQuote, setSigningQuote] = useState<SavedQuote | null>(null);
 
   const { mutate: getPricing, isPending: dscrPending } = usePricing();
@@ -416,10 +428,29 @@ export default function QuotesUnified() {
 
   const handleDSCRSubmit = (data: Record<string, any>) => {
     setDscrFormData(data as any);
+    setScraperDebug(null);
+    setShowScraperDebug(false);
     const payload = { ...data, programId: selectedProgramId ?? undefined };
     getPricing(payload, {
-      onSuccess: (response) => {
+      onSuccess: (response: any) => {
         setDscrResult(response);
+        if (response.scraperPayload) {
+          setScraperDebug({
+            ...response.scraperPayload,
+            formResult: response.formResult,
+          });
+        }
+      },
+      onError: (error: any) => {
+        if (error.scraperPayload) {
+          setScraperDebug({
+            ...error.scraperPayload,
+            error: error.message,
+            formResult: error.debug?.formResult,
+            bodySnippet: error.debug?.rateDebugInfo?.bodySnippet,
+          });
+          setShowScraperDebug(true);
+        }
       },
     });
   };
@@ -833,6 +864,82 @@ export default function QuotesUnified() {
                   onReset={handleReset}
                   programId={selectedProgramId}
                 />
+              )}
+              {scraperDebug && !isBorrower && (
+                <div className="border rounded-[10px] overflow-hidden bg-card" data-testid="scraper-debug-panel">
+                  <button
+                    onClick={() => setShowScraperDebug(!showScraperDebug)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+                    data-testid="button-toggle-scraper-debug"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Bug className="h-4 w-4" />
+                      Scraper Debug
+                      {scraperDebug.error && <span className="text-xs text-destructive font-normal">(error)</span>}
+                    </span>
+                    {showScraperDebug ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {showScraperDebug && (
+                    <div className="border-t px-4 py-3 space-y-3 text-[13px] font-ui">
+                      {scraperDebug.error && (
+                        <div className="bg-destructive/10 text-destructive rounded px-3 py-2">
+                          {scraperDebug.error}
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-semibold text-muted-foreground">URL:</span>{' '}
+                        <a href={scraperDebug.url} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all">
+                          {scraperDebug.url}
+                        </a>
+                      </div>
+                      {scraperDebug.textInputs && scraperDebug.textInputs.length > 0 && (
+                        <div>
+                          <span className="font-semibold text-muted-foreground block mb-1">Text Inputs Sent:</span>
+                          <div className="grid grid-cols-2 gap-1">
+                            {scraperDebug.textInputs.map((ti, i) => (
+                              <div key={i} className="flex justify-between bg-muted/30 rounded px-2 py-1">
+                                <span>{ti.label}</span>
+                                <span className="font-mono text-foreground">{ti.value || <span className="text-destructive italic">empty</span>}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {scraperDebug.dropdowns && scraperDebug.dropdowns.length > 0 && (
+                        <div>
+                          <span className="font-semibold text-muted-foreground block mb-1">Dropdowns Sent:</span>
+                          <div className="grid grid-cols-2 gap-1">
+                            {scraperDebug.dropdowns.map((dd, i) => (
+                              <div key={i} className="flex justify-between bg-muted/30 rounded px-2 py-1">
+                                <span>{dd.label}</span>
+                                <span className={`font-mono ${dd.value ? 'text-foreground' : 'text-destructive italic'}`}>
+                                  {dd.value || 'empty'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {scraperDebug.formResult && (
+                        <div>
+                          <span className="font-semibold text-muted-foreground block mb-1">Page Response:</span>
+                          <div className="space-y-0.5">
+                            {scraperDebug.formResult.textInputs?.map((ti: string, i: number) => (
+                              <div key={`ti-${i}`} className={`text-xs px-2 py-0.5 rounded ${ti.startsWith('✅') ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                                {ti}
+                              </div>
+                            ))}
+                            {scraperDebug.formResult.dropdowns?.map((dd: string, i: number) => (
+                              <div key={`dd-${i}`} className={`text-xs px-2 py-0.5 rounded ${dd.startsWith('✅') ? 'text-green-700 dark:text-green-400' : dd.startsWith('❌') ? 'text-destructive' : 'text-amber-700 dark:text-amber-400'}`}>
+                                {dd}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

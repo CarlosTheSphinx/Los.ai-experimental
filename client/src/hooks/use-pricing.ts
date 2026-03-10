@@ -32,11 +32,18 @@ export function usePricing() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.message || errorData.error || "Failed to fetch pricing");
+        const err = new Error(errorData.message || errorData.error || "Failed to fetch pricing") as any;
+        err.scraperPayload = errorData.scraperPayload;
+        err.debug = errorData.debug;
+        throw err;
       }
 
       const result = await res.json();
-      return api.pricing.submit.responses[200].parse(result);
+      try {
+        return api.pricing.submit.responses[200].parse(result);
+      } catch {
+        return result;
+      }
     },
     onError: (error) => {
       toast({

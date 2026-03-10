@@ -200,6 +200,11 @@ export const pricingResponseSchema = z.object({
   error: z.string().optional(),
   message: z.string().optional(),
   debug: z.record(z.any()).optional(),
+  scraperPayload: z.object({
+    url: z.string(),
+    textInputs: z.array(z.object({ label: z.string(), value: z.string() })),
+    dropdowns: z.array(z.object({ label: z.string(), value: z.string() })),
+  }).optional(),
 });
 
 export type PricingResponse = z.infer<typeof pricingResponseSchema>;
