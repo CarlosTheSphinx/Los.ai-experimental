@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, FileText, Download, Send, CheckCircle2, Loader2, FileSignature, Pencil, X, Save } from "lucide-react";
+import { ArrowLeft, FileText, Download, Send, CheckCircle2, Loader2, FileSignature, Pencil, X, Save, Mail } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { DocumentSigningModal } from "@/components/DocumentSigningModal";
 import type { SavedQuote } from "@shared/schema";
 import { Document as PDFDocument, Page as PDFPage, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -66,7 +66,6 @@ export default function QuoteDocuments() {
   const { toast } = useToast();
   const quoteId = params?.id ? parseInt(params.id) : null;
   const [downloadingTemplateId, setDownloadingTemplateId] = useState<number | null>(null);
-  const [showSigningModal, setShowSigningModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -79,6 +78,9 @@ export default function QuoteDocuments() {
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [editForm, setEditForm] = useState<EditFormData | null>(null);
   const [pdfVersion, setPdfVersion] = useState(0);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [sendEmail, setSendEmail] = useState('');
+  const [sendName, setSendName] = useState('');
 
   const { data: quoteData, isLoading: quoteLoading } = useQuery<{ success: boolean; quote: SavedQuote }>({
     queryKey: ['/api/quotes', quoteId],
@@ -248,6 +250,44 @@ export default function QuoteDocuments() {
       });
     },
   });
+
+  const sendSignatureMutation = useMutation({
+    mutationFn: async ({ email, name }: { email: string; name: string }) => {
+      const response = await apiRequest('POST', `/api/quotes/${quoteId}/send-internal-signature`, {
+        recipientEmail: email,
+        recipientName: name,
+        templateId: selectedTemplateId,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Sent", description: data.message || "Term sheet sent for signature." });
+      setShowSendDialog(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to send for signature",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOpenSendDialog = () => {
+    if (quote) {
+      setSendEmail(quote.customerEmail || '');
+      setSendName([quote.customerFirstName, quote.customerLastName].filter(Boolean).join(' '));
+    }
+    setShowSendDialog(true);
+  };
+
+  const handleSendSignature = () => {
+    if (!sendEmail.trim()) {
+      toast({ title: "Error", description: "Please enter an email address", variant: "destructive" });
+      return;
+    }
+    sendSignatureMutation.mutate({ email: sendEmail.trim(), name: sendName.trim() });
+  };
 
   const handleEditField = (field: keyof EditFormData, value: string) => {
     if (editForm) {
@@ -426,7 +466,7 @@ export default function QuoteDocuments() {
             </Button>
             <Button
               className="w-full bg-gradient-to-r from-primary to-primary"
-              onClick={() => setShowSigningModal(true)}
+              onClick={handleOpenSendDialog}
               data-testid="button-send-signature"
             >
               <Send className="mr-2 h-4 w-4" />
@@ -681,13 +721,62 @@ export default function QuoteDocuments() {
         )}
       </div>
 
-      {quote && (
-        <DocumentSigningModal
-          open={showSigningModal}
-          onClose={() => setShowSigningModal(false)}
-          quote={quote}
-        />
-      )}
+      <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              Send for Signature
+            </DialogTitle>
+            <DialogDescription>
+              Send this term sheet to the borrower for electronic signature.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="send-name">Recipient Name</Label>
+              <Input
+                id="send-name"
+                value={sendName}
+                onChange={(e) => setSendName(e.target.value)}
+                placeholder="Borrower name"
+                data-testid="input-send-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="send-email">Recipient Email</Label>
+              <Input
+                id="send-email"
+                type="email"
+                value={sendEmail}
+                onChange={(e) => setSendEmail(e.target.value)}
+                placeholder="borrower@example.com"
+                data-testid="input-send-email"
+              />
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3 text-sm text-muted-foreground">
+              <p>The borrower will receive an email with a secure link to review and sign the document. The signature field is pre-positioned on the document.</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowSendDialog(false)} data-testid="button-cancel-send">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendSignature}
+                disabled={sendSignatureMutation.isPending || !sendEmail.trim()}
+                data-testid="button-confirm-send"
+              >
+                {sendSignatureMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Send Term Sheet
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

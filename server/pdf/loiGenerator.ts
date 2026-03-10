@@ -464,12 +464,21 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   drawBlankLine(page2, MARGIN + 50, y, 200);
   y -= 30;
 
+  const sigFieldY_pdflib = y;
   page2.drawText('Signature:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   drawBlankLine(page2, MARGIN + 60, y, 200);
   y -= 30;
 
+  const dateFieldY_pdflib = y;
   page2.drawText('Date:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   drawBlankLine(page2, MARGIN + 35, y, 120);
+
+  const sigFieldHeight = 25;
+  const dateFieldHeight = 20;
+  _lastSigningFields = [
+    { fieldType: 'signature', pageNumber: 2, x: MARGIN + 60, y: PAGE_H - sigFieldY_pdflib - sigFieldHeight, width: 200, height: sigFieldHeight },
+    { fieldType: 'date', pageNumber: 2, x: MARGIN + 35, y: PAGE_H - dateFieldY_pdflib - dateFieldHeight, width: 120, height: dateFieldHeight },
+  ];
 
   // ==================== PAGE 3 ====================
   const page3 = pdfDoc.addPage([PAGE_W, PAGE_H]);
@@ -499,4 +508,24 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   }
 
   return pdfDoc.save();
+}
+
+export interface LoiSigningField {
+  fieldType: string;
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+let _lastSigningFields: LoiSigningField[] = [];
+
+export function getLastLoiSigningFields(): LoiSigningField[] {
+  return [..._lastSigningFields];
+}
+
+export async function generateLoiPdfWithFields(data: QuotePdfData, loiDefaults?: LoiDefaults): Promise<{ pdfBytes: Uint8Array; signingFields: LoiSigningField[] }> {
+  const pdfBytes = await generateLoiPdf(data, loiDefaults);
+  return { pdfBytes: new Uint8Array(pdfBytes), signingFields: [..._lastSigningFields] };
 }

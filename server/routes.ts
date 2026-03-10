@@ -1372,6 +1372,160 @@ export async function registerRoutes(
     }
   });
 
+  // Internal send-for-signature: generates PDF, creates document with pre-positioned fields, emails signing link
+  app.post('/api/quotes/:id/send-internal-signature', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { recipientEmail, recipientName, templateId } = req.body;
+
+      const quote = await storage.getQuoteById(id, req.user!.id);
+      if (!quote) {
+        res.status(404).json({ success: false, error: 'Quote not found' });
+        return;
+      }
+
+      if (!recipientEmail) {
+        res.status(400).json({ success: false, error: 'Recipient email is required' });
+        return;
+      }
+
+      const borrowerName = recipientName || [quote.customerFirstName, quote.customerLastName].filter(Boolean).join(' ');
+      const senderUser = await storage.getUserById(req.user!.id);
+      const senderName = senderUser ? [senderUser.firstName, senderUser.lastName].filter(Boolean).join(' ') : 'Lendry.AI';
+
+      const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
+      const { generateLoiPdfWithFields } = await import('./pdf/loiGenerator');
+
+      let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+      if (templateId) {
+        const template = await storage.getQuotePdfTemplateById(templateId);
+        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+          templateConfig = template.config;
+        }
+      }
+
+      const quoteDate = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
+      const pdfData = {
+        quoteNumber: quote.loanNumber || String(quote.id),
+        quoteDate,
+        customerFirstName: quote.customerFirstName,
+        customerLastName: quote.customerLastName,
+        customerCompanyName: quote.customerCompanyName || undefined,
+        propertyAddress: quote.propertyAddress,
+        interestRate: quote.interestRate || undefined,
+        pointsCharged: quote.pointsCharged || undefined,
+        pointsAmount: quote.pointsAmount || undefined,
+        yspAmount: quote.yspAmount || undefined,
+        yspDollarAmount: quote.yspDollarAmount || undefined,
+        commission: quote.commission || undefined,
+        loanData: quote.loanData as Record<string, any> || {},
+      };
+
+      const isLoi = templateConfig.templateType === 'loi';
+      let pdfBytes: Uint8Array;
+      let signingFields: { fieldType: string; pageNumber: number; x: number; y: number; width: number; height: number }[] = [];
+
+      if (isLoi) {
+        const result = await generateLoiPdfWithFields(pdfData, templateConfig.loiDefaults);
+        pdfBytes = result.pdfBytes;
+        signingFields = result.signingFields;
+      } else {
+        pdfBytes = new Uint8Array(await generateQuotePdf(pdfData, templateConfig));
+      }
+
+      const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+      const docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
+
+      const pdfDoc = await (await import('pdf-lib')).PDFDocument.load(pdfBytes);
+      const pageCount = pdfDoc.getPageCount();
+
+      const document = await storage.createDocument({
+        name: docName,
+        fileName: `${quote.loanNumber || `Quote-${quote.id}`}.pdf`,
+        fileData: pdfBase64,
+        pageCount,
+        status: 'sent',
+        vendor: 'local',
+        quoteId: quote.id,
+      }, req.user!.id);
+
+      const crypto = await import('crypto');
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const signer = await storage.createSigner({
+        documentId: document.id,
+        name: borrowerName,
+        email: recipientEmail,
+        color: '#C9A84C',
+        signingOrder: 1,
+        status: 'sent',
+        token,
+        tokenExpiresAt,
+      });
+
+      if (signingFields.length > 0) {
+        for (const field of signingFields) {
+          await storage.createField({
+            documentId: document.id,
+            signerId: signer.id,
+            pageNumber: field.pageNumber,
+            fieldType: field.fieldType,
+            x: field.x,
+            y: field.y,
+            width: field.width,
+            height: field.height,
+            required: true,
+            label: field.fieldType === 'signature' ? 'Signature' : field.fieldType === 'date' ? 'Date' : field.fieldType,
+          });
+        }
+      } else {
+        await storage.createField({
+          documentId: document.id,
+          signerId: signer.id,
+          pageNumber: pageCount,
+          fieldType: 'signature',
+          x: 114,
+          y: 650,
+          width: 200,
+          height: 25,
+          required: true,
+          label: 'Signature',
+        });
+      }
+
+      await storage.updateDocument(document.id, { sentAt: new Date(), status: 'sent' });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : 'http://localhost:5000');
+      const signingLink = `${baseUrl}/sign/${token}`;
+
+      const { sendSigningInvitation } = await import('./email');
+      const emailResult = await sendSigningInvitation(recipientEmail, borrowerName, docName, senderName, signingLink);
+      if (!emailResult.success) {
+        console.error('Failed to send signing email:', emailResult.error);
+      }
+
+      await storage.createAuditLog({
+        documentId: document.id,
+        action: 'sent',
+        performedBy: senderName,
+        ipAddress: req.ip || 'unknown',
+      });
+
+      res.json({
+        success: true,
+        documentId: document.id,
+        signingLink,
+        message: `Term sheet sent to ${recipientEmail}`,
+      });
+    } catch (error) {
+      console.error('Error sending internal signature:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to send for signature' });
+    }
+  });
+
   // Generate PDF for unsaved pricing result
   app.post('/api/pricing/pdf', authenticateUser, async (req: AuthRequest, res) => {
     try {
