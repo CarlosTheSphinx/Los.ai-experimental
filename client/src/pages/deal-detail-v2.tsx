@@ -533,7 +533,7 @@ export default function DealDetailV2() {
   }));
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-7xl mx-auto">
       {/* Fixed Header */}
       <div className="sticky top-0 z-20 bg-white border-b px-6 py-4">
         <div className="flex items-start justify-between mb-3">
@@ -646,64 +646,63 @@ export default function DealDetailV2() {
             />
           </div>
         )}
+
+        {/* Tab Navigation */}
+        <div className="border rounded-lg mt-4 bg-card">
+          <TabsList className="bg-transparent rounded-none w-full justify-between p-0 h-auto">
+            {[
+              { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
+              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} pending` : String(documents.length) },
+              { value: "tasks", label: "Tasks", icon: CheckSquare, badge: String(tasks.length) },
+              { value: "people", label: "People", icon: Users, badge: null },
+              { value: "communications", label: "Communications", icon: MessageCircle, badge: null },
+              { value: "ai-reviews", label: "AI Reviews", icon: Sparkles, badge: null },
+            ].map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-[16px] font-semibold gap-2"
+                data-testid={`tab-${tab.value}`}
+              >
+                <tab.icon className="h-4.5 w-4.5" />
+                {tab.label}
+                {tab.badge && (
+                  <span className={`text-[13px] ml-0.5 ${tab.badge.includes('pending') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
+                    {tab.badge}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
       </div>
 
-      {/* Deal Strip + Tabs */}
+      {/* Deal Strip + Tab Content */}
       <div className="px-6 py-5">
         <DealStrip deal={deal} dealId={dealId!} isAdmin={!!isAdmin} stages={dealData?.stages} />
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="border rounded-lg mt-5 mb-5 bg-card">
-            <TabsList className="bg-transparent rounded-none w-full justify-between p-0 h-auto">
-              {[
-                { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
-                { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} pending` : String(documents.length) },
-                { value: "tasks", label: "Tasks", icon: CheckSquare, badge: String(tasks.length) },
-                { value: "people", label: "People", icon: Users, badge: null },
-                { value: "communications", label: "Communications", icon: MessageCircle, badge: null },
-                { value: "ai-reviews", label: "AI Reviews", icon: Sparkles, badge: null },
-              ].map((tab) => (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-[16px] font-semibold gap-2"
-                  data-testid={`tab-${tab.value}`}
-                >
-                  <tab.icon className="h-4.5 w-4.5" />
-                  {tab.label}
-                  {tab.badge && (
-                    <span className={`text-[13px] ml-0.5 ${tab.badge.includes('pending') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-
-          <div className="mt-5">
-            <TabsContent value="overview" className="m-0">
-              <TabOverview deal={deal} properties={properties} dealId={dealId!} isAdmin={!!isAdmin} />
-            </TabsContent>
-            <TabsContent value="documents" className="m-0">
-              <TabDocuments deal={deal} documents={documents} dealId={dealId!} stages={dealData?.stages} />
-            </TabsContent>
-            <TabsContent value="tasks" className="m-0">
-              <TabTasks deal={deal} tasks={tasks} dealId={dealId!} />
-            </TabsContent>
-            <TabsContent value="people" className="m-0">
-              <TabPeople deal={deal} isAdmin={!!isAdmin} />
-            </TabsContent>
-            <TabsContent value="communications" className="m-0">
-              <TabComms deal={deal} activities={activities} dealId={dealId!} />
-            </TabsContent>
-            <TabsContent value="ai-reviews" className="m-0">
-              <TabAIInsights deal={deal} dealId={dealId!} />
-            </TabsContent>
-          </div>
-        </Tabs>
+        <div className="mt-5">
+          <TabsContent value="overview" className="m-0">
+            <TabOverview deal={deal} properties={properties} dealId={dealId!} isAdmin={!!isAdmin} />
+          </TabsContent>
+          <TabsContent value="documents" className="m-0">
+            <TabDocuments deal={deal} documents={documents} dealId={dealId!} stages={dealData?.stages} />
+          </TabsContent>
+          <TabsContent value="tasks" className="m-0">
+            <TabTasks deal={deal} tasks={tasks} dealId={dealId!} />
+          </TabsContent>
+          <TabsContent value="people" className="m-0">
+            <TabPeople deal={deal} isAdmin={!!isAdmin} />
+          </TabsContent>
+          <TabsContent value="communications" className="m-0">
+            <TabComms deal={deal} activities={activities} dealId={dealId!} />
+          </TabsContent>
+          <TabsContent value="ai-reviews" className="m-0">
+            <TabAIInsights deal={deal} dealId={dealId!} />
+          </TabsContent>
+        </div>
       </div>
 
-    </div>
+    </Tabs>
   );
 }
