@@ -2798,10 +2798,17 @@ export async function registerRoutes(
             }
           }
           
+          let quoteLoanNumber: string | undefined;
+          if (doc.quoteId) {
+            const quote = await storage.getQuoteById(doc.quoteId, doc.userId!);
+            if (quote?.loanNumber) quoteLoanNumber = quote.loanNumber;
+          }
+
           const project = await storage.createProject({
             userId: doc.userId!,
             projectName: `${borrowerSigner.name} - ${doc.name}`,
             projectNumber,
+            ...(quoteLoanNumber ? { loanNumber: quoteLoanNumber } : {}),
             loanAmount: loanData.loanAmount as number || null,
             interestRate: loanData.interestRate as number || null,
             loanTermMonths: loanData.loanTermMonths as number || null,
@@ -16412,6 +16419,7 @@ If the user provides specific criteria, extract as many rules as you can from th
         userId: quote.userId || envelope.createdBy!,
         projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
         projectNumber,
+        ...(quote.loanNumber ? { loanNumber: quote.loanNumber } : {}),
         loanAmount: loanAmount || null,
         interestRate: !isNaN(rateNum) ? rateNum : null,
         loanTermMonths: loanData?.loanTermMonths ? parseInt(loanData.loanTermMonths) : (loanData?.loanTerm ? parseInt(String(loanData.loanTerm)) : null),

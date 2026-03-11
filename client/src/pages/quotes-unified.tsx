@@ -584,20 +584,31 @@ export default function QuotesUnified() {
 
   const handleEditQuote = (quote: SavedQuote) => {
     const loanData = quote.loanData as Record<string, any>;
-    const isRTLQuote = loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined;
+    const isRTLQuote = !!(loanData?.asIsValue || loanData?.arv || (loanData?.rehabBudget !== undefined && loanData?.rehabBudget !== null));
 
-    sessionStorage.setItem('editQuote', JSON.stringify({
-      quoteId: quote.id,
-      isRTL: isRTLQuote,
-      loanData: loanData,
-      programId: quote.programId,
-      customerFirstName: quote.customerFirstName,
-      customerLastName: quote.customerLastName,
-      propertyAddress: quote.propertyAddress,
-      pointsCharged: quote.pointsCharged
-    }));
+    if (quote.programId) {
+      setSelectedProgramId(quote.programId);
+    }
 
-    navigate('/');
+    const derivedType = isRTLQuote ? "rtl" : "dscr";
+    setLoanProductType(derivedType);
+
+    if (isRTLQuote) {
+      setRtlFormData(loanData as any);
+      setRtlResult(null);
+    } else {
+      setDscrFormData(loanData as any);
+      setDscrResult(null);
+    }
+
+    setGeneratedTestData(null);
+    setTestDataKey(prev => prev + 1);
+    setActiveView("create");
+
+    toast({
+      title: "Editing Quote",
+      description: `${quote.loanNumber || 'Quote'} loaded — make changes and resubmit.`,
+    });
   };
 
   const quotes = quotesData?.quotes || [];
@@ -919,7 +930,7 @@ export default function QuotesUnified() {
                     const sDisplay = hasIntDoc ? getInternalDocStatusDisplay(intDoc) : getEnvelopeStatusDisplay(env);
                     const borrowerName = [quote.customerFirstName, quote.customerLastName].filter(Boolean).join(' ') || '—';
                     const initials = borrowerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-                    const createdDate = quote.createdAt ? formatShortDate(quote.createdAt) : '—';
+                    const createdDate = formatShortDate(quote.createdAt) || '—';
                     const qNumber = quote.loanNumber || formatQuoteNumber(quote.id, quote.createdAt);
                     const progName = ld?.programName || (isRTL
                       ? ld?.loanType?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())

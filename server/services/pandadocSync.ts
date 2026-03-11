@@ -91,6 +91,7 @@ export async function syncEnvelopeStatus(envelopeId: number): Promise<{
               userId: quote.userId || envelope.createdBy!,
               projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
               projectNumber,
+              ...(quote.loanNumber ? { loanNumber: quote.loanNumber } : {}),
               loanAmount: loanAmount || null,
               interestRate: !isNaN(rateNum) ? rateNum : null,
               loanType: loanData?.loanType || loanData?.selectedLoanType || (isRTLQuote ? 'fix_and_flip' : 'dscr'),
