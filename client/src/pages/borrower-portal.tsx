@@ -21,6 +21,9 @@ import {
   ArrowLeft,
   Bell,
   Send,
+  Plus,
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { formatPhoneNumber } from "@/lib/validation";
@@ -230,6 +234,13 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
   const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [composing, setComposing] = useState(false);
+  const [composeDealId, setComposeDealId] = useState<string>("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const docUploadRef = useRef<HTMLInputElement>(null);
+  const [uploadingGlobalDoc, setUploadingGlobalDoc] = useState(false);
+  const [docUploadCategory, setDocUploadCategory] = useState<string>("other");
   const [profileForm, setProfileForm] = useState<Partial<BorrowerProfile>>({});
 
   // Borrower profile query
@@ -345,6 +356,76 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     },
     onError: () => {
       toast({ title: "Failed to send message", variant: "destructive" });
+    },
+  });
+
+  const createThreadMutation = useMutation({
+    mutationFn: async ({ dealId, subject, body }: { dealId: string; subject: string; body: string }) => {
+      const res = await apiRequest('POST', `/api/portal/${token}/messages/threads`, { dealId: parseInt(dealId), subject, body });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'threads'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'unread-count'] });
+      setComposing(false);
+      setComposeDealId("");
+      setComposeSubject("");
+      setComposeBody("");
+      if (data.thread?.id) {
+        setSelectedThreadId(data.thread.id);
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to create conversation", variant: "destructive" });
+    },
+  });
+
+  const uploadGlobalDocMutation = useMutation({
+    mutationFn: async ({ file, category }: { file: File; category: string }) => {
+      setUploadingGlobalDoc(true);
+      const urlRes = await fetch(`/api/portal/${token}/borrower-documents/upload-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error('Failed to get upload URL');
+      const urlData = await urlRes.json();
+
+      let objectPath: string;
+      if (urlData.useDirectUpload) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const dr = await fetch(urlData.uploadURL, { method: 'POST', body: fd });
+        if (!dr.ok) throw new Error('Upload failed');
+        objectPath = (await dr.json()).objectPath;
+      } else {
+        const uploadRes = await fetch(urlData.uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        objectPath = urlData.objectPath;
+      }
+
+      const saveRes = await apiRequest('POST', `/api/portal/${token}/borrower-documents`, {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        storagePath: objectPath,
+        category,
+      });
+      return saveRes.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'borrower-documents'] });
+      setUploadingGlobalDoc(false);
+      setDocUploadCategory("other");
+      toast({ title: "Document uploaded" });
+    },
+    onError: (err: Error) => {
+      setUploadingGlobalDoc(false);
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -528,16 +609,15 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
       <div className="flex-1 flex flex-col min-h-screen">
         <div className="flex items-center justify-end gap-2 px-4 md:px-6 py-2 bg-background border-b">
           <Button
-            variant="ghost"
             size="icon"
-            className="relative h-9 w-9 rounded-full"
+            className="relative h-9 w-9 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
             data-testid="button-portal-messages"
             onClick={() => {
               setActiveView("inbox");
               setSelectedThreadId(null);
             }}
           >
-            <MessageSquare className="h-4 w-4" />
+            <MessageSquare className="!h-5 !w-5" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center px-1" data-testid="badge-unread-count">
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -545,12 +625,11 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
             )}
           </Button>
           <Button
-            variant="ghost"
             size="icon"
-            className="relative h-9 w-9 rounded-full"
+            className="relative h-9 w-9 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
             data-testid="button-portal-notifications"
           >
-            <Bell className="h-4 w-4" />
+            <Bell className="!h-5 !w-5" />
           </Button>
         </div>
 
@@ -791,8 +870,17 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
 
               <div className="flex flex-1 border rounded-lg overflow-hidden bg-background min-h-0">
                 <div className="w-[280px] md:w-[320px] border-r flex flex-col shrink-0">
-                  <div className="px-3 py-2 border-b bg-muted/30">
+                  <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Conversations</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => { setComposing(true); setSelectedThreadId(null); }}
+                      data-testid="button-new-message"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> New
+                    </Button>
                   </div>
                   <ScrollArea className="flex-1">
                     {threadsLoading ? (
@@ -811,7 +899,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                           className={`w-full text-left px-3 py-3 border-b hover:bg-muted/50 transition-colors ${
                             selectedThreadId === thread.id ? 'bg-muted' : ''
                           }`}
-                          onClick={() => setSelectedThreadId(thread.id)}
+                          onClick={() => { setSelectedThreadId(thread.id); setComposing(false); }}
                           data-testid={`thread-item-${thread.id}`}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -849,11 +937,69 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                 </div>
 
                 <div className="flex-1 flex flex-col min-w-0">
-                  {!selectedThreadId ? (
+                  {composing ? (
+                    <div className="flex-1 flex flex-col p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold">New Conversation</h3>
+                        <Button variant="ghost" size="sm" onClick={() => setComposing(false)} data-testid="button-cancel-compose">
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="space-y-3 flex-1 flex flex-col">
+                        <div>
+                          <Label className="text-xs mb-1 block">Loan</Label>
+                          <Select value={composeDealId} onValueChange={setComposeDealId}>
+                            <SelectTrigger data-testid="select-compose-deal">
+                              <SelectValue placeholder="Select a loan..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {displayDeals.map((deal) => (
+                                <SelectItem key={deal.id} value={String(deal.id)} data-testid={`option-deal-${deal.id}`}>
+                                  {deal.dealName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1 block">Subject (optional)</Label>
+                          <Input
+                            value={composeSubject}
+                            onChange={(e) => setComposeSubject(e.target.value)}
+                            placeholder="e.g. Question about my loan"
+                            data-testid="input-compose-subject"
+                          />
+                        </div>
+                        <div className="flex-1 flex flex-col">
+                          <Label className="text-xs mb-1 block">Message</Label>
+                          <Textarea
+                            value={composeBody}
+                            onChange={(e) => setComposeBody(e.target.value)}
+                            placeholder="Type your message..."
+                            className="flex-1 min-h-[120px] resize-none text-sm"
+                            data-testid="input-compose-body"
+                          />
+                        </div>
+                        <Button
+                          className="self-end"
+                          disabled={!composeDealId || !composeBody.trim() || createThreadMutation.isPending}
+                          onClick={() => {
+                            if (composeDealId && composeBody.trim()) {
+                              createThreadMutation.mutate({ dealId: composeDealId, subject: composeSubject.trim(), body: composeBody.trim() });
+                            }
+                          }}
+                          data-testid="button-send-compose"
+                        >
+                          {createThreadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                          Send Message
+                        </Button>
+                      </div>
+                    </div>
+                  ) : !selectedThreadId ? (
                     <div className="flex-1 flex items-center justify-center">
                       <div className="text-center">
                         <MessageSquare className="h-10 w-10 text-muted-foreground/20 mx-auto mb-3" />
-                        <p className="text-sm text-muted-foreground">Select a conversation to view messages</p>
+                        <p className="text-sm text-muted-foreground">Select a conversation or start a new one</p>
                       </div>
                     </div>
                   ) : threadDetailLoading ? (
@@ -953,7 +1099,68 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
           )}
 
           {/* My Documents View */}
-          {activeView === "documents" && (
+          {activeView === "documents" && (() => {
+            const categoryLabels: Record<string, string> = {
+              id_document: "Identification",
+              tax_return: "Tax Returns",
+              bank_statement: "Bank Statements",
+              pay_stub: "Pay Stubs",
+              entity_docs: "Entity Documents",
+              insurance: "Insurance",
+              appraisal: "Appraisal",
+              contract: "Contract",
+              other: "Other",
+            };
+            const profileCategories = ['id_document', 'tax_return', 'bank_statement', 'pay_stub', 'entity_docs'];
+            const allDocs = docsData?.documents || [];
+            const profileDocs = allDocs.filter((d: any) =>
+              d.documentClassification === 'profile' || profileCategories.includes(d.category || '')
+            );
+            const standaloneDocs = allDocs.filter((d: any) =>
+              d.documentClassification !== 'profile' && !profileCategories.includes(d.category || '')
+            );
+
+            const handleGlobalDocUpload = (e: ChangeEvent<HTMLInputElement>) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                uploadGlobalDocMutation.mutate({ file, category: docUploadCategory });
+              }
+              if (docUploadRef.current) docUploadRef.current.value = '';
+            };
+
+            const renderDocRow = (doc: any) => (
+              <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg" data-testid={`doc-row-${doc.id}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{doc.fileName}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      {doc.category && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {categoryLabels[doc.category] || doc.category.replace(/_/g, ' ')}
+                        </Badge>
+                      )}
+                      {profileCategories.includes(doc.category || '') && (
+                        <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                          <RefreshCw className="h-2.5 w-2.5 mr-0.5" /> Auto-fills future loans
+                        </Badge>
+                      )}
+                      <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                      {doc.fileSize && <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>}
+                    </div>
+                  </div>
+                </div>
+                {doc.storagePath && (
+                  <a href={doc.storagePath} target="_blank" rel="noopener noreferrer">
+                    <Button variant="ghost" size="sm" className="h-7 px-2">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+                )}
+              </div>
+            );
+
+            return (
             <div className="space-y-4">
               <Card>
                 <CardHeader className="pb-3">
@@ -962,38 +1169,80 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                       <FolderOpen className="h-4 w-4" />
                       My Documents
                     </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Select value={docUploadCategory} onValueChange={setDocUploadCategory}>
+                        <SelectTrigger className="h-8 w-[160px] text-xs" data-testid="select-doc-category">
+                          <SelectValue placeholder="Category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="id_document">Identification</SelectItem>
+                          <SelectItem value="tax_return">Tax Returns</SelectItem>
+                          <SelectItem value="bank_statement">Bank Statements</SelectItem>
+                          <SelectItem value="pay_stub">Pay Stubs</SelectItem>
+                          <SelectItem value="entity_docs">Entity Documents</SelectItem>
+                          <SelectItem value="insurance">Insurance</SelectItem>
+                          <SelectItem value="appraisal">Appraisal</SelectItem>
+                          <SelectItem value="contract">Contract</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => docUploadRef.current?.click()}
+                        disabled={uploadingGlobalDoc}
+                        data-testid="button-upload-document"
+                      >
+                        {uploadingGlobalDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+                        Upload
+                      </Button>
+                      <input ref={docUploadRef} type="file" className="hidden" onChange={handleGlobalDocUpload} />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Documents stored here persist across all your loans.</p>
+                  <p className="text-xs text-muted-foreground">Documents stored here persist across all your loans. Profile documents auto-fill future applications.</p>
                 </CardHeader>
-                <CardContent>
-                  {!docsData?.documents?.length ? (
+                <CardContent className="space-y-5">
+                  {!allDocs.length ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <FolderOpen className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p className="text-sm">No documents yet. Documents you upload will be stored here for future loans.</p>
+                      <p className="text-sm">No documents yet. Upload documents to store them for current and future loans.</p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {docsData.documents.map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">{doc.fileName}</p>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                {doc.category && <Badge variant="outline" className="text-[10px]">{doc.category.replace(/_/g, ' ')}</Badge>}
-                                <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
-                                {doc.fileSize && <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>}
-                              </div>
-                            </div>
-                          </div>
+                    <>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profile Documents</h3>
+                          <Badge variant="outline" className="text-[10px]">{profileDocs.length}</Badge>
                         </div>
-                      ))}
-                    </div>
+                        {profileDocs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-3 pl-2">No profile documents uploaded yet. Upload IDs, tax returns, or bank statements to auto-fill future loans.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {profileDocs.map(renderDocRow)}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Other Documents</h3>
+                          <Badge variant="outline" className="text-[10px]">{standaloneDocs.length}</Badge>
+                        </div>
+                        {standaloneDocs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-3 pl-2">No other documents uploaded yet.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {standaloneDocs.map(renderDocRow)}
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
             </div>
-          )}
+            );
+          })()}
 
           {/* My Profile View */}
           {activeView === "profile" && (

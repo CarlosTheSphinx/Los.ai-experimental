@@ -4617,13 +4617,17 @@ export async function registerRoutes(
       }
 
       const { fileName, fileType, fileSize, storagePath, category, description, expirationDate } = req.body;
+      const profileCategories = ['id_document', 'tax_return', 'bank_statement', 'pay_stub', 'entity_docs'];
+      const docCategory = category || 'other';
+      const classification = profileCategories.includes(docCategory) ? 'profile' : 'standalone';
       const [doc] = await db.insert(borrowerDocuments).values({
         borrowerProfileId: profile.id,
         fileName,
         fileType,
         fileSize,
         storagePath,
-        category: category || 'other',
+        category: docCategory,
+        documentClassification: classification,
         description,
         expirationDate,
       }).returning();
@@ -4643,9 +4647,19 @@ export async function registerRoutes(
         .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
       if (!project) return res.status(404).json({ error: 'Invalid portal token' });
 
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email' });
+
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+      const [doc] = await db.select().from(borrowerDocuments)
+        .where(and(eq(borrowerDocuments.id, parseInt(docId)), eq(borrowerDocuments.borrowerProfileId, profile.id)));
+      if (!doc) return res.status(404).json({ error: 'Document not found' });
+
       await db.update(borrowerDocuments)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(borrowerDocuments.id, parseInt(docId)));
+        .where(and(eq(borrowerDocuments.id, parseInt(docId)), eq(borrowerDocuments.borrowerProfileId, profile.id)));
 
       res.json({ success: true });
     } catch (error) {

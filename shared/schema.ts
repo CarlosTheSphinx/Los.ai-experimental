@@ -3751,10 +3751,11 @@ export const borrowerDocuments = pgTable("borrower_documents", {
   id: serial("id").primaryKey(),
   borrowerProfileId: integer("borrower_profile_id").references(() => borrowerProfiles.id, { onDelete: "cascade" }).notNull(),
   fileName: varchar("file_name", { length: 500 }).notNull(),
-  fileType: varchar("file_type", { length: 100 }), // pdf, image, etc.
+  fileType: varchar("file_type", { length: 100 }),
   fileSize: integer("file_size"),
-  storagePath: text("storage_path"), // S3/GCS path or local path
-  category: varchar("category", { length: 100 }), // id_document, bank_statement, tax_return, pay_stub, insurance, other
+  storagePath: text("storage_path"),
+  category: varchar("category", { length: 100 }),
+  documentClassification: varchar("document_classification", { length: 20 }).default("standalone"),
   description: text("description"),
   expirationDate: varchar("expiration_date", { length: 20 }),
   isActive: boolean("is_active").default(true),

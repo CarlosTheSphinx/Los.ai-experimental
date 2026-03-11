@@ -237,6 +237,61 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  app.post('/api/portal/:token/borrower-documents/upload-url', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const { name, size, contentType } = req.body;
+
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+      if (!name) return res.status(400).json({ error: 'File name is required' });
+
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const isLocal = uploadURL.startsWith('__local__:');
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+      res.json({
+        uploadURL: isLocal ? `/api/portal/${token}/borrower-documents/upload-direct` : uploadURL,
+        objectPath,
+        useDirectUpload: isLocal,
+        metadata: { name, size, contentType },
+      });
+    } catch (error) {
+      console.error('Portal borrower doc upload URL error:', error);
+      res.status(500).json({ error: 'Failed to generate upload URL' });
+    }
+  });
+
+  const borrowerDocMulter = multer({ dest: path.join(process.cwd(), 'uploads', 'temp') });
+  app.post('/api/portal/:token/borrower-documents/upload-direct', borrowerDocMulter.single('file'), async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+
+      if (!req.file) return res.status(400).json({ error: 'No file provided' });
+
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+      const objectId = randomUUID();
+      const destPath = path.join(uploadsDir, objectId);
+      fs.renameSync(req.file.path, destPath);
+      fs.writeFileSync(destPath + '.meta', JSON.stringify({
+        name: req.file.originalname,
+        contentType: req.file.mimetype,
+        size: req.file.size,
+      }));
+
+      res.json({ objectPath: `uploads/${objectId}` });
+    } catch (error) {
+      console.error('Portal borrower doc direct upload error:', error);
+      res.status(500).json({ error: 'Upload failed' });
+    }
+  });
+
   app.post('/api/portal/:token/documents/:docId/upload-url', async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
@@ -1041,6 +1096,60 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
     } catch (error) {
       console.error('Portal send message error:', error);
       res.status(500).json({ error: 'Failed to send message' });
+    }
+  });
+
+  app.post('/api/portal/:token/messages/threads', async (req: Request, res: Response) => {
+    try {
+      const result = await getBorrowerDealIds(req.params.token);
+      if (!result) return res.status(404).json({ error: 'Not found' });
+
+      const { project, dealIds } = result;
+      const { dealId, subject, body } = req.body;
+
+      if (!dealId) return res.status(400).json({ error: 'dealId is required' });
+      if (!body || typeof body !== 'string') return res.status(400).json({ error: 'body is required' });
+      if (!dealIds.includes(parseInt(dealId))) return res.status(403).json({ error: 'Not authorized for this deal' });
+
+      const parsedDealId = parseInt(dealId);
+
+      const existingThread = await db.select()
+        .from(messageThreads)
+        .where(and(
+          eq(messageThreads.dealId, parsedDealId),
+          eq(messageThreads.userId, project.userId || 0),
+        )).limit(1);
+
+      let thread;
+      if (existingThread[0]) {
+        thread = existingThread[0];
+      } else {
+        const [newThread] = await db.insert(messageThreads).values({
+          dealId: parsedDealId,
+          userId: project.userId || 0,
+          createdBy: project.userId || null,
+          subject: subject || null,
+        }).returning();
+        thread = newThread;
+      }
+
+      const [newMessage] = await db.insert(messages).values({
+        threadId: thread.id,
+        senderId: project.userId || null,
+        senderRole: 'user',
+        type: 'message',
+        body,
+        meta: null,
+      }).returning();
+
+      await db.update(messageThreads)
+        .set({ lastMessageAt: new Date() })
+        .where(eq(messageThreads.id, thread.id));
+
+      res.json({ thread, message: { ...newMessage, senderName: 'You' } });
+    } catch (error) {
+      console.error('Portal create thread error:', error);
+      res.status(500).json({ error: 'Failed to create thread' });
     }
   });
 
