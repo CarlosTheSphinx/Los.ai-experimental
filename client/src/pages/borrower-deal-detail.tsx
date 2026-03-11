@@ -403,6 +403,9 @@ export default function BorrowerDealDetail() {
                         <div className="min-w-0 flex-1">
                           <p className="text-[14px] font-medium truncate">{doc.documentName}</p>
                           <p className="text-[12px] text-muted-foreground">{getDocStatusLabel(doc.status)}</p>
+                          {doc.fileName && (doc.status === 'uploaded' || doc.status === 'submitted') && (
+                            <p className="text-[11px] text-muted-foreground/70 truncate" data-testid={`text-filename-${doc.id}`}>Uploaded: {doc.fileName}</p>
+                          )}
                         </div>
                       </div>
                       {(doc.status === 'pending' || doc.status === 'rejected' || doc.status === 'uploaded' || doc.status === 'submitted') && (

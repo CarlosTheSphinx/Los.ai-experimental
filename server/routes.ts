@@ -4280,31 +4280,41 @@ export async function registerRoutes(
         .where(eq(dealDocumentFiles.documentId, docId));
       const nextSortOrder = existingFiles.length;
 
-      const [newFile] = await db.insert(dealDocumentFiles).values({
-        documentId: docId,
-        filePath: objectPath,
-        fileName: fileName ?? null,
-        fileSize: fileSize != null ? Number(fileSize) : null,
-        mimeType: mimeType ?? null,
-        uploadedAt: new Date(),
-        uploadedBy: userId,
-        sortOrder: nextSortOrder,
-      }).returning();
+      let newFile;
+      try {
+        [newFile] = await db.insert(dealDocumentFiles).values({
+          documentId: docId,
+          filePath: objectPath,
+          fileName: fileName ?? null,
+          fileSize: fileSize != null ? Number(fileSize) : null,
+          mimeType: mimeType ?? null,
+          uploadedAt: new Date(),
+          uploadedBy: userId,
+          sortOrder: nextSortOrder,
+        }).returning();
+      } catch (fileInsertErr) {
+        console.error('dealDocumentFiles insert failed:', fileInsertErr);
+        throw fileInsertErr;
+      }
 
-      const updateData: Record<string, any> = {
-        status: 'uploaded',
-        uploadedAt: new Date(),
-        uploadedBy: userId,
-      };
-      if (objectPath) updateData.filePath = objectPath;
-      if (fileName) updateData.fileName = fileName;
-      if (fileSize != null) updateData.fileSize = Number(fileSize);
-      if (mimeType) updateData.mimeType = mimeType;
-
-      const [updated] = await db.update(dealDocuments)
-        .set(updateData)
-        .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)))
-        .returning();
+      let updated;
+      try {
+        [updated] = await db.update(dealDocuments)
+          .set({
+            status: 'uploaded',
+            uploadedAt: new Date(),
+            uploadedBy: userId,
+            filePath: objectPath || undefined,
+            fileName: fileName || undefined,
+            fileSize: fileSize != null ? Number(fileSize) : undefined,
+            mimeType: mimeType || undefined,
+          })
+          .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)))
+          .returning();
+      } catch (docUpdateErr) {
+        console.error('dealDocuments update failed:', docUpdateErr);
+        throw docUpdateErr;
+      }
 
       const docLabel = updated?.documentName || fileName || 'Document';
 
