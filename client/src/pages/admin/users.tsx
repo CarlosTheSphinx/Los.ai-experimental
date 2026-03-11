@@ -131,7 +131,7 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<"email" | "phone" | null>(null);
+  const [editingField, setEditingField] = useState<"email" | "phone" | "fullName" | null>(null);
   const [editValue, setEditValue] = useState("");
 
   const { data, isLoading, refetch } = useQuery<{
@@ -204,9 +204,11 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     },
   });
 
-  const startEditing = (field: "email" | "phone") => {
+  const startEditing = (field: "email" | "phone" | "fullName") => {
     setEditingField(field);
-    setEditValue(field === "email" ? (user?.email || "") : (user?.phone || ""));
+    if (field === "email") setEditValue(user?.email || "");
+    else if (field === "phone") setEditValue(user?.phone || "");
+    else if (field === "fullName") setEditValue(user?.fullName || "");
   };
 
   const saveEdit = () => {
@@ -323,7 +325,32 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
             {(user.fullName || user.email).charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold truncate" data-testid="text-detail-name">{user.fullName || "No name"}</p>
+            {editingField === "fullName" ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="h-8 text-sm font-semibold flex-1"
+                  autoFocus
+                  placeholder="Full name"
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingField(null); }}
+                  data-testid="input-edit-fullname"
+                />
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-fullname">
+                  <Check className="h-3.5 w-3.5 text-green-600" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit-fullname">
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <p className="font-semibold truncate" data-testid="text-detail-name">{user.fullName || "No name"}</p>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("fullName")} data-testid="button-edit-fullname">
+                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              </div>
+            )}
           </div>
           <Badge variant="secondary" className="capitalize shrink-0" data-testid="badge-detail-type">
             {user.userType || "broker"}
@@ -340,22 +367,23 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
                 <Input
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="h-7 text-sm flex-1"
+                  className="h-8 text-sm flex-1"
                   autoFocus
+                  placeholder="Email address"
                   onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingField(null); }}
                   data-testid="input-edit-email"
                 />
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-email">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-email">
                   <Check className="h-3.5 w-3.5 text-green-600" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit">
                   <X className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 flex-1 min-w-0 group">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
                 <span className="text-sm text-muted-foreground truncate">{user.email}</span>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing("email")} data-testid="button-edit-email">
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("email")} data-testid="button-edit-email">
                   <Pencil className="h-3 w-3 text-muted-foreground" />
                 </Button>
               </div>
@@ -368,22 +396,23 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
                 <Input
                   value={editValue}
                   onChange={(e) => setEditValue(formatPhoneNumber(e.target.value))}
-                  className="h-7 text-sm flex-1"
+                  className="h-8 text-sm flex-1"
                   autoFocus
+                  placeholder="Phone number"
                   onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingField(null); }}
                   data-testid="input-edit-phone"
                 />
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-phone">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-phone">
                   <Check className="h-3.5 w-3.5 text-green-600" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit-phone">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit-phone">
                   <X className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 flex-1 min-w-0 group">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
                 <span className="text-sm text-muted-foreground truncate">{user.phone || "No phone"}</span>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => startEditing("phone")} data-testid="button-edit-phone">
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("phone")} data-testid="button-edit-phone">
                   <Pencil className="h-3 w-3 text-muted-foreground" />
                 </Button>
               </div>
@@ -766,25 +795,35 @@ function UsersTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div />
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-user">
-              <Plus className="h-4 w-4 mr-2" />
-              Add User
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Create New User</DialogTitle>
-              <DialogDescription>
-                Add a new broker or borrower. They'll receive an email to set up their password.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>User Type</Label>
+        <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-user">
+          <Plus className="h-4 w-4 mr-2" />
+          Add User
+        </Button>
+      </div>
+
+      <Sheet open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <SheetContent side="right" className="sm:max-w-md w-full overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Create New User</SheetTitle>
+            <SheetDescription>Add a new broker or borrower. They'll receive an email to set up their password.</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
+                  {(newUser.fullName || newUser.email || "?").charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={newUser.fullName}
+                    onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                    placeholder="Full Name"
+                    className="h-8 text-sm font-semibold"
+                    data-testid="input-new-user-fullname"
+                  />
+                </div>
                 <Select value={newUser.userType} onValueChange={(v) => setNewUser({ ...newUser, userType: v })}>
-                  <SelectTrigger data-testid="select-new-user-type">
+                  <SelectTrigger className="w-[120px] h-8" data-testid="select-new-user-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -793,54 +832,45 @@ function UsersTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="user-email">Email *</Label>
-                <Input
-                  id="user-email"
-                  type="email"
-                  placeholder="user@example.com"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  data-testid="input-new-user-email"
-                />
-                {getEmailError(newUser.email) && <p className="text-xs text-destructive mt-1">{getEmailError(newUser.email)}</p>}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="user-fullName">Full Name</Label>
-                <Input
-                  id="user-fullName"
-                  placeholder="John Doe"
-                  value={newUser.fullName}
-                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-                  data-testid="input-new-user-fullname"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="user-companyName">Company Name</Label>
-                <Input
-                  id="user-companyName"
-                  placeholder="Acme Corp"
-                  value={newUser.companyName}
-                  onChange={(e) => setNewUser({ ...newUser, companyName: e.target.value })}
-                  data-testid="input-new-user-company"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="user-phone">Phone</Label>
-                <Input
-                  id="user-phone"
-                  placeholder="(555) 123-4567"
-                  value={newUser.phone}
-                  onChange={(e) => setNewUser({ ...newUser, phone: formatPhoneNumber(e.target.value) })}
-                  data-testid="input-new-user-phone"
-                />
-                {getPhoneError(newUser.phone) && <p className="text-xs text-destructive mt-1">{getPhoneError(newUser.phone)}</p>}
+              <Input
+                value={newUser.companyName}
+                onChange={(e) => setNewUser({ ...newUser, companyName: e.target.value })}
+                placeholder="Company Name"
+                className="h-8 text-sm text-muted-foreground"
+                data-testid="input-new-user-company"
+              />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <Input
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    placeholder="Email address *"
+                    className="h-8 text-sm flex-1"
+                    data-testid="input-new-user-email"
+                  />
+                </div>
+                {getEmailError(newUser.email) && <p className="text-xs text-destructive ml-6">{getEmailError(newUser.email)}</p>}
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <Input
+                    value={newUser.phone}
+                    onChange={(e) => setNewUser({ ...newUser, phone: formatPhoneNumber(e.target.value) })}
+                    placeholder="Phone number"
+                    className="h-8 text-sm flex-1"
+                    data-testid="input-new-user-phone"
+                  />
+                </div>
+                {getPhoneError(newUser.phone) && <p className="text-xs text-destructive ml-6">{getPhoneError(newUser.phone)}</p>}
               </div>
             </div>
-            <DialogFooter>
+
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={() => setIsAddDialogOpen(false)}
+                className="flex-1"
                 data-testid="button-cancel-add-user"
               >
                 Cancel
@@ -848,14 +878,16 @@ function UsersTab() {
               <Button
                 onClick={handleCreateUser}
                 disabled={createUserMutation.isPending}
+                className="flex-1"
                 data-testid="button-submit-add-user"
               >
-                {createUserMutation.isPending ? "Creating & Sending Invite..." : "Create & Send Invite"}
+                <Send className="h-3.5 w-3.5 mr-1.5" />
+                {createUserMutation.isPending ? "Creating..." : "Create & Send Invite"}
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Card>
         <CardHeader>
