@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import {
   CheckCircle2,
   Building2,
@@ -19,12 +19,16 @@ import {
   X,
   ArrowRight,
   ArrowLeft,
+  Bell,
+  Send,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { formatPhoneNumber } from "@/lib/validation";
@@ -166,6 +170,32 @@ interface RelatedDeal {
   isCurrent: boolean;
 }
 
+interface PortalThread {
+  id: number;
+  dealId: number | null;
+  subject: string | null;
+  isClosed: boolean;
+  lastMessageAt: string | null;
+  createdAt: string;
+  dealName: string | null;
+  dealIdentifier: string | null;
+  lastMessagePreview: string | null;
+  lastMessageSenderRole: string | null;
+  unreadCount: number;
+}
+
+interface PortalMessage {
+  id: number;
+  threadId: number;
+  senderId: number | null;
+  senderRole: 'admin' | 'user' | 'system';
+  type: 'message' | 'notification';
+  body: string;
+  meta: Record<string, any> | null;
+  createdAt: string;
+  senderName?: string;
+}
+
 interface BorrowerPortalProps {
   token?: string;
   isPreview?: boolean;
@@ -197,6 +227,9 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
   });
 
   const [editingProfile, setEditingProfile] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [profileForm, setProfileForm] = useState<Partial<BorrowerProfile>>({});
 
   // Borrower profile query
@@ -265,6 +298,74 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     enabled: !!token && !showOnboarding,
     retry: false,
   });
+
+  const { data: unreadData } = useQuery<{ unreadCount: number }>({
+    queryKey: ['/api/portal', token, 'messages', 'unread-count'],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/messages/unread-count`);
+      if (!res.ok) return { unreadCount: 0 };
+      return res.json();
+    },
+    enabled: !!token && !showOnboarding,
+    refetchInterval: 30000,
+  });
+  const unreadCount = unreadData?.unreadCount || 0;
+
+  const { data: threadsData, isLoading: threadsLoading } = useQuery<{ threads: PortalThread[] }>({
+    queryKey: ['/api/portal', token, 'messages', 'threads'],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/messages/threads`);
+      if (!res.ok) return { threads: [] };
+      return res.json();
+    },
+    enabled: !!token && activeView === 'inbox',
+  });
+  const threads = threadsData?.threads || [];
+
+  const { data: threadDetail, isLoading: threadDetailLoading } = useQuery<{ thread: any; messages: PortalMessage[] }>({
+    queryKey: ['/api/portal', token, 'messages', 'threads', selectedThreadId],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/messages/threads/${selectedThreadId}`);
+      if (!res.ok) throw new Error('Failed to load');
+      return res.json();
+    },
+    enabled: !!token && !!selectedThreadId && activeView === 'inbox',
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ threadId, body }: { threadId: number; body: string }) => {
+      const res = await apiRequest('POST', `/api/portal/${token}/messages/threads/${threadId}/messages`, { body });
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'threads', variables.threadId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'threads'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'unread-count'] });
+      setNewMessage("");
+    },
+    onError: () => {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    if (selectedThreadId && token && activeView === 'inbox') {
+      fetch(`/api/portal/${token}/messages/threads/${selectedThreadId}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'threads'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'messages', 'unread-count'] });
+      }).catch(() => {});
+    }
+  }, [selectedThreadId, token, activeView]);
+
+  useEffect(() => {
+    if (threadDetail?.messages) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [threadDetail?.messages]);
 
   const relatedDeals = relatedDealsData?.deals || [];
   const displayDeals = relatedDeals.length > 0
@@ -425,7 +526,35 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
       />
 
       <div className="flex-1 flex flex-col min-h-screen">
-        {activeView !== "loans" && activeView !== "deal-detail" && (
+        <div className="flex items-center justify-end gap-2 px-4 md:px-6 py-2 bg-background border-b">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-9 w-9 rounded-full"
+            data-testid="button-portal-messages"
+            onClick={() => {
+              setActiveView("inbox");
+              setSelectedThreadId(null);
+            }}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center px-1" data-testid="badge-unread-count">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-9 w-9 rounded-full"
+            data-testid="button-portal-notifications"
+          >
+            <Bell className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {activeView !== "loans" && activeView !== "deal-detail" && activeView !== "inbox" && (
           <header className="bg-background border-b">
             <div className="px-4 md:px-6 py-3 md:py-4">
               <div className="flex items-center justify-between gap-2">
@@ -654,17 +783,172 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
           )}
 
           {activeView === "inbox" && (
-            <div>
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Inbox</h2>
-                <p className="text-sm text-muted-foreground">Messages and notifications</p>
+            <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+              <div className="mb-4">
+                <h2 className="text-xl font-bold font-ui">Inbox</h2>
+                <p className="text-sm text-muted-foreground font-ui">Messages about your loans</p>
               </div>
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">No messages yet. You'll see updates about your loan here.</p>
-                </CardContent>
-              </Card>
+
+              <div className="flex flex-1 border rounded-lg overflow-hidden bg-background min-h-0">
+                <div className="w-[280px] md:w-[320px] border-r flex flex-col shrink-0">
+                  <div className="px-3 py-2 border-b bg-muted/30">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Conversations</span>
+                  </div>
+                  <ScrollArea className="flex-1">
+                    {threadsLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : threads.length === 0 ? (
+                      <div className="text-center py-12 px-4">
+                        <MessageSquare className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                        <p className="text-xs text-muted-foreground">No conversations yet</p>
+                      </div>
+                    ) : (
+                      threads.map((thread) => (
+                        <button
+                          key={thread.id}
+                          className={`w-full text-left px-3 py-3 border-b hover:bg-muted/50 transition-colors ${
+                            selectedThreadId === thread.id ? 'bg-muted' : ''
+                          }`}
+                          onClick={() => setSelectedThreadId(thread.id)}
+                          data-testid={`thread-item-${thread.id}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium truncate">
+                                  {thread.dealName || thread.subject || 'Conversation'}
+                                </span>
+                                {thread.unreadCount > 0 && (
+                                  <span className="h-4 min-w-[16px] rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center px-1 shrink-0">
+                                    {thread.unreadCount}
+                                  </span>
+                                )}
+                              </div>
+                              {thread.dealIdentifier && (
+                                <div className="text-[11px] text-muted-foreground font-mono">{thread.dealIdentifier}</div>
+                              )}
+                              {thread.lastMessagePreview && (
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {thread.lastMessageSenderRole === 'user' ? 'You: ' : ''}
+                                  {thread.lastMessagePreview}
+                                </p>
+                              )}
+                            </div>
+                            {thread.lastMessageAt && (
+                              <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                                {formatDate(thread.lastMessageAt)}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </ScrollArea>
+                </div>
+
+                <div className="flex-1 flex flex-col min-w-0">
+                  {!selectedThreadId ? (
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="text-center">
+                        <MessageSquare className="h-10 w-10 text-muted-foreground/20 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">Select a conversation to view messages</p>
+                      </div>
+                    </div>
+                  ) : threadDetailLoading ? (
+                    <div className="flex-1 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">
+                            {threadDetail?.thread?.subject || threads.find(t => t.id === selectedThreadId)?.dealName || 'Conversation'}
+                          </div>
+                          {threads.find(t => t.id === selectedThreadId)?.dealIdentifier && (
+                            <div className="text-[11px] text-muted-foreground font-mono">
+                              {threads.find(t => t.id === selectedThreadId)?.dealIdentifier}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <ScrollArea className="flex-1 px-4 py-3">
+                        <div className="space-y-3">
+                          {(threadDetail?.messages || []).map((msg) => {
+                            const isUser = msg.senderRole === 'user';
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                                data-testid={`message-${msg.id}`}
+                              >
+                                <div className={`max-w-[75%] rounded-lg px-3 py-2 ${
+                                  isUser
+                                    ? 'bg-primary text-primary-foreground'
+                                    : msg.senderRole === 'system'
+                                    ? 'bg-muted/50 border'
+                                    : 'bg-muted'
+                                }`}>
+                                  {!isUser && (
+                                    <div className="text-[11px] font-medium mb-0.5 opacity-70">
+                                      {msg.senderName || (msg.senderRole === 'system' ? 'System' : 'Lender')}
+                                    </div>
+                                  )}
+                                  <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
+                                  <div className={`text-[10px] mt-1 ${isUser ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                                    {formatDateTime(msg.createdAt)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div ref={messagesEndRef} />
+                        </div>
+                      </ScrollArea>
+
+                      <div className="border-t p-3">
+                        <div className="flex items-end gap-2">
+                          <Textarea
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Type a message..."
+                            className="min-h-[40px] max-h-[120px] resize-none text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                if (newMessage.trim() && selectedThreadId) {
+                                  sendMessageMutation.mutate({ threadId: selectedThreadId, body: newMessage.trim() });
+                                }
+                              }
+                            }}
+                            data-testid="input-message"
+                          />
+                          <Button
+                            size="icon"
+                            className="h-10 w-10 shrink-0"
+                            disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                            onClick={() => {
+                              if (newMessage.trim() && selectedThreadId) {
+                                sendMessageMutation.mutate({ threadId: selectedThreadId, body: newMessage.trim() });
+                              }
+                            }}
+                            data-testid="button-send-message"
+                          >
+                            {sendMessageMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

@@ -88,6 +88,7 @@ if (siteMode === 'landing') {
     if (req.path === '/api/health') return next();
     if (req.path.startsWith('/api/auth/')) return next();
     if (req.path.startsWith('/api/sign/')) return next();
+    if (req.path.startsWith('/api/portal/')) return next();
     const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
     if (token) return next();
     return res.status(403).json({ error: 'Site is in preview mode' });
