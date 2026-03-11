@@ -4,6 +4,7 @@ import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
+  Eye, X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +84,7 @@ export default function BorrowerDealDetail() {
   const { toast } = useToast();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>("overview");
+  const [previewDoc, setPreviewDoc] = useState<{ name: string; filePath: string; mimeType?: string } | null>(null);
 
   const { data: dealData, isLoading, error: dealError } = useQuery<{
     project: any;
@@ -228,13 +230,15 @@ export default function BorrowerDealDetail() {
       });
       const urlData = await urlRes.json();
       if (urlData.uploadURL) {
+        let uploadRes: Response;
         if (urlData.useDirectUpload || urlData.uploadURL.startsWith('/api/')) {
           const formData = new FormData();
           formData.append('file', file);
-          await fetch(urlData.uploadURL, { method: 'POST', body: formData, credentials: 'include' });
+          uploadRes = await fetch(urlData.uploadURL, { method: 'POST', body: formData, credentials: 'include' });
         } else {
-          await fetch(urlData.uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+          uploadRes = await fetch(urlData.uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
         }
+        if (!uploadRes.ok) throw new Error('File upload failed');
       }
       await apiRequest("POST", `/api/deals/${dealId}/deal-documents/${docId}/upload-complete`, {
         objectPath: urlData.objectPath,
@@ -244,9 +248,9 @@ export default function BorrowerDealDetail() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/deals", dealId] });
       toast({ title: "Document uploaded successfully" });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Upload failed:", err);
-      toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
+      toast({ title: "Upload failed", description: err?.message || "Please try again.", variant: "destructive" });
     } finally {
       setUploadingDocId(null);
       e.target.value = "";
@@ -403,13 +407,25 @@ export default function BorrowerDealDetail() {
                         <div className="min-w-0 flex-1">
                           <p className="text-[14px] font-medium truncate">{doc.documentName}</p>
                           <p className="text-[12px] text-muted-foreground">{getDocStatusLabel(doc.status)}</p>
-                          {doc.fileName && (doc.status === 'uploaded' || doc.status === 'submitted') && (
-                            <p className="text-[11px] text-muted-foreground/70 truncate" data-testid={`text-filename-${doc.id}`}>Uploaded: {doc.fileName}</p>
+                          {doc.fileName && (doc.status === 'uploaded' || doc.status === 'submitted' || doc.status === 'approved') && (
+                            <p className="text-[11px] text-muted-foreground/70 truncate" data-testid={`text-filename-${doc.id}`}>
+                              {doc.fileName}
+                            </p>
                           )}
                         </div>
                       </div>
-                      {(doc.status === 'pending' || doc.status === 'rejected' || doc.status === 'uploaded' || doc.status === 'submitted') && (
-                        <div className="flex-shrink-0 ml-2">
+                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                        {doc.filePath && (doc.status === 'uploaded' || doc.status === 'submitted' || doc.status === 'approved') && (
+                          <button
+                            onClick={() => setPreviewDoc({ name: doc.documentName || doc.fileName, filePath: doc.filePath, mimeType: doc.mimeType })}
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md border hover:bg-accent transition-colors"
+                            data-testid={`button-preview-${doc.id}`}
+                            title="Preview"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {(doc.status === 'pending' || doc.status === 'rejected' || doc.status === 'uploaded' || doc.status === 'submitted') && (
                           <label className="cursor-pointer" data-testid={`button-upload-${doc.id}`}>
                             <input
                               type="file"
@@ -423,8 +439,8 @@ export default function BorrowerDealDetail() {
                               {doc.status === 'uploaded' || doc.status === 'submitted' ? 'Replace' : 'Upload'}
                             </span>
                           </label>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -482,6 +498,61 @@ export default function BorrowerDealDetail() {
           </Card>
         )}
       </div>
+
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setPreviewDoc(null)}
+          data-testid="preview-overlay"
+        >
+          <div
+            className="relative bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <h3 className="text-sm font-semibold truncate">{previewDoc.name}</h3>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="p-1 rounded-md hover:bg-muted transition-colors"
+                data-testid="button-close-preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center min-h-[400px]">
+              {previewDoc.mimeType?.startsWith('image/') ? (
+                <img
+                  src={`/api/storage/file?path=${encodeURIComponent(previewDoc.filePath)}`}
+                  alt={previewDoc.name}
+                  className="max-w-full max-h-[75vh] object-contain rounded"
+                  data-testid="preview-image"
+                />
+              ) : previewDoc.mimeType === 'application/pdf' ? (
+                <iframe
+                  src={`/api/storage/file?path=${encodeURIComponent(previewDoc.filePath)}`}
+                  className="w-full h-[75vh] rounded border"
+                  title={previewDoc.name}
+                  data-testid="preview-pdf"
+                />
+              ) : (
+                <div className="text-center space-y-3 py-8">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Preview not available for this file type.</p>
+                  <a
+                    href={`/api/storage/file?path=${encodeURIComponent(previewDoc.filePath)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                    data-testid="link-download-file"
+                  >
+                    Download file
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

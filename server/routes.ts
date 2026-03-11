@@ -4276,85 +4276,78 @@ export async function registerRoutes(
 
       if (!objectPath || objectPath.includes('..')) return res.status(400).json({ error: 'Object path is required' });
 
-      const existingFiles = await db.select().from(dealDocumentFiles)
-        .where(eq(dealDocumentFiles.documentId, docId));
-      const nextSortOrder = existingFiles.length;
-
-      let newFile;
-      try {
-        [newFile] = await db.insert(dealDocumentFiles).values({
-          documentId: docId,
-          filePath: objectPath,
-          fileName: fileName ?? null,
-          fileSize: fileSize != null ? Number(fileSize) : null,
-          mimeType: mimeType ?? null,
-          uploadedAt: new Date(),
-          uploadedBy: userId,
-          sortOrder: nextSortOrder,
-        }).returning();
-      } catch (fileInsertErr) {
-        console.error('dealDocumentFiles insert failed:', fileInsertErr);
-        throw fileInsertErr;
+      const docCheck = await db.execute(
+        sql`SELECT id, document_name FROM deal_documents WHERE id = ${docId} AND deal_id = ${projectId}`
+      );
+      if (!(docCheck as any).rows?.length) {
+        return res.status(404).json({ error: 'Document not found for this deal' });
       }
 
-      let updated;
+      const existingFilesResult = await db.execute(
+        sql`SELECT COUNT(*)::int as cnt FROM deal_document_files WHERE document_id = ${docId}`
+      );
+      const nextSortOrder = (existingFilesResult as any).rows?.[0]?.cnt ?? 0;
+
+      const safeFileName = fileName || null;
+      const safeFileSize = fileSize != null ? Number(fileSize) : null;
+      const safeMimeType = mimeType || null;
+
+      const insertResult = await db.execute(
+        sql`INSERT INTO deal_document_files (document_id, file_path, file_name, file_size, mime_type, uploaded_at, uploaded_by, sort_order)
+            VALUES (${docId}, ${objectPath}, ${safeFileName}, ${safeFileSize}, ${safeMimeType}, NOW(), ${userId}, ${nextSortOrder})
+            RETURNING *`
+      );
+      const newFile = (insertResult as any).rows?.[0] ?? null;
+
+      const updateResult = await db.execute(
+        sql`UPDATE deal_documents
+            SET status = 'uploaded', uploaded_at = NOW(), uploaded_by = ${userId},
+                file_path = ${objectPath}, file_name = ${safeFileName},
+                file_size = ${safeFileSize}, mime_type = ${safeMimeType}
+            WHERE id = ${docId} AND deal_id = ${projectId}
+            RETURNING *`
+      );
+      const updated = (updateResult as any).rows?.[0] ?? null;
+
+      const docLabel = updated?.document_name || fileName || 'Document';
+
+      await db.execute(
+        sql`INSERT INTO project_activity (project_id, user_id, activity_type, activity_description, visible_to_borrower)
+            VALUES (${projectId}, ${userId}, 'document_uploaded', ${`Document uploaded: ${docLabel}`}, true)`
+      );
+
       try {
-        [updated] = await db.update(dealDocuments)
-          .set({
-            status: 'uploaded',
-            uploadedAt: new Date(),
-            uploadedBy: userId,
-            filePath: objectPath || undefined,
-            fileName: fileName || undefined,
-            fileSize: fileSize != null ? Number(fileSize) : undefined,
-            mimeType: mimeType || undefined,
-          })
-          .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)))
-          .returning();
-      } catch (docUpdateErr) {
-        console.error('dealDocuments update failed:', docUpdateErr);
-        throw docUpdateErr;
-      }
-
-      const docLabel = updated?.documentName || fileName || 'Document';
-
-      await db.insert(projectActivity).values({
-        projectId,
-        userId,
-        activityType: 'document_uploaded',
-        activityDescription: `Document uploaded: ${docLabel}`,
-        visibleToBorrower: true,
-      });
-
-      try {
-        await db.insert(dealMemoryEntries).values({
-          dealId: projectId,
-          entryType: 'document_received',
-          title: `${docLabel} uploaded`,
-          description: updated?.documentCategory ? `Category: ${updated.documentCategory}` : null,
-          sourceType: 'user',
-          sourceUserId: userId,
-          metadata: { documentId: docId, category: updated?.documentCategory ?? null },
-        });
+        await db.execute(
+          sql`INSERT INTO deal_memory_entries (deal_id, entry_type, title, description, source_type, source_user_id, metadata)
+              VALUES (${projectId}, 'document_received', ${`${docLabel} uploaded`},
+                      ${updated?.document_category ? `Category: ${updated.document_category}` : null},
+                      'user', ${userId},
+                      ${JSON.stringify({ documentId: docId, category: updated?.document_category ?? null })}::jsonb)`
+        );
       } catch (e) { console.error('Memory entry error:', e); }
 
-      const brokerInfo = await db.select({ firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, userId)).limit(1);
-      const brokerName = brokerInfo[0] ? `${brokerInfo[0].firstName || ''} ${brokerInfo[0].lastName || ''}`.trim() || 'A broker' : 'A broker';
-      const projForBrokerLabel = await db.select({ loanNumber: projects.loanNumber }).from(projects).where(eq(projects.id, projectId)).limit(1);
-      const brokerDealLabel = projForBrokerLabel[0]?.loanNumber || `DEAL-${projectId}`;
+      const userInfoResult = await db.execute(
+        sql`SELECT full_name FROM users WHERE id = ${userId} LIMIT 1`
+      );
+      const userRow = (userInfoResult as any).rows?.[0];
+      const uploaderName = userRow?.full_name || 'A user';
+      const projInfoResult = await db.execute(
+        sql`SELECT loan_number FROM projects WHERE id = ${projectId} LIMIT 1`
+      );
+      const projRow = (projInfoResult as any).rows?.[0];
+      const dealLabel = projRow?.loan_number || `DEAL-${projectId}`;
       notifyDealAdmins(
         projectId,
         'document_uploaded',
         'New Document Uploaded',
-        `${brokerName} uploaded "${updated?.documentName || fileName || 'a document'}" to ${brokerDealLabel}`,
+        `${uploaderName} uploaded "${updated?.document_name || fileName || 'a document'}" to ${dealLabel}`,
         userId
       ).catch(err => console.error('Notification error:', err));
-
 
       maybeAutoTriggerPipeline(projectId, userId);
 
       res.json({ document: updated, file: newFile });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Deal doc upload error:', error);
       res.status(500).json({ error: 'Failed to complete upload' });
     }
