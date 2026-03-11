@@ -5816,12 +5816,16 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'User not found' });
       }
       
-      await storage.createAdminActivity({
-        userId: req.user!.id,
-        actionType: 'user_updated',
-        actionDescription: `Updated user ${updated.email}: ${JSON.stringify(updates)}`,
-        metadata: { targetUserId: userId, updates }
-      });
+      try {
+        await storage.createAdminActivity({
+          userId: req.user!.id,
+          actionType: 'user_updated',
+          actionDescription: `Updated user ${updated.email}: ${JSON.stringify(updates)}`,
+          metadata: { targetUserId: userId, updates }
+        });
+      } catch (activityErr) {
+        console.warn('Admin activity log failed (non-fatal):', activityErr);
+      }
       
       res.json({ 
         user: {
@@ -5833,8 +5837,11 @@ export async function registerRoutes(
           isActive: updated.isActive
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin update user error:', error);
+      if (error?.constraint || error?.code === '23505') {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
       res.status(500).json({ error: 'Failed to update user' });
     }
   });
