@@ -25,12 +25,11 @@ export function InboxBadge() {
   if (!count) return null;
 
   return (
-    <Badge 
-      variant="destructive" 
-      className="ml-2 min-w-[20px] h-5 flex items-center justify-center text-xs"
+    <span 
+      className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none ring-2 ring-background"
       data-testid="badge-unread-count"
     >
       {count > 99 ? "99+" : count}
-    </Badge>
+    </span>
   );
 }
