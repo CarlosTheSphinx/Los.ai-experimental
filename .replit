@@ -54,4 +54,4 @@ SITE_MODE = "landing"
 BASE_URL = "https://lendry.ai"
 
 [userenv.development]
-BASE_URL = "https://code-paste.replit.app"
+BASE_URL = "https://lendry.ai"
