@@ -16649,6 +16649,7 @@ If the user provides specific criteria, extract as many rules as you can from th
                     userId: quote.userId || envelope.createdBy!,
                     projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
                     projectNumber,
+                    ...(quote.loanNumber ? { loanNumber: quote.loanNumber } : {}),
                     loanAmount: loanAmount || null,
                     interestRate: !isNaN(rateNum) ? rateNum : null,
                     loanTermMonths: loanData?.loanTermMonths ? parseInt(loanData.loanTermMonths) : (loanData?.loanTerm ? parseInt(String(loanData.loanTerm)) : null),
