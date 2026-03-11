@@ -25,8 +25,14 @@ import {
   Download,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Bug,
+  ArrowUpDown,
+  List,
+  LayoutGrid,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ExpandableRow } from "@/components/ui/phase1/expandable-row";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -170,14 +176,16 @@ function applyKeyAliases(data: Record<string, any>, aliases: Record<string, stri
   return result;
 }
 
-function formatShortDate(dateStr: string | null | undefined) {
+function formatShortDate(dateStr: string | Date | null | undefined) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatQuoteNumber(id: number, createdAt: string | null) {
-  const year = createdAt ? new Date(createdAt).getFullYear() : new Date().getFullYear();
+function formatQuoteNumber(id: number, createdAt: string | Date | null) {
+  const d = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : new Date();
+  const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
   return `Q-${year}-${String(id).padStart(4, '0')}`;
 }
 
@@ -421,6 +429,12 @@ export default function QuotesUnified() {
   const [rtlResult, setRtlResult] = useState<RTLPricingResponse | null>(null);
   const [rtlFormData, setRtlFormData] = useState<RTLPricingFormData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [viewMode, setViewMode] = useState<"list" | "card">("list");
+  const [statusFilter, setStatusFilter] = useState<"all" | "no_term_sheet" | "sent" | "opened" | "signed">("all");
+  const [programFilter, setProgramFilter] = useState<string>("all");
+  const [expandedQuoteId, setExpandedQuoteId] = useState<number | null>(null);
   const [testDataKey, setTestDataKey] = useState(0);
   const [generatedTestData, setGeneratedTestData] = useState<Record<string, any> | null>(null);
   const [scraperDebug, setScraperDebug] = useState<{
@@ -594,13 +608,53 @@ export default function QuotesUnified() {
   const internalDocMap = buildInternalDocMap(bulkInternalDocData?.documents || []);
 
   const filteredQuotes = quotes.filter(q => {
-    if (!searchQuery) return true;
-    const s = searchQuery.toLowerCase();
-    return (
-      `${q.customerFirstName} ${q.customerLastName}`.toLowerCase().includes(s) ||
-      (q.propertyAddress || '').toLowerCase().includes(s) ||
-      (q.customerEmail || '').toLowerCase().includes(s)
-    );
+    if (searchQuery) {
+      const s = searchQuery.toLowerCase();
+      const matches =
+        `${q.customerFirstName} ${q.customerLastName}`.toLowerCase().includes(s) ||
+        (q.propertyAddress || '').toLowerCase().includes(s) ||
+        (q.customerEmail || '').toLowerCase().includes(s) ||
+        (q.loanNumber || '').toLowerCase().includes(s);
+      if (!matches) return false;
+    }
+
+    if (statusFilter !== "all") {
+      const intDoc = internalDocMap.get(q.id);
+      const env = envelopeMap.get(q.id);
+      const hasDoc = !!intDoc || !!env;
+      const docStatus = intDoc?.status?.toLowerCase() || '';
+      const signerStatus = intDoc?.signerStatus?.toLowerCase() || '';
+      const envStatus = env?.status?.toLowerCase() || '';
+      if (statusFilter === "no_term_sheet" && hasDoc) return false;
+      if (statusFilter === "sent") {
+        const isSent = (intDoc && (docStatus === 'sent' || signerStatus === 'sent') && signerStatus !== 'viewed' && signerStatus !== 'signed') ||
+          (!intDoc && env && envStatus === 'sent');
+        if (!isSent) return false;
+      }
+      if (statusFilter === "opened") {
+        const isOpened = (intDoc && signerStatus === 'viewed') ||
+          (!intDoc && env && envStatus === 'viewed');
+        if (!isOpened) return false;
+      }
+      if (statusFilter === "signed") {
+        const isSigned = (intDoc && (signerStatus === 'signed' || docStatus === 'completed')) ||
+          (!intDoc && env && envStatus === 'completed');
+        if (!isSigned) return false;
+      }
+    }
+
+    if (programFilter !== "all") {
+      const ld = q.loanData as Record<string, any>;
+      const pName = ld?.programName || ld?.loanType || '';
+      if (pName !== programFilter) return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
+    const toMs = (v: any) => { if (!v) return 0; const t = (v instanceof Date ? v : new Date(v)).getTime(); return Number.isFinite(t) ? t : 0; };
+    const dateA = toMs(a.createdAt);
+    const dateB = toMs(b.createdAt);
+    return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
   });
 
   const totalCommission = quotes.reduce((sum, q) => sum + (q.commission || 0), 0);
@@ -699,31 +753,116 @@ export default function QuotesUnified() {
 
       {activeView === "quotes" && (
         <div className="space-y-5">
-          {quotes.length > 3 && (
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, address, or email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 text-[15px]"
-                data-testid="input-search-quotes"
-              />
-            </div>
-          )}
+          <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden">
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative max-w-[320px] w-[320px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by borrower, address, or loan #..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-[16px]"
+                      data-testid="input-search-quotes"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="flex items-center gap-1.5 text-[16px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                    data-testid="button-more-filters"
+                  >
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${showFilters ? "rotate-90" : ""}`} />
+                    More Filters
+                  </button>
+                </div>
 
-          {quotesLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-card border rounded-[10px] shadow-sm overflow-hidden p-6">
-                  <div className="h-6 w-48 bg-muted animate-pulse rounded mb-3" />
-                  <div className="h-4 w-72 bg-muted animate-pulse rounded mb-4" />
-                  <div className="grid grid-cols-4 gap-4">
-                    {[1, 2, 3, 4].map(j => (
-                      <div key={j} className="h-12 bg-muted animate-pulse rounded" />
-                    ))}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
+                    className="flex items-center gap-1.5 h-9 px-3 text-[16px] font-medium border rounded-md bg-white hover:bg-gray-50 transition-colors dark:bg-card dark:hover:bg-muted"
+                    data-testid="button-sort-order"
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    {sortOrder === "newest" ? "Newest First" : "Oldest First"}
+                  </button>
+
+                  <div className="flex items-center border rounded-md overflow-hidden" data-testid="view-toggle-group">
+                    <button
+                      onClick={() => setViewMode("list")}
+                      className={`flex items-center justify-center h-9 w-9 transition-colors ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50 dark:bg-card dark:hover:bg-muted"}`}
+                      data-testid="button-view-list"
+                      title="List view"
+                    >
+                      <List className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode("card")}
+                      className={`flex items-center justify-center h-9 w-9 border-l transition-colors ${viewMode === "card" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-50 dark:bg-card dark:hover:bg-muted"}`}
+                      data-testid="button-view-card"
+                      title="Card view"
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
+              </div>
+
+              {showFilters && (
+                <div className="mt-3 pt-3 border-t border-border/50 animate-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[16px] font-semibold">Filter Quotes</span>
+                    <button
+                      onClick={() => { setStatusFilter("all"); setProgramFilter("all"); }}
+                      className="text-[13px] text-blue-600 hover:text-blue-700 font-medium"
+                      data-testid="button-clear-filters"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Term Sheet Status</label>
+                      <select
+                        className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground dark:bg-card"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        data-testid="select-status-filter"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="no_term_sheet">No Term Sheet</option>
+                        <option value="sent">Sent</option>
+                        <option value="opened">Opened</option>
+                        <option value="signed">Signed</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Program</label>
+                      <select
+                        className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground dark:bg-card"
+                        value={programFilter}
+                        onChange={(e) => setProgramFilter(e.target.value)}
+                        data-testid="select-program-filter"
+                      >
+                        <option value="all">All Programs</option>
+                        {Array.from(new Set(quotes.map(q => {
+                          const ld = q.loanData as Record<string, any>;
+                          return ld?.programName || ld?.loanType || '';
+                        }).filter(Boolean))).map(p => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {quotesLoading ? (
+            <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden p-6 space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-12 w-full bg-muted animate-pulse rounded" />
               ))}
             </div>
           ) : filteredQuotes.length === 0 ? (
@@ -733,12 +872,222 @@ export default function QuotesUnified() {
                   <FileText className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <h3 className="text-[15px] font-semibold text-foreground mb-1">
-                  {searchQuery ? 'No quotes match your search' : 'No Quotes Yet'}
+                  {searchQuery || statusFilter !== "all" || programFilter !== "all" ? 'No quotes match your filters' : 'No Quotes Yet'}
                 </h3>
                 <p className="text-[13px] text-muted-foreground max-w-sm">
-                  {searchQuery ? 'Try a different search term.' : 'Create a loan pricing quote to get started.'}
+                  {searchQuery || statusFilter !== "all" || programFilter !== "all" ? 'Try adjusting your search or filters.' : 'Create a loan pricing quote to get started.'}
                 </p>
               </div>
+            </div>
+          ) : viewMode === "list" ? (
+            <div className="bg-card border rounded-[10px] shadow-sm overflow-x-auto">
+              <table className="w-full min-w-[800px]">
+                <thead>
+                  <tr className="border-b-2">
+                    <th className="w-8" />
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Loan #
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Borrower
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Property
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Amount
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Rate
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Term Sheet
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Created
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredQuotes.map((quote) => {
+                    const ld = quote.loanData as Record<string, any>;
+                    const isRTL = ld?.asIsValue || ld?.arv || ld?.rehabBudget !== undefined;
+                    const loanAmt = isRTL ? ((ld?.asIsValue || 0) + (ld?.rehabBudget || 0)) : (ld?.loanAmount || 0);
+                    const intDoc = internalDocMap.get(quote.id) || null;
+                    const env = envelopeMap.get(quote.id) || null;
+                    const hasIntDoc = !!intDoc;
+                    const sDisplay = hasIntDoc ? getInternalDocStatusDisplay(intDoc) : getEnvelopeStatusDisplay(env);
+                    const borrowerName = [quote.customerFirstName, quote.customerLastName].filter(Boolean).join(' ') || '—';
+                    const initials = borrowerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                    const createdDate = quote.createdAt ? formatShortDate(quote.createdAt) : '—';
+                    const qNumber = quote.loanNumber || formatQuoteNumber(quote.id, quote.createdAt);
+                    const progName = ld?.programName || (isRTL
+                      ? ld?.loanType?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+                      : ld?.loanType || '—');
+                    const ltv = ld?.ltv || ld?.ltvRatio || (ld?.propertyValue && loanAmt
+                      ? ((loanAmt / ld.propertyValue) * 100).toFixed(1)
+                      : '—');
+                    const dscr = ld?.dscr || ld?.dscrRatio || '—';
+                    const term = ld?.loanTerm || ld?.term || '—';
+                    const ysp = quote.yspAmount || 0;
+                    const points = quote.pointsCharged || 0;
+                    const commission = quote.commission || 0;
+                    const envelopeStatus = env?.status.toLowerCase() || '';
+                    const internalSignerStatus = intDoc?.signerStatus?.toLowerCase() || '';
+                    const hasAnyTermSheet = hasIntDoc || !!env;
+
+                    return (
+                      <ExpandableRow
+                        key={quote.id}
+                        columns={7}
+                        isExpanded={expandedQuoteId === quote.id}
+                        onToggle={(expanded) => setExpandedQuoteId(expanded ? quote.id : null)}
+                        summary={
+                          <>
+                            <td className="px-3 py-3 text-[16px] font-medium text-blue-600" data-testid={`text-loan-number-${quote.id}`}>
+                              {qNumber}
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-md flex items-center justify-center text-[13px] font-semibold shrink-0 bg-amber-100 text-amber-800" data-testid={`avatar-borrower-${quote.id}`}>
+                                  {initials}
+                                </div>
+                                <div>
+                                  <div className="text-[16px] font-medium" data-testid={`text-borrower-${quote.id}`}>{borrowerName}</div>
+                                  {quote.customerEmail && (
+                                    <div className="text-[13px] text-muted-foreground">{quote.customerEmail}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="text-[16px]">{quote.propertyAddress?.split(',')[0] || '—'}</div>
+                              {quote.propertyAddress?.includes(',') && (
+                                <div className="text-[13px] text-muted-foreground">
+                                  {quote.propertyAddress.split(',').slice(1).join(',').trim()}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-[16px] font-semibold" data-testid={`text-amount-${quote.id}`}>
+                              {loanAmt ? `$${loanAmt.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-[16px] font-semibold text-primary" data-testid={`text-rate-${quote.id}`}>
+                              {quote.interestRate || '—'}
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[13px] font-medium ${sDisplay.color}`} data-testid={`badge-status-${quote.id}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${sDisplay.dotColor}`} />
+                                {sDisplay.label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-[14px] text-muted-foreground" data-testid={`text-created-${quote.id}`}>
+                              {createdDate}
+                            </td>
+                          </>
+                        }
+                        details={
+                          <div data-testid={`details-quote-${quote.id}`}>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-5">
+                              <div>
+                                <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Loan Details</h4>
+                                <div className="space-y-2 text-[15px]">
+                                  <div className="flex justify-between"><span className="text-muted-foreground">Program</span><span className="font-medium">{progName}</span></div>
+                                  <div className="flex justify-between"><span className="text-muted-foreground">LTV</span><span className="font-medium">{typeof ltv === 'number' ? `${ltv}%` : ltv}</span></div>
+                                  <div className="flex justify-between"><span className="text-muted-foreground">{isRTL ? 'Term' : 'DSCR'}</span><span className="font-medium">{isRTL ? term : dscr}</span></div>
+                                  <div className="flex justify-between"><span className="text-muted-foreground">Points</span><span className="font-medium">{points.toFixed(2)}</span></div>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Revenue</h4>
+                                <div className="space-y-2 text-[15px]">
+                                  <div className="flex justify-between"><span className="text-muted-foreground">YSP</span><span className="font-medium">{ysp ? `${ysp}%` : '—'}</span></div>
+                                  {!isBorrower && (
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Commission</span><span className="font-medium text-emerald-600">${commission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Term Sheet</h4>
+                                <div className="space-y-2 text-[15px]">
+                                  {hasIntDoc && intDoc ? (
+                                    <>
+                                      <div className="flex justify-between"><span className="text-muted-foreground">Status</span>
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[13px] font-medium ${sDisplay.color}`}>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${sDisplay.dotColor}`} />{sDisplay.label}
+                                        </span>
+                                      </div>
+                                      {intDoc.signerEmail && <div className="flex justify-between"><span className="text-muted-foreground">Sent to</span><span className="font-medium">{intDoc.signerName || intDoc.signerEmail}</span></div>}
+                                      {intDoc.sentAt && <div className="flex justify-between"><span className="text-muted-foreground">Sent</span><span className="font-medium">{formatShortDate(intDoc.sentAt)}</span></div>}
+                                      {intDoc.completedAt && <div className="flex justify-between"><span className="text-muted-foreground">Signed</span><span className="font-medium text-emerald-600">{formatShortDate(intDoc.completedAt)}</span></div>}
+                                      {intDoc.hasProject && (
+                                        <div className="flex justify-between"><span className="text-muted-foreground">Deal</span>
+                                          <span className="inline-flex items-center gap-1 text-emerald-600 font-medium"><CheckCircle className="h-3.5 w-3.5" /> Created</span>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : env ? (
+                                    <>
+                                      <div className="flex justify-between"><span className="text-muted-foreground">Status</span>
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[13px] font-medium ${sDisplay.color}`}>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${sDisplay.dotColor}`} />{sDisplay.label}
+                                        </span>
+                                      </div>
+                                      {env.sentAt && <div className="flex justify-between"><span className="text-muted-foreground">Sent</span><span className="font-medium">{formatShortDate(env.sentAt)}</span></div>}
+                                      {env.completedAt && <div className="flex justify-between"><span className="text-muted-foreground">Signed</span><span className="font-medium text-emerald-600">{formatShortDate(env.completedAt)}</span></div>}
+                                    </>
+                                  ) : (
+                                    <div className="text-muted-foreground">No term sheet sent</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 pt-3 border-t border-border/50">
+                              {!isBorrower && (
+                                <>
+                                  <Button variant="outline" size="sm" onClick={() => handleEditQuote(quote)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-edit-${quote.id}`}>
+                                    <Edit className="h-3.5 w-3.5" /> Edit
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => navigate(`/messages?dealId=${quote.id}&new=true`)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-message-${quote.id}`}>
+                                    <MessageSquare className="h-3.5 w-3.5" /> Message
+                                  </Button>
+                                  {!hasAnyTermSheet && (
+                                    <Button size="sm" onClick={() => navigate(`/quotes/${quote.id}/documents`)} className="h-8 rounded-full text-[14px] gap-1.5 px-3 shadow-md" data-testid={`button-send-${quote.id}`}>
+                                      <Send className="h-3.5 w-3.5" /> Send Term Sheet
+                                    </Button>
+                                  )}
+                                  {hasAnyTermSheet && !(internalSignerStatus === 'signed' || intDoc?.status === 'completed') && !(envelopeStatus === 'completed') && (
+                                    <Button variant="outline" size="sm" onClick={() => navigate(`/quotes/${quote.id}/documents`)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-resend-${quote.id}`}>
+                                      <Send className="h-3.5 w-3.5" /> Resend
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                              <Button variant="outline" size="sm" onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/quotes/${quote.id}/pdf`, { credentials: 'include' });
+                                  if (!res.ok) throw new Error('Failed');
+                                  const blob = await res.blob();
+                                  const url = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a'); a.href = url; a.download = `quote-${quote.id}.pdf`;
+                                  document.body.appendChild(a); a.click(); a.remove();
+                                  window.URL.revokeObjectURL(url);
+                                } catch { toast({ title: "Error", description: "Failed to download PDF", variant: "destructive" }); }
+                              }} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-download-${quote.id}`}>
+                                <Download className="h-3.5 w-3.5" /> PDF
+                              </Button>
+                              {!isBorrower && (
+                                <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(quote.id)} disabled={deleteMutation.isPending} className="h-8 rounded-full text-[14px] gap-1.5 px-3 text-muted-foreground hover:text-destructive ml-auto" data-testid={`button-delete-${quote.id}`}>
+                                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        }
+                      />
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="space-y-4">
