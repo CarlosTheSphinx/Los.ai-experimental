@@ -405,7 +405,7 @@ export default function BorrowerDealDetail() {
                           <p className="text-[12px] text-muted-foreground">{getDocStatusLabel(doc.status)}</p>
                         </div>
                       </div>
-                      {(doc.status === 'pending' || doc.status === 'rejected') && (
+                      {(doc.status === 'pending' || doc.status === 'rejected' || doc.status === 'uploaded' || doc.status === 'submitted') && (
                         <div className="flex-shrink-0 ml-2">
                           <label className="cursor-pointer" data-testid={`button-upload-${doc.id}`}>
                             <input
@@ -417,7 +417,7 @@ export default function BorrowerDealDetail() {
                             />
                             <span className="inline-flex items-center justify-center gap-1 h-7 px-3 text-xs font-medium border rounded-md hover:bg-accent transition-colors">
                               {uploadingDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                              Upload
+                              {doc.status === 'uploaded' || doc.status === 'submitted' ? 'Replace' : 'Upload'}
                             </span>
                           </label>
                         </div>

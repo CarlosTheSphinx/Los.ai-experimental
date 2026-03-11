@@ -4283,32 +4283,36 @@ export async function registerRoutes(
       const [newFile] = await db.insert(dealDocumentFiles).values({
         documentId: docId,
         filePath: objectPath,
-        fileName: fileName || null,
-        fileSize: fileSize || null,
-        mimeType: mimeType || null,
+        fileName: fileName ?? null,
+        fileSize: fileSize != null ? Number(fileSize) : null,
+        mimeType: mimeType ?? null,
         uploadedAt: new Date(),
         uploadedBy: userId,
         sortOrder: nextSortOrder,
       }).returning();
 
+      const updateData: Record<string, any> = {
+        status: 'uploaded',
+        uploadedAt: new Date(),
+        uploadedBy: userId,
+      };
+      if (objectPath) updateData.filePath = objectPath;
+      if (fileName) updateData.fileName = fileName;
+      if (fileSize != null) updateData.fileSize = Number(fileSize);
+      if (mimeType) updateData.mimeType = mimeType;
+
       const [updated] = await db.update(dealDocuments)
-        .set({
-          filePath: objectPath,
-          fileName: fileName,
-          fileSize: fileSize,
-          mimeType: mimeType,
-          status: 'uploaded',
-          uploadedAt: new Date(),
-          uploadedBy: userId,
-        })
+        .set(updateData)
         .where(and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, projectId)))
         .returning();
+
+      const docLabel = updated?.documentName || fileName || 'Document';
 
       await db.insert(projectActivity).values({
         projectId,
         userId,
         activityType: 'document_uploaded',
-        activityDescription: `Broker uploaded: ${updated?.documentName || fileName || 'Document'}`,
+        activityDescription: `Document uploaded: ${docLabel}`,
         visibleToBorrower: true,
       });
 
@@ -4316,11 +4320,11 @@ export async function registerRoutes(
         await db.insert(dealMemoryEntries).values({
           dealId: projectId,
           entryType: 'document_received',
-          title: `${updated?.documentName || fileName || 'Document'} uploaded`,
-          description: updated?.documentCategory ? `Category: ${updated.documentCategory}` : undefined,
+          title: `${docLabel} uploaded`,
+          description: updated?.documentCategory ? `Category: ${updated.documentCategory}` : null,
           sourceType: 'user',
           sourceUserId: userId,
-          metadata: { documentId: docId, category: updated?.documentCategory },
+          metadata: { documentId: docId, category: updated?.documentCategory ?? null },
         });
       } catch (e) { console.error('Memory entry error:', e); }
 
