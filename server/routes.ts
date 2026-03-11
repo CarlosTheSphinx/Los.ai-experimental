@@ -3969,7 +3969,7 @@ export async function registerRoutes(
     }
   }
 
-  // Get borrower portal link
+  // Get borrower portal link (consolidated per-person link)
   app.get('/api/projects/:id/borrower-link', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -3983,11 +3983,36 @@ export async function registerRoutes(
       if (!project.borrowerPortalEnabled) {
         return res.status(403).json({ error: 'Borrower portal is disabled for this project' });
       }
+
+      const borrowerEmail = project.borrowerEmail;
+      if (!borrowerEmail) {
+        return res.status(400).json({ error: 'No borrower email on this deal' });
+      }
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      let user = await storage.getUserByEmail(borrowerEmail.toLowerCase().trim());
+      if (user && user.inviteToken) {
+        return res.json({ borrowerLink: `${baseUrl}/join/personal/${user.inviteToken}` });
+      }
+
+      const inviteToken = generateRandomToken();
+      if (!user) {
+        user = await storage.createUser({
+          email: borrowerEmail.toLowerCase().trim(),
+          fullName: project.borrowerName || null,
+          phone: project.borrowerPhone || null,
+          role: 'user',
+          userType: 'borrower',
+          isActive: true,
+          emailVerified: true,
+          inviteToken,
+          inviteStatus: 'none',
+        } as any);
+      } else {
+        await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
+      }
       
-      const baseUrl = process.env.BASE_URL || `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
-      const borrowerLink = `${baseUrl}/portal/${project.borrowerPortalToken}`;
-      
-      res.json({ borrowerLink });
+      res.json({ borrowerLink: `${baseUrl}/join/personal/${inviteToken}` });
     } catch (error) {
       console.error('Get borrower link error:', error);
       res.status(500).json({ error: 'Failed to get borrower link' });
