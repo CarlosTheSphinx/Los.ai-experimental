@@ -765,7 +765,7 @@ function UsersTab() {
 
   const getDefaultDraft = (name: string, email: string) => ({
     subject: "You're invited to set up your account",
-    body: `Hi ${name || email},\n\nAn account has been created for you. Click the link below to set up your password and get started:\n\n[invite link will be inserted automatically]\n\nIf you have questions, reply to this email.`,
+    body: `Hi ${name || email},\n\nAn account has been created for you. Click the link below to set up your password and get started:\n\n{{INVITE_LINK}}\n\nIf you have questions, reply to this email.`,
   });
 
   const createUserMutation = useMutation({
@@ -777,8 +777,8 @@ function UsersTab() {
       const userId = data.user?.id;
       const invite = pendingInvite;
       if (userId && invite) {
-        const bodyWithLink = invite.body.includes("[invite link will be inserted automatically]")
-          ? invite.body.replace("[invite link will be inserted automatically]", data.inviteLink || "")
+        const bodyWithLink = invite.body.includes("{{INVITE_LINK}}")
+          ? invite.body.replace("{{INVITE_LINK}}", data.inviteLink || "")
           : invite.body + `\n\n${data.inviteLink || ""}`;
         try {
           await apiRequest("POST", `/api/admin/users/${userId}/send-invite`, {
@@ -1000,7 +1000,7 @@ function UsersTab() {
                     className="text-sm resize-none"
                     data-testid="input-draft-body"
                   />
-                  <p className="text-[11px] text-muted-foreground">The invite link will replace "[invite link will be inserted automatically]" in your message.</p>
+                  <p className="text-[11px] text-muted-foreground">{"{{INVITE_LINK}}"} will be replaced with the user's unique portal link when the email is sent.</p>
                 </div>
 
                 <div className="flex gap-2">
