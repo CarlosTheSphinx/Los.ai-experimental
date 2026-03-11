@@ -210,6 +210,17 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
   });
   const borrowerPortalUrl = borrowerLinkData?.url || null;
 
+  const { data: brokerLinkData } = useQuery<{ token: string; url: string }>({
+    queryKey: ["/api/admin/projects", deal.id, "broker-link"],
+    queryFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/projects/${deal.id}/generate-broker-link`);
+      return res.json();
+    },
+    enabled: !!deal.brokerEmail && deal.brokerPortalEnabled,
+    staleTime: Infinity,
+  });
+  const brokerPortalUrl = brokerLinkData?.url || null;
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copied` });
