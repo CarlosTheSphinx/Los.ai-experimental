@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StageProgressBar } from "@/components/ui/phase1/stage-progress-bar";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 function fmt(amount: number | string | undefined | null): string {
   if (amount === null || amount === undefined || amount === "" || amount === "—") return "—";
@@ -81,7 +81,6 @@ export default function BorrowerDealDetail() {
   const [, params] = useRoute("/deals/:id");
   const dealId = params?.id;
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>("overview");
 
@@ -243,12 +242,14 @@ export default function BorrowerDealDetail() {
         fileSize: file.size,
         mimeType: file.type,
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", dealId] });
       toast({ title: "Document uploaded successfully" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (err) {
+      console.error("Upload failed:", err);
+      toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
     } finally {
       setUploadingDocId(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      e.target.value = "";
     }
   };
 
@@ -406,27 +407,19 @@ export default function BorrowerDealDetail() {
                       </div>
                       {(doc.status === 'pending' || doc.status === 'rejected') && (
                         <div className="flex-shrink-0 ml-2">
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            className="hidden"
-                            onChange={(e) => handleFileUpload(doc.id, e)}
-                            data-testid={`file-input-${doc.id}`}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs gap-1"
-                            disabled={uploadingDocId === doc.id}
-                            onClick={() => {
-                              const inp = document.querySelector(`[data-testid="file-input-${doc.id}"]`) as HTMLInputElement;
-                              inp?.click();
-                            }}
-                            data-testid={`button-upload-${doc.id}`}
-                          >
-                            {uploadingDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                            Upload
-                          </Button>
+                          <label className="cursor-pointer" data-testid={`button-upload-${doc.id}`}>
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => handleFileUpload(doc.id, e)}
+                              disabled={uploadingDocId === doc.id}
+                              data-testid={`file-input-${doc.id}`}
+                            />
+                            <span className="inline-flex items-center justify-center gap-1 h-7 px-3 text-xs font-medium border rounded-md hover:bg-accent transition-colors">
+                              {uploadingDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                              Upload
+                            </span>
+                          </label>
                         </div>
                       )}
                     </div>
