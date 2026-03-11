@@ -70,6 +70,7 @@ import OnboardingConfigPage from "@/pages/admin/onboarding-config";
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
 import QuoteDocuments from "@/pages/quote-documents";
+import BorrowerPreview from "@/pages/borrower-preview";
 
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
@@ -232,6 +233,8 @@ function MainRoutes() {
           {/* Broker CRM Routes */}
           <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
           <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
+          <Route path="/borrower-preview/:rest*" component={() => <AdminProtectedRoute component={BorrowerPreview} />} />
+          <Route path="/borrower-preview" component={() => <AdminProtectedRoute component={BorrowerPreview} />} />
 
           {/* Admin Routes */}
           <Route path="/admin/platform" component={() => <SuperAdminProtectedRoute component={SuperAdminDashboard} />} />

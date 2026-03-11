@@ -389,7 +389,7 @@ export function BorrowerDashboard() {
       )}
 
       {/* Completion Stats */}
-      {data && (
+      {data?.stats && (
         <Card>
           <CardContent className="pt-6">
             <div className="grid grid-cols-2 gap-4">
@@ -413,14 +413,14 @@ export function BorrowerDashboard() {
       )}
 
       {/* Documents Section */}
-      {data && (
+      {data && data.documents && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Required Documents</CardTitle>
                 <CardDescription>
-                  {data.stats.approvedDocuments} of {data.stats.totalDocuments} approved
+                  {data.stats ? `${data.stats.approvedDocuments} of ${data.stats.totalDocuments} approved` : 'Document overview'}
                 </CardDescription>
               </div>
             </div>
@@ -521,7 +521,7 @@ export function BorrowerDashboard() {
       )}
 
       {/* Active Tasks Section */}
-      {data && data.tasks.filter((t) => t.borrowerActionRequired).length > 0 && (
+      {data?.tasks && data.tasks.filter((t) => t.borrowerActionRequired).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Active Tasks</CardTitle>

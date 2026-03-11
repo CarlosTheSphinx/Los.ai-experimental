@@ -28,6 +28,9 @@ import {
   Blocks,
   MessageSquare,
   BotMessageSquare,
+  Home,
+  ExternalLink,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Select,
@@ -131,6 +134,12 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
+];
+
+const borrowerViewNavItems: NavItem[] = [
+  { href: "/borrower-preview", label: "Borrower Dashboard", icon: Home },
+  { href: "/borrower-preview/portal", label: "Borrower Portal", icon: ExternalLink },
+  { href: "/borrower-preview/checklist", label: "Loan Checklist", icon: ClipboardCheck },
 ];
 
 // Super admin items — only visible to super_admin role (Lendry platform team)
@@ -329,7 +338,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         <SidebarContent className="font-ui font-normal">
           <SidebarGroup>
             <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
-              {(effectiveViewAsBorrower || isBorrower) ? 'My Loans' : 'Pipeline'}
+              {(effectiveViewAsBorrower || isBorrower) ? 'My Loans' : 'Broker View'}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -373,7 +382,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           {showAdminSection && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
               <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
-                Administration
+                Lender View
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -415,8 +424,47 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
             </SidebarGroup>
           )}
 
+          {showAdminSection && (
+            <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
+              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+                Borrower View
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {borrowerViewNavItems.map((item) => {
+                    const isActive = location === item.href ||
+                      (item.href !== "/" && location.startsWith(item.href));
+                    const Icon = item.icon;
+
+                    return (
+                      <SidebarMenuItem key={item.href} className="group relative">
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={item.label}
+                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                        >
+                          <Link
+                            href={item.href}
+                            data-testid={`nav-borrower-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            onClick={handleNavClick}
+                          >
+                            <NavIcon icon={Icon} isActive={isActive} />
+                            <span className="flex items-center gap-1 flex-1 text-[15px]">
+                              {item.label}
+                            </span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
           {/* Super Admin section — only visible to Lendry platform team */}
-          {isSuperAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender && (
+          {isSuperAdmin && !effectiveViewAsBorrower && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
               <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Super Admin (Lendry Only)
@@ -585,7 +633,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [pinned, setPinned] = useState(true);
 
   const style = {
-    "--sidebar-width": "17rem",
+    "--sidebar-width": "12.8rem",
     "--sidebar-width-icon": "2.75rem",
   };
 
