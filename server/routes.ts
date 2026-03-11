@@ -5325,7 +5325,7 @@ export async function registerRoutes(
   app.post('/api/admin/users/:id/send-invite', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
-      const { method } = req.body; // 'email' or 'sms'
+      const { method, subject, body, message } = req.body; // method: 'email'|'sms'|'generate'; subject/body for email, message for sms
       const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -5336,50 +5336,40 @@ export async function registerRoutes(
 
       await db.update(users).set({
         inviteToken: token,
-        inviteTokenSentAt: new Date(),
-        inviteStatus: 'sent',
+        inviteTokenSentAt: method === 'generate' ? user.inviteTokenSentAt : new Date(),
+        inviteStatus: method === 'generate' ? (user.inviteStatus || 'none') : 'sent',
       }).where(eq(users.id, userId));
 
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const inviteLink = `${baseUrl}/join/personal/${token}`;
 
-      let companyName = 'Lendry.AI';
-      try {
-        const brandingSetting = await storage.getSystemSetting('tenant_branding');
-        if (brandingSetting?.value) {
-          const branding = typeof brandingSetting.value === 'string' ? JSON.parse(brandingSetting.value) : brandingSetting.value;
-          if (branding.companyName) companyName = branding.companyName;
-        }
-      } catch (e) {}
-
-      const portalType = user.userType === 'borrower' ? 'Borrower' : 'Broker';
-      const recipientName = user.fullName || user.email;
+      if (method === 'generate') {
+        return res.json({ success: true, inviteLink, inviteToken: token, inviteStatus: user.inviteStatus || 'none' });
+      }
 
       if (method === 'sms' && user.phone) {
+        const smsText = message || `You've been invited to access your portal. Get started here: ${inviteLink}`;
         try {
           const { sendSms } = await import('./smsService');
-          await sendSms(user.phone, `You've been invited to ${companyName}'s ${portalType} Portal. Access your account here: ${inviteLink}`);
+          await sendSms(user.phone, smsText);
         } catch (smsErr) {
           console.error('SMS send failed:', smsErr);
           return res.status(500).json({ error: 'Failed to send SMS' });
         }
       } else {
+        const emailSubject = subject || "You're invited to access your portal";
+        const emailBody = body || `Hi ${user.fullName || user.email},\n\nYou've been invited to access your portal. Click the link below to get started:\n\n${inviteLink}\n\nIf you have questions, reply to this email.`;
+        const htmlBody = emailBody.replace(/\n/g, '<br/>');
         try {
           const { getResendClient } = await import('./email');
           const { client, fromEmail } = await getResendClient();
           await client.emails.send({
             from: fromEmail,
             to: user.email,
-            subject: `You're invited to ${companyName}`,
+            subject: emailSubject,
             html: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
-                <h1 style="color: #0F1729; font-size: 24px; margin-bottom: 8px;">${companyName}</h1>
-                <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Hi ${recipientName},</p>
-                <p style="color: #64748b; font-size: 15px; line-height: 1.6;">You've been invited to access the ${portalType} Portal. Click the link below to get started:</p>
-                <div style="margin: 24px 0;">
-                  <a href="${inviteLink}" style="display: inline-block; background: #C9A84C; color: white; padding: 12px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">Access Your Portal</a>
-                </div>
-                <p style="color: #94a3b8; font-size: 13px;">If you have questions, reply to this email.</p>
+                ${htmlBody}
               </div>
             `,
           });

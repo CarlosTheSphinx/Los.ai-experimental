@@ -116,7 +116,7 @@ const roleDescriptions: Record<string, string> = {
 };
 
 const inviteStatusConfig: Record<string, { label: string; color: string }> = {
-  none: { label: "Not Sent", color: "bg-muted text-muted-foreground" },
+  none: { label: "Generate Link", color: "bg-muted text-muted-foreground" },
   sent: { label: "Sent", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
   opened: { label: "Opened", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
   joined: { label: "Joined", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
@@ -127,6 +127,10 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const { toast } = useToast();
   const [brokerPermsOpen, setBrokerPermsOpen] = useState(false);
   const [programOverridesOpen, setProgramOverridesOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<"email" | "sms" | null>(null);
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
 
   const { data, isLoading, refetch } = useQuery<{
     user: AdminUser;
@@ -141,14 +145,29 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     },
   });
 
+  const generateLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/send-invite`, { method: "generate" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setGeneratedLink(data.inviteLink);
+      refetch();
+    },
+    onError: () => {
+      toast({ title: "Failed to generate link", variant: "destructive" });
+    },
+  });
+
   const sendInviteMutation = useMutation({
-    mutationFn: async (method: string) => {
-      const res = await apiRequest("POST", `/api/admin/users/${userId}/send-invite`, { method });
+    mutationFn: async (payload: { method: string; subject?: string; body?: string; message?: string }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/send-invite`, payload);
       return res.json();
     },
     onSuccess: () => {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setComposeMode(null);
       toast({ title: "Invite sent successfully" });
     },
     onError: () => {
@@ -174,12 +193,50 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const programs = data?.programs || [];
   const settings: BrokerSettings = (user?.brokerSettings as BrokerSettings) || {};
 
-  const inviteLink = user?.inviteToken ? `${window.location.origin}/join/personal/${user.inviteToken}` : null;
+  const inviteLink = generatedLink || (user?.inviteToken ? `${window.location.origin}/join/personal/${user.inviteToken}` : null);
 
   const copyLink = () => {
     if (inviteLink) {
       navigator.clipboard.writeText(inviteLink);
       toast({ title: "Link copied to clipboard" });
+    }
+  };
+
+  const populateCompose = (mode: "email" | "sms", link: string) => {
+    const recipientName = user?.fullName || user?.email || "";
+    if (mode === "email") {
+      setComposeSubject("You're invited to access your portal");
+      setComposeBody(`Hi ${recipientName},\n\nYou've been invited to access your portal. Click the link below to get started:\n\n${link}\n\nIf you have questions, reply to this email.`);
+    } else {
+      setComposeBody(`Hi ${recipientName}, you've been invited to access your portal. Get started here: ${link}`);
+      setComposeSubject("");
+    }
+  };
+
+  const startCompose = async (mode: "email" | "sms") => {
+    setComposeMode(mode);
+    if (inviteLink) {
+      populateCompose(mode, inviteLink);
+    } else {
+      try {
+        const res = await apiRequest("POST", `/api/admin/users/${userId}/send-invite`, { method: "generate" });
+        const data = await res.json();
+        const link = data.inviteLink;
+        setGeneratedLink(link);
+        refetch();
+        populateCompose(mode, link);
+      } catch {
+        toast({ title: "Failed to generate invite link", variant: "destructive" });
+        setComposeMode(null);
+      }
+    }
+  };
+
+  const handleSendCompose = () => {
+    if (composeMode === "email") {
+      sendInviteMutation.mutate({ method: "email", subject: composeSubject, body: composeBody });
+    } else if (composeMode === "sms") {
+      sendInviteMutation.mutate({ method: "sms", message: composeBody });
     }
   };
 
@@ -266,7 +323,19 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
             </Button>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">No invite link generated yet. Send an invite to create one.</p>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">No invite link generated yet.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => generateLinkMutation.mutate()}
+              disabled={generateLinkMutation.isPending}
+              data-testid="button-generate-link"
+            >
+              <Link2 className="h-3.5 w-3.5 mr-1.5" />
+              {generateLinkMutation.isPending ? "Generating..." : "Generate Link"}
+            </Button>
+          </div>
         )}
 
         {user.inviteTokenSentAt && (
@@ -275,31 +344,75 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
           </p>
         )}
 
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => sendInviteMutation.mutate("email")}
-            disabled={sendInviteMutation.isPending}
-            className="flex-1"
-            data-testid="button-send-email-invite"
-          >
-            <Mail className="h-3.5 w-3.5 mr-1.5" />
-            {sendInviteMutation.isPending ? "Sending..." : "Send via Email"}
-          </Button>
-          {user.phone && (
+        {composeMode === null ? (
+          <div className="flex gap-2">
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => sendInviteMutation.mutate("sms")}
-              disabled={sendInviteMutation.isPending}
+              onClick={() => startCompose("email")}
               className="flex-1"
-              data-testid="button-send-sms-invite"
+              data-testid="button-send-email-invite"
             >
-              <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-              Send via SMS
+              <Mail className="h-3.5 w-3.5 mr-1.5" />
+              Send via Email
             </Button>
-          )}
-        </div>
+            {user.phone && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => startCompose("sms")}
+                className="flex-1"
+                data-testid="button-send-sms-invite"
+              >
+                <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                Send via SMS
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3 border-t pt-3">
+            <div className="flex items-center justify-between">
+              <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {composeMode === "email" ? "Compose Email" : "Compose SMS"}
+              </h5>
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setComposeMode(null)} data-testid="button-cancel-compose">
+                Cancel
+              </Button>
+            </div>
+            {composeMode === "email" && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Subject</Label>
+                <Input
+                  value={composeSubject}
+                  onChange={(e) => setComposeSubject(e.target.value)}
+                  className="h-8 text-sm"
+                  data-testid="input-compose-subject"
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                {composeMode === "email" ? "Message" : "SMS Text"}
+              </Label>
+              <textarea
+                value={composeBody}
+                onChange={(e) => setComposeBody(e.target.value)}
+                rows={composeMode === "email" ? 8 : 4}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+                data-testid="textarea-compose-body"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSendCompose}
+              disabled={sendInviteMutation.isPending || !composeBody.trim()}
+              className="w-full"
+              data-testid="button-confirm-send"
+            >
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              {sendInviteMutation.isPending ? "Sending..." : `Send ${composeMode === "email" ? "Email" : "SMS"}`}
+            </Button>
+          </div>
+        )}
       </div>
 
       {user.userType === "broker" && (
@@ -666,7 +779,8 @@ function UsersTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Link Status</TableHead>
@@ -685,10 +799,10 @@ function UsersTab() {
                         data-testid={`row-user-${user.id}`}
                       >
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{user.fullName || "No name"}</p>
-                            <p className="text-sm text-muted-foreground">{user.email}</p>
-                          </div>
+                          <p className="font-medium">{user.fullName || "No name"}</p>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {user.email}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="capitalize">
