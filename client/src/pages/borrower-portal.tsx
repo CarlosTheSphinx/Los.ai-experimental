@@ -610,26 +610,26 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
         <div className="flex items-center justify-end gap-2 px-4 md:px-6 py-2 bg-background border-b">
           <Button
             size="icon"
-            className="relative h-9 w-9 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
+            className="relative h-7 w-7 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
             data-testid="button-portal-messages"
             onClick={() => {
               setActiveView("inbox");
               setSelectedThreadId(null);
             }}
           >
-            <MessageSquare className="!h-5 !w-5" />
+            <MessageSquare className="!h-3.5 !w-3.5" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center px-1" data-testid="badge-unread-count">
+              <span className="absolute -top-1 -right-1 h-4 min-w-[16px] rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center px-1" data-testid="badge-unread-count">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </Button>
           <Button
             size="icon"
-            className="relative h-9 w-9 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
+            className="relative h-7 w-7 rounded-full bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-white"
             data-testid="button-portal-notifications"
           >
-            <Bell className="!h-5 !w-5" />
+            <Bell className="!h-3.5 !w-3.5" />
           </Button>
         </div>
 
