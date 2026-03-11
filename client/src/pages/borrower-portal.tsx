@@ -31,7 +31,6 @@ import { formatPhoneNumber } from "@/lib/validation";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
 import { PortalSidebar, type PortalView } from "@/components/portal/PortalSidebar";
-import { ExpandableRow } from "@/components/ui/phase1/expandable-row";
 
 interface Task {
   id: number;
@@ -196,7 +195,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     }
     return "loans";
   });
-  const [expandedDealId, setExpandedDealId] = useState<number | null>(null);
+
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState<Partial<BorrowerProfile>>({});
 
@@ -459,11 +458,11 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                 <table className="w-full text-sm font-ui">
                   <thead>
                     <tr className="border-b bg-muted/30">
-                      <th className="w-8" />
                       <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Loan</th>
                       <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Property</th>
                       <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Amount</th>
                       <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Status</th>
+                      <th className="w-[120px]" />
                     </tr>
                   </thead>
                   <tbody>
@@ -476,116 +475,41 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                       </tr>
                     ) : (
                       displayDeals.map((deal) => {
-                        const isDealExpanded = expandedDealId === deal.id;
                         const isCurrent = deal.isCurrent;
                         return (
-                          <ExpandableRow
+                          <tr
                             key={deal.id}
-                            columns={4}
-                            isExpanded={isDealExpanded}
-                            onToggle={() => setExpandedDealId(isDealExpanded ? null : deal.id)}
-                            summary={
-                              <>
-                                <td className="py-3 px-3">
-                                  <div className="font-medium truncate" data-testid={`text-deal-name-${deal.id}`}>{deal.dealName}</div>
-                                  {deal.programName && <div className="text-[11px] text-muted-foreground">{deal.programName}</div>}
-                                </td>
-                                <td className="py-3 px-3 text-muted-foreground truncate max-w-[200px]">{deal.propertyAddress || '—'}</td>
-                                <td className="py-3 px-3 font-medium">{deal.loanAmount ? formatCurrency(deal.loanAmount) : '—'}</td>
-                                <td className="py-3 px-3">
-                                  <Badge variant={deal.status === 'active' ? 'default' : 'secondary'} className="text-[11px]" data-testid={`badge-status-${deal.id}`}>
-                                    {deal.status}
-                                  </Badge>
-                                </td>
-                              </>
-                            }
-                            details={
-                              <div className="space-y-4">
-                                {isCurrent && stages.length > 0 && (
-                                  <div className="flex items-center gap-3 flex-wrap">
-                                    {stages.map((stage, i) => {
-                                      const completedTasks = (stage.tasks || []).filter((t: Task) => t.status === 'completed').length;
-                                      const totalItems = (stage.tasks || []).length;
-                                      const isCompleted = totalItems > 0 && completedTasks >= totalItems;
-                                      const isActiveStage = stage.status === 'in_progress';
-                                      return (
-                                        <div key={stage.id} className="flex items-center gap-2">
-                                          <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold border-2 flex-shrink-0 ${
-                                            isCompleted ? 'bg-success border-success text-white' :
-                                            isActiveStage ? 'bg-primary border-primary text-white' :
-                                            'bg-muted border-border text-muted-foreground'
-                                          }`}>
-                                            {isCompleted ? <CheckCircle2 className="h-3 w-3" /> : i + 1}
-                                          </div>
-                                          <span className={`text-xs ${isCompleted ? 'text-success' : isActiveStage ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                                            {stage.stageName}
-                                          </span>
-                                          {i < stages.length - 1 && <div className="w-4 h-[1px] bg-border" />}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  {deal.loanAmount && (
-                                    <div className="flex items-center gap-2">
-                                      <DollarSign className="h-4 w-4 text-success flex-shrink-0" />
-                                      <div>
-                                        <div className="text-[10px] text-muted-foreground">Loan Amount</div>
-                                        <div className="text-sm font-semibold">{formatCurrency(deal.loanAmount)}</div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {isCurrent && project.interestRate && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-info font-semibold text-xs flex-shrink-0">%</span>
-                                      <div>
-                                        <div className="text-[10px] text-muted-foreground">Interest Rate</div>
-                                        <div className="text-sm font-semibold">{project.interestRate}%</div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {isCurrent && project.targetCloseDate && (
-                                    <div className="flex items-center gap-2">
-                                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-                                      <div>
-                                        <div className="text-[10px] text-muted-foreground">Target Close</div>
-                                        <div className="text-sm font-semibold">{formatDate(project.targetCloseDate)}</div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {deal.propertyAddress && (
-                                    <div className="flex items-center gap-2">
-                                      <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                      <div>
-                                        <div className="text-[10px] text-muted-foreground">Property</div>
-                                        <div className="text-sm font-semibold truncate">{deal.propertyAddress}</div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="pt-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (isCurrent) {
-                                        setActiveView("deal-detail");
-                                      } else {
-                                        sessionStorage.setItem('portal_open_deal', deal.portalToken);
-                                        handleDealSwitch(deal.portalToken);
-                                      }
-                                    }}
-                                    data-testid={`btn-open-deal-${deal.id}`}
-                                  >
-                                    Open Deal <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            }
-                          />
+                            className="border-b last:border-b-0 hover:bg-muted/30 transition-colors"
+                          >
+                            <td className="py-3 px-3">
+                              <div className="font-medium truncate" data-testid={`text-deal-name-${deal.id}`}>{deal.dealName}</div>
+                              {deal.programName && <div className="text-[11px] text-muted-foreground">{deal.programName}</div>}
+                            </td>
+                            <td className="py-3 px-3 text-muted-foreground truncate max-w-[200px]">{deal.propertyAddress || '—'}</td>
+                            <td className="py-3 px-3 font-medium">{deal.loanAmount ? formatCurrency(deal.loanAmount) : '—'}</td>
+                            <td className="py-3 px-3">
+                              <Badge variant={deal.status === 'active' ? 'default' : 'secondary'} className="text-[11px]" data-testid={`badge-status-${deal.id}`}>
+                                {deal.status}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (isCurrent) {
+                                    setActiveView("deal-detail");
+                                  } else {
+                                    sessionStorage.setItem('portal_open_deal', deal.portalToken);
+                                    handleDealSwitch(deal.portalToken);
+                                  }
+                                }}
+                                data-testid={`btn-open-deal-${deal.id}`}
+                              >
+                                Open Deal <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                              </Button>
+                            </td>
+                          </tr>
                         );
                       })
                     )}
