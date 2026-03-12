@@ -12887,13 +12887,53 @@ If the user provides specific criteria, extract as many rules as you can from th
     try {
       const user = await storage.getUserById(req.user!.id);
       const isSuperAdmin = user?.role === 'super_admin';
-      const userTenantId = isSuperAdmin ? null : await getTenantId({ id: user!.id, role: user!.role, invitedBy: user!.invitedBy ?? undefined });
+      const isBorrower = user?.role === 'borrower';
+
+      let tenantIds: number[] = [];
+
+      if (!isSuperAdmin) {
+        const resolvedTenantId = await getTenantId({ id: user!.id, role: user!.role, invitedBy: user!.invitedBy ?? undefined });
+
+        if (isBorrower) {
+          const collectedIds = new Set<number>();
+
+          if (resolvedTenantId != null && resolvedTenantId !== user!.id) {
+            collectedIds.add(resolvedTenantId);
+          }
+
+          const associatedProjects = await db.select({ tenantId: projects.tenantId, userId: projects.userId })
+            .from(projects)
+            .where(
+              sql`LOWER(${projects.borrowerEmail}) = LOWER(${user!.email})`
+            );
+          for (const p of associatedProjects) {
+            if (p.tenantId != null) {
+              collectedIds.add(p.tenantId);
+            } else if (p.userId != null) {
+              collectedIds.add(p.userId);
+            }
+          }
+
+          if (collectedIds.size > 0) {
+            tenantIds = [...collectedIds];
+          }
+        } else if (resolvedTenantId != null) {
+          tenantIds = [resolvedTenantId];
+        }
+      }
+
+      let programFilter;
+      if (isSuperAdmin) {
+        programFilter = eq(loanPrograms.isActive, true);
+      } else if (tenantIds.length > 0) {
+        programFilter = and(eq(loanPrograms.isActive, true), inArray(loanPrograms.tenantId, tenantIds));
+      } else {
+        programFilter = and(eq(loanPrograms.isActive, true), eq(loanPrograms.createdBy, req.user!.id));
+      }
+
       const programs = await db.select()
         .from(loanPrograms)
-        .where(isSuperAdmin 
-          ? eq(loanPrograms.isActive, true)
-          : and(eq(loanPrograms.isActive, true), userTenantId != null ? eq(loanPrograms.tenantId, userTenantId) : eq(loanPrograms.createdBy, req.user!.id))
-        )
+        .where(programFilter)
         .orderBy(loanPrograms.sortOrder);
       
       // Check which have active rulesets

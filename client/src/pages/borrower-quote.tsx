@@ -68,6 +68,8 @@ export default function BorrowerQuote() {
 
   const { data: programsData } = useQuery<{ programs: ProgramWithPricing[] }>({
     queryKey: ["/api/programs-with-pricing"],
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
   });
 
   const allActivePrograms = programsData?.programs || [];
