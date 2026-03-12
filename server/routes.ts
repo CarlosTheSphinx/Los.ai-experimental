@@ -7112,7 +7112,7 @@ export async function registerRoutes(
     try {
       const projectId = parseInt(req.params.projectId);
       const taskId = parseInt(req.params.taskId);
-      const { status, assignedTo } = req.body;
+      const { status, assignedTo, taskTitle, taskName, taskDescription, priority, dueDate, stageId, visibleToBorrower, borrowerActionRequired } = req.body;
       
       const task = await storage.getTaskById(taskId);
       if (!task || task.projectId !== projectId) {
@@ -7131,7 +7131,19 @@ export async function registerRoutes(
       }
       if (assignedTo !== undefined) {
         updates.assignedTo = assignedTo || null;
+        if (assignedTo === 'borrower') {
+          updates.visibleToBorrower = true;
+          updates.borrowerActionRequired = true;
+        }
       }
+      const resolvedTitle = taskTitle || taskName;
+      if (resolvedTitle !== undefined) updates.taskTitle = resolvedTitle;
+      if (taskDescription !== undefined) updates.taskDescription = taskDescription;
+      if (priority !== undefined) updates.priority = priority;
+      if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
+      if (stageId !== undefined) updates.stageId = stageId ? parseInt(stageId) : null;
+      if (visibleToBorrower !== undefined) updates.visibleToBorrower = visibleToBorrower;
+      if (borrowerActionRequired !== undefined) updates.borrowerActionRequired = borrowerActionRequired;
       
       const updatedTask = await storage.updateTask(taskId, updates);
       
@@ -10205,7 +10217,7 @@ export async function registerRoutes(
         _source: 'projectTasks',
       }));
 
-      const allTasks = [...dtasks.map(t => ({ ...t, formTemplateId: null, borrowerActionRequired: false, _source: 'dealTasks' })), ...mappedProjectTasks];
+      const allTasks = [...dtasks.map(t => ({ ...t, formTemplateId: null, borrowerActionRequired: false, _source: 'dealTasks', _type: 'deal_task' })), ...mappedProjectTasks.map(t => ({ ...t, _type: 'project_task' }))];
       allTasks.sort((a, b) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -10223,28 +10235,30 @@ export async function registerRoutes(
   app.post('/api/admin/deals/:dealId/tasks', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { taskName, taskDescription, priority, assignedTo, dueDate, formTemplateId } = req.body;
+      const { taskName, taskDescription, priority, assignedTo, dueDate, formTemplateId, stageId } = req.body;
 
       const isBorrowerAssigned = assignedTo === "borrower";
 
-      if (formTemplateId) {
+      if (formTemplateId || isBorrowerAssigned) {
         const taskAssignedTo = isBorrowerAssigned ? 'borrower' : (assignedTo || 'borrower');
         const [ptask] = await db.insert(projectTasks)
           .values({
             projectId: dealId,
+            stageId: stageId ? parseInt(stageId) : null,
             taskTitle: taskName,
             taskDescription,
             taskType: 'general',
             priority: priority || 'medium',
             assignedTo: taskAssignedTo,
             visibleToBorrower: true,
-            borrowerActionRequired: true,
+            borrowerActionRequired: isBorrowerAssigned,
             status: 'pending',
-            formTemplateId: parseInt(formTemplateId),
+            dueDate: dueDate ? new Date(dueDate) : null,
+            formTemplateId: formTemplateId ? parseInt(formTemplateId) : null,
           })
           .returning();
 
-        res.json({ task: { ...ptask, taskName: ptask.taskTitle, formTemplateId: ptask.formTemplateId, _assignedToBorrower: taskAssignedTo === 'borrower' } });
+        res.json({ task: { ...ptask, taskName: ptask.taskTitle, formTemplateId: ptask.formTemplateId, _type: 'project_task', _assignedToBorrower: taskAssignedTo === 'borrower' } });
       } else {
         const [task] = await db.insert(dealTasks)
           .values({
@@ -10252,7 +10266,7 @@ export async function registerRoutes(
             taskName,
             taskDescription,
             priority: priority || 'medium',
-            assignedTo: isBorrowerAssigned ? null : (assignedTo ? parseInt(assignedTo) : null),
+            assignedTo: assignedTo ? parseInt(assignedTo) : null,
             dueDate: dueDate ? new Date(dueDate) : null,
             createdBy: req.user!.id,
           })
@@ -10279,7 +10293,7 @@ export async function registerRoutes(
           }
         }
 
-        res.json({ task });
+        res.json({ task: { ...task, _type: 'deal_task' } });
       }
     } catch (error) {
       console.error('Admin create deal task error:', error);
@@ -10287,15 +10301,54 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Update deal task
+  // Admin - Update deal task (supports both deal_tasks and project_tasks via _type field)
   app.patch('/api/admin/deals/:dealId/tasks/:taskId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
       const taskId = parseInt(req.params.taskId);
-      const { status, taskName, taskDescription, priority, assignedTo, dueDate } = req.body;
+      const { status, taskName, taskDescription, priority, assignedTo, dueDate, stageId, _type } = req.body;
       
-      // Get current task status to detect completion
-      const [existingTask] = await db.select().from(dealTasks).where(eq(dealTasks.id, taskId)).limit(1);
+      if (_type === 'project_task') {
+        const [existingPt] = await db.select().from(projectTasks).where(and(eq(projectTasks.id, taskId), eq(projectTasks.projectId, dealId))).limit(1);
+        if (!existingPt) {
+          return res.status(404).json({ error: 'Task not found in this deal' });
+        }
+
+        const ptUpdates: Record<string, unknown> = {};
+        if (status !== undefined) ptUpdates.status = status;
+        const resolvedTitle = taskName;
+        if (resolvedTitle !== undefined) ptUpdates.taskTitle = resolvedTitle;
+        if (taskDescription !== undefined) ptUpdates.taskDescription = taskDescription;
+        if (priority !== undefined) ptUpdates.priority = priority;
+        if (assignedTo !== undefined) {
+          ptUpdates.assignedTo = assignedTo || null;
+          if (assignedTo === 'borrower') {
+            ptUpdates.visibleToBorrower = true;
+            ptUpdates.borrowerActionRequired = true;
+          } else {
+            ptUpdates.borrowerActionRequired = false;
+          }
+        }
+        if (dueDate !== undefined) ptUpdates.dueDate = dueDate ? new Date(dueDate) : null;
+        if (stageId !== undefined) ptUpdates.stageId = stageId ? parseInt(stageId) : null;
+        if (status === 'completed') {
+          ptUpdates.completedAt = new Date();
+          ptUpdates.completedBy = req.user!.fullName || req.user!.email;
+        }
+        if (status === 'pending') {
+          ptUpdates.completedAt = null;
+          ptUpdates.completedBy = null;
+        }
+        
+        const updatedPt = await storage.updateTask(taskId, ptUpdates);
+        return res.json({ task: { ...updatedPt, taskName: updatedPt?.taskTitle, _type: 'project_task' } });
+      }
+
+      // Get current task status to detect completion (with dealId ownership check)
+      const [existingTask] = await db.select().from(dealTasks).where(and(eq(dealTasks.id, taskId), eq(dealTasks.dealId, dealId))).limit(1);
+      if (!existingTask) {
+        return res.status(404).json({ error: 'Task not found in this deal' });
+      }
       const wasCompleted = existingTask?.status === 'completed';
       
       const updateData: Record<string, unknown> = {};

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Plus, CalendarIcon, ClipboardEdit, ChevronDown } from "lucide-react";
+import { CheckCircle2, Plus, CalendarIcon, ClipboardEdit, ChevronDown, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,12 +42,14 @@ export default function TabTasks({
 }) {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<any>(null);
   const [taskName, setTaskName] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
   const [assignedTo, setAssignedTo] = useState("");
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [formTemplateId, setFormTemplateId] = useState<string>("");
+  const [stageId, setStageId] = useState<string>("");
 
   const { data: teamData } = useQuery<{ teamMembers: { id: number; fullName: string; email: string; role: string }[] }>({
     queryKey: ["/api/admin/team-members"],
@@ -59,32 +61,50 @@ export default function TabTasks({
   });
   const formTemplates = Array.isArray(formTemplatesData?.templates) ? formTemplatesData.templates : (Array.isArray(formTemplatesData) ? formTemplatesData : []);
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/tasks`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "tasks"] });
+    queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}`] });
+  };
+
   const updateTaskMutation = useMutation({
-    mutationFn: async ({ taskId, status }: { taskId: number; status: string }) => {
-      return apiRequest("PATCH", `/api/admin/deals/${dealId}/tasks/${taskId}`, { status });
+    mutationFn: async ({ taskId, status, _type }: { taskId: number; status: string; _type?: string }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/tasks/${taskId}`, { status, _type });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/tasks`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "tasks"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}`] });
+      invalidateAll();
       toast({ title: "Task updated" });
     },
   });
 
   const createTaskMutation = useMutation({
-    mutationFn: async (data: { taskName: string; taskDescription?: string; priority: string; assignedTo?: string; dueDate?: string; formTemplateId?: number }) => {
+    mutationFn: async (data: { taskName: string; taskDescription?: string; priority: string; assignedTo?: string; dueDate?: string; formTemplateId?: number; stageId?: string }) => {
       return apiRequest("POST", `/api/admin/deals/${dealId}/tasks`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/tasks`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "tasks"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}`] });
+      invalidateAll();
       toast({ title: "Task created" });
       resetForm();
       setDialogOpen(false);
     },
     onError: () => {
       toast({ title: "Failed to create task", variant: "destructive" });
+    },
+  });
+
+  const editTaskMutation = useMutation({
+    mutationFn: async ({ taskId, data }: { taskId: number; data: Record<string, any> }) => {
+      return apiRequest("PATCH", `/api/admin/deals/${dealId}/tasks/${taskId}`, data);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "Task updated" });
+      resetForm();
+      setDialogOpen(false);
+      setEditingTask(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to update task", variant: "destructive" });
     },
   });
 
@@ -95,18 +115,55 @@ export default function TabTasks({
     setAssignedTo("");
     setDueDate(undefined);
     setFormTemplateId("");
+    setStageId("");
+    setEditingTask(null);
+  }
+
+  function openCreate() {
+    resetForm();
+    setDialogOpen(true);
+  }
+
+  function openEdit(task: any) {
+    setEditingTask(task);
+    setTaskName(task.taskTitle || task.taskName || "");
+    setDescription(task.taskDescription || "");
+    setPriority(task.priority || "medium");
+    setAssignedTo(task._assignedToBorrower || task.assignedTo === "borrower" ? "borrower" : (task.assignedTo ? String(task.assignedTo) : ""));
+    setDueDate(task.dueDate ? new Date(task.dueDate) : undefined);
+    setFormTemplateId(task.formTemplateId ? String(task.formTemplateId) : "");
+    setStageId(task.stageId ? String(task.stageId) : "");
+    setDialogOpen(true);
   }
 
   function handleSubmit() {
     if (!taskName.trim()) return;
-    createTaskMutation.mutate({
-      taskName: taskName.trim(),
-      taskDescription: description.trim() || undefined,
-      priority,
-      assignedTo: assignedTo || undefined,
-      dueDate: dueDate ? dueDate.toISOString() : undefined,
-      formTemplateId: formTemplateId && formTemplateId !== "none" ? parseInt(formTemplateId) : undefined,
-    });
+
+    const resolvedAssignedTo = assignedTo === "unassigned" ? null : (assignedTo || null);
+    const resolvedStageId = stageId === "none" ? null : (stageId || null);
+
+    if (editingTask) {
+      const data: Record<string, any> = {
+        taskName: taskName.trim(),
+        taskDescription: description.trim() || null,
+        priority,
+        assignedTo: resolvedAssignedTo,
+        dueDate: dueDate ? dueDate.toISOString() : null,
+        stageId: resolvedStageId,
+        _type: editingTask._type || (editingTask._source === 'projectTasks' ? 'project_task' : 'deal_task'),
+      };
+      editTaskMutation.mutate({ taskId: editingTask.id, data });
+    } else {
+      createTaskMutation.mutate({
+        taskName: taskName.trim(),
+        taskDescription: description.trim() || undefined,
+        priority,
+        assignedTo: resolvedAssignedTo || undefined,
+        dueDate: dueDate ? dueDate.toISOString() : undefined,
+        formTemplateId: formTemplateId && formTemplateId !== "none" ? parseInt(formTemplateId) : undefined,
+        stageId: resolvedStageId || undefined,
+      });
+    }
   }
 
   const getAssigneeName = (task: any) => {
@@ -127,10 +184,11 @@ export default function TabTasks({
 
   const renderTask = (task: any) => {
     const assignee = getAssigneeName(task);
+    const taskType = task._type || (task._source === 'projectTasks' ? 'project_task' : 'deal_task');
     return (
       <div
         key={task.id}
-        className="flex items-center gap-3 py-2.5 px-4 border-b border-border/30 last:border-b-0 hover:bg-muted/30"
+        className="flex items-center gap-3 py-2.5 px-4 border-b border-border/30 last:border-b-0 hover:bg-muted/30 group"
         data-testid={`task-item-${task.id}`}
       >
         <Checkbox
@@ -139,11 +197,12 @@ export default function TabTasks({
             updateTaskMutation.mutate({
               taskId: task.id,
               status: checked ? "completed" : "pending",
+              _type: taskType,
             });
           }}
           data-testid={`checkbox-task-${task.id}`}
         />
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(task)} data-testid={`button-edit-task-${task.id}`}>
           <p className={`text-[15px] font-medium ${task.status === "completed" || task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
             {task.taskTitle || task.taskName || task.title}
           </p>
@@ -162,7 +221,7 @@ export default function TabTasks({
               {task.priority}
             </Badge>
           )}
-          {task.borrowerActionRequired && (
+          {(task.borrowerActionRequired || task._assignedToBorrower || task.assignedTo === "borrower") && (
             <Badge variant="outline" className="text-[12px] text-blue-600 border-blue-200">
               Borrower
             </Badge>
@@ -173,6 +232,15 @@ export default function TabTasks({
               Form
             </Badge>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={() => openEdit(task)}
+            data-testid={`button-edit-task-icon-${task.id}`}
+          >
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
         </div>
       </div>
     );
@@ -200,18 +268,21 @@ export default function TabTasks({
   });
   if (tasksByStage.has(null)) sortedStageKeys.push(null);
 
-  const stageData = sortedStageKeys.map((stageId) => {
-    const stageTasks = tasksByStage.get(stageId) || [];
-    const stage = stageId ? stageMap.get(stageId) : null;
+  const stageData = sortedStageKeys.map((sid) => {
+    const stageTasks = tasksByStage.get(sid) || [];
+    const stage = sid ? stageMap.get(sid) : null;
     const stageOrder = stage?.stageOrder ?? 0;
     const stageName = stage?.stageName || "General Tasks";
     const completedCount = stageTasks.filter((t) => t.status === "completed" || t.status === "done").length;
     const allComplete = completedCount === stageTasks.length && stageTasks.length > 0;
-    return { stageId, stageOrder, stageName, completedCount, totalCount: stageTasks.length, allComplete, tasks: stageTasks };
+    return { stageId: sid, stageOrder, stageName, completedCount, totalCount: stageTasks.length, allComplete, tasks: stageTasks };
   });
   const activeIdx = stageData.findIndex((s) => !s.allComplete);
 
   const completedTotal = tasks.filter((t) => t.status === "completed" || t.status === "done").length;
+
+  const isEditing = !!editingTask;
+  const isMutating = isEditing ? editTaskMutation.isPending : createTaskMutation.isPending;
 
   return (
     <div className="space-y-3">
@@ -222,7 +293,7 @@ export default function TabTasks({
         <Button
           size="sm"
           variant="outline"
-          onClick={() => setDialogOpen(true)}
+          onClick={openCreate}
           data-testid="button-add-task"
         >
           <Plus className="h-4 w-4 mr-1" />
@@ -257,7 +328,7 @@ export default function TabTasks({
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="sm:max-w-[480px]" data-testid="dialog-add-task">
           <DialogHeader>
-            <DialogTitle>Add Task</DialogTitle>
+            <DialogTitle>{isEditing ? "Edit Task" : "Add Task"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -303,6 +374,7 @@ export default function TabTasks({
                     <SelectValue placeholder="Select member" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {deal?.customerEmail && (
                       <SelectItem value="borrower">
                         {deal.customerFirstName && deal.customerLastName
@@ -319,6 +391,24 @@ export default function TabTasks({
                 </Select>
               </div>
             </div>
+            {stages.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Stage</Label>
+                <Select value={stageId} onValueChange={setStageId}>
+                  <SelectTrigger data-testid="select-task-stage">
+                    <SelectValue placeholder="No stage (General)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No stage (General)</SelectItem>
+                    {stages.sort((a: any, b: any) => (a.stageOrder ?? 0) - (b.stageOrder ?? 0)).map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        Stage {s.stageOrder}: {s.stageName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Due Date</Label>
               <Popover modal={false}>
@@ -341,7 +431,7 @@ export default function TabTasks({
                 </PopoverContent>
               </Popover>
             </div>
-            {formTemplates.length > 0 && (
+            {!isEditing && formTemplates.length > 0 && (
               <div className="space-y-1.5">
                 <Label>Form Template</Label>
                 <Select value={formTemplateId} onValueChange={setFormTemplateId}>
@@ -370,10 +460,10 @@ export default function TabTasks({
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!taskName.trim() || createTaskMutation.isPending}
+              disabled={!taskName.trim() || isMutating}
               data-testid="button-submit-task"
             >
-              {createTaskMutation.isPending ? "Creating..." : "Create Task"}
+              {isMutating ? (isEditing ? "Saving..." : "Creating...") : (isEditing ? "Save Changes" : "Create Task")}
             </Button>
           </DialogFooter>
         </DialogContent>
