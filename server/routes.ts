@@ -4371,6 +4371,54 @@ export async function registerRoutes(
         console.error('Doc review orchestrator error:', reviewErr.message);
       }
 
+      try {
+        const projResult = await db.execute(
+          sql`SELECT borrower_email, loan_number, property_address FROM projects WHERE id = ${projectId} LIMIT 1`
+        );
+        const proj = (projResult as any).rows?.[0];
+        const borrowerEmail = proj?.borrower_email?.toLowerCase();
+        if (borrowerEmail && objectPath) {
+          let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, borrowerEmail));
+          if (!profile) {
+            const [inserted] = await db.insert(borrowerProfiles).values({ email: borrowerEmail }).returning();
+            profile = inserted;
+          }
+          const docName = safeFileName || updated?.document_name || 'Document';
+          const dealLabel = proj?.loan_number || proj?.property_address || `Deal #${projectId}`;
+          const existingVaultDoc = await db.select().from(borrowerDocuments)
+            .where(and(
+              eq(borrowerDocuments.borrowerProfileId, profile.id),
+              eq(borrowerDocuments.sourceDealId, projectId),
+              eq(borrowerDocuments.fileName, docName),
+              eq(borrowerDocuments.isActive, true)
+            ));
+          if (existingVaultDoc.length) {
+            await db.update(borrowerDocuments)
+              .set({
+                storagePath: objectPath,
+                fileType: safeMimeType,
+                fileSize: safeFileSize,
+                updatedAt: new Date(),
+              })
+              .where(eq(borrowerDocuments.id, existingVaultDoc[0].id));
+          } else {
+            await db.insert(borrowerDocuments).values({
+              borrowerProfileId: profile.id,
+              fileName: docName,
+              fileType: safeMimeType,
+              fileSize: safeFileSize,
+              storagePath: objectPath,
+              category: updated?.document_category || 'general',
+              documentClassification: 'standalone',
+              sourceDealId: projectId,
+              sourceDealName: dealLabel,
+            });
+          }
+        }
+      } catch (syncErr: any) {
+        console.error('Auto-sync to borrower vault error:', syncErr.message);
+      }
+
       res.json({ document: updated, file: newFile });
     } catch (error: any) {
       console.error('Deal doc upload error:', error);
@@ -4726,9 +4774,7 @@ export async function registerRoutes(
       }
 
       const { fileName, fileType, fileSize, storagePath, category, description, expirationDate } = req.body;
-      const profileCategories = ['id_document', 'tax_return', 'bank_statement', 'pay_stub', 'entity_docs'];
       const docCategory = category || 'other';
-      const classification = profileCategories.includes(docCategory) ? 'profile' : 'standalone';
       const [doc] = await db.insert(borrowerDocuments).values({
         borrowerProfileId: profile.id,
         fileName,
@@ -4736,7 +4782,7 @@ export async function registerRoutes(
         fileSize,
         storagePath,
         category: docCategory,
-        documentClassification: classification,
+        documentClassification: 'standalone',
         description,
         expirationDate,
       }).returning();
@@ -4774,6 +4820,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete borrower document error:', error);
       res.status(500).json({ error: 'Failed to delete document' });
+    }
+  });
+
+  app.patch('/api/portal/:token/borrower-documents/:docId/classification', async (req: Request, res: Response) => {
+    try {
+      const { token, docId } = req.params;
+      const [project] = await db.select().from(projects)
+        .where(or(eq(projects.borrowerPortalToken, token), eq(projects.brokerPortalToken, token)));
+      if (!project) return res.status(404).json({ error: 'Invalid portal token' });
+
+      const email = project.borrowerEmail;
+      if (!email) return res.status(404).json({ error: 'No borrower email' });
+
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+      const { documentClassification } = req.body;
+      if (!['profile', 'standalone'].includes(documentClassification)) {
+        return res.status(400).json({ error: 'Invalid classification' });
+      }
+
+      const [updated] = await db.update(borrowerDocuments)
+        .set({ documentClassification, updatedAt: new Date() })
+        .where(and(eq(borrowerDocuments.id, parseInt(docId)), eq(borrowerDocuments.borrowerProfileId, profile.id)))
+        .returning();
+
+      if (!updated) return res.status(404).json({ error: 'Document not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Portal update document classification error:', error);
+      res.status(500).json({ error: 'Failed to update classification' });
     }
   });
 
@@ -4907,6 +4984,34 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Delete borrower document error:', error);
       res.status(500).json({ error: 'Failed to delete document' });
+    }
+  });
+
+  app.patch('/api/borrower/documents/:docId/classification', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'borrower') return res.status(403).json({ error: 'Borrower access only' });
+
+      const email = user.email.toLowerCase();
+      const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+      const docId = parseInt(req.params.docId);
+      const { documentClassification } = req.body;
+      if (!['profile', 'standalone'].includes(documentClassification)) {
+        return res.status(400).json({ error: 'Invalid classification' });
+      }
+
+      const [updated] = await db.update(borrowerDocuments)
+        .set({ documentClassification, updatedAt: new Date() })
+        .where(and(eq(borrowerDocuments.id, docId), eq(borrowerDocuments.borrowerProfileId, profile.id)))
+        .returning();
+
+      if (!updated) return res.status(404).json({ error: 'Document not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Update borrower document classification error:', error);
+      res.status(500).json({ error: 'Failed to update classification' });
     }
   });
 

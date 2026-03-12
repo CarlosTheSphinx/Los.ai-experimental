@@ -3766,6 +3766,8 @@ export const borrowerDocuments = pgTable("borrower_documents", {
   description: text("description"),
   expirationDate: varchar("expiration_date", { length: 20 }),
   isActive: boolean("is_active").default(true),
+  sourceDealId: integer("source_deal_id"),
+  sourceDealName: varchar("source_deal_name", { length: 500 }),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

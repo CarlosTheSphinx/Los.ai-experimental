@@ -24,6 +24,8 @@ import {
   Plus,
   Download,
   RefreshCw,
+  Star,
+  LinkIcon,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -426,6 +429,20 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     onError: (err: Error) => {
       setUploadingGlobalDoc(false);
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const classificationMutation = useMutation({
+    mutationFn: async ({ docId, classification }: { docId: number; classification: string }) => {
+      return await apiRequest("PATCH", `/api/portal/${token}/borrower-documents/${docId}/classification`, {
+        documentClassification: classification,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal', token, 'borrower-documents'] });
+    },
+    onError: () => {
+      toast({ title: "Failed to update document", variant: "destructive" });
     },
   });
 
@@ -1111,13 +1128,12 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
               contract: "Contract",
               other: "Other",
             };
-            const profileCategories = ['id_document', 'tax_return', 'bank_statement', 'pay_stub', 'entity_docs'];
             const allDocs = docsData?.documents || [];
             const profileDocs = allDocs.filter((d: any) =>
-              d.documentClassification === 'profile' || profileCategories.includes(d.category || '')
+              d.documentClassification === 'profile'
             );
             const standaloneDocs = allDocs.filter((d: any) =>
-              d.documentClassification !== 'profile' && !profileCategories.includes(d.category || '')
+              d.documentClassification !== 'profile'
             );
 
             const handleGlobalDocUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -1131,7 +1147,11 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
             const renderDocRow = (doc: any) => (
               <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg" data-testid={`doc-row-${doc.id}`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                  {doc.documentClassification === 'profile' ? (
+                    <Star className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                  )}
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{doc.fileName}</p>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
@@ -1140,23 +1160,44 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                           {categoryLabels[doc.category] || doc.category.replace(/_/g, ' ')}
                         </Badge>
                       )}
-                      {profileCategories.includes(doc.category || '') && (
-                        <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                          <RefreshCw className="h-2.5 w-2.5 mr-0.5" /> Auto-fills future loans
+                      {doc.documentClassification === 'profile' && (
+                        <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-200">
+                          <Star className="h-2.5 w-2.5 mr-0.5" /> Kept for future deals
                         </Badge>
+                      )}
+                      {doc.sourceDealName && (
+                        <span className="flex items-center gap-0.5">
+                          <LinkIcon className="h-2.5 w-2.5" />
+                          From: {doc.sourceDealName}
+                        </span>
                       )}
                       <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
                       {doc.fileSize && <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>}
                     </div>
                   </div>
                 </div>
-                {doc.storagePath && (
-                  <a href={doc.storagePath} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm" className="h-7 px-2">
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                  </a>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5" title="Keep for future deals">
+                    <Switch
+                      checked={doc.documentClassification === 'profile'}
+                      onCheckedChange={(checked) =>
+                        classificationMutation.mutate({
+                          docId: doc.id,
+                          classification: checked ? 'profile' : 'standalone',
+                        })
+                      }
+                      data-testid={`toggle-keep-doc-${doc.id}`}
+                    />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">Keep</span>
+                  </div>
+                  {doc.storagePath && (
+                    <a href={doc.storagePath} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="sm" className="h-7 px-2">
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
               </div>
             );
 

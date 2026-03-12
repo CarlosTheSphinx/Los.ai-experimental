@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Switch } from "@/components/ui/switch";
 import {
   FolderOpen,
   Upload,
@@ -17,6 +18,8 @@ import {
   Search,
   Calendar,
   HardDrive,
+  Star,
+  LinkIcon,
 } from "lucide-react";
 
 const DOCUMENT_CATEGORIES = [
@@ -83,6 +86,20 @@ export default function BorrowerDocumentsPage() {
     },
     onError: () => {
       toast({ title: "Failed to remove document", variant: "destructive" });
+    },
+  });
+
+  const classificationMutation = useMutation({
+    mutationFn: async ({ docId, classification }: { docId: number; classification: string }) => {
+      return await apiRequest("PATCH", `/api/borrower/documents/${docId}/classification`, {
+        documentClassification: classification,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/borrower/documents"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to update document", variant: "destructive" });
     },
   });
 
@@ -205,13 +222,28 @@ export default function BorrowerDocumentsPage() {
           {filteredDocs.map((doc: any) => (
             <Card key={doc.id} className="hover:bg-muted/30 transition-colors" data-testid={`doc-row-${doc.id}`}>
               <CardContent className="flex items-center gap-4 py-3 px-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <FileText className="h-5 w-5 text-primary" />
+                <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${doc.documentClassification === 'profile' ? 'bg-amber-500/10' : 'bg-primary/10'}`}>
+                  {doc.documentClassification === 'profile' ? (
+                    <Star className="h-5 w-5 text-amber-500" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-primary" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{doc.fileName}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">{getCategoryLabel(doc.category)}</Badge>
+                    {doc.documentClassification === 'profile' && (
+                      <Badge className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-200">
+                        <Star className="h-2.5 w-2.5 mr-0.5" /> Kept for future deals
+                      </Badge>
+                    )}
+                    {doc.sourceDealName && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <LinkIcon className="h-2.5 w-2.5" />
+                        From: {doc.sourceDealName}
+                      </span>
+                    )}
                     {doc.fileSize && (
                       <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                         <HardDrive className="h-2.5 w-2.5" />
@@ -229,16 +261,31 @@ export default function BorrowerDocumentsPage() {
                     <p className="text-xs text-muted-foreground mt-1 truncate">{doc.description}</p>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive shrink-0"
-                  onClick={() => deleteMutation.mutate(doc.id)}
-                  disabled={deleteMutation.isPending}
-                  data-testid={`button-delete-doc-${doc.id}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-1.5" title="Keep for future deals">
+                    <Switch
+                      checked={doc.documentClassification === 'profile'}
+                      onCheckedChange={(checked) =>
+                        classificationMutation.mutate({
+                          docId: doc.id,
+                          classification: checked ? 'profile' : 'standalone',
+                        })
+                      }
+                      data-testid={`toggle-keep-doc-${doc.id}`}
+                    />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">Keep</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive shrink-0"
+                    onClick={() => deleteMutation.mutate(doc.id)}
+                    disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-doc-${doc.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
