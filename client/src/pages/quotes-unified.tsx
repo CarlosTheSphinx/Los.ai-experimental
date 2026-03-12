@@ -469,6 +469,8 @@ export default function QuotesUnified() {
 
   const { data: programsData } = useQuery<{ programs: ProgramWithPricing[] }>({
     queryKey: ["/api/programs-with-pricing"],
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
   });
 
   const allActivePrograms = programsData?.programs || [];
@@ -1248,7 +1250,17 @@ export default function QuotesUnified() {
                 );
               })()}
 
-              {!selectedProgramId && (
+              {!selectedProgramId && allActivePrograms.length === 0 && (
+                <div className="max-w-4xl mx-auto">
+                  {loanProductType === "dscr" ? (
+                    <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
+                  ) : (
+                    <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
+                  )}
+                </div>
+              )}
+
+              {!selectedProgramId && allActivePrograms.length > 0 && (
                 <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden">
                   <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                     <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mb-4">
