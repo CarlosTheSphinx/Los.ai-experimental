@@ -3785,10 +3785,14 @@ export async function registerRoutes(
         ...stage,
         tasks: tasks.filter(t => t.stageId === stage.id),
       }));
+
+      // Include tasks with no stage assignment (stageId = NULL)
+      const stagelessTasks = tasks.filter(t => t.stageId === null || t.stageId === undefined);
       
       res.json({
         project: { ...project, programName },
         stages: stagesWithTasks,
+        tasks: stagelessTasks,
         activity,
         documents,
         dealDocuments: dealDocs,

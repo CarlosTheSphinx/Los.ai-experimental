@@ -4,7 +4,7 @@ import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
-  Eye, X,
+  Eye, X, ClipboardEdit,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,12 +83,13 @@ export default function BorrowerDealDetail() {
   const dealId = params?.id;
   const { toast } = useToast();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
-  const [expandedSection, setExpandedSection] = useState<string | null>("overview");
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["overview", "tasks"]));
   const [previewDoc, setPreviewDoc] = useState<{ name: string; filePath: string; mimeType?: string } | null>(null);
 
   const { data: dealData, isLoading, error: dealError } = useQuery<{
     project: any;
     stages: any[];
+    tasks: any[];
     activity: any[];
     documents: any[];
     dealDocuments: any[];
@@ -106,7 +107,9 @@ export default function BorrowerDealDetail() {
   const deal = dealData?.project;
   const rawStages = dealData?.stages || [];
   const documents = dealData?.dealDocuments?.length ? dealData.dealDocuments : dealData?.documents || [];
-  const allTasks = rawStages.flatMap((s: any) => (s.tasks || []).filter((t: any) => t.visibleToBorrower));
+  const stageTasks = rawStages.flatMap((s: any) => (s.tasks || []).filter((t: any) => t.visibleToBorrower));
+  const stagelessTasks = (dealData?.tasks || []).filter((t: any) => t.visibleToBorrower);
+  const allTasks = [...stageTasks, ...stagelessTasks.filter((st: any) => !stageTasks.some((et: any) => et.id === st.id))];
 
   const stages = rawStages.length > 0
     ? rawStages.map((s: any, i: number) => ({
@@ -259,17 +262,21 @@ export default function BorrowerDealDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto space-y-4">
+      <div className="p-6 max-w-5xl mx-auto space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
 
   if (!deal) {
     return (
-      <div className="p-6 max-w-4xl mx-auto text-center py-20">
+      <div className="p-6 max-w-5xl mx-auto text-center py-20">
         <h2 className="text-lg font-semibold mb-2">{dealError ? "Failed to load loan" : "Loan not found"}</h2>
         <p className="text-muted-foreground text-sm mb-4">
           {dealError ? "There was an error loading this loan." : "This loan may not be available."}
@@ -286,13 +293,20 @@ export default function BorrowerDealDetail() {
   const borrowerFields = buildBorrowerFields();
   const propertyFields = buildPropertyFields();
   const loanFields = buildLoanFields();
-  const borrowerTasks = allTasks.filter((t: any) => t.borrowerActionRequired);
+  const borrowerTasks = allTasks.filter((t: any) => t.borrowerActionRequired || t.assignedTo === 'borrower');
   const pendingDocs = documents.filter((d: any) => d.status === 'pending' || d.status === 'rejected');
 
-  const toggle = (section: string) => setExpandedSection(expandedSection === section ? null : section);
+  const toggle = (section: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  };
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 space-y-5">
+    <div className="max-w-5xl mx-auto py-6 px-4 space-y-5">
       <div className="flex items-center gap-3 mb-2">
         <Link href="/">
           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
@@ -327,8 +341,8 @@ export default function BorrowerDealDetail() {
         totalItems={totalItems}
       />
 
-      <div className="space-y-3">
-        <Card className="overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="overflow-hidden" data-testid="card-loan-overview">
           <button
             className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
             onClick={() => toggle("overview")}
@@ -338,33 +352,31 @@ export default function BorrowerDealDetail() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
               Loan Overview
             </CardTitle>
-            {expandedSection === "overview" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            {expandedSections.has("overview") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
           </button>
-          {expandedSection === "overview" && (
+          {expandedSections.has("overview") && (
             <CardContent className="pt-0 pb-5">
               <div className="border-t mb-4" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-5">
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Details</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {borrowerFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
-                    </div>
+              <div className="space-y-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Details</span>
                   </div>
-                  <div className="border-t pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {propertyFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
-                    </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {borrowerFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                   </div>
                 </div>
-                <div>
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {propertyFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
+                  </div>
+                </div>
+                <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-3">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                     <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Loan Details</span>
@@ -378,7 +390,78 @@ export default function BorrowerDealDetail() {
           )}
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-testid="card-task-overview">
+          <button
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
+            onClick={() => toggle("tasks")}
+            data-testid="toggle-tasks"
+          >
+            <CardTitle className="text-[18px] flex items-center gap-2">
+              <CheckSquare className="h-4 w-4 text-muted-foreground" />
+              Task Overview
+              <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
+                {borrowerTasks.filter((t: any) => t.status !== 'completed').length} remaining
+              </Badge>
+            </CardTitle>
+            {expandedSections.has("tasks") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.has("tasks") && (
+            <CardContent className="pt-0 pb-4">
+              <div className="border-t mb-3" />
+              {borrowerTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No tasks assigned yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {borrowerTasks.map((task: any) => (
+                    <div key={task.id} className="flex flex-col gap-1 py-2.5 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
+                      <div className="flex items-center gap-3">
+                        {task.status === 'completed' ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <div className="h-4 w-4 rounded-full border-2 border-amber-400 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[14px] font-medium truncate ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                            {task.taskTitle || task.taskName}
+                          </p>
+                          {task.dueDate && (
+                            <p className="text-[12px] text-muted-foreground">Due: {fmtDate(task.dueDate)}</p>
+                          )}
+                        </div>
+                        <Badge
+                          variant={task.status === 'completed' ? 'default' : task.priority === 'critical' ? 'destructive' : task.priority === 'high' ? 'destructive' : 'secondary'}
+                          className={`text-[11px] capitalize ${task.status === 'completed' ? 'bg-green-600' : ''}`}
+                        >
+                          {task.status === 'completed' ? 'Done' : task.priority || 'Pending'}
+                        </Badge>
+                      </div>
+                      {task.formTemplateId && task.status !== 'completed' && (
+                        <div className="ml-7">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs gap-1.5"
+                            onClick={() => {
+                              if (deal?.borrowerPortalToken) {
+                                window.location.href = `/portal/${deal.borrowerPortalToken}`;
+                              }
+                            }}
+                            data-testid={`button-form-action-${task.id}`}
+                          >
+                            <ClipboardEdit className="h-3.5 w-3.5" />
+                            Fill Out Form
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        <Card className="overflow-hidden md:col-span-2" data-testid="card-documents">
           <button
             className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
             onClick={() => toggle("documents")}
@@ -393,10 +476,10 @@ export default function BorrowerDealDetail() {
             </CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{completedDocs}/{totalDocs}</span>
-              {expandedSection === "documents" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              {expandedSections.has("documents") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </div>
           </button>
-          {expandedSection === "documents" && (
+          {expandedSections.has("documents") && (
             <CardContent className="pt-0 pb-4">
               <div className="border-t mb-3" />
               {documents.length === 0 ? (
@@ -451,55 +534,6 @@ export default function BorrowerDealDetail() {
             </CardContent>
           )}
         </Card>
-
-        {borrowerTasks.length > 0 && (
-          <Card className="overflow-hidden">
-            <button
-              className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
-              onClick={() => toggle("tasks")}
-              data-testid="toggle-tasks"
-            >
-              <CardTitle className="text-[18px] flex items-center gap-2">
-                <CheckSquare className="h-4 w-4 text-muted-foreground" />
-                Your Tasks
-                <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
-                  {borrowerTasks.filter((t: any) => t.status !== 'completed').length} remaining
-                </Badge>
-              </CardTitle>
-              {expandedSection === "tasks" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-            </button>
-            {expandedSection === "tasks" && (
-              <CardContent className="pt-0 pb-4">
-                <div className="border-t mb-3" />
-                <div className="space-y-1.5">
-                  {borrowerTasks.map((task: any) => (
-                    <div key={task.id} className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
-                      {task.status === 'completed' ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-amber-400 flex-shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-[14px] font-medium truncate ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                          {task.taskTitle || task.taskName}
-                        </p>
-                        {task.dueDate && (
-                          <p className="text-[12px] text-muted-foreground">Due: {fmtDate(task.dueDate)}</p>
-                        )}
-                      </div>
-                      <Badge
-                        variant={task.status === 'completed' ? 'default' : task.priority === 'critical' ? 'destructive' : 'secondary'}
-                        className={`text-[11px] ${task.status === 'completed' ? 'bg-green-600' : ''}`}
-                      >
-                        {task.status === 'completed' ? 'Done' : task.priority === 'critical' ? 'Required' : 'Pending'}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        )}
       </div>
 
       {previewDoc && (
