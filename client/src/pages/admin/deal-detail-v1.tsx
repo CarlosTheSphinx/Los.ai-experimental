@@ -697,6 +697,7 @@ export default function AdminDealDetail() {
     documentCategory: "other",
     documentDescription: "",
     isRequired: true,
+    visibility: "all",
   });
 
   const [propertyDialogOpen, setPropertyDialogOpen] = useState(false);
@@ -1555,7 +1556,7 @@ export default function AdminDealDetail() {
       queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/projects', linkedProjectId] });
       setDocumentDialogOpen(false);
-      setDocumentForm({ documentName: "", documentCategory: "other", documentDescription: "", isRequired: true });
+      setDocumentForm({ documentName: "", documentCategory: "other", documentDescription: "", isRequired: true, visibility: "all" });
       toast({ title: "Document requirement added" });
     },
     onError: () => {
@@ -3991,6 +3992,21 @@ export default function AdminDealDetail() {
                 placeholder="Additional details about this document..."
                 data-testid="input-document-description"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="documentVisibility">Visibility</Label>
+              <Select
+                value={documentForm.visibility}
+                onValueChange={(value) => setDocumentForm({ ...documentForm, visibility: value })}
+              >
+                <SelectTrigger data-testid="select-document-visibility">
+                  <SelectValue placeholder="Select visibility" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="internal">Internal Only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox

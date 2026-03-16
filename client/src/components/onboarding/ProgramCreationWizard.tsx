@@ -335,6 +335,8 @@ interface DocEntry {
   documentCategory: string;
   isRequired: boolean;
   stepIndex: number | null;
+  previewDescription: string;
+  visibility: string;
 }
 
 interface TaskEntry {
@@ -383,28 +385,28 @@ const dscrDefaultStages: StageEntry[] = [
 
 const dscrDefaultDocuments: DocEntry[] = [
   // Application stage docs
-  { documentName: 'Government-Issued Photo ID', documentCategory: 'borrower_docs', isRequired: true, stepIndex: 0 },
-  { documentName: 'Authorization to Release Information', documentCategory: 'borrower_docs', isRequired: true, stepIndex: 0 },
-  { documentName: 'Purchase Contract / LOI', documentCategory: 'property_docs', isRequired: true, stepIndex: 0 },
+  { documentName: 'Government-Issued Photo ID', documentCategory: 'borrower_docs', isRequired: true, stepIndex: 0, previewDescription: '', visibility: 'all' },
+  { documentName: 'Authorization to Release Information', documentCategory: 'borrower_docs', isRequired: true, stepIndex: 0, previewDescription: '', visibility: 'all' },
+  { documentName: 'Purchase Contract / LOI', documentCategory: 'property_docs', isRequired: true, stepIndex: 0, previewDescription: '', visibility: 'all' },
   // Processing stage docs
-  { documentName: '2 Months Personal Bank Statements', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1 },
-  { documentName: '2 Months Business Bank Statements', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1 },
-  { documentName: 'Most Recent Tax Returns (2 Years)', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1 },
-  { documentName: 'Personal Financial Statement (PFS)', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1 },
-  { documentName: 'Articles of Organization / Incorporation', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1 },
-  { documentName: 'Operating Agreement', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1 },
-  { documentName: 'EIN Letter (IRS)', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1 },
+  { documentName: '2 Months Personal Bank Statements', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: '2 Months Business Bank Statements', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: 'Most Recent Tax Returns (2 Years)', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: 'Personal Financial Statement (PFS)', documentCategory: 'financial_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: 'Articles of Organization / Incorporation', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: 'Operating Agreement', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
+  { documentName: 'EIN Letter (IRS)', documentCategory: 'entity_docs', isRequired: true, stepIndex: 1, previewDescription: '', visibility: 'all' },
   // Underwriting stage docs
-  { documentName: 'Rent Roll', documentCategory: 'property_docs', isRequired: true, stepIndex: 2 },
-  { documentName: 'Schedule of Real Estate Owned (SREO)', documentCategory: 'property_docs', isRequired: true, stepIndex: 2 },
-  { documentName: 'Property Photos', documentCategory: 'property_docs', isRequired: true, stepIndex: 2 },
+  { documentName: 'Rent Roll', documentCategory: 'property_docs', isRequired: true, stepIndex: 2, previewDescription: '', visibility: 'all' },
+  { documentName: 'Schedule of Real Estate Owned (SREO)', documentCategory: 'property_docs', isRequired: true, stepIndex: 2, previewDescription: '', visibility: 'all' },
+  { documentName: 'Property Photos', documentCategory: 'property_docs', isRequired: true, stepIndex: 2, previewDescription: '', visibility: 'all' },
   // Appraisal & Title stage docs
-  { documentName: 'Appraisal (if applicable)', documentCategory: 'property_docs', isRequired: true, stepIndex: 3 },
-  { documentName: 'Title Commitment / Preliminary Title Report', documentCategory: 'property_docs', isRequired: true, stepIndex: 3 },
-  { documentName: 'Insurance Binder / Dec Page', documentCategory: 'property_docs', isRequired: true, stepIndex: 3 },
+  { documentName: 'Appraisal (if applicable)', documentCategory: 'property_docs', isRequired: true, stepIndex: 3, previewDescription: '', visibility: 'all' },
+  { documentName: 'Title Commitment / Preliminary Title Report', documentCategory: 'property_docs', isRequired: true, stepIndex: 3, previewDescription: '', visibility: 'all' },
+  { documentName: 'Insurance Binder / Dec Page', documentCategory: 'property_docs', isRequired: true, stepIndex: 3, previewDescription: '', visibility: 'all' },
   // Closing stage docs
-  { documentName: 'HUD-1 / Closing Disclosure (if refinance)', documentCategory: 'closing_docs', isRequired: false, stepIndex: 4 },
-  { documentName: 'Payoff Statement (if refinance)', documentCategory: 'closing_docs', isRequired: false, stepIndex: 4 },
+  { documentName: 'HUD-1 / Closing Disclosure (if refinance)', documentCategory: 'closing_docs', isRequired: false, stepIndex: 4, previewDescription: '', visibility: 'all' },
+  { documentName: 'Payoff Statement (if refinance)', documentCategory: 'closing_docs', isRequired: false, stepIndex: 4, previewDescription: '', visibility: 'all' },
 ];
 
 const dscrDefaultTasks: TaskEntry[] = [
@@ -552,6 +554,8 @@ export function ProgramCreationWizard({
         documentCategory: d.documentCategory || 'other',
         isRequired: d.isRequired !== false,
         stepIndex: d.stepId != null ? editProgramData.workflowSteps.findIndex((s: any) => s.id === d.stepId) : null,
+        previewDescription: d.documentDescription || '',
+        visibility: d.visibility || 'all',
       })));
     } else {
       setDocuments([]);
@@ -715,7 +719,9 @@ export function ProgramCreationWizard({
         id: d.id,
         documentName: d.documentName,
         documentCategory: d.documentCategory,
+        documentDescription: d.previewDescription || null,
         isRequired: d.isRequired,
+        visibility: d.visibility || 'all',
         stepIndex: d.stepIndex,
       })),
       tasks: tasks.map((t) => ({
@@ -2929,6 +2935,14 @@ function SortableDocRow({
       <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", DOC_CATEGORY_COLORS[doc.documentCategory] || DOC_CATEGORY_COLORS.other)}>
         {DOC_CATEGORY_LABELS[doc.documentCategory] || 'Other'}
       </span>
+      <input
+        className="text-[12px] text-muted-foreground bg-transparent border-0 outline-none w-[140px] min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
+        value={doc.previewDescription || ''}
+        onChange={(e) => updateDocument(globalIdx, 'previewDescription', e.target.value)}
+        placeholder="Preview description..."
+        title="Shown to borrowers/brokers on hover"
+        data-testid={`input-doc-preview-desc-${globalIdx}`}
+      />
       <Select
         value={doc.isRequired ? 'required' : 'optional'}
         onValueChange={(v) => updateDocument(globalIdx, 'isRequired', v === 'required')}
@@ -2939,6 +2953,18 @@ function SortableDocRow({
         <SelectContent>
           <SelectItem value="required">Required</SelectItem>
           <SelectItem value="optional">Optional</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select
+        value={doc.visibility || 'all'}
+        onValueChange={(v) => updateDocument(globalIdx, 'visibility', v)}
+      >
+        <SelectTrigger className="w-[120px] h-7 text-[12px]" data-testid={`select-doc-visibility-${globalIdx}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          <SelectItem value="internal">Internal Only</SelectItem>
         </SelectContent>
       </Select>
       <Select
@@ -3000,7 +3026,7 @@ function DocumentsStep({
     const docName = newDocName.trim();
     if (!docName) return;
     const stepIndex = typeof target === 'number' ? target : null;
-    setDocuments([...documents, { documentName: docName, documentCategory: newDocCategory, isRequired: true, stepIndex }]);
+    setDocuments([...documents, { documentName: docName, documentCategory: newDocCategory, isRequired: true, stepIndex, previewDescription: '', visibility: 'all' }]);
     setNewDocName('');
     setNewDocCategory('borrower_docs');
     setAddingToStage(null);

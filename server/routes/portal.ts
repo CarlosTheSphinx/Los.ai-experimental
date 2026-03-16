@@ -231,7 +231,11 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         return { ...doc, files };
       }));
 
-      res.json({ documents: docsWithFiles, stages });
+      const visibleDocs = docsWithFiles.filter(doc =>
+        doc.visibility === 'all' || doc.visibility === 'borrower' || !doc.visibility
+      );
+
+      res.json({ documents: visibleDocs, stages });
     } catch (error) {
       console.error('Portal documents error:', error);
       res.status(500).json({ error: 'Failed to load documents' });

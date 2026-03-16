@@ -8511,6 +8511,8 @@ export async function registerRoutes(
       const visibleDocs = docsWithFiles.filter(doc => {
         const vis = doc.visibility || 'all';
         if (vis === 'all') return true;
+        if (viewerRole === 'admin') return true;
+        if (vis === 'internal') return false;
         return vis === viewerRole;
       });
 
@@ -10054,6 +10056,8 @@ export async function registerRoutes(
                 documentCategory: doc.documentCategory,
                 documentDescription: doc.documentDescription,
                 isRequired: doc.isRequired,
+                assignedTo: doc.assignedTo || 'borrower',
+                visibility: doc.visibility || 'all',
                 sortOrder: doc.sortOrder || index,
                 status: 'pending' as const,
               }));
@@ -10137,6 +10141,8 @@ export async function registerRoutes(
               documentCategory: template.documentCategory,
               documentDescription: template.documentDescription,
               isRequired: template.isRequired,
+              assignedTo: template.assignedTo || 'borrower',
+              visibility: template.visibility || 'all',
               sortOrder: template.sortOrder,
               status: 'pending',
             })
@@ -10425,7 +10431,7 @@ export async function registerRoutes(
   app.post('/api/admin/deals/:dealId/documents', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { documentName, documentCategory, documentDescription, isRequired, stageId } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, stageId, visibility } = req.body;
 
       let validatedStageId: number | undefined;
       if (stageId) {
@@ -10451,6 +10457,7 @@ export async function registerRoutes(
           documentCategory: documentCategory || 'other',
           documentDescription,
           isRequired: isRequired !== false,
+          visibility: visibility || 'all',
           sortOrder: maxOrder + 1,
           ...(validatedStageId ? { stageId: validatedStageId } : {}),
         })

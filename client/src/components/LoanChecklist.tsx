@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ClipboardEdit,
   Send,
+  HelpCircle,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -621,6 +623,18 @@ function ChecklistItemRow({
             }`}>
               {item.title}
             </span>
+            {isDocument && item.description && (mode === "borrower" || mode === "broker") && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help inline-block" data-testid={`tooltip-doc-desc-${item.id}`} />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs text-xs">{item.description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {isDocument && item.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
             {!isDocument && <Badge variant="outline" className="text-xs">Task</Badge>}
             {hasForm && <Badge variant="secondary" className="text-xs"><ClipboardEdit className="h-3 w-3 mr-1" />Form</Badge>}
@@ -637,7 +651,7 @@ function ChecklistItemRow({
               <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Form Pending</Badge>
             )}
           </div>
-          {item.description && (
+          {item.description && (mode === "admin" || !isDocument) && (
             <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
           )}
           {item.status === "rejected" && item.reviewNotes && (

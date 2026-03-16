@@ -232,6 +232,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
               documentCategory: doc.documentCategory || 'other',
               documentDescription: doc.documentDescription || null,
               isRequired: doc.isRequired !== false,
+              assignedTo: doc.assignedTo || 'borrower',
+              visibility: doc.visibility || 'all',
               sortOrder: index,
               stepId: doc.stepIndex !== null && doc.stepIndex !== undefined && doc.stepIndex >= 0 && doc.stepIndex < createdStepIds.length && createdStepIds[doc.stepIndex] > 0 ? createdStepIds[doc.stepIndex] : null,
             }));
@@ -452,6 +454,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
                   documentCategory: doc.documentCategory || 'other',
                   documentDescription: doc.documentDescription || null,
                   isRequired: doc.isRequired !== false,
+                  assignedTo: doc.assignedTo || 'borrower',
+                  visibility: doc.visibility || 'all',
                   sortOrder: i,
                   stepId: resolvedStepId,
                 })
@@ -464,6 +468,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
                 documentCategory: doc.documentCategory || 'other',
                 documentDescription: doc.documentDescription || null,
                 isRequired: doc.isRequired !== false,
+                assignedTo: doc.assignedTo || 'borrower',
+                visibility: doc.visibility || 'all',
                 sortOrder: i,
                 stepId: resolvedStepId,
               });
@@ -803,7 +809,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     try {
       const { programId } = req.params;
       if (!await verifyProgramOwnership(req, res, parseInt(programId))) return;
-      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId } = req.body;
+      const { documentName, documentCategory, documentDescription, isRequired, sortOrder, stepId, visibility, assignedTo } = req.body;
 
       if (!documentName || !documentCategory) {
         return res.status(400).json({ error: 'Document name and category are required' });
@@ -816,6 +822,8 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         documentCategory,
         documentDescription,
         isRequired: isRequired !== false,
+        assignedTo: assignedTo || 'borrower',
+        visibility: visibility || 'all',
         sortOrder: sortOrder || 0,
         stepId: stepId || null,
       }).returning();
