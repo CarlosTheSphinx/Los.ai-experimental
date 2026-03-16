@@ -1390,7 +1390,7 @@ export async function registerRoutes(
   app.post('/api/quotes/:id/send-internal-signature', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { recipientEmail, recipientName, templateId } = req.body;
+      const { recipientEmail, recipientName, templateId, resend, existingDocumentId } = req.body;
 
       const quote = await storage.getQuoteById(id, req.user!.id);
       if (!quote) {
@@ -1407,61 +1407,96 @@ export async function registerRoutes(
       const senderUser = await storage.getUserById(req.user!.id);
       const senderName = senderUser ? [senderUser.firstName, senderUser.lastName].filter(Boolean).join(' ') : 'Lendry.AI';
 
-      const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
-      const { generateLoiPdfWithFields } = await import('./pdf/loiGenerator');
-
-      let templateConfig = DEFAULT_TEMPLATE_CONFIG;
-      if (templateId) {
-        const template = await storage.getQuotePdfTemplateById(templateId);
-        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
-          templateConfig = template.config;
-        }
-      }
-
-      const quoteDate = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
-      const pdfData = {
-        quoteNumber: quote.loanNumber || String(quote.id),
-        quoteDate,
-        customerFirstName: quote.customerFirstName,
-        customerLastName: quote.customerLastName,
-        customerCompanyName: quote.customerCompanyName || undefined,
-        propertyAddress: quote.propertyAddress,
-        interestRate: quote.interestRate || undefined,
-        pointsCharged: quote.pointsCharged || undefined,
-        pointsAmount: quote.pointsAmount || undefined,
-        yspAmount: quote.yspAmount || undefined,
-        yspDollarAmount: quote.yspDollarAmount || undefined,
-        commission: quote.commission || undefined,
-        loanData: quote.loanData as Record<string, any> || {},
-      };
-
-      const isLoi = templateConfig.templateType === 'loi';
-      let pdfBytes: Uint8Array;
+      let document: any;
+      let pageCount: number;
       let signingFields: { fieldType: string; pageNumber: number; x: number; y: number; width: number; height: number }[] = [];
 
-      if (isLoi) {
-        const result = await generateLoiPdfWithFields(pdfData, templateConfig.loiDefaults);
-        pdfBytes = result.pdfBytes;
-        signingFields = result.signingFields;
+      if (resend && existingDocumentId) {
+        const existingDoc = await storage.getDocumentById(existingDocumentId);
+        if (!existingDoc || existingDoc.quoteId !== quote.id) {
+          res.status(404).json({ success: false, error: 'Original document not found for this quote' });
+          return;
+        }
+
+        document = await storage.createDocument({
+          name: existingDoc.name,
+          fileName: existingDoc.fileName,
+          fileData: existingDoc.fileData,
+          pageCount: existingDoc.pageCount,
+          status: 'sent',
+          vendor: 'local',
+          quoteId: quote.id,
+        }, req.user!.id);
+
+        pageCount = existingDoc.pageCount;
+
+        const existingFields = await storage.getFieldsByDocumentId(existingDocumentId);
+        if (existingFields.length > 0) {
+          signingFields = existingFields.map(f => ({
+            fieldType: f.fieldType,
+            pageNumber: f.pageNumber,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+          }));
+        }
       } else {
-        pdfBytes = new Uint8Array(await generateQuotePdf(pdfData, templateConfig));
+        const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
+        const { generateLoiPdfWithFields } = await import('./pdf/loiGenerator');
+
+        let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+        if (templateId) {
+          const template = await storage.getQuotePdfTemplateById(templateId);
+          if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+            templateConfig = template.config;
+          }
+        }
+
+        const quoteDate = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
+        const pdfData = {
+          quoteNumber: quote.loanNumber || String(quote.id),
+          quoteDate,
+          customerFirstName: quote.customerFirstName,
+          customerLastName: quote.customerLastName,
+          customerCompanyName: quote.customerCompanyName || undefined,
+          propertyAddress: quote.propertyAddress,
+          interestRate: quote.interestRate || undefined,
+          pointsCharged: quote.pointsCharged || undefined,
+          pointsAmount: quote.pointsAmount || undefined,
+          yspAmount: quote.yspAmount || undefined,
+          yspDollarAmount: quote.yspDollarAmount || undefined,
+          commission: quote.commission || undefined,
+          loanData: quote.loanData as Record<string, any> || {},
+        };
+
+        const isLoi = templateConfig.templateType === 'loi';
+        let pdfBytes: Uint8Array;
+
+        if (isLoi) {
+          const result = await generateLoiPdfWithFields(pdfData, templateConfig.loiDefaults);
+          pdfBytes = result.pdfBytes;
+          signingFields = result.signingFields;
+        } else {
+          pdfBytes = new Uint8Array(await generateQuotePdf(pdfData, templateConfig));
+        }
+
+        const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+        const docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
+
+        const pdfDoc = await (await import('pdf-lib')).PDFDocument.load(pdfBytes);
+        pageCount = pdfDoc.getPageCount();
+
+        document = await storage.createDocument({
+          name: docName,
+          fileName: `${quote.loanNumber || `Quote-${quote.id}`}.pdf`,
+          fileData: pdfBase64,
+          pageCount,
+          status: 'sent',
+          vendor: 'local',
+          quoteId: quote.id,
+        }, req.user!.id);
       }
-
-      const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
-      const docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
-
-      const pdfDoc = await (await import('pdf-lib')).PDFDocument.load(pdfBytes);
-      const pageCount = pdfDoc.getPageCount();
-
-      const document = await storage.createDocument({
-        name: docName,
-        fileName: `${quote.loanNumber || `Quote-${quote.id}`}.pdf`,
-        fileData: pdfBase64,
-        pageCount,
-        status: 'sent',
-        vendor: 'local',
-        quoteId: quote.id,
-      }, req.user!.id);
 
       const crypto = await import('crypto');
       const token = crypto.randomBytes(32).toString('hex');

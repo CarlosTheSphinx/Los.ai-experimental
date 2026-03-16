@@ -190,8 +190,9 @@ export async function generateQuotePdf(
 
   y -= 10;
 
+  const headerTextWidth = helveticaBold.widthOfTextAtSize(config.headerText, 22);
   page.drawText(config.headerText, {
-    x: margin,
+    x: margin + (contentWidth - headerTextWidth) / 2,
     y: y - 10,
     size: 22,
     font: helveticaBold,
@@ -233,8 +234,9 @@ export async function generateQuotePdf(
       color: lightBgRgb,
     });
 
+    const sectionLabelWidth = helveticaBold.widthOfTextAtSize(section.label, 11);
     page.drawText(section.label, {
-      x: margin + 8,
+      x: margin + (contentWidth - sectionLabelWidth) / 2,
       y: y - 14,
       size: 11,
       font: helveticaBold,

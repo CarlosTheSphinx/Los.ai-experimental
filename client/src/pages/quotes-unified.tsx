@@ -455,11 +455,15 @@ export default function QuotesUnified() {
   const [resendName, setResendName] = useState('');
   const [resendQuoteId, setResendQuoteId] = useState<number | null>(null);
 
+  const [resendDocumentId, setResendDocumentId] = useState<number | null>(null);
+
   const resendMutation = useMutation({
-    mutationFn: async ({ quoteId, email, name }: { quoteId: number; email: string; name: string }) => {
+    mutationFn: async ({ quoteId, email, name, existingDocumentId }: { quoteId: number; email: string; name: string; existingDocumentId?: number }) => {
       const response = await apiRequest('POST', `/api/quotes/${quoteId}/send-internal-signature`, {
         recipientEmail: email,
         recipientName: name,
+        resend: true,
+        existingDocumentId,
       });
       return response.json();
     },
@@ -477,10 +481,11 @@ export default function QuotesUnified() {
     },
   });
 
-  const handleOpenResendDialog = (quote: SavedQuote) => {
+  const handleOpenResendDialog = (quote: SavedQuote, documentId?: number) => {
     setResendEmail(quote.customerEmail || '');
     setResendName([quote.customerFirstName, quote.customerLastName].filter(Boolean).join(' '));
     setResendQuoteId(quote.id);
+    setResendDocumentId(documentId || null);
     setShowResendDialog(true);
   };
 
@@ -490,7 +495,7 @@ export default function QuotesUnified() {
       return;
     }
     if (resendQuoteId) {
-      resendMutation.mutate({ quoteId: resendQuoteId, email: resendEmail.trim(), name: resendName.trim() });
+      resendMutation.mutate({ quoteId: resendQuoteId, email: resendEmail.trim(), name: resendName.trim(), existingDocumentId: resendDocumentId || undefined });
     }
   };
 
@@ -1077,6 +1082,7 @@ export default function QuotesUnified() {
                                         </span>
                                       </div>
                                       {intDoc.signerEmail && <div className="flex justify-between"><span className="text-muted-foreground">Sent to</span><span className="font-medium">{intDoc.signerName || intDoc.signerEmail}</span></div>}
+                                      {intDoc.signerEmail && <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{intDoc.signerEmail}</span></div>}
                                       {intDoc.sentAt && <div className="flex justify-between"><span className="text-muted-foreground">Sent</span><span className="font-medium">{formatShortDate(intDoc.sentAt)}</span></div>}
                                       {intDoc.completedAt && <div className="flex justify-between"><span className="text-muted-foreground">Signed</span><span className="font-medium text-emerald-600">{formatShortDate(intDoc.completedAt)}</span></div>}
                                       {intDoc.hasProject && (
@@ -1116,7 +1122,7 @@ export default function QuotesUnified() {
                                     </Button>
                                   )}
                                   {hasAnyTermSheet && !(internalSignerStatus === 'signed' || intDoc?.status === 'completed') && !(envelopeStatus === 'completed') && (
-                                    <Button variant="outline" size="sm" onClick={() => handleOpenResendDialog(quote)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-resend-${quote.id}`}>
+                                    <Button variant="outline" size="sm" onClick={() => handleOpenResendDialog(quote, intDoc?.documentId)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-resend-${quote.id}`}>
                                       <Send className="h-3.5 w-3.5" /> Resend
                                     </Button>
                                   )}
@@ -1161,7 +1167,7 @@ export default function QuotesUnified() {
                   onEdit={() => handleEditQuote(quote)}
                   onDelete={() => deleteMutation.mutate(quote.id)}
                   onSendTermSheet={() => navigate(`/quotes/${quote.id}/documents`)}
-                  onResendTermSheet={() => handleOpenResendDialog(quote)}
+                  onResendTermSheet={() => handleOpenResendDialog(quote, internalDocMap.get(quote.id)?.documentId)}
                   onMessage={() => navigate(`/messages?dealId=${quote.id}&new=true`)}
                   deleteIsPending={deleteMutation.isPending}
                 />
