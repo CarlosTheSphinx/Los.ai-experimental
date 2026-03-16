@@ -1094,12 +1094,13 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
           dealId: thread.dealId,
           subject: thread.subject,
           isClosed: thread.isClosed,
-          lastMessageAt: thread.lastMessageAt,
-          createdAt: thread.createdAt,
+          lastMessageAt: thread.lastMessageAt instanceof Date ? thread.lastMessageAt.toISOString() : thread.lastMessageAt,
+          createdAt: thread.createdAt instanceof Date ? thread.createdAt.toISOString() : thread.createdAt,
           dealName,
           dealIdentifier,
           lastMessagePreview: lastMsg[0]?.body?.substring(0, 100) || null,
           lastMessageSenderRole: lastMsg[0]?.senderRole || null,
+          lastMessageCreatedAt: lastMsg[0]?.createdAt instanceof Date ? lastMsg[0].createdAt.toISOString() : lastMsg[0]?.createdAt || null,
           unreadCount,
         };
       }));
@@ -1135,15 +1136,25 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         .limit(500);
 
       const messagesWithSenders = await Promise.all(threadMessages.map(async (msg) => {
+        const serialized = {
+          ...msg,
+          createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
+          readAt: msg.readAt instanceof Date ? msg.readAt.toISOString() : msg.readAt,
+        };
         if (msg.senderId) {
           const sender = await db.select({ fullName: users.fullName, email: users.email })
             .from(users).where(eq(users.id, msg.senderId)).limit(1);
-          return { ...msg, senderName: sender[0]?.fullName || sender[0]?.email || 'Unknown' };
+          return { ...serialized, senderName: sender[0]?.fullName || sender[0]?.email || 'Unknown' };
         }
-        return { ...msg, senderName: msg.senderRole === 'user' ? 'You' : 'System' };
+        return { ...serialized, senderName: msg.senderRole === 'user' ? 'You' : 'System' };
       }));
 
-      res.json({ thread: thread[0], messages: messagesWithSenders });
+      const threadSerialized = {
+        ...thread[0],
+        createdAt: thread[0].createdAt instanceof Date ? thread[0].createdAt.toISOString() : thread[0].createdAt,
+        lastMessageAt: (thread[0] as any).lastMessageAt instanceof Date ? (thread[0] as any).lastMessageAt.toISOString() : (thread[0] as any).lastMessageAt,
+      };
+      res.json({ thread: threadSerialized, messages: messagesWithSenders });
     } catch (error) {
       console.error('Portal thread detail error:', error);
       res.status(500).json({ error: 'Failed to get thread' });
@@ -1185,7 +1196,12 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         .set({ lastMessageAt: new Date() })
         .where(eq(messageThreads.id, threadId));
 
-      res.json({ message: { ...newMessage[0], senderName: 'You' } });
+      res.json({ message: {
+        ...newMessage[0],
+        createdAt: newMessage[0].createdAt instanceof Date ? newMessage[0].createdAt.toISOString() : newMessage[0].createdAt,
+        readAt: newMessage[0].readAt instanceof Date ? newMessage[0].readAt.toISOString() : newMessage[0].readAt,
+        senderName: 'You',
+      } });
     } catch (error) {
       console.error('Portal send message error:', error);
       res.status(500).json({ error: 'Failed to send message' });
@@ -1239,7 +1255,17 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         .set({ lastMessageAt: new Date() })
         .where(eq(messageThreads.id, thread.id));
 
-      res.json({ thread, message: { ...newMessage, senderName: 'You' } });
+      const threadSerialized = {
+        ...thread,
+        createdAt: thread.createdAt instanceof Date ? thread.createdAt.toISOString() : thread.createdAt,
+        lastMessageAt: (thread as any).lastMessageAt instanceof Date ? (thread as any).lastMessageAt.toISOString() : (thread as any).lastMessageAt,
+      };
+      res.json({ thread: threadSerialized, message: {
+        ...newMessage,
+        createdAt: newMessage.createdAt instanceof Date ? newMessage.createdAt.toISOString() : newMessage.createdAt,
+        readAt: newMessage.readAt instanceof Date ? newMessage.readAt.toISOString() : newMessage.readAt,
+        senderName: 'You',
+      } });
     } catch (error) {
       console.error('Portal create thread error:', error);
       res.status(500).json({ error: 'Failed to create thread' });

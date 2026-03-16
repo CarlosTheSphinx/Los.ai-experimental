@@ -94,6 +94,8 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
 
         return {
           ...thread,
+          createdAt: thread.createdAt instanceof Date ? thread.createdAt.toISOString() : thread.createdAt,
+          lastMessageAt: (thread as any).lastMessageAt instanceof Date ? (thread as any).lastMessageAt.toISOString() : (thread as any).lastMessageAt,
           userName: threadUser[0]?.fullName || threadUser[0]?.email || 'Unknown',
           userType: threadUser[0]?.userType || null,
           dealName,
@@ -102,6 +104,7 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
           currentStage,
           lastMessagePreview: lastMsg[0]?.body?.substring(0, 100) || null,
           lastMessageSenderId: lastMsg[0]?.senderId || null,
+          lastMessageCreatedAt: lastMsg[0]?.createdAt instanceof Date ? lastMsg[0].createdAt.toISOString() : lastMsg[0]?.createdAt || null,
           unreadCount,
         };
       }));
@@ -139,15 +142,25 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
 
       // Get sender names for messages
       const messagesWithSenders = await Promise.all(threadMessages.map(async (msg) => {
+        const serialized = {
+          ...msg,
+          createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
+          readAt: msg.readAt instanceof Date ? msg.readAt.toISOString() : msg.readAt,
+        };
         if (msg.senderId) {
           const sender = await db.select({ fullName: users.fullName, email: users.email })
             .from(users).where(eq(users.id, msg.senderId)).limit(1);
-          return { ...msg, senderName: sender[0]?.fullName || sender[0]?.email || 'Unknown' };
+          return { ...serialized, senderName: sender[0]?.fullName || sender[0]?.email || 'Unknown' };
         }
-        return { ...msg, senderName: 'System' };
+        return { ...serialized, senderName: 'System' };
       }));
 
-      res.json({ thread: thread[0], messages: messagesWithSenders });
+      const threadSerialized = {
+        ...thread[0],
+        createdAt: thread[0].createdAt instanceof Date ? thread[0].createdAt.toISOString() : thread[0].createdAt,
+        lastMessageAt: (thread[0] as any).lastMessageAt instanceof Date ? (thread[0] as any).lastMessageAt.toISOString() : (thread[0] as any).lastMessageAt,
+      };
+      res.json({ thread: threadSerialized, messages: messagesWithSenders });
     } catch (error) {
       console.error('Get thread error:', error);
       res.status(500).json({ error: 'Failed to get thread' });
@@ -182,7 +195,12 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         )).limit(1);
 
       if (existing[0]) {
-        return res.json({ thread: existing[0] });
+        const existingSerialized = {
+          ...existing[0],
+          createdAt: existing[0].createdAt instanceof Date ? existing[0].createdAt.toISOString() : existing[0].createdAt,
+          lastMessageAt: (existing[0] as any).lastMessageAt instanceof Date ? (existing[0] as any).lastMessageAt.toISOString() : (existing[0] as any).lastMessageAt,
+        };
+        return res.json({ thread: existingSerialized });
       }
 
       // Create new thread
@@ -200,7 +218,12 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         lastReadAt: new Date('1970-01-01')
       }).onConflictDoNothing();
 
-      res.json({ thread: newThread[0] });
+      const threadSerialized = {
+        ...newThread[0],
+        createdAt: newThread[0].createdAt instanceof Date ? newThread[0].createdAt.toISOString() : newThread[0].createdAt,
+        lastMessageAt: (newThread[0] as any).lastMessageAt instanceof Date ? (newThread[0] as any).lastMessageAt.toISOString() : (newThread[0] as any).lastMessageAt,
+      };
+      res.json({ thread: threadSerialized });
     } catch (error) {
       console.error('Create thread error:', error);
       res.status(500).json({ error: 'Failed to create thread' });
@@ -251,7 +274,12 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         .set({ lastMessageAt: new Date() })
         .where(eq(messageThreads.id, threadId));
 
-      res.json({ message: newMessage[0] });
+      const msgSerialized = {
+        ...newMessage[0],
+        createdAt: newMessage[0].createdAt instanceof Date ? newMessage[0].createdAt.toISOString() : newMessage[0].createdAt,
+        readAt: newMessage[0].readAt instanceof Date ? newMessage[0].readAt.toISOString() : newMessage[0].readAt,
+      };
+      res.json({ message: msgSerialized });
     } catch (error) {
       console.error('Send message error:', error);
       res.status(500).json({ error: 'Failed to send message' });
