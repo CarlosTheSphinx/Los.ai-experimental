@@ -95,6 +95,7 @@ export default function AdminCreditPolicies() {
   const [editingRuleIds, setEditingRuleIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const extractingLockRef = useRef(false);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -209,6 +210,8 @@ export default function AdminCreditPolicies() {
   }
 
   async function handleFileUpload(file: File) {
+    if (extractingLockRef.current) return;
+    extractingLockRef.current = true;
     setIsExtracting(true);
     setSourceFileName(file.name);
     setEditingRuleIds(new Set());
@@ -263,8 +266,13 @@ export default function AdminCreditPolicies() {
       }
     } catch (error: any) {
       stopProgressSimulation();
-      toast({ title: "Failed to extract rules", description: error.message, variant: "destructive" });
+      if (error.message?.includes('already being extracted')) {
+        toast({ title: "Extraction already in progress", description: "Please wait for the current extraction to finish." });
+      } else {
+        toast({ title: "Failed to extract rules", description: error.message, variant: "destructive" });
+      }
     } finally {
+      extractingLockRef.current = false;
       setIsExtracting(false);
       setChunkProgress(null);
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }

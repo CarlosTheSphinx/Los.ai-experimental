@@ -1152,6 +1152,7 @@ function CreditPolicyStep({
   const [chunkProgress, setChunkProgress] = useState<{ chunksCompleted: number; totalChunks: number; rulesFoundSoFar: number } | null>(null);
   const [liveRules, setLiveRules] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const extractingLockRef = useRef(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newPolicyName, setNewPolicyName] = useState('');
   const [newPolicyDescription, setNewPolicyDescription] = useState('');
@@ -1328,6 +1329,7 @@ function CreditPolicyStep({
   }, [viewPolicyOpen, policyDetails, policyRulesInitialized, policyRulesDirty]);
 
   const handleFileUpload = useCallback(async (file: File) => {
+    if (extractingLockRef.current) return;
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -1339,6 +1341,7 @@ function CreditPolicyStep({
       return;
     }
 
+    extractingLockRef.current = true;
     setIsExtracting(true);
     setExtractError(null);
     setChunkProgress(null);
@@ -1411,6 +1414,7 @@ function CreditPolicyStep({
       setExtractError(msg);
       toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
     } finally {
+      extractingLockRef.current = false;
       setIsExtracting(false);
       setChunkProgress(null);
       if (wsRef.current) {

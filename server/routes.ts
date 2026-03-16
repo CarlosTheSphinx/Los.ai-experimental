@@ -12362,12 +12362,26 @@ export async function registerRoutes(
     return chunks;
   }
 
+  const activeExtractionHashes = new Map<string, number>();
+
   async function extractRulesFromChunks(
     fullText: string,
     systemPrompt: string,
     settings: { model: string; maxTokens: number; temperature: number; timeout: number },
     sessionId: string
   ): Promise<any[]> {
+    const crypto = await import('crypto');
+    const contentHash = crypto.createHash('md5').update(fullText.slice(0, 5000)).digest('hex');
+    const now = Date.now();
+    const lastRun = activeExtractionHashes.get(contentHash);
+    if (lastRun && now - lastRun < 120_000) {
+      console.log(`[CreditPolicy] Duplicate extraction blocked (same content hash ${contentHash}, ${Math.round((now - lastRun) / 1000)}s ago)`);
+      throw new Error('DUPLICATE_EXTRACTION');
+    }
+    activeExtractionHashes.set(contentHash, now);
+    for (const [hash, ts] of activeExtractionHashes) {
+      if (now - ts > 300_000) activeExtractionHashes.delete(hash);
+    }
     const CHUNK_THRESHOLD = 25000;
 
     if (fullText.length <= CHUNK_THRESHOLD) {
@@ -12601,6 +12615,9 @@ export async function registerRoutes(
 
       res.json({ rules: normalizedRules, programId });
     } catch (error: any) {
+      if (error.message === 'DUPLICATE_EXTRACTION') {
+        return res.status(409).json({ error: 'This document is already being extracted. Please wait for the current extraction to finish.' });
+      }
       console.error('Extract rules error:', error);
       if (error.message?.includes('timed out')) {
         return res.status(504).json({ error: 'AI analysis timed out. Please try again with a smaller document.' });
@@ -12860,6 +12877,9 @@ export async function registerRoutes(
 
       res.json({ rules: normalizedRules });
     } catch (error: any) {
+      if (error.message === 'DUPLICATE_EXTRACTION') {
+        return res.status(409).json({ error: 'This document is already being extracted. Please wait for the current extraction to finish.' });
+      }
       console.error('Extract rules error:', error);
       if (error.message?.includes('timed out')) {
         return res.status(504).json({ error: 'AI analysis timed out. Please try again with a smaller document.' });
