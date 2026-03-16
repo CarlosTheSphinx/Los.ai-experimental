@@ -383,6 +383,7 @@ export default function DealDetailV2() {
       }
     },
     enabled: !!dealId,
+    refetchInterval: 5000,
   });
   const tasks = Array.isArray(tasksData) ? tasksData : (tasksData as any)?.tasks ?? [];
 
@@ -395,6 +396,7 @@ export default function DealDetailV2() {
       return res.json();
     },
     enabled: !!dealId,
+    refetchInterval: 5000,
   });
   const documents = docsData?.documents ?? [];
 

@@ -267,6 +267,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
       return res.json();
     },
     enabled: !!token && activeView === 'documents',
+    refetchInterval: 5000,
   });
 
   const updateProfileMutation = useMutation({

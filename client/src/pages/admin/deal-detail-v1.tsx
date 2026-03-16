@@ -724,6 +724,7 @@ export default function AdminDealDetail() {
   const { data: tasksData } = useQuery<{ tasks: DealTask[] }>({
     queryKey: [`/api/admin/deals/${dealId}/tasks`],
     enabled: !!dealId,
+    refetchInterval: 5000,
   });
   
   const { data: teamData } = useQuery<{ teamMembers: TeamMember[] }>({
