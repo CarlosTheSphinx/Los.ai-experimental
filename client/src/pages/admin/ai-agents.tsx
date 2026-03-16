@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1147,8 +1147,7 @@ function PipelineOrchestrationEditor({
   );
 }
 
-// Orchestration type constants
-type OrchestationType = "processor" | "email_doc_check";
+type OrchestationType = "processor" | "email_doc_check" | "credit_policy";
 
 const ORCHESTRATION_DESCRIPTIONS: Record<OrchestationType, { title: string; description: string }> = {
   processor: {
@@ -1158,6 +1157,10 @@ const ORCHESTRATION_DESCRIPTIONS: Record<OrchestationType, { title: string; desc
   email_doc_check: {
     title: "Email Doc Check Orchestration",
     description: "The Email Doc Check monitors your linked email threads for new attachments. Every hour (configurable), it scans for new documents, uses AI to classify them (pay stubs, tax returns, bank statements, etc.), and sends you a notification with the classification. Configure the classifier\u2019s AI prompt, polling interval, and review recent classifications below.",
+  },
+  credit_policy: {
+    title: "Credit Policy Extraction",
+    description: "The Credit Policy Extractor uses AI to analyze lending guideline documents and extract all specific, actionable underwriting rules. It identifies eligibility requirements, financial constraints, property rules, insurance requirements, and more across 16 categories. Configure the extraction prompt, model settings, and re-run extractions on cached documents below.",
   },
 };
 
@@ -1169,6 +1172,84 @@ interface EmailDocCheckSettings {
   intervalMinutes: number;
   lastRunAt: string | null;
   totalClassifications: number;
+}
+
+function CreditPolicyRulesTable({ rules }: { rules: any[] }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  return (
+    <div className="overflow-x-auto border rounded-lg">
+      <table className="w-full text-sm">
+        <thead className="bg-muted border-b">
+          <tr>
+            <th className="px-4 py-2 text-left font-medium">#</th>
+            <th className="px-4 py-2 text-left font-medium">Rule Title</th>
+            <th className="px-4 py-2 text-left font-medium">Category</th>
+            <th className="px-4 py-2 text-left font-medium">Doc Type</th>
+            <th className="px-4 py-2 text-left font-medium">Rule Type</th>
+            <th className="px-4 py-2 text-left font-medium">Confidence</th>
+            <th className="px-4 py-2 text-left font-medium">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rules.map((rule: any, idx: number) => (
+            <Fragment key={idx}>
+              <tr
+                className="border-b hover:bg-muted/50 cursor-pointer"
+                onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+              >
+                <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                <td className="px-4 py-2 font-medium max-w-[200px] truncate">
+                  <div className="flex items-center gap-1.5">
+                    {rule.ruleTitle}
+                    {rule.clarificationNeeded && (
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-2">
+                  <Badge variant="outline" className="text-xs">{rule.category}</Badge>
+                </td>
+                <td className="px-4 py-2 text-muted-foreground text-xs">{rule.documentType}</td>
+                <td className="px-4 py-2">
+                  <Badge variant="outline" className="text-xs capitalize">{rule.ruleType?.replace(/_/g, " ")}</Badge>
+                </td>
+                <td className="px-4 py-2">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs",
+                      rule.confidence === "high" && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                      rule.confidence === "medium" && "bg-amber-50 text-amber-700 border-amber-200",
+                      rule.confidence === "low" && "bg-red-50 text-red-700 border-red-200"
+                    )}
+                  >
+                    {rule.confidence}
+                  </Badge>
+                </td>
+                <td className="px-4 py-2 text-muted-foreground text-xs max-w-[120px] truncate">
+                  {rule.sourceSection}
+                </td>
+              </tr>
+              {expandedIdx === idx && (
+                <tr className="border-b bg-muted/30">
+                  <td colSpan={7} className="px-6 py-3">
+                    <p className="text-sm text-foreground leading-relaxed">{rule.ruleDescription}</p>
+                    {rule.clarificationNeeded && (
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        This rule may need clarification — contains subjective or ambiguous language
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function AIAgentsPage() {
@@ -1270,6 +1351,74 @@ export default function AIAgentsPage() {
     },
   });
 
+  // ==================== CREDIT POLICY QUERIES ====================
+
+  const [cpPrompt, setCpPrompt] = useState("");
+  const [cpDefaultPrompt, setCpDefaultPrompt] = useState("");
+  const [cpSelectedSession, setCpSelectedSession] = useState("");
+  const [cpShowPrompt, setCpShowPrompt] = useState(true);
+
+  const { data: cpPromptData, isLoading: cpPromptLoading } = useQuery({
+    queryKey: ["/api/debug/credit-extraction-prompt"],
+    queryFn: async () => {
+      const res = await fetch("/api/debug/credit-extraction-prompt");
+      if (!res.ok) throw new Error("Failed to load prompt");
+      return res.json();
+    },
+    enabled: selectedOrchestration === "credit_policy",
+  });
+
+  useEffect(() => {
+    if (cpPromptData?.prompt && !cpPrompt) {
+      setCpPrompt(cpPromptData.prompt);
+      setCpDefaultPrompt(cpPromptData.prompt);
+    }
+  }, [cpPromptData]);
+
+  const { data: cpSessions } = useQuery({
+    queryKey: ["/api/debug/credit-extraction-sessions"],
+    queryFn: async () => {
+      const res = await fetch("/api/debug/credit-extraction-sessions");
+      if (!res.ok) return { sessions: [] };
+      return res.json();
+    },
+    enabled: selectedOrchestration === "credit_policy",
+  });
+
+  useEffect(() => {
+    if (cpSessions?.sessions?.length > 0 && !cpSelectedSession) {
+      setCpSelectedSession(cpSessions.sessions[0].sessionId);
+    }
+  }, [cpSessions]);
+
+  const { mutate: replayCreditPolicy, isPending: cpReplaying, data: cpReplayResult } = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/debug/replay-credit-extraction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ originalSessionId: cpSelectedSession, customPrompt: cpPrompt }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Extraction failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Extraction Complete",
+        description: `Extracted ${data.rules?.length || 0} rules successfully`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Extraction Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // ==================== EMAIL DOC CHECK QUERIES ====================
 
   const { data: emailDocCheckSettings } = useQuery<EmailDocCheckSettings>({
@@ -1358,6 +1507,7 @@ export default function AIAgentsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="processor">Processor Orchestration</SelectItem>
+            <SelectItem value="credit_policy">Credit Policy Extraction</SelectItem>
             <SelectItem value="email_doc_check">Email Doc Check Orchestration</SelectItem>
           </SelectContent>
         </Select>
@@ -1510,6 +1660,203 @@ export default function AIAgentsPage() {
               </Card>
             </TabsContent>
           </Tabs>
+        </>
+      )}
+
+      {/* ==================== CREDIT POLICY EXTRACTION ==================== */}
+      {selectedOrchestration === "credit_policy" && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Model Settings
+                </CardTitle>
+                <CardDescription>Current extraction configuration</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Model</p>
+                    <p className="font-mono text-sm font-medium">gpt-4o</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Max Tokens</p>
+                    <p className="font-mono text-sm font-medium">16,384</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Temperature</p>
+                    <p className="font-mono text-sm font-medium">0</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Timeout</p>
+                    <p className="font-mono text-sm font-medium">180s</p>
+                  </div>
+                </div>
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-muted-foreground mb-1">Categories Covered</p>
+                  <p className="text-sm font-medium">16 extraction categories</p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {["Eligibility", "Financial", "Property", "Insurance", "Title", "Flood", "Escrow", "Location"].map(cat => (
+                      <Badge key={cat} variant="outline" className="text-[10px] py-0">{cat}</Badge>
+                    ))}
+                    <Badge variant="outline" className="text-[10px] py-0">+8 more</Badge>
+                  </div>
+                </div>
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-muted-foreground mb-1">Document Limit</p>
+                  <p className="text-sm font-medium">200,000 characters</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileSearch className="w-5 h-5" />
+                      Re-run Extraction
+                    </CardTitle>
+                    <CardDescription>Test the prompt against a previously cached document</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {cpSessions?.sessions?.length > 0 ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Cached Document</Label>
+                      <Select value={cpSelectedSession} onValueChange={setCpSelectedSession}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a cached document..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cpSessions.sessions.map((s: any) => (
+                            <SelectItem key={s.sessionId} value={s.sessionId}>
+                              {s.fileName || "Untitled"} ({Math.round(s.textLength / 1000)}K chars) — {new Date(s.cachedAt).toLocaleString()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Documents are cached for 30 minutes after upload. Upload a credit policy from the Program Wizard or Credit Policies page to populate this list.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => replayCreditPolicy()}
+                      disabled={cpReplaying || !cpPrompt.trim() || !cpSelectedSession}
+                      className="w-full"
+                      data-testid="credit-policy-rerun-btn"
+                    >
+                      {cpReplaying ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Running extraction...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Re-run with Current Prompt
+                        </>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileSearch className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">No cached documents</p>
+                    <p className="text-sm mt-1">
+                      Upload a credit policy document from the Program Wizard or Credit Policies page. Documents are cached for 30 minutes and will appear here for re-run testing.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>System Prompt</CardTitle>
+                  <CardDescription>
+                    The exhaustive 16-category extraction prompt used across all credit policy extraction endpoints
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {cpDefaultPrompt && cpPrompt !== cpDefaultPrompt && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCpPrompt(cpDefaultPrompt)}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                      Reset
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCpShowPrompt(!cpShowPrompt)}
+                  >
+                    {cpShowPrompt ? (
+                      <><ChevronUp className="w-3.5 h-3.5 mr-1" /> Hide</>
+                    ) : (
+                      <><ChevronDown className="w-3.5 h-3.5 mr-1" /> Show</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            {cpShowPrompt && (
+              <CardContent>
+                {cpPromptLoading ? (
+                  <Skeleton className="h-96 w-full" />
+                ) : (
+                  <Textarea
+                    value={cpPrompt}
+                    onChange={(e) => setCpPrompt(e.target.value)}
+                    className="font-mono text-sm min-h-[500px] bg-slate-950 text-slate-50 border-slate-700"
+                    placeholder="Loading extraction prompt..."
+                    data-testid="credit-policy-prompt-editor"
+                  />
+                )}
+              </CardContent>
+            )}
+          </Card>
+
+          {cpReplayResult?.rules && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  Extraction Results ({cpReplayResult.rules.length} rules)
+                </CardTitle>
+                <CardDescription>
+                  Rules extracted from the last re-run
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CreditPolicyRulesTable rules={cpReplayResult.rules} />
+              </CardContent>
+            </Card>
+          )}
+
+          {cpReplayResult?.error && (
+            <Card className="border-red-200">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <XCircle className="w-5 h-5 text-red-600" />
+                  <div>
+                    <p className="font-medium text-red-900">Extraction Failed</p>
+                    <p className="text-sm text-red-700 mt-1">{cpReplayResult.error}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
