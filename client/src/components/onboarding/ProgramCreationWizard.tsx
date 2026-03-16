@@ -3163,18 +3163,10 @@ function DocumentsStep({
         </p>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <span className="text-[14px] text-muted-foreground">
           {documents.length} documents configured &mdash; {requiredCount} required, {documents.length - requiredCount} optional
         </span>
-        <Button
-          variant="outline"
-          onClick={() => startAdding('unassigned')}
-          data-testid="button-add-document"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Document
-        </Button>
       </div>
 
       {documents.length > 0 && (
@@ -3209,7 +3201,7 @@ function DocumentsStep({
                 />
 
                 <div className="ml-4 mb-4">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span style={{ color }} className="text-[13px]">●</span>
                       <span className="text-[15px] font-bold text-foreground">
@@ -3220,11 +3212,11 @@ function DocumentsStep({
                       </span>
                     </div>
                     <button
-                      className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                      className="text-[13px] bg-primary text-primary-foreground hover:bg-primary/90 font-semibold flex items-center gap-1.5 transition-colors px-4 py-1.5 rounded-full shadow-sm"
                       onClick={() => startAdding(si)}
                       data-testid={`button-add-doc-to-stage-${si}`}
                     >
-                      <Plus className="h-3 w-3" /> Add
+                      <Plus className="h-3.5 w-3.5" /> Add
                     </button>
                   </div>
 
@@ -3265,11 +3257,11 @@ function DocumentsStep({
                     )}
                   </div>
                   <button
-                    className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                    className="text-[13px] bg-primary text-primary-foreground hover:bg-primary/90 font-semibold flex items-center gap-1.5 transition-colors px-4 py-1.5 rounded-full shadow-sm"
                     onClick={() => startAdding('unassigned')}
                     data-testid="button-add-doc-unassigned"
                   >
-                    <Plus className="h-3 w-3" /> Add
+                    <Plus className="h-3.5 w-3.5" /> Add
                   </button>
                 </div>
 
