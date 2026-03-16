@@ -517,8 +517,14 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           ? await db.select({ count: sql<number>`count(*)` }).from(agentRuns).where(whereClause)
           : await db.select({ count: sql<number>`count(*)` }).from(agentRuns);
 
+        const serializedRuns = runs.map(r => ({
+          ...r,
+          startedAt: r.startedAt instanceof Date ? r.startedAt.toISOString() : r.startedAt || null,
+          completedAt: (r as any).completedAt instanceof Date ? (r as any).completedAt.toISOString() : (r as any).completedAt || null,
+        }));
+
         res.json({
-          runs,
+          runs: serializedRuns,
           pagination: {
             total: countResult[0]?.count || 0,
             limit: pageLimit,
@@ -1373,7 +1379,13 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           .orderBy(desc(agentPipelineRuns.startedAt))
           .limit(limit);
 
-        res.json(runs);
+        const serializedRuns = runs.map(r => ({
+          ...r,
+          startedAt: r.startedAt instanceof Date ? r.startedAt.toISOString() : r.startedAt || null,
+          completedAt: r.completedAt instanceof Date ? r.completedAt.toISOString() : r.completedAt || null,
+        }));
+
+        res.json(serializedRuns);
       } catch (error) {
         console.error('Error fetching recent pipeline runs:', error);
         res.status(500).json({ error: 'Failed to fetch recent pipeline runs' });

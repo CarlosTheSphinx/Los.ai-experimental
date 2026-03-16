@@ -650,7 +650,7 @@ function RunHistoryTable({
                     {run.userEmail || (run.triggerType ? run.triggerType : "-")}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {format(new Date(run.startedAt), "MMM d, HH:mm")}
+                    {run.startedAt ? format(new Date(run.startedAt), "MMM d, HH:mm") : "—"}
                   </td>
                 </tr>
               ))}
