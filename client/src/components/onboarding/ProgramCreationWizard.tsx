@@ -3214,7 +3214,7 @@ function DocumentsStep({
 
         <div className="space-y-0">
           {stages.map((stage, si) => {
-            const color = STAGE_COLORS[si % STAGE_COLORS.length];
+            const color = stage.color || STAGE_COLORS[si % STAGE_COLORS.length];
             const stageDocs = docsByStage[si];
 
             return (
@@ -3608,7 +3608,7 @@ function TasksStep({
 
         <div className="space-y-0">
           {stages.map((stage, si) => {
-            const color = STAGE_COLORS[si % STAGE_COLORS.length];
+            const color = stage.color || STAGE_COLORS[si % STAGE_COLORS.length];
             const stageTasks = tasksByStage[si];
 
             return (
