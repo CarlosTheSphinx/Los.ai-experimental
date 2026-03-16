@@ -10805,6 +10805,51 @@ export async function registerRoutes(
     }
   });
   
+  // Get all distinct task templates across all programs for the current tenant
+  app.get('/api/admin/programs/all-task-templates', authenticateUser, requireAdmin, requirePermission('programs.view'), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.user!.id);
+      const isSuperAdmin = user?.role === 'super_admin';
+
+      let scopeFilter;
+      if (!isSuperAdmin) {
+        const userTenantId = req.user!.tenantId;
+        if (userTenantId) {
+          scopeFilter = or(
+            eq(loanPrograms.tenantId, userTenantId),
+            eq(loanPrograms.createdBy, req.user!.id)
+          );
+        } else {
+          scopeFilter = eq(loanPrograms.createdBy, req.user!.id);
+        }
+      }
+
+      const allTasks = await db.select({
+        taskName: programTaskTemplates.taskName,
+        taskCategory: programTaskTemplates.taskCategory,
+        priority: programTaskTemplates.priority,
+        assignToRole: programTaskTemplates.assignToRole,
+        formTemplateId: programTaskTemplates.formTemplateId,
+      })
+        .from(programTaskTemplates)
+        .innerJoin(loanPrograms, eq(programTaskTemplates.programId, loanPrograms.id))
+        .where(scopeFilter);
+
+      const seen = new Set<string>();
+      const unique = allTasks.filter((t) => {
+        const key = t.taskName.toLowerCase().trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      res.json(unique);
+    } catch (error) {
+      console.error('Get all task templates error:', error);
+      res.status(500).json({ error: 'Failed to load task templates' });
+    }
+  });
+
   // Get single program with documents and tasks
   app.get('/api/admin/programs/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

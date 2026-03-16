@@ -864,6 +864,7 @@ export function ProgramCreationWizard({
           setTasks={setTasks}
           stages={stages}
           teamMembers={teamMembers}
+          isEditMode={isEditMode}
         />
       )}
 
@@ -3308,12 +3309,11 @@ function SortableTaskRow({
           </Badge>
         )}
       </div>
-      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium)}>
-        {PRIORITY_LABELS[task.priority] || 'Medium'}
-      </span>
       <Select value={task.priority} onValueChange={(v) => updateTask(globalIdx, 'priority', v)}>
-        <SelectTrigger className="w-[90px] h-7 text-[12px]" data-testid={`select-task-priority-${globalIdx}`}>
-          <SelectValue />
+        <SelectTrigger className="w-[100px] h-7 text-[12px] border-0 bg-transparent p-0 shadow-none focus:ring-0" data-testid={`select-task-priority-${globalIdx}`}>
+          <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full cursor-pointer", PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium)}>
+            {PRIORITY_LABELS[task.priority] || 'Medium'}
+          </span>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="critical">Critical</SelectItem>
@@ -3382,16 +3382,45 @@ function TasksStep({
   setTasks,
   stages,
   teamMembers,
+  isEditMode,
 }: {
   tasks: TaskEntry[];
   setTasks: (t: TaskEntry[]) => void;
   stages: StageEntry[];
   teamMembers: { id: number; fullName: string; role: string }[];
+  isEditMode: boolean;
 }) {
   const { data: formTemplatesData } = useQuery<{ templates: { id: number; name: string }[] }>({
     queryKey: ['/api/admin/inquiry-form-templates'],
   });
   const formTemplates = formTemplatesData?.templates || [];
+
+  const { data: allTaskTemplates } = useQuery<{ taskName: string; taskCategory: string | null; priority: string | null; assignToRole: string | null; formTemplateId: number | null }[]>({
+    queryKey: ['/api/admin/programs/all-task-templates'],
+    enabled: !isEditMode,
+  });
+
+  const [hasPrePopulated, setHasPrePopulated] = useState(false);
+
+  useEffect(() => {
+    if (isEditMode || hasPrePopulated || !allTaskTemplates || allTaskTemplates.length === 0) return;
+    const existingNames = new Set(tasks.map(t => t.taskName.toLowerCase().trim()));
+    const newTasks: TaskEntry[] = allTaskTemplates
+      .filter(t => !existingNames.has(t.taskName.toLowerCase().trim()))
+      .map(t => ({
+        taskName: t.taskName,
+        taskCategory: t.taskCategory || 'other',
+        priority: t.priority || 'medium',
+        assignToRole: t.assignToRole || 'admin',
+        stepIndex: null,
+        formTemplateId: t.formTemplateId || null,
+      }));
+    if (newTasks.length > 0) {
+      setTasks([...tasks, ...newTasks]);
+    }
+    setHasPrePopulated(true);
+  }, [allTaskTemplates, isEditMode, hasPrePopulated, tasks, setTasks]);
+
   const [addingToStage, setAddingToStage] = useState<number | 'unassigned' | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
   const newTaskRef = useRef<HTMLInputElement>(null);
@@ -3501,19 +3530,24 @@ function TasksStep({
         </p>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <span className="text-[14px] text-muted-foreground">
           {tasks.length} tasks configured
         </span>
-        <Button
-          variant="outline"
-          onClick={() => startAdding('unassigned')}
-          data-testid="button-add-task"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Task
-        </Button>
       </div>
+
+      {tasks.length > 0 && (
+        <div className="flex items-center gap-3 py-1.5 px-3 ml-[40px]">
+          <div className="w-[22px] flex-shrink-0" />
+          <div className="w-[14px] flex-shrink-0" />
+          <div className="flex-1 min-w-0" />
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px] text-center flex-shrink-0" data-testid="label-task-priority">Task Priority</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[140px] text-center flex-shrink-0" data-testid="label-assigned-to">Assigned To</span>
+          <div className="w-[130px] flex-shrink-0" />
+          <div className="w-[130px] flex-shrink-0" />
+          <div className="w-[14px] flex-shrink-0" />
+        </div>
+      )}
 
       <div className="relative pl-6">
         {stages.length > 1 && (
@@ -3547,11 +3581,11 @@ function TasksStep({
                       </span>
                     </div>
                     <button
-                      className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                      className="text-[13px] bg-primary text-primary-foreground hover:bg-primary/90 font-semibold flex items-center gap-1.5 transition-colors px-4 py-1.5 rounded-full shadow-sm"
                       onClick={() => startAdding(si)}
                       data-testid={`button-add-task-to-stage-${si}`}
                     >
-                      <Plus className="h-3 w-3" /> Add
+                      <Plus className="h-3.5 w-3.5" /> Add
                     </button>
                   </div>
 
@@ -3576,8 +3610,7 @@ function TasksStep({
             );
           })}
 
-          {(unassigned.length > 0 || addingToStage === 'unassigned') && (
-            <div className="relative" data-testid="task-stage-group-unassigned">
+          <div className="relative" data-testid="task-stage-group-unassigned">
               <div className="absolute left-[-13px] top-[14px] w-3 h-3 rounded-full z-10 border-2 border-white bg-gray-400" />
 
               <div className="ml-4 mb-4">
@@ -3592,11 +3625,11 @@ function TasksStep({
                     )}
                   </div>
                   <button
-                    className="text-[12px] text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                    className="text-[13px] bg-primary text-primary-foreground hover:bg-primary/90 font-semibold flex items-center gap-1.5 transition-colors px-4 py-1.5 rounded-full shadow-sm"
                     onClick={() => startAdding('unassigned')}
                     data-testid="button-add-task-unassigned"
                   >
-                    <Plus className="h-3 w-3" /> Add
+                    <Plus className="h-3.5 w-3.5" /> Add
                   </button>
                 </div>
 
@@ -3614,7 +3647,6 @@ function TasksStep({
                 </div>
               </div>
             </div>
-          )}
         </div>
       </div>
 
