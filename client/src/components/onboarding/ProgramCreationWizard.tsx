@@ -2878,23 +2878,6 @@ function StagesStep({
 
 // ─── Step 5: Documents ──────────────────────────────────────────
 
-const DOC_CATEGORY_LABELS: Record<string, string> = {
-  borrower_docs: 'Borrower',
-  financial_docs: 'Financial',
-  entity_docs: 'Entity',
-  property_docs: 'Property',
-  closing_docs: 'Closing',
-  other: 'Other',
-};
-
-const DOC_CATEGORY_COLORS: Record<string, string> = {
-  borrower_docs: 'bg-blue-100 text-blue-700',
-  financial_docs: 'bg-emerald-100 text-emerald-700',
-  entity_docs: 'bg-purple-100 text-purple-700',
-  property_docs: 'bg-amber-100 text-amber-700',
-  closing_docs: 'bg-rose-100 text-rose-700',
-  other: 'bg-gray-100 text-gray-600',
-};
 
 function SortableDocRow({
   id,
@@ -2932,9 +2915,6 @@ function SortableDocRow({
         placeholder="Document name"
         data-testid={`input-doc-name-${globalIdx}`}
       />
-      <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", DOC_CATEGORY_COLORS[doc.documentCategory] || DOC_CATEGORY_COLORS.other)}>
-        {DOC_CATEGORY_LABELS[doc.documentCategory] || 'Other'}
-      </span>
       <input
         className="text-[12px] text-muted-foreground bg-transparent border-0 outline-none w-[140px] min-w-0 placeholder:text-muted-foreground/40 focus:bg-muted/30 focus:px-2 rounded transition-all px-0"
         value={doc.previewDescription || ''}
