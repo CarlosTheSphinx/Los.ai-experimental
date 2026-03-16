@@ -7,6 +7,45 @@ import { eq, and } from 'drizzle-orm';
 
 const AGENT_SEQUENCE: AgentType[] = ['document_intelligence', 'processor', 'communication'];
 
+function normalizeRule(r: any): any {
+  const getField = (...keys: string[]) => {
+    for (const k of keys) {
+      if (r[k] !== undefined && r[k] !== null && r[k] !== '') return r[k];
+    }
+    for (const key of Object.keys(r)) {
+      const lower = key.toLowerCase().replace(/[\s_-]/g, '');
+      for (const k of keys) {
+        if (lower === k.toLowerCase().replace(/[\s_-]/g, '')) return r[key];
+      }
+    }
+    return undefined;
+  };
+  return {
+    ruleTitle: getField('ruleTitle', 'rule_title', 'RULE_TITLE', 'RULE TITLE', 'rule_text', 'RULE_TEXT', 'RULE TEXT', 'ruleText', 'title', 'rule', 'name') || 'Untitled rule',
+    category: getField('category', 'CATEGORY', 'rule_category') || 'General',
+    subcategory: getField('subcategory', 'SUBCATEGORY', 'sub_category') || '',
+    ruleDescription: getField('ruleDescription', 'rule_description', 'RULE_DESCRIPTION', 'description', 'condition', 'CONDITION', 'details') || '',
+    confidence: getField('confidence', 'CONFIDENCE', 'priority', 'PRIORITY') || 'high',
+    sourceSection: getField('sourceSection', 'source_section', 'SOURCE_SECTION', 'SOURCE SECTION', 'section') || '',
+    sourcePage: getField('sourcePage', 'source_page', 'SOURCE_PAGE', 'SOURCE PAGE(S)', 'SOURCE_PAGE(S)', 'page') || '',
+    ruleType: getField('ruleType', 'rule_type', 'RULE_TYPE', 'type') || '',
+    ruleId: getField('ruleId', 'rule_id', 'RULE_ID', 'RULE ID', 'id') || '',
+    clarificationNeeded: getField('clarificationNeeded', 'clarification_needed', 'CLARIFICATION_NEEDED') || false,
+    exception: getField('exception', 'EXCEPTION', 'exceptions') || '',
+  };
+}
+
+function findRulesInResponse(parsed: any): any[] | null {
+  if (parsed.rules && Array.isArray(parsed.rules)) return parsed.rules;
+  for (const key of Object.keys(parsed)) {
+    if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+      const first = parsed[key][0];
+      if (typeof first === 'object' && first !== null) return parsed[key];
+    }
+  }
+  return null;
+}
+
 const replayContextCache = new Map<string, { documentText: string; fileName: string; timestamp: number }>();
 
 const MAX_CACHE_ENTRIES = 20;
@@ -182,30 +221,33 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
         return res.status(500).json({ success: false, error: 'AI returned invalid response format' });
       }
 
-      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+      const rulesArray = findRulesInResponse(parsed);
+      if (!rulesArray) {
         OrchestrationTracer.emit({ eventType: 'agent_error', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: replaySessionId, error: 'Missing rules array', duration: Date.now() - startTime });
         OrchestrationTracer.endSession(replaySessionId);
         return res.status(500).json({ success: false, error: 'AI did not return rules in expected format' });
       }
 
-      parsed.rules.forEach((r: any, idx: number) => {
+      const normalizedRules = rulesArray.map(r => normalizeRule(r));
+
+      normalizedRules.forEach((r: any, idx: number) => {
         OrchestrationTracer.emit({
           eventType: 'credit_rule_extracted',
           agentName: 'creditPolicyExtractor',
           agentIndex: 0,
           timestamp: new Date().toISOString(),
           sessionId: replaySessionId,
-          rules: [{ id: `rule_${idx}`, rule: r.ruleTitle || 'Untitled', category: r.category || 'General', confidence: r.confidence === 'high' ? 0.95 : r.confidence === 'medium' ? 0.75 : 0.5, reasoning: r.ruleDescription || '' }],
-          progress: { current: idx + 1, total: parsed.rules.length, percentage: ((idx + 1) / parsed.rules.length) * 100 },
+          rules: [{ id: `rule_${idx}`, rule: r.ruleTitle, category: r.category, confidence: r.confidence === 'high' || r.confidence === 'Critical' || r.confidence === '100%' ? 0.95 : r.confidence === 'medium' || r.confidence === 'High' ? 0.75 : 0.5, reasoning: r.ruleDescription }],
+          progress: { current: idx + 1, total: normalizedRules.length, percentage: ((idx + 1) / normalizedRules.length) * 100 },
         });
       });
 
-      OrchestrationTracer.emit({ eventType: 'agent_complete', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: replaySessionId, output: { rulesExtracted: parsed.rules.length, replay: true }, duration: Date.now() - startTime });
+      OrchestrationTracer.emit({ eventType: 'agent_complete', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: replaySessionId, output: { rulesExtracted: normalizedRules.length, replay: true }, duration: Date.now() - startTime });
       OrchestrationTracer.endSession(replaySessionId);
 
       cacheReplayContext(replaySessionId, cached.documentText, cached.fileName);
 
-      return res.json({ success: true, rules: parsed.rules, sessionId: replaySessionId });
+      return res.json({ success: true, rules: normalizedRules, sessionId: replaySessionId });
     } catch (error: any) {
       console.error('Credit extraction replay error:', error);
       return res.status(500).json({ success: false, error: error?.message || 'Replay failed' });

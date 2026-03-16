@@ -12241,6 +12241,45 @@ export async function registerRoutes(
     }
   });
 
+  function normalizeExtractedRule(r: any): any {
+    const getField = (...keys: string[]) => {
+      for (const k of keys) {
+        if (r[k] !== undefined && r[k] !== null && r[k] !== '') return r[k];
+      }
+      for (const key of Object.keys(r)) {
+        const lower = key.toLowerCase().replace(/[\s_-]/g, '');
+        for (const k of keys) {
+          if (lower === k.toLowerCase().replace(/[\s_-]/g, '')) return r[key];
+        }
+      }
+      return undefined;
+    };
+    return {
+      ruleTitle: getField('ruleTitle', 'rule_title', 'RULE_TITLE', 'RULE TITLE', 'rule_text', 'RULE_TEXT', 'RULE TEXT', 'ruleText', 'title', 'rule', 'name') || 'Untitled rule',
+      category: getField('category', 'CATEGORY', 'rule_category') || 'General',
+      subcategory: getField('subcategory', 'SUBCATEGORY', 'sub_category') || '',
+      ruleDescription: getField('ruleDescription', 'rule_description', 'RULE_DESCRIPTION', 'description', 'condition', 'CONDITION', 'details') || '',
+      confidence: getField('confidence', 'CONFIDENCE', 'priority', 'PRIORITY') || 'high',
+      sourceSection: getField('sourceSection', 'source_section', 'SOURCE_SECTION', 'SOURCE SECTION', 'section') || '',
+      sourcePage: getField('sourcePage', 'source_page', 'SOURCE_PAGE', 'SOURCE PAGE(S)', 'SOURCE_PAGE(S)', 'page') || '',
+      ruleType: getField('ruleType', 'rule_type', 'RULE_TYPE', 'type') || '',
+      ruleId: getField('ruleId', 'rule_id', 'RULE_ID', 'RULE ID', 'id') || '',
+      clarificationNeeded: getField('clarificationNeeded', 'clarification_needed', 'CLARIFICATION_NEEDED') || false,
+      exception: getField('exception', 'EXCEPTION', 'exceptions') || '',
+    };
+  }
+
+  function findRulesArray(parsed: any): any[] | null {
+    if (parsed.rules && Array.isArray(parsed.rules)) return parsed.rules;
+    for (const key of Object.keys(parsed)) {
+      if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+        const first = parsed[key][0];
+        if (typeof first === 'object' && first !== null) return parsed[key];
+      }
+    }
+    return null;
+  }
+
   app.post('/api/admin/programs/:programId/extract-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const programId = parseInt(req.params.programId);
@@ -12347,29 +12386,32 @@ export async function registerRoutes(
         return res.status(500).json({ error: 'AI returned invalid response format' });
       }
 
-      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+      const rulesArray = findRulesArray(parsed);
+      if (!rulesArray) {
         OrchestrationTracer.emit({ eventType: 'agent_error', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: pSessionId, error: 'Missing rules array', duration: Date.now() - pStartTime });
         OrchestrationTracer.endSession(pSessionId);
         return res.status(500).json({ error: 'AI did not return rules in expected format' });
       }
 
-      parsed.rules.forEach((r: any, idx: number) => {
+      const normalizedRules = rulesArray.map(r => normalizeExtractedRule(r));
+
+      normalizedRules.forEach((r: any, idx: number) => {
         OrchestrationTracer.emit({
           eventType: 'credit_rule_extracted',
           agentName: 'creditPolicyExtractor',
           agentIndex: 0,
           timestamp: new Date().toISOString(),
           sessionId: pSessionId,
-          rules: [{ id: `rule_${idx}`, rule: r.ruleTitle || 'Untitled', category: r.category || 'General', confidence: r.confidence === 'high' ? 0.95 : r.confidence === 'medium' ? 0.75 : 0.5, reasoning: r.ruleDescription || '', documentType: r.documentType || '', sourceSection: r.sourceSection || '', ruleType: r.ruleType || '', clarificationNeeded: r.clarificationNeeded || false }],
-          progress: { current: idx + 1, total: parsed.rules.length, percentage: ((idx + 1) / parsed.rules.length) * 100 },
+          rules: [{ id: `rule_${idx}`, rule: r.ruleTitle, category: r.category, confidence: r.confidence === 'high' || r.confidence === 'Critical' || r.confidence === '100%' ? 0.95 : r.confidence === 'medium' || r.confidence === 'High' ? 0.75 : 0.5, reasoning: r.ruleDescription, documentType: '', sourceSection: r.sourceSection, ruleType: r.ruleType, clarificationNeeded: r.clarificationNeeded }],
+          progress: { current: idx + 1, total: normalizedRules.length, percentage: ((idx + 1) / normalizedRules.length) * 100 },
         });
       });
 
-      OrchestrationTracer.emit({ eventType: 'agent_complete', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: pSessionId, output: { rulesExtracted: parsed.rules.length, programId, rules: parsed.rules }, duration: Date.now() - pStartTime });
+      OrchestrationTracer.emit({ eventType: 'agent_complete', agentName: 'creditPolicyExtractor', agentIndex: 0, timestamp: new Date().toISOString(), sessionId: pSessionId, output: { rulesExtracted: normalizedRules.length, programId, rules: normalizedRules }, duration: Date.now() - pStartTime });
       cacheReplayContext(pSessionId, truncatedText, fileName);
       OrchestrationTracer.endSession(pSessionId);
 
-      res.json({ rules: parsed.rules, programId });
+      res.json({ rules: normalizedRules, programId });
     } catch (error: any) {
       console.error('Extract rules error:', error);
       if (error.message?.includes('timed out')) {
@@ -12645,7 +12687,8 @@ export async function registerRoutes(
         return res.status(500).json({ error: 'AI returned invalid response format' });
       }
 
-      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+      const rulesArray = findRulesArray(parsed);
+      if (!rulesArray) {
         OrchestrationTracer.emit({
           eventType: 'agent_error',
           agentName: 'creditPolicyExtractor',
@@ -12659,9 +12702,11 @@ export async function registerRoutes(
         return res.status(500).json({ error: 'AI did not return rules in expected format' });
       }
 
+      const normalizedRules = rulesArray.map(r => normalizeExtractedRule(r));
+
       const categories = new Set<string>();
-      parsed.rules.forEach((r: any, idx: number) => {
-        categories.add(r.category || 'General');
+      normalizedRules.forEach((r: any, idx: number) => {
+        categories.add(r.category);
         OrchestrationTracer.emit({
           eventType: 'credit_rule_extracted',
           agentName: 'creditPolicyExtractor',
@@ -12670,16 +12715,16 @@ export async function registerRoutes(
           sessionId,
           rules: [{
             id: `rule_${idx}`,
-            rule: r.ruleTitle || 'Untitled rule',
-            category: r.category || 'General',
-            confidence: r.confidence === 'high' ? 0.95 : r.confidence === 'medium' ? 0.75 : 0.5,
-            reasoning: r.ruleDescription || '',
-            documentType: r.documentType || '',
-            sourceSection: r.sourceSection || '',
-            ruleType: r.ruleType || '',
-            clarificationNeeded: r.clarificationNeeded || false,
+            rule: r.ruleTitle,
+            category: r.category,
+            confidence: r.confidence === 'high' || r.confidence === 'Critical' || r.confidence === '100%' ? 0.95 : r.confidence === 'medium' || r.confidence === 'High' ? 0.75 : 0.5,
+            reasoning: r.ruleDescription,
+            documentType: '',
+            sourceSection: r.sourceSection,
+            ruleType: r.ruleType,
+            clarificationNeeded: r.clarificationNeeded,
           }],
-          progress: { current: idx + 1, total: parsed.rules.length, percentage: ((idx + 1) / parsed.rules.length) * 100 },
+          progress: { current: idx + 1, total: normalizedRules.length, percentage: ((idx + 1) / normalizedRules.length) * 100 },
         });
       });
 
@@ -12689,13 +12734,13 @@ export async function registerRoutes(
         agentIndex: 0,
         timestamp: new Date().toISOString(),
         sessionId,
-        output: { rulesExtracted: parsed.rules.length, categories: Array.from(categories), rules: parsed.rules },
+        output: { rulesExtracted: normalizedRules.length, categories: Array.from(categories), rules: normalizedRules },
         duration: Date.now() - startTime,
       });
       cacheReplayContext(sessionId, truncatedText, fileName);
       OrchestrationTracer.endSession(sessionId);
 
-      res.json({ rules: parsed.rules });
+      res.json({ rules: normalizedRules });
     } catch (error: any) {
       console.error('Extract rules error:', error);
       if (error.message?.includes('timed out')) {
