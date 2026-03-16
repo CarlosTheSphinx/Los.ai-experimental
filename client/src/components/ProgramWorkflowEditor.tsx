@@ -62,6 +62,7 @@ interface ProgramWorkflowStep {
   stepOrder: number;
   isRequired: boolean;
   estimatedDays: number | null;
+  color: string | null;
   definition: {
     id: number;
     name: string;
@@ -181,6 +182,63 @@ function StepColorDot({ color }: { color: string | null }) {
   );
 }
 
+function InlineColorPicker({
+  color,
+  onChange,
+  testId,
+}: {
+  color: string | null;
+  onChange: (color: string) => void;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="inline-block w-3 h-3 rounded-full shrink-0 cursor-pointer ring-offset-1 hover:ring-2 hover:ring-primary/50 transition-shadow"
+        style={{ backgroundColor: color || "#64748b" }}
+        onClick={() => setOpen(!open)}
+        data-testid={testId}
+        title="Change color"
+      />
+      {open && (
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-50 bg-popover border rounded-lg shadow-md p-2 grid grid-cols-4 gap-1.5 w-fit">
+          {COLOR_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`w-5 h-5 rounded-full transition-transform hover:scale-125 ${
+                (color || "#64748b") === opt.value ? "ring-2 ring-primary ring-offset-1" : ""
+              }`}
+              style={{ backgroundColor: opt.value }}
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              title={opt.label}
+              data-testid={`color-option-${opt.label.toLowerCase()}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProgramWorkflowEditor({
   programId,
   programName,
@@ -198,9 +256,9 @@ export default function ProgramWorkflowEditor({
       if (stepsSaveRef.current) {
         await stepsSaveRef.current();
       }
-      toast({ title: "Workflow saved", description: "All workflow configuration has been saved successfully." });
+      toast({ title: "Process saved", description: "All process configuration has been saved successfully." });
     } catch {
-      toast({ title: "Failed to save workflow", variant: "destructive" });
+      toast({ title: "Failed to save process", variant: "destructive" });
     } finally {
       setStepsSaving(false);
     }
@@ -210,19 +268,19 @@ export default function ProgramWorkflowEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-5xl max-h-[90vh] overflow-y-auto"
-        data-testid="dialog-workflow-editor"
+        data-testid="dialog-process-editor"
       >
         <DialogHeader>
-          <DialogTitle data-testid="text-workflow-editor-title">
-            Configure Workflow: {programName}
+          <DialogTitle data-testid="text-process-editor-title">
+            Configure Process: {programName}
           </DialogTitle>
           <DialogDescription>
-            Manage workflow stages, required documents, and tasks for this loan program.
+            Manage process stages, required documents, and tasks for this loan program.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3" data-testid="tabs-workflow">
+          <TabsList className="grid w-full grid-cols-3" data-testid="tabs-process">
             <TabsTrigger value="steps" data-testid="tab-stages">
               <GripVertical className="mr-1" /> Stages
             </TabsTrigger>
@@ -250,10 +308,10 @@ export default function ProgramWorkflowEditor({
             onClick={handleSaveWorkflow}
             disabled={stepsSaving}
             className="w-full"
-            data-testid="button-save-workflow"
+            data-testid="button-save-process"
           >
             {stepsSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
-            Save Workflow
+            Save Process
           </Button>
         </div>
       </DialogContent>
@@ -291,7 +349,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
         isRequired: ps.isRequired,
         estimatedDays: ps.estimatedDays,
         name: ps.definition.name,
-        color: ps.definition.color,
+        color: ps.color || ps.definition.color,
       }))
     );
     setInitializedForProgram(programId);
@@ -305,11 +363,13 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
         stepDefinitionId: s.stepDefinitionId,
         isRequired: s.isRequired,
         estimatedDays: s.estimatedDays,
+        color: s.color,
       })),
     });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId, "workflow-steps"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/workflow-steps"] });
   }, [programId, configuredSteps]);
 
   useEffect(() => {
@@ -325,6 +385,7 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
           stepDefinitionId: s.stepDefinitionId,
           isRequired: s.isRequired,
           estimatedDays: s.estimatedDays,
+          color: s.color,
         })),
       });
     },
@@ -332,10 +393,11 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId, "workflow-steps"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs", programId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
-      toast({ title: "Workflow stages saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/workflow-steps"] });
+      toast({ title: "Process stages saved" });
     },
     onError: () => {
-      toast({ title: "Failed to save workflow stages", variant: "destructive" });
+      toast({ title: "Failed to save process stages", variant: "destructive" });
     },
   });
 
@@ -393,6 +455,12 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
   const toggleRequired = (idx: number) => {
     setConfiguredSteps((prev) =>
       prev.map((s, i) => (i === idx ? { ...s, isRequired: !s.isRequired } : s))
+    );
+  };
+
+  const changeStepColor = (idx: number, color: string) => {
+    setConfiguredSteps((prev) =>
+      prev.map((s, i) => (i === idx ? { ...s, color } : s))
     );
   };
 
@@ -523,11 +591,11 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
 
       <div className="w-1/2 space-y-3">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Program Workflow ({configuredSteps.length} stages)
+          Program Process ({configuredSteps.length} stages)
         </h3>
         {configuredSteps.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            Click stages from the library to add them to this program's workflow.
+            Click stages from the library to add them to this program's process.
           </p>
         ) : (
           <div className="space-y-1">
@@ -538,7 +606,11 @@ function StepsTab({ programId, onSaveRef }: { programId: number; onSaveRef?: Rea
                 data-testid={`configured-step-${step.stepDefinitionId}`}
               >
                 <span className="text-xs text-muted-foreground w-5 text-center">{idx + 1}</span>
-                <StepColorDot color={step.color} />
+                <InlineColorPicker
+                  color={step.color}
+                  onChange={(c) => changeStepColor(idx, c)}
+                  testId={`color-picker-step-${step.stepDefinitionId}`}
+                />
                 <span className="flex-1 text-sm">{step.name}</span>
                 <div className="flex items-center gap-1">
                   <div className="flex items-center gap-1 mr-2">
@@ -769,7 +841,7 @@ function DocumentsTab({ programId }: { programId: number }) {
                 data-testid={`dropzone-step-docs-${ws.id}`}
               >
                 <div className="flex items-center gap-1 mb-2">
-                  <StepColorDot color={ws.definition.color} />
+                  <StepColorDot color={ws.color || ws.definition.color} />
                   <p className="text-xs font-semibold text-muted-foreground">
                     {ws.definition.name}
                   </p>
@@ -1389,7 +1461,7 @@ function TasksTab({ programId }: { programId: number }) {
                 data-testid={`dropzone-step-tasks-${ws.id}`}
               >
                 <div className="flex items-center gap-1 mb-2">
-                  <StepColorDot color={ws.definition.color} />
+                  <StepColorDot color={ws.color || ws.definition.color} />
                   <p className="text-xs font-semibold text-muted-foreground">
                     {ws.definition.name}
                   </p>

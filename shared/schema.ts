@@ -1139,6 +1139,7 @@ export const programWorkflowSteps = pgTable("program_workflow_steps", {
   stepOrder: integer("step_order").notNull(),
   isRequired: boolean("is_required").default(true),
   estimatedDays: integer("estimated_days"),
+  color: text("color"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -108,6 +108,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
+        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1297,6 +1298,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
+        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1347,8 +1349,10 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
             stepOrder: index + 1,
             isRequired: step.isRequired !== false,
             estimatedDays: step.estimatedDays || null,
+            color: step.color || null,
           }));
           await tx.insert(programWorkflowSteps).values(entries);
+
         }
       });
 
@@ -1420,6 +1424,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
+        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
