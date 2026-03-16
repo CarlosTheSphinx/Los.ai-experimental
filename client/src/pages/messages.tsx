@@ -146,6 +146,15 @@ export default function MessagesPage() {
   const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [stagedAttachment, setStagedAttachment] = useState<{
+    fileName: string;
+    fileType: string;
+    fileSize: string;
+    objectPath: string;
+    uploadedAt: string;
+  } | null>(null);
+  const activeThreadIdRef = useRef(activeThreadId);
+  activeThreadIdRef.current = activeThreadId;
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
   const isBorrower = user?.role === 'borrower';
@@ -512,16 +521,28 @@ export default function MessagesPage() {
   }, [activeThreadId, activeMessages.length]);
 
   useEffect(() => {
+    setStagedAttachment(null);
+  }, [activeThreadId]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMessages]);
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      if (!activeThreadId || !draft.trim()) return;
-      return sendMessage(activeThreadId, draft.trim());
+      if (!activeThreadId) return;
+      if (!draft.trim() && !stagedAttachment) return;
+      const messageBody = stagedAttachment
+        ? (draft.trim() || `📎 ${stagedAttachment.fileName}`)
+        : draft.trim();
+      const meta = stagedAttachment
+        ? { ...stagedAttachment, status: "received" }
+        : undefined;
+      return sendMessage(activeThreadId, messageBody, "message", meta);
     },
     onSuccess: () => {
       setDraft("");
+      setStagedAttachment(null);
       refetchThread();
       refetchThreads();
     },
@@ -554,7 +575,7 @@ export default function MessagesPage() {
   });
 
   const handleSend = () => {
-    if (draft.trim() && activeThreadId) {
+    if ((draft.trim() || stagedAttachment) && activeThreadId && !isUploading) {
       sendMutation.mutate();
     }
   };
@@ -570,6 +591,7 @@ export default function MessagesPage() {
     const file = e.target.files?.[0];
     if (!file || !activeThreadId) return;
 
+    const originatingThreadId = activeThreadId;
     setIsUploading(true);
     try {
       const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
@@ -602,18 +624,20 @@ export default function MessagesPage() {
         ? `${Math.round(file.size / 1024)} KB`
         : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
 
-      await sendMessage(activeThreadId, `📎 ${file.name}`, "message", {
+      if (originatingThreadId !== activeThreadIdRef.current) {
+        toast({ title: "Thread changed — uploaded file was discarded" });
+        return;
+      }
+
+      setStagedAttachment({
         fileName: file.name,
         fileType: file.type.includes("pdf") ? "PDF" : file.type.split("/")[1]?.toUpperCase() || "File",
         fileSize: fileSizeStr,
         objectPath,
         uploadedAt: new Date().toISOString(),
-        status: "received",
       });
 
-      refetchThread();
-      refetchThreads();
-      toast({ title: "File uploaded successfully" });
+      toast({ title: "File ready to send" });
     } catch (err) {
       console.error("File upload error:", err);
       toast({ title: "Failed to upload file", variant: "destructive" });
@@ -1576,6 +1600,33 @@ export default function MessagesPage() {
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.csv,.txt,.zip"
                   data-testid="input-file-upload"
                 />
+                {(stagedAttachment || isUploading) && (
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2" data-testid="staged-attachment-chip">
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Uploading file...</span>
+                      </>
+                    ) : stagedAttachment && (
+                      <>
+                        <File className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium truncate block" data-testid="text-staged-filename">{stagedAttachment.fileName}</span>
+                          <span className="text-xs text-muted-foreground" data-testid="text-staged-fileinfo">{stagedAttachment.fileType} · {stagedAttachment.fileSize}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => setStagedAttachment(null)}
+                          data-testid="button-remove-attachment"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <Button
                     variant="ghost"
@@ -1666,7 +1717,7 @@ export default function MessagesPage() {
                   />
                   <Button
                     onClick={handleSend}
-                    disabled={!draft.trim() || sendMutation.isPending}
+                    disabled={(!draft.trim() && !stagedAttachment) || sendMutation.isPending || isUploading}
                     size="icon"
                     className="h-9 w-9 rounded-full shrink-0"
                     data-testid="button-send-message"
