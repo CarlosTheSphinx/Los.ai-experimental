@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
 import { Switch } from "@/components/ui/switch";
 import {
   FolderOpen,
@@ -20,6 +22,7 @@ import {
   HardDrive,
   Star,
   LinkIcon,
+  X,
 } from "lucide-react";
 
 const DOCUMENT_CATEGORIES = [
@@ -51,30 +54,77 @@ export default function BorrowerDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [showUpload, setShowUpload] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [nameWasAutoFilled, setNameWasAutoFilled] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadForm, setUploadForm] = useState({
     fileName: "",
     category: "general",
     description: "",
   });
 
+  const [isSaving, setIsSaving] = useState(false);
+  const { uploadFile, isUploading, progress } = useUpload();
+  const isBusy = isUploading || isSaving;
+
   const { data: documents = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/borrower/documents"],
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest("POST", "/api/borrower/documents", data);
-    },
-    onSuccess: () => {
+  const resetForm = useCallback(() => {
+    setUploadForm({ fileName: "", category: "general", description: "" });
+    setSelectedFile(null);
+    setShowUpload(false);
+    setIsSaving(false);
+    setNameWasAutoFilled(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const handleFileSelect = useCallback((file: File) => {
+    setSelectedFile(file);
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+    if (!uploadForm.fileName.trim() || nameWasAutoFilled) {
+      setUploadForm(prev => ({ ...prev, fileName: nameWithoutExt }));
+      setNameWasAutoFilled(true);
+    }
+  }, [uploadForm.fileName, nameWasAutoFilled]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileSelect(file);
+  }, [handleFileSelect]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!selectedFile) {
+      toast({ title: "Please select a file to upload", variant: "destructive" });
+      return;
+    }
+    const result = await uploadFile(selectedFile);
+    if (!result) {
+      toast({ title: "File upload failed", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await apiRequest("POST", "/api/borrower/documents", {
+        fileName: uploadForm.fileName || selectedFile.name,
+        category: uploadForm.category,
+        description: uploadForm.description,
+        storagePath: result.objectPath,
+        fileType: selectedFile.type || "application/octet-stream",
+        fileSize: selectedFile.size,
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/borrower/documents"] });
-      setShowUpload(false);
-      setUploadForm({ fileName: "", category: "general", description: "" });
-      toast({ title: "Document added" });
-    },
-    onError: () => {
-      toast({ title: "Failed to add document", variant: "destructive" });
-    },
-  });
+      resetForm();
+      toast({ title: "Document uploaded successfully" });
+    } catch {
+      setIsSaving(false);
+      toast({ title: "Failed to save document", variant: "destructive" });
+    }
+  }, [selectedFile, uploadFile, uploadForm, resetForm, toast]);
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: number) => {
@@ -116,7 +166,7 @@ export default function BorrowerDocumentsPage() {
           <h1 className="text-2xl font-display font-bold" data-testid="text-documents-title">My Documents</h1>
           <p className="text-muted-foreground text-sm mt-1">All documents you've uploaded across your loans — your permanent document vault</p>
         </div>
-        <Button onClick={() => setShowUpload(!showUpload)} data-testid="button-add-document">
+        <Button onClick={() => setShowUpload(!showUpload)} disabled={isBusy} data-testid="button-add-document">
           <Upload className="h-4 w-4 mr-2" />
           Add Document
         </Button>
@@ -129,19 +179,95 @@ export default function BorrowerDocumentsPage() {
             <CardDescription>Documents added here will be available across all your loans</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileSelect(file);
+              }}
+              data-testid="input-file-picker"
+            />
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                isDragOver
+                  ? "border-primary bg-primary/5"
+                  : selectedFile
+                    ? "border-green-500/50 bg-green-50/50 dark:bg-green-950/20"
+                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+              }`}
+              onClick={() => !isBusy && fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={handleDrop}
+              data-testid="dropzone-file-upload"
+            >
+              {selectedFile ? (
+                <div className="flex items-center justify-center gap-3">
+                  <FileText className="h-8 w-8 text-green-600 dark:text-green-400" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium">{selectedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    disabled={isBusy}
+                    data-testid="button-remove-file"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Drag & drop a file here, or click to browse
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    PDF, images, Word, Excel, and other document formats
+                  </p>
+                </>
+              )}
+            </div>
+
+            {isBusy && (
+              <div className="space-y-2" data-testid="upload-progress-container">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">
+                    {isSaving ? "Saving document..." : "Uploading..."}
+                  </span>
+                  {!isSaving && <span className="text-sm font-medium ml-auto">{progress}%</span>}
+                </div>
+                {!isSaving && <Progress value={progress} className="h-2" />}
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Document Name</Label>
                 <Input
                   value={uploadForm.fileName}
-                  onChange={(e) => setUploadForm({ ...uploadForm, fileName: e.target.value })}
+                  onChange={(e) => {
+                    setUploadForm({ ...uploadForm, fileName: e.target.value });
+                    setNameWasAutoFilled(false);
+                  }}
                   placeholder="e.g. 2024 Tax Return"
+                  disabled={isBusy}
                   data-testid="input-doc-name"
                 />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Category</Label>
-                <Select value={uploadForm.category} onValueChange={(v) => setUploadForm({ ...uploadForm, category: v })}>
+                <Select value={uploadForm.category} onValueChange={(v) => setUploadForm({ ...uploadForm, category: v })} disabled={isBusy}>
                   <SelectTrigger data-testid="select-doc-category">
                     <SelectValue />
                   </SelectTrigger>
@@ -159,18 +285,19 @@ export default function BorrowerDocumentsPage() {
                 value={uploadForm.description}
                 onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
                 placeholder="Any notes about this document"
+                disabled={isBusy}
                 data-testid="input-doc-description"
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowUpload(false)} data-testid="button-cancel-upload">Cancel</Button>
+              <Button variant="outline" onClick={resetForm} disabled={isBusy} data-testid="button-cancel-upload">Cancel</Button>
               <Button
-                onClick={() => uploadMutation.mutate(uploadForm)}
-                disabled={uploadMutation.isPending || !uploadForm.fileName.trim()}
+                onClick={handleSubmit}
+                disabled={isBusy || !uploadForm.fileName.trim() || !selectedFile}
                 data-testid="button-submit-document"
               >
-                {uploadMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save Document
+                {isBusy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {isUploading ? "Uploading..." : isSaving ? "Saving..." : "Upload Document"}
               </Button>
             </div>
           </CardContent>

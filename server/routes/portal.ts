@@ -868,6 +868,50 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         console.error('Doc review orchestrator error:', reviewErr.message);
       }
 
+      try {
+        const borrowerEmail = project.borrowerEmail?.toLowerCase();
+        if (borrowerEmail && objectPath) {
+          let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, borrowerEmail));
+          if (!profile) {
+            const [inserted] = await db.insert(borrowerProfiles).values({ email: borrowerEmail }).returning();
+            profile = inserted;
+          }
+          const docName = fileName || updated?.documentName || 'Document';
+          const dealLabel = project.loanNumber || project.propertyAddress || `Deal #${project.id}`;
+          const existingVaultDoc = await db.select().from(borrowerDocuments)
+            .where(and(
+              eq(borrowerDocuments.borrowerProfileId, profile.id),
+              eq(borrowerDocuments.sourceDealId, project.id),
+              eq(borrowerDocuments.fileName, docName),
+              eq(borrowerDocuments.isActive, true)
+            ));
+          if (existingVaultDoc.length) {
+            await db.update(borrowerDocuments)
+              .set({
+                storagePath: objectPath,
+                fileType: mimeType || null,
+                fileSize: fileSize ? Number(fileSize) : null,
+                updatedAt: new Date(),
+              })
+              .where(eq(borrowerDocuments.id, existingVaultDoc[0].id));
+          } else {
+            await db.insert(borrowerDocuments).values({
+              borrowerProfileId: profile.id,
+              fileName: docName,
+              fileType: mimeType || null,
+              fileSize: fileSize ? Number(fileSize) : null,
+              storagePath: objectPath,
+              category: updated?.documentCategory || 'general',
+              documentClassification: 'standalone',
+              sourceDealId: project.id,
+              sourceDealName: dealLabel,
+            });
+          }
+        }
+      } catch (syncErr: any) {
+        console.error('Broker portal auto-sync to borrower vault error:', syncErr.message);
+      }
+
       res.json({ document: updated, file: newFile });
     } catch (error) {
       console.error('Broker portal upload complete error:', error);
