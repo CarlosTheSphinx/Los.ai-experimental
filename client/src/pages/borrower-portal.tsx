@@ -38,6 +38,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { getMessageFileMeta, getAttachmentDownloadUrl } from "@/lib/messagesApi";
 import { formatPhoneNumber } from "@/lib/validation";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
@@ -1061,6 +1062,42 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                                     </div>
                                   )}
                                   <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
+                                  {(() => {
+                                    const fileMeta = getMessageFileMeta(msg.meta);
+                                    if (!fileMeta?.objectPath) return null;
+                                    const downloadUrl = getAttachmentDownloadUrl(fileMeta.objectPath);
+                                    return (
+                                    <div className="mt-2 flex items-center gap-2 p-2 rounded-md border bg-background/50">
+                                      <div className="flex items-center justify-center h-8 w-8 rounded bg-red-100 dark:bg-red-900/30 shrink-0">
+                                        <FileText className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <a
+                                          href={downloadUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-[12px] font-medium truncate block hover:underline cursor-pointer"
+                                          data-testid={`link-view-attachment-${msg.id}`}
+                                        >
+                                          {fileMeta.fileName}
+                                        </a>
+                                        <div className="text-[10px] text-muted-foreground">
+                                          {fileMeta.fileType || 'File'} {fileMeta.fileSize || ''}
+                                        </div>
+                                      </div>
+                                      <a
+                                        href={downloadUrl}
+                                        download={fileMeta.fileName}
+                                        className="shrink-0"
+                                        data-testid={`button-download-attachment-${msg.id}`}
+                                      >
+                                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                                          <Download className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </a>
+                                    </div>
+                                    );
+                                  })()}
                                   <div className={`text-[10px] mt-1 ${isUser ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                                     {formatDateTime(msg.createdAt)}
                                   </div>

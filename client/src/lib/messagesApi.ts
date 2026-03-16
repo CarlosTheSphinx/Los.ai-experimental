@@ -1,5 +1,36 @@
 import { apiRequest } from "./queryClient";
 
+export interface MessageFileMeta {
+  fileName: string;
+  fileType?: string;
+  fileSize?: string;
+  objectPath?: string;
+  uploadedAt?: string;
+  status?: string;
+}
+
+export function getMessageFileMeta(meta: Record<string, unknown> | null): MessageFileMeta | null {
+  if (!meta || typeof meta !== 'object' || !('fileName' in meta) || typeof meta.fileName !== 'string') {
+    return null;
+  }
+  return {
+    fileName: meta.fileName as string,
+    fileType: typeof meta.fileType === 'string' ? meta.fileType : undefined,
+    fileSize: typeof meta.fileSize === 'string' ? meta.fileSize : undefined,
+    objectPath: typeof meta.objectPath === 'string' ? meta.objectPath : undefined,
+    uploadedAt: typeof meta.uploadedAt === 'string' ? meta.uploadedAt : undefined,
+    status: typeof meta.status === 'string' ? meta.status : undefined,
+  };
+}
+
+export function getAttachmentDownloadUrl(objectPath: string): string {
+  if (objectPath.startsWith('/objects/uploads/')) {
+    return objectPath;
+  }
+  const id = objectPath.replace(/^\/?(objects\/)?uploads\//, '');
+  return `/objects/uploads/${id}`;
+}
+
 export interface MessageThread {
   id: number;
   dealId: number | null;

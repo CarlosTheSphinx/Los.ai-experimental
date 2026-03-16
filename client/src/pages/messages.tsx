@@ -43,6 +43,7 @@ import {
   Play,
   Pencil,
   Eye,
+  Download,
   MapPin,
   Sparkles,
   File,
@@ -55,6 +56,8 @@ import {
   sendMessage,
   markRead,
   createThread,
+  getMessageFileMeta,
+  getAttachmentDownloadUrl,
   type MessageThread,
   type Message
 } from "@/lib/messagesApi";
@@ -1261,9 +1264,24 @@ export default function MessagesPage() {
                         <div className="mt-2 pt-2 border-t flex items-center gap-2 flex-wrap">
                           <Paperclip className="h-3 w-3 text-muted-foreground" />
                           {(msg.attachments as any[]).map((att: any, idx: number) => (
-                            <Badge key={idx} variant="outline" className="text-[10px]">
-                              {att.filename} ({Math.round(att.size / 1024)}KB)
-                            </Badge>
+                            att.url || att.objectPath ? (
+                              <a
+                                key={idx}
+                                href={att.url || (att.objectPath ? getAttachmentDownloadUrl(att.objectPath) : '#')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid={`link-email-attachment-${msg.id}-${idx}`}
+                              >
+                                <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-muted gap-1">
+                                  <Download className="h-2.5 w-2.5" />
+                                  {att.filename} {att.size ? `(${Math.round(att.size / 1024)}KB)` : ''}
+                                </Badge>
+                              </a>
+                            ) : (
+                              <Badge key={idx} variant="outline" className="text-[10px]">
+                                {att.filename} {att.size ? `(${Math.round(att.size / 1024)}KB)` : ''}
+                              </Badge>
+                            )
                           ))}
                         </div>
                       )}
@@ -1408,8 +1426,7 @@ export default function MessagesPage() {
                       const isOwnMessage = msg.senderId === user?.id;
                       const isSystemNotification = msg.type === 'notification';
                       const isAiInsight = msg.senderRole === 'system' && msg.type === 'message';
-                      const hasMeta = msg.meta && typeof msg.meta === 'object';
-                      const fileAttachment = hasMeta && (msg.meta as any).fileName ? (msg.meta as any) : null;
+                      const fileAttachment = getMessageFileMeta(msg.meta);
 
                       const prevMsg = idx > 0 ? activeMessages[idx - 1] : null;
                       const showDateHeader = !prevMsg || safeFormat(msg.createdAt, 'yyyy-MM-dd') !== safeFormat(prevMsg.createdAt, 'yyyy-MM-dd');
@@ -1462,23 +1479,50 @@ export default function MessagesPage() {
                                   }`}
                                 >
                                   <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                                  {fileAttachment && (
+                                  {fileAttachment && (() => {
+                                    const downloadUrl = fileAttachment.objectPath ? getAttachmentDownloadUrl(fileAttachment.objectPath) : null;
+                                    return (
                                     <div className="mt-2 flex items-center gap-2 p-2 rounded-md border bg-background/50">
                                       <div className="flex items-center justify-center h-9 w-9 rounded bg-red-100 dark:bg-red-900/30 shrink-0">
                                         <File className="h-4 w-4 text-red-600 dark:text-red-400" />
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                        <div className="text-[13px] font-medium truncate">{fileAttachment.fileName}</div>
+                                        {downloadUrl ? (
+                                          <a
+                                            href={downloadUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[13px] font-medium truncate block hover:underline cursor-pointer"
+                                            data-testid={`link-view-attachment-${msg.id}`}
+                                          >
+                                            {fileAttachment.fileName}
+                                          </a>
+                                        ) : (
+                                          <div className="text-[13px] font-medium truncate">{fileAttachment.fileName}</div>
+                                        )}
                                         <div className="text-[11px] text-muted-foreground">
                                           {fileAttachment.fileType || 'PDF'} {fileAttachment.fileSize ? `${fileAttachment.fileSize}` : ''}
                                           {fileAttachment.uploadedAt ? ` · Uploaded ${safeFormat(fileAttachment.uploadedAt, "h:mm a")}` : ''}
                                         </div>
                                       </div>
+                                      {downloadUrl && (
+                                        <a
+                                          href={downloadUrl}
+                                          download={fileAttachment.fileName}
+                                          className="shrink-0"
+                                          data-testid={`button-download-attachment-${msg.id}`}
+                                        >
+                                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <Download className="h-4 w-4" />
+                                          </Button>
+                                        </a>
+                                      )}
                                       {fileAttachment.status === 'received' && (
                                         <Badge className="bg-emerald-500 hover:bg-emerald-500 text-white text-[10px] h-5 shrink-0">Received</Badge>
                                       )}
                                     </div>
-                                  )}
+                                    );
+                                  })()}
                                 </div>
                                 <span className={`text-[11px] text-muted-foreground mt-1 ${isOwnMessage ? 'text-right' : ''}`}>
                                   {safeFormat(msg.createdAt, "h:mm a")}
