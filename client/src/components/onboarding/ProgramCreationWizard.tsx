@@ -10,6 +10,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -2965,6 +2966,15 @@ function SortableDocRow({
   );
 }
 
+function DroppableStageZone({ stageId, children }: { stageId: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `droppable-stage-${stageId}` });
+  return (
+    <div ref={setNodeRef} className={cn("transition-colors rounded-[10px]", isOver && "ring-2 ring-primary/30")}>
+      {children}
+    </div>
+  );
+}
+
 function DocumentsStep({
   documents,
   setDocuments,
@@ -3006,23 +3016,6 @@ function DocumentsStep({
     setDocuments(updated);
   };
 
-  const addStandardDocs = (category: string) => {
-    const catDocs = standardDocuments.find((c) => c.category === category);
-    if (!catDocs) return;
-    const existing = new Set(documents.map((d) => d.documentName));
-    const newDocs = catDocs.documents
-      .filter((d) => !existing.has(d.name))
-      .map((d) => ({
-        documentName: d.name,
-        documentCategory: category,
-        isRequired: true,
-        stepIndex: null as number | null,
-      }));
-    if (newDocs.length > 0) {
-      setDocuments([...documents, ...newDocs]);
-    }
-  };
-
   const docsByStage = stages.map((_, si) => documents.map((d, di) => ({ doc: d, idx: di })).filter((e) => e.doc.stepIndex === si));
   const unassigned = documents.map((d, di) => ({ doc: d, idx: di })).filter((e) => e.doc.stepIndex === null);
   const requiredCount = documents.filter((d) => d.isRequired).length;
@@ -3032,19 +3025,81 @@ function DocumentsStep({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const handleDocDragEnd = (event: DragEndEvent, stageGroupIndices: number[]) => {
+  const getStageForDocIdx = (docIdx: number): number | null => {
+    return documents[docIdx]?.stepIndex ?? null;
+  };
+
+  const getDropTargetStage = (overId: string | number): number | null | undefined => {
+    const overStr = String(overId);
+    if (overStr.startsWith('droppable-stage-')) {
+      const stageStr = overStr.replace('droppable-stage-', '');
+      return stageStr === 'unassigned' ? null : parseInt(stageStr);
+    }
+    const overIdx = typeof overId === 'number' ? overId : parseInt(overStr);
+    if (!isNaN(overIdx) && overIdx >= 0 && overIdx < documents.length) {
+      return documents[overIdx].stepIndex;
+    }
+    return undefined;
+  };
+
+  const handleDocDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldLocalIdx = stageGroupIndices.indexOf(active.id as number);
-    const newLocalIdx = stageGroupIndices.indexOf(over.id as number);
-    if (oldLocalIdx === -1 || newLocalIdx === -1) return;
-    const itemsInGroup = stageGroupIndices.map(i => documents[i]);
-    const reorderedItems = arrayMove(itemsInGroup, oldLocalIdx, newLocalIdx);
-    const updated = [...documents];
-    stageGroupIndices.forEach((globalIdx, localIdx) => {
-      updated[globalIdx] = reorderedItems[localIdx];
-    });
-    setDocuments(updated);
+    if (!over) return;
+
+    const activeIdx = active.id as number;
+    const sourceStage = getStageForDocIdx(activeIdx);
+    const targetStage = getDropTargetStage(over.id);
+    const isContainerDrop = String(over.id).startsWith('droppable-stage-');
+
+    if (targetStage === undefined) return;
+
+    if (sourceStage === targetStage) {
+      if (isContainerDrop || active.id === over.id) return;
+      const stageGroupIndices = (sourceStage === null ? unassigned : docsByStage[sourceStage]).map(d => d.idx);
+      const oldLocalIdx = stageGroupIndices.indexOf(active.id as number);
+      const newLocalIdx = stageGroupIndices.indexOf(over.id as number);
+      if (oldLocalIdx === -1 || newLocalIdx === -1) return;
+      const itemsInGroup = stageGroupIndices.map(i => documents[i]);
+      const reorderedItems = arrayMove(itemsInGroup, oldLocalIdx, newLocalIdx);
+      const updated = [...documents];
+      stageGroupIndices.forEach((globalIdx, localIdx) => {
+        updated[globalIdx] = reorderedItems[localIdx];
+      });
+      setDocuments(updated);
+    } else {
+      const movedDoc = { ...documents[activeIdx], stepIndex: targetStage };
+      const remaining = documents.filter((_, i) => i !== activeIdx);
+
+      if (isContainerDrop) {
+        const targetGroupIndices = (targetStage === null ? unassigned : docsByStage[targetStage ?? -1])
+          .map(d => d.idx)
+          .filter(i => i !== activeIdx);
+        if (targetGroupIndices.length === 0) {
+          remaining.push(movedDoc);
+        } else {
+          const lastGlobalIdx = targetGroupIndices[targetGroupIndices.length - 1];
+          const insertPos = remaining.findIndex((_, i) => {
+            let origIdx = i;
+            if (i >= activeIdx) origIdx = i + 1;
+            return origIdx === lastGlobalIdx;
+          });
+          remaining.splice(insertPos + 1, 0, movedDoc);
+        }
+      } else {
+        const overOrigIdx = over.id as number;
+        let insertPos = remaining.findIndex((_, i) => {
+          const origIdx = i >= activeIdx ? i + 1 : i;
+          return origIdx === overOrigIdx;
+        });
+        if (insertPos === -1) {
+          remaining.push(movedDoc);
+        } else {
+          remaining.splice(insertPos, 0, movedDoc);
+        }
+      }
+
+      setDocuments(remaining);
+    }
   };
 
   const renderDocRow = (doc: DocEntry, globalIdx: number) => (
@@ -3116,22 +3171,7 @@ function DocumentsStep({
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {standardDocuments.map((cat) => (
-          <Button
-            key={cat.category}
-            variant="outline"
-            size="sm"
-            className="text-[12px] h-7"
-            onClick={() => addStandardDocs(cat.category)}
-            data-testid={`button-quickadd-${cat.category}`}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            {cat.categoryLabel}
-          </Button>
-        ))}
-      </div>
-
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDocDragEnd}>
       <div className="relative pl-6">
         {stages.length > 1 && (
           <div
@@ -3172,22 +3212,22 @@ function DocumentsStep({
                     </button>
                   </div>
 
-                  <div className="rounded-[10px] border bg-white overflow-hidden">
-                    {stageDocs.length === 0 && addingToStage !== si ? (
-                      <div className="py-3 px-4 text-[13px] text-muted-foreground/60 text-center">
-                        No documents for this stage yet
-                      </div>
-                    ) : (
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDocDragEnd(e, stageDocs.map(d => d.idx))}>
+                  <DroppableStageZone stageId={si.toString()}>
+                    <div className="rounded-[10px] border bg-white overflow-hidden">
+                      {stageDocs.length === 0 && addingToStage !== si ? (
+                        <div className="py-3 px-4 text-[13px] text-muted-foreground/60 text-center">
+                          No documents for this stage yet
+                        </div>
+                      ) : (
                         <SortableContext items={stageDocs.map(d => d.idx)} strategy={verticalListSortingStrategy}>
                           <div className="divide-y divide-border/40">
                             {stageDocs.map((entry) => renderDocRow(entry.doc, entry.idx))}
                           </div>
                         </SortableContext>
-                      </DndContext>
-                    )}
-                    {renderAddDocInline(si)}
-                  </div>
+                      )}
+                      {renderAddDocInline(si)}
+                    </div>
+                  </DroppableStageZone>
                 </div>
               </div>
             );
@@ -3217,30 +3257,31 @@ function DocumentsStep({
                   </button>
                 </div>
 
-                <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
-                  {unassigned.length > 0 && (
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDocDragEnd(e, unassigned.map(d => d.idx))}>
+                <DroppableStageZone stageId="unassigned">
+                  <div className="rounded-[10px] border border-amber-200 bg-amber-50/30 overflow-hidden">
+                    {unassigned.length > 0 && (
                       <SortableContext items={unassigned.map(d => d.idx)} strategy={verticalListSortingStrategy}>
                         <div className="divide-y divide-border/40">
                           {unassigned.map((entry) => renderDocRow(entry.doc, entry.idx))}
                         </div>
                       </SortableContext>
-                    </DndContext>
-                  )}
-                  {renderAddDocInline('unassigned')}
-                </div>
+                    )}
+                    {renderAddDocInline('unassigned')}
+                  </div>
+                </DroppableStageZone>
               </div>
             </div>
           )}
         </div>
       </div>
+      </DndContext>
 
       <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
         <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
         <div>
           <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
           <span className="text-[14px] text-blue-800">
-            Documents assigned to a stage will appear in the deal checklist at the right time. Required documents must be uploaded before a deal can advance past that stage. Use the quick-add buttons above to bulk-add common document sets.
+            Documents assigned to a stage will appear in the deal checklist at the right time. Required documents must be uploaded before a deal can advance past that stage. Drag documents between stages to reassign them, or use the stage dropdown on each row.
           </span>
         </div>
       </div>
