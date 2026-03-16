@@ -1363,6 +1363,53 @@ export default function AIAgentsPage() {
   const [cpUploadFile, setCpUploadFile] = useState<File | null>(null);
   const [cpExtractionTab, setCpExtractionTab] = useState<"upload" | "cached">("upload");
   const [cpLatestResult, setCpLatestResult] = useState<any>(null);
+  const [cpModel, setCpModel] = useState("gpt-4o");
+  const [cpMaxTokens, setCpMaxTokens] = useState(16384);
+  const [cpTemperature, setCpTemperature] = useState(0);
+  const [cpTimeout, setCpTimeout] = useState(180);
+  const [cpDocLimit, setCpDocLimit] = useState(200000);
+  const [cpEditingSettings, setCpEditingSettings] = useState(false);
+
+  const { data: cpSettingsData } = useQuery({
+    queryKey: ["/api/debug/credit-extraction-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/debug/credit-extraction-settings");
+      if (!res.ok) throw new Error("Failed to load settings");
+      return res.json();
+    },
+    enabled: selectedOrchestration === "credit_policy",
+  });
+
+  useEffect(() => {
+    if (cpSettingsData?.settings) {
+      const s = cpSettingsData.settings;
+      setCpModel(s.model);
+      setCpMaxTokens(s.maxTokens);
+      setCpTemperature(s.temperature);
+      setCpTimeout(s.timeout);
+      setCpDocLimit(s.documentLimit);
+    }
+  }, [cpSettingsData]);
+
+  const { mutate: saveCpSettings, isPending: cpSettingsSaving } = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/debug/credit-extraction-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: cpModel, maxTokens: cpMaxTokens, temperature: cpTemperature, timeout: cpTimeout, documentLimit: cpDocLimit }),
+      });
+      if (!res.ok) throw new Error("Failed to save settings");
+      return res.json();
+    },
+    onSuccess: () => {
+      setCpEditingSettings(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/debug/credit-extraction-settings"] });
+      toast({ title: "Saved", description: "Model settings updated successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: cpPromptData, isLoading: cpPromptLoading } = useQuery({
     queryKey: ["/api/debug/credit-extraction-prompt"],
@@ -1734,31 +1781,118 @@ export default function AIAgentsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-1">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Model Settings
-                </CardTitle>
-                <CardDescription>Current extraction configuration</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="w-5 h-5" />
+                      Model Settings
+                    </CardTitle>
+                    <CardDescription>Extraction configuration</CardDescription>
+                  </div>
+                  {!cpEditingSettings ? (
+                    <Button variant="outline" size="sm" onClick={() => setCpEditingSettings(true)} data-testid="button-edit-model-settings">
+                      <Pencil className="w-3 h-3 mr-1" /> Edit
+                    </Button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        if (cpSettingsData?.settings) {
+                          const s = cpSettingsData.settings;
+                          setCpModel(s.model); setCpMaxTokens(s.maxTokens); setCpTemperature(s.temperature); setCpTimeout(s.timeout); setCpDocLimit(s.documentLimit);
+                        }
+                        setCpEditingSettings(false);
+                      }} data-testid="button-cancel-model-settings">Cancel</Button>
+                      <Button size="sm" onClick={() => saveCpSettings()} disabled={cpSettingsSaving} data-testid="button-save-model-settings">
+                        {cpSettingsSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
+                        Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Model</p>
-                    <p className="font-mono text-sm font-medium">gpt-4o</p>
+                {cpEditingSettings ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Model</label>
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                        value={cpModel}
+                        onChange={(e) => setCpModel(e.target.value)}
+                        data-testid="select-model"
+                      >
+                        <option value="gpt-4o">gpt-4o</option>
+                        <option value="gpt-4o-mini">gpt-4o-mini</option>
+                        <option value="gpt-4-turbo">gpt-4-turbo</option>
+                        <option value="gpt-4">gpt-4</option>
+                        <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Max Tokens (1,024 – 65,536)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                        value={cpMaxTokens}
+                        onChange={(e) => setCpMaxTokens(parseInt(e.target.value) || 16384)}
+                        min={1024} max={65536}
+                        data-testid="input-max-tokens"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Temperature (0 – 2)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                        value={cpTemperature}
+                        onChange={(e) => setCpTemperature(parseFloat(e.target.value) || 0)}
+                        min={0} max={2} step={0.1}
+                        data-testid="input-temperature"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Timeout (30 – 600 seconds)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                        value={cpTimeout}
+                        onChange={(e) => setCpTimeout(parseInt(e.target.value) || 180)}
+                        min={30} max={600}
+                        data-testid="input-timeout"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Document Limit (10,000 – 500,000 chars)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                        value={cpDocLimit}
+                        onChange={(e) => setCpDocLimit(parseInt(e.target.value) || 200000)}
+                        min={10000} max={500000}
+                        data-testid="input-doc-limit"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Max Tokens</p>
-                    <p className="font-mono text-sm font-medium">16,384</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Model</p>
+                      <p className="font-mono text-sm font-medium" data-testid="text-model">{cpModel}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Max Tokens</p>
+                      <p className="font-mono text-sm font-medium" data-testid="text-max-tokens">{cpMaxTokens.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Temperature</p>
+                      <p className="font-mono text-sm font-medium" data-testid="text-temperature">{cpTemperature}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Timeout</p>
+                      <p className="font-mono text-sm font-medium" data-testid="text-timeout">{cpTimeout}s</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Temperature</p>
-                    <p className="font-mono text-sm font-medium">0</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Timeout</p>
-                    <p className="font-mono text-sm font-medium">180s</p>
-                  </div>
-                </div>
+                )}
                 <div className="pt-3 border-t">
                   <p className="text-xs text-muted-foreground mb-1">Categories Covered</p>
                   <p className="text-sm font-medium">16 extraction categories</p>
@@ -1769,10 +1903,12 @@ export default function AIAgentsPage() {
                     <Badge variant="outline" className="text-[10px] py-0">+8 more</Badge>
                   </div>
                 </div>
-                <div className="pt-3 border-t">
-                  <p className="text-xs text-muted-foreground mb-1">Document Limit</p>
-                  <p className="text-sm font-medium">200,000 characters</p>
-                </div>
+                {!cpEditingSettings && (
+                  <div className="pt-3 border-t">
+                    <p className="text-xs text-muted-foreground mb-1">Document Limit</p>
+                    <p className="text-sm font-medium" data-testid="text-doc-limit">{cpDocLimit.toLocaleString()} characters</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

@@ -60,7 +60,7 @@ import { registerAiAssistantRoutes } from './routes/ai-assistant';
 import { registerAgentRoutes } from './routes/agents';
 import { registerDebuggerRoutes } from './routes/debugger';
 import { OrchestrationTracer } from './services/orchestrationTracing';
-import { cacheReplayContext, getCreditExtractionDefaultPrompt, getActiveCreditExtractionPrompt } from './routes/debugger';
+import { cacheReplayContext, getCreditExtractionDefaultPrompt, getActiveCreditExtractionPrompt, getActiveCreditExtractionSettings } from './routes/debugger';
 import { registerEmailRoutes } from './routes/email';
 import { registerGoogleConnectRoutes } from './routes/googleConnect';
 import { registerMicrosoftConnectRoutes } from './routes/microsoftConnect';
@@ -12319,7 +12319,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Could not extract meaningful text from this file.' });
       }
 
-      const truncatedText = textContent.slice(0, 200000);
+      const cpSettings = await getActiveCreditExtractionSettings();
+      const truncatedText = textContent.slice(0, cpSettings.documentLimit);
 
       const pSessionId = OrchestrationTracer.startSession();
       OrchestrationTracer.emit({
@@ -12340,7 +12341,7 @@ export async function registerRoutes(
         timestamp: new Date().toISOString(),
         sessionId: pSessionId,
         prompt: pSystemPrompt,
-        metadata: { model: 'gpt-4o', temperature: 0 },
+        metadata: { model: cpSettings.model, temperature: cpSettings.temperature },
       });
 
       const pStartTime = Date.now();
@@ -12352,7 +12353,7 @@ export async function registerRoutes(
       });
 
       const aiPromise = openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: cpSettings.model,
         messages: [
           { role: 'system', content: pSystemPrompt },
           {
@@ -12361,11 +12362,12 @@ export async function registerRoutes(
           }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 16384,
+        max_completion_tokens: cpSettings.maxTokens,
+        temperature: cpSettings.temperature,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI analysis timed out after 180 seconds')), 180000)
+        setTimeout(() => reject(new Error(`AI analysis timed out after ${cpSettings.timeout} seconds`)), cpSettings.timeout * 1000)
       );
 
       const response = await Promise.race([aiPromise, timeoutPromise]);
@@ -12600,7 +12602,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Could not extract meaningful text from this file.' });
       }
 
-      const truncatedText = textContent.slice(0, 200000);
+      const cpSettings2 = await getActiveCreditExtractionSettings();
+      const truncatedText = textContent.slice(0, cpSettings2.documentLimit);
 
       const sessionId = OrchestrationTracer.startSession();
 
@@ -12624,7 +12627,7 @@ export async function registerRoutes(
         timestamp: new Date().toISOString(),
         sessionId,
         prompt: systemPrompt,
-        metadata: { model: 'gpt-4o', temperature: 0 },
+        metadata: { model: cpSettings2.model, temperature: cpSettings2.temperature },
       });
 
       const startTime = Date.now();
@@ -12636,7 +12639,7 @@ export async function registerRoutes(
       });
 
       const aiPromise = openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: cpSettings2.model,
         messages: [
           { role: 'system', content: systemPrompt },
           {
@@ -12645,11 +12648,12 @@ export async function registerRoutes(
           }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 16384,
+        max_completion_tokens: cpSettings2.maxTokens,
+        temperature: cpSettings2.temperature,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI analysis timed out after 180 seconds')), 180000)
+        setTimeout(() => reject(new Error(`AI analysis timed out after ${cpSettings2.timeout} seconds`)), cpSettings2.timeout * 1000)
       );
 
       const response = await Promise.race([aiPromise, timeoutPromise]);
@@ -12845,11 +12849,13 @@ If the user provides specific criteria, extract as many rules as you can from th
         ...sanitizedMessages,
       ];
 
+      const chatSettings = await getActiveCreditExtractionSettings();
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: chatSettings.model,
         messages: chatMessages,
         response_format: { type: 'json_object' },
-        max_completion_tokens: 16384,
+        max_completion_tokens: chatSettings.maxTokens,
+        temperature: chatSettings.temperature,
       });
 
       const content = response.choices[0]?.message?.content;

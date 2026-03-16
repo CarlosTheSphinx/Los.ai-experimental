@@ -168,6 +168,8 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
         input: { fileName: cached.fileName, textLength: cached.documentText.length, replay: true, originalSessionId },
       });
 
+      const replaySettings = await getActiveCreditExtractionSettings();
+
       OrchestrationTracer.emit({
         eventType: 'agent_processing',
         agentName: 'creditPolicyExtractor',
@@ -175,7 +177,7 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
         timestamp: new Date().toISOString(),
         sessionId: replaySessionId,
         prompt: customPrompt,
-        metadata: { model: 'gpt-4o', temperature: 0 },
+        metadata: { model: replaySettings.model, temperature: replaySettings.temperature },
       });
 
       const startTime = Date.now();
@@ -187,7 +189,7 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
       });
 
       const aiPromise = openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: replaySettings.model,
         messages: [
           { role: 'system', content: customPrompt },
           {
@@ -196,11 +198,12 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
           }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 16384,
+        max_completion_tokens: replaySettings.maxTokens,
+        temperature: replaySettings.temperature,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI analysis timed out after 180 seconds')), 180000)
+        setTimeout(() => reject(new Error(`AI analysis timed out after ${replaySettings.timeout} seconds`)), replaySettings.timeout * 1000)
       );
 
       const response = await Promise.race([aiPromise, timeoutPromise]);
@@ -269,6 +272,60 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
         .where(eq(agentConfigurations.isActive, true));
 
       return res.json({ success: true, configs });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error?.message });
+    }
+  });
+
+  app.get('/api/debug/credit-extraction-settings', deps.authenticateUser, deps.requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const defaults = { model: 'gpt-4o', maxTokens: 16384, temperature: 0, timeout: 180, documentLimit: 200000 };
+      const [saved] = await db
+        .select({ settingValue: systemSettings.settingValue })
+        .from(systemSettings)
+        .where(eq(systemSettings.settingKey, 'credit_policy_extraction_settings'))
+        .limit(1);
+      const settings = saved?.settingValue ? { ...defaults, ...JSON.parse(saved.settingValue) } : defaults;
+      return res.json({ success: true, settings, defaults });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error?.message });
+    }
+  });
+
+  app.put('/api/debug/credit-extraction-settings', deps.authenticateUser, deps.requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const { model, maxTokens, temperature, timeout, documentLimit } = req.body;
+      const parsedTemp = Number(temperature);
+      const parsedMaxTokens = Number(maxTokens);
+      const parsedTimeout = Number(timeout);
+      const parsedDocLimit = Number(documentLimit);
+      const settings = {
+        model: model || 'gpt-4o',
+        maxTokens: Math.min(Math.max(Number.isFinite(parsedMaxTokens) ? parsedMaxTokens : 16384, 1024), 65536),
+        temperature: Math.min(Math.max(Number.isFinite(parsedTemp) ? parsedTemp : 0, 0), 2),
+        timeout: Math.min(Math.max(Number.isFinite(parsedTimeout) ? parsedTimeout : 180, 30), 600),
+        documentLimit: Math.min(Math.max(Number.isFinite(parsedDocLimit) ? parsedDocLimit : 200000, 10000), 500000),
+      };
+      const userId = (req as any).user?.id;
+      const [existing] = await db
+        .select({ id: systemSettings.id })
+        .from(systemSettings)
+        .where(eq(systemSettings.settingKey, 'credit_policy_extraction_settings'))
+        .limit(1);
+      if (existing) {
+        await db.update(systemSettings)
+          .set({ settingValue: JSON.stringify(settings), updatedBy: userId, updatedAt: new Date() })
+          .where(eq(systemSettings.id, existing.id));
+      } else {
+        await db.insert(systemSettings).values({
+          settingKey: 'credit_policy_extraction_settings',
+          settingValue: JSON.stringify(settings),
+          settingDescription: 'Credit policy extraction model settings',
+          updatedBy: userId,
+          updatedAt: new Date(),
+        });
+      }
+      return res.json({ success: true, settings });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error?.message });
     }
@@ -344,6 +401,28 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
       return res.status(500).json({ success: false, error: error?.message });
     }
   });
+}
+
+export async function getActiveCreditExtractionSettings(): Promise<{ model: string; maxTokens: number; temperature: number; timeout: number; documentLimit: number }> {
+  const defaults = { model: 'gpt-4o', maxTokens: 16384, temperature: 0, timeout: 180, documentLimit: 200000 };
+  try {
+    const [saved] = await db
+      .select({ settingValue: systemSettings.settingValue })
+      .from(systemSettings)
+      .where(eq(systemSettings.settingKey, 'credit_policy_extraction_settings'))
+      .limit(1);
+    if (saved?.settingValue) {
+      const parsed = JSON.parse(saved.settingValue);
+      return {
+        model: typeof parsed.model === 'string' && parsed.model ? parsed.model : defaults.model,
+        maxTokens: Number.isFinite(parsed.maxTokens) ? Math.min(Math.max(parsed.maxTokens, 1024), 65536) : defaults.maxTokens,
+        temperature: Number.isFinite(parsed.temperature) ? Math.min(Math.max(parsed.temperature, 0), 2) : defaults.temperature,
+        timeout: Number.isFinite(parsed.timeout) ? Math.min(Math.max(parsed.timeout, 30), 600) : defaults.timeout,
+        documentLimit: Number.isFinite(parsed.documentLimit) ? Math.min(Math.max(parsed.documentLimit, 10000), 500000) : defaults.documentLimit,
+      };
+    }
+  } catch {}
+  return defaults;
 }
 
 export async function getActiveCreditExtractionPrompt(): Promise<string> {
