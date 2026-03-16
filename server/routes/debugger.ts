@@ -136,7 +136,7 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
         timestamp: new Date().toISOString(),
         sessionId: replaySessionId,
         prompt: customPrompt,
-        metadata: { model: 'gpt-4o-mini', temperature: 0 },
+        metadata: { model: 'gpt-4o', temperature: 0 },
       });
 
       const startTime = Date.now();
@@ -148,20 +148,20 @@ export function registerDebuggerRoutes(app: any, deps: { authenticateUser: any; 
       });
 
       const aiPromise = openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: customPrompt },
           {
             role: 'user',
-            content: `Extract all review rules from the following credit policy document:\n\n${cached.documentText}`
+            content: `Extract ALL review rules from the following credit policy document. Be exhaustive — scan every section, extract every constraint, requirement, prohibition, permission, calculation, and conditional statement. Do not skip any section.\n\n${cached.documentText}`
           }
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 8192,
+        max_completion_tokens: 16384,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AI analysis timed out after 90 seconds')), 90000)
+        setTimeout(() => reject(new Error('AI analysis timed out after 120 seconds')), 120000)
       );
 
       const response = await Promise.race([aiPromise, timeoutPromise]);
