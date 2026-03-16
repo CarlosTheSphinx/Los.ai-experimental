@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Upload, FileText, CheckCircle2, Clock, AlertCircle, Eye,
   Loader2, Zap, Hand, FolderOpen, ChevronDown, Bot, CloudUpload,
-  XCircle, Shield, Play, RotateCw, HardDriveUpload, ExternalLink,
+  XCircle, Shield, ShieldCheck, Play, RotateCw, HardDriveUpload, ExternalLink,
   X, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -919,6 +919,27 @@ function DocumentRow({
     },
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/admin/deals/${dealId}/documents/${doc.id}`, {
+        status: "approved",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
+      toast({ title: "Document approved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to approve document", variant: "destructive" });
+    },
+  });
+
+  const isApproved = doc.status === "approved" || doc.status === "accepted";
+  const canApprove = hasFile && !isApproved;
+
   const isSynced = doc.driveUploadStatus === "ok" || doc.driveUploadStatus === "synced" || !!doc.googleDriveFileId;
   const canPushToDrive = hasFile && !isSynced;
 
@@ -1121,6 +1142,26 @@ function DocumentRow({
                 </a>
               </TooltipTrigger>
               <TooltipContent>Open in Drive</TooltipContent>
+            </Tooltip>
+          )}
+
+          {canApprove && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="h-7 w-7 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
+                  onClick={() => approveMutation.mutate()}
+                  disabled={approveMutation.isPending}
+                  data-testid={`button-approve-doc-${doc.id}`}
+                >
+                  {approveMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Approve</TooltipContent>
             </Tooltip>
           )}
 
