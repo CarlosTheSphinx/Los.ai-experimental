@@ -8547,7 +8547,17 @@ export async function registerRoutes(
         dealStages = filtered;
       }
 
-      res.json({ deal, documents: docs, project, properties: props, stages: dealStages });
+      const rawActivity = await db.select()
+        .from(projectActivity)
+        .where(eq(projectActivity.projectId, projectId))
+        .orderBy(desc(projectActivity.createdAt));
+
+      const activity = rawActivity.map(a => ({
+        ...a,
+        createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
+      }));
+
+      res.json({ deal, documents: docs, project, properties: props, stages: dealStages, activity });
     } catch (error) {
       console.error('Admin get deal error:', error);
       res.status(500).json({ error: 'Failed to load deal' });

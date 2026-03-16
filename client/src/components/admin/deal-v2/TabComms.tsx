@@ -150,7 +150,9 @@ export default function TabComms({
     },
   });
 
-  const messages = threadMessagesData?.messages || [];
+  const messages = (threadMessagesData?.messages || []).filter(
+    (m: any) => m.type !== 'notification' && m.senderRole !== 'system'
+  );
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
