@@ -4,13 +4,14 @@ import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
-  Eye, X, ClipboardEdit,
+  Eye, X, ClipboardEdit, HelpCircle, ClipboardList,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StageProgressBar } from "@/components/ui/phase1/stage-progress-bar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -53,7 +54,7 @@ function Field({ label, value }: { label: string; value: string }) {
 function getDocStatusIcon(status: string) {
   switch (status) {
     case 'approved': return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-    case 'uploaded': case 'submitted': return <Clock className="h-4 w-4 text-amber-500" />;
+    case 'uploaded': case 'submitted': case 'ai_reviewed': return <Clock className="h-4 w-4 text-amber-500" />;
     case 'rejected': return <AlertCircle className="h-4 w-4 text-red-600" />;
     case 'waived': case 'not_applicable': return <CheckCircle2 className="h-4 w-4 text-gray-400" />;
     default: return <div className="h-4 w-4 rounded-full border-2 border-gray-300" />;
@@ -63,7 +64,7 @@ function getDocStatusIcon(status: string) {
 function getDocStatusLabel(status: string) {
   switch (status) {
     case 'approved': return 'Approved';
-    case 'uploaded': case 'submitted': return 'Under Review';
+    case 'uploaded': case 'submitted': case 'ai_reviewed': return 'Under Review';
     case 'rejected': return 'Needs Revision';
     case 'waived': case 'not_applicable': return 'Not Required';
     default: return 'Pending';
@@ -83,7 +84,8 @@ export default function BorrowerDealDetail() {
   const dealId = params?.id;
   const { toast } = useToast();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["overview", "tasks"]));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["overview", "checklist"]));
+  const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
   const [previewDoc, setPreviewDoc] = useState<{ name: string; filePath: string; mimeType?: string } | null>(null);
 
   const { data: dealData, isLoading, error: dealError } = useQuery<{
@@ -122,7 +124,7 @@ export default function BorrowerDealDetail() {
 
   const completedTasks = allTasks.filter((t: any) => t.status === "completed").length;
   const totalTasks = allTasks.length;
-  const completedDocs = documents.filter((d: any) => d.status === "approved" || d.status === "uploaded" || d.status === "waived" || d.status === "not_applicable").length;
+  const completedDocs = documents.filter((d: any) => d.status === "approved" || d.status === "uploaded" || d.status === "ai_reviewed" || d.status === "waived" || d.status === "not_applicable").length;
   const totalDocs = documents.length;
   const completedItems = completedTasks + completedDocs;
   const totalItems = totalTasks + totalDocs;
@@ -390,146 +392,189 @@ export default function BorrowerDealDetail() {
           )}
         </Card>
 
-        <Card className="overflow-hidden" data-testid="card-task-overview">
+        <Card className="overflow-hidden" data-testid="card-borrower-checklist">
           <button
             className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
-            onClick={() => toggle("tasks")}
-            data-testid="toggle-tasks"
+            onClick={() => toggle("checklist")}
+            data-testid="toggle-checklist"
           >
             <CardTitle className="text-[18px] flex items-center gap-2">
-              <CheckSquare className="h-4 w-4 text-muted-foreground" />
-              Task Overview
-              <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
-                {borrowerTasks.filter((t: any) => t.status !== 'completed').length} remaining
-              </Badge>
-            </CardTitle>
-            {expandedSections.has("tasks") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-          </button>
-          {expandedSections.has("tasks") && (
-            <CardContent className="pt-0 pb-4">
-              <div className="border-t mb-3" />
-              {borrowerTasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No tasks assigned yet.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {borrowerTasks.map((task: any) => (
-                    <div key={task.id} className="flex flex-col gap-1 py-2.5 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
-                      <div className="flex items-center gap-3">
-                        {task.status === 'completed' ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <div className="h-4 w-4 rounded-full border-2 border-amber-400 flex-shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[14px] font-medium truncate ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                            {task.taskTitle || task.taskName}
-                          </p>
-                          {task.dueDate && (
-                            <p className="text-[12px] text-muted-foreground">Due: {fmtDate(task.dueDate)}</p>
-                          )}
-                        </div>
-                        <Badge
-                          variant={task.status === 'completed' ? 'default' : task.priority === 'critical' ? 'destructive' : task.priority === 'high' ? 'destructive' : 'secondary'}
-                          className={`text-[11px] capitalize ${task.status === 'completed' ? 'bg-green-600' : ''}`}
-                        >
-                          {task.status === 'completed' ? 'Done' : task.priority || 'Pending'}
-                        </Badge>
-                      </div>
-                      {task.formTemplateId && task.status !== 'completed' && (
-                        <div className="ml-7">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs gap-1.5"
-                            onClick={() => {
-                              if (deal?.borrowerPortalToken) {
-                                window.location.href = `/portal/${deal.borrowerPortalToken}`;
-                              }
-                            }}
-                            data-testid={`button-form-action-${task.id}`}
-                          >
-                            <ClipboardEdit className="h-3.5 w-3.5" />
-                            Fill Out Form
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        <Card className="overflow-hidden md:col-span-2" data-testid="card-documents">
-          <button
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
-            onClick={() => toggle("documents")}
-            data-testid="toggle-documents"
-          >
-            <CardTitle className="text-[18px] flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Documents
-              {pendingDocs.length > 0 && (
-                <Badge variant="destructive" className="text-[11px] h-5 px-1.5">{pendingDocs.length} action needed</Badge>
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              Borrower Checklist
+              {(borrowerTasks.filter((t: any) => t.status !== 'completed').length + pendingDocs.length) > 0 && (
+                <Badge variant="destructive" className="text-[11px] h-5 px-1.5">
+                  {borrowerTasks.filter((t: any) => t.status !== 'completed').length + pendingDocs.length} action needed
+                </Badge>
               )}
             </CardTitle>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{completedDocs}/{totalDocs}</span>
-              {expandedSections.has("documents") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              <span className="text-sm text-muted-foreground">{completedItems}/{totalItems}</span>
+              {expandedSections.has("checklist") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </div>
           </button>
-          {expandedSections.has("documents") && (
+          {expandedSections.has("checklist") && (
             <CardContent className="pt-0 pb-4">
               <div className="border-t mb-3" />
-              {documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No documents required yet.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {documents.map((doc: any) => (
-                    <div key={doc.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-muted/30 border border-transparent hover:border-border transition-colors" data-testid={`doc-row-${doc.id}`}>
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {getDocStatusIcon(doc.status)}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[14px] font-medium truncate">{doc.documentName}</p>
-                          <p className="text-[12px] text-muted-foreground">{getDocStatusLabel(doc.status)}</p>
-                          {doc.fileName && (doc.status === 'uploaded' || doc.status === 'submitted' || doc.status === 'approved') && (
-                            <p className="text-[11px] text-muted-foreground/70 truncate" data-testid={`text-filename-${doc.id}`}>
-                              {doc.fileName}
+
+              {borrowerTasks.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <CheckSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">Tasks</span>
+                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-auto">
+                      {borrowerTasks.filter((t: any) => t.status === 'completed').length}/{borrowerTasks.length}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    {borrowerTasks.map((task: any) => (
+                      <div key={task.id} className="flex flex-col gap-1 py-2 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
+                        <div className="flex items-center gap-3">
+                          {task.status === 'completed' ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          ) : (
+                            <div className="h-4 w-4 rounded-full border-2 border-amber-400 flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[14px] font-medium truncate ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                              {task.taskTitle || task.taskName}
                             </p>
+                            {task.dueDate && (
+                              <p className="text-[12px] text-muted-foreground">Due: {fmtDate(task.dueDate)}</p>
+                            )}
+                          </div>
+                          <Badge
+                            variant={task.status === 'completed' ? 'default' : task.priority === 'critical' ? 'destructive' : task.priority === 'high' ? 'destructive' : 'secondary'}
+                            className={`text-[11px] capitalize ${task.status === 'completed' ? 'bg-green-600' : ''}`}
+                          >
+                            {task.status === 'completed' ? 'Done' : task.priority || 'Pending'}
+                          </Badge>
+                        </div>
+                        {task.formTemplateId && task.status !== 'completed' && (
+                          <div className="ml-7">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs gap-1.5"
+                              onClick={() => {
+                                if (deal?.borrowerPortalToken) {
+                                  window.location.href = `/portal/${deal.borrowerPortalToken}`;
+                                }
+                              }}
+                              data-testid={`button-form-action-${task.id}`}
+                            >
+                              <ClipboardEdit className="h-3.5 w-3.5" />
+                              Fill Out Form
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {documents.length > 0 && (
+                <div>
+                  {borrowerTasks.length > 0 && <div className="border-t mb-3" />}
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">Documents</span>
+                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-auto">
+                      {completedDocs}/{totalDocs}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    {documents.map((doc: any) => {
+                      const isExpanded = expandedDocs.has(doc.id);
+                      const toggleDoc = () => setExpandedDocs(prev => {
+                        const next = new Set(prev);
+                        if (next.has(doc.id)) next.delete(doc.id);
+                        else next.add(doc.id);
+                        return next;
+                      });
+                      return (
+                        <div key={doc.id} className="rounded-lg border border-border/60 overflow-hidden" data-testid={`doc-row-${doc.id}`}>
+                          <button
+                            onClick={toggleDoc}
+                            className="w-full flex items-center gap-3 py-2.5 px-3 hover:bg-muted/30 transition-colors"
+                            data-testid={`toggle-doc-${doc.id}`}
+                          >
+                            {getDocStatusIcon(doc.status)}
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-[14px] font-medium truncate">{doc.documentName}</p>
+                                {doc.documentDescription && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center justify-center flex-shrink-0"
+                                          onClick={(e) => e.stopPropagation()}
+                                          aria-label={`Info: ${doc.documentDescription}`}
+                                          data-testid={`tooltip-doc-desc-${doc.id}`}
+                                        >
+                                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="max-w-xs">
+                                        <p className="text-xs">{doc.documentDescription}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
+                              <p className="text-[12px] text-muted-foreground">{getDocStatusLabel(doc.status)}</p>
+                            </div>
+                            {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                          </button>
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-1 border-t border-border/40 bg-muted/20">
+                              {doc.fileName && doc.filePath && (
+                                <p className="text-[11px] text-muted-foreground/70 truncate mb-2" data-testid={`text-filename-${doc.id}`}>
+                                  Uploaded: {doc.fileName}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2">
+                                {doc.filePath && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1.5"
+                                    onClick={() => setPreviewDoc({ name: doc.documentName || doc.fileName, filePath: doc.filePath, mimeType: doc.mimeType })}
+                                    data-testid={`button-preview-${doc.id}`}
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    View
+                                  </Button>
+                                )}
+                                {doc.status !== 'approved' && doc.status !== 'waived' && doc.status !== 'not_applicable' && (
+                                  <label className="cursor-pointer" data-testid={`button-upload-${doc.id}`}>
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      onChange={(e) => handleFileUpload(doc.id, e)}
+                                      disabled={uploadingDocId === doc.id}
+                                      data-testid={`file-input-${doc.id}`}
+                                    />
+                                    <span className="inline-flex items-center justify-center gap-1.5 h-7 px-3 text-xs font-medium border rounded-md hover:bg-accent transition-colors">
+                                      {uploadingDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                                      {doc.filePath ? 'Replace' : 'Upload'}
+                                    </span>
+                                  </label>
+                                )}
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                        {doc.filePath && (doc.status === 'uploaded' || doc.status === 'submitted' || doc.status === 'approved') && (
-                          <button
-                            onClick={() => setPreviewDoc({ name: doc.documentName || doc.fileName, filePath: doc.filePath, mimeType: doc.mimeType })}
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md border hover:bg-accent transition-colors"
-                            data-testid={`button-preview-${doc.id}`}
-                            title="Preview"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {(doc.status === 'pending' || doc.status === 'rejected' || doc.status === 'uploaded' || doc.status === 'submitted') && (
-                          <label className="cursor-pointer" data-testid={`button-upload-${doc.id}`}>
-                            <input
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => handleFileUpload(doc.id, e)}
-                              disabled={uploadingDocId === doc.id}
-                              data-testid={`file-input-${doc.id}`}
-                            />
-                            <span className="inline-flex items-center justify-center gap-1 h-7 px-3 text-xs font-medium border rounded-md hover:bg-accent transition-colors">
-                              {uploadingDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                              {doc.status === 'uploaded' || doc.status === 'submitted' ? 'Replace' : 'Upload'}
-                            </span>
-                          </label>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
+
+              {borrowerTasks.length === 0 && documents.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">No checklist items yet.</p>
               )}
             </CardContent>
           )}

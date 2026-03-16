@@ -22,8 +22,10 @@ import {
   Inbox as InboxIcon,
   MessageSquare,
   ChevronDown,
+  HelpCircle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
@@ -519,12 +521,28 @@ function BrokerPortalContent({ token }: { token: string }) {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="font-medium text-sm text-gray-900">{doc.documentName}</h4>
+                              {doc.documentDescription && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center flex-shrink-0"
+                                        aria-label={`Info: ${doc.documentDescription}`}
+                                        data-testid={`tooltip-doc-desc-${doc.id}`}
+                                      >
+                                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="text-xs">{doc.documentDescription}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                               {doc.isRequired && <Badge variant="outline" className="text-xs">Required</Badge>}
                               {doc.assignedTo === "broker" && <Badge variant="secondary" className="text-xs">Assigned to you</Badge>}
                             </div>
-                            {doc.documentDescription && (
-                              <p className="text-xs text-muted-foreground mt-1">{doc.documentDescription}</p>
-                            )}
                             {doc.files.length > 0 && (
                               <div className="mt-2 text-xs text-gray-600">
                                 <p>{doc.files.length} file(s) uploaded</p>
