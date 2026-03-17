@@ -15,6 +15,9 @@ import {
   XCircle,
   FileText,
   ShieldCheck,
+  Shield,
+  Eye,
+  Clock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +25,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/phase1/empty-state";
+import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { FindingsReviewModal } from "@/components/admin/FindingsReviewModal";
 
 interface AgentCommunication {
   id: number;
@@ -233,7 +238,7 @@ function CommunicationCard({
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", dealId, "agent-communications"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${dealId}/agent-communications`] });
       const digestMsg = data?.digest?.queued ? " Queued for next digest." : "";
       toast({ title: `Communication approved.${digestMsg}` });
     },
@@ -251,7 +256,7 @@ function CommunicationCard({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", dealId, "agent-communications"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${dealId}/agent-communications`] });
       setIsEditing(false);
       toast({ title: "Communication updated" });
     },
@@ -268,7 +273,7 @@ function CommunicationCard({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", dealId, "agent-communications"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${dealId}/agent-communications`] });
       toast({ title: "Communication discarded" });
     },
     onError: () => {
@@ -414,6 +419,16 @@ function CommunicationCard({
   );
 }
 
+function getDecisionStyle(decision: string | null) {
+  switch (decision) {
+    case "approve": return { bg: "bg-emerald-100 text-emerald-800 border-emerald-200", label: "Approved" };
+    case "conditional": return { bg: "bg-amber-100 text-amber-800 border-amber-200", label: "Conditional" };
+    case "deny": return { bg: "bg-red-100 text-red-800 border-red-200", label: "Denied" };
+    case "at_risk": return { bg: "bg-orange-100 text-orange-800 border-orange-200", label: "At Risk" };
+    default: return { bg: "bg-slate-100 text-slate-800 border-slate-200", label: "Pending Review" };
+  }
+}
+
 export default function TabAIInsights({
   deal,
   dealId,
@@ -422,6 +437,7 @@ export default function TabAIInsights({
   dealId: string;
 }) {
   const { toast } = useToast();
+  const [viewingFinding, setViewingFinding] = useState<any>(null);
 
   const { data: docsData, isLoading: docsLoading } = useQuery<{ documents: any[] }>({
     queryKey: ["/api/admin/deals", dealId, "documents", "ai-reviews"],
@@ -451,18 +467,33 @@ export default function TabAIInsights({
     enabled: !!dealId,
   });
 
+  const projectId = deal?.projectId || deal?.project_id || dealId;
+
   const { data: communications, isLoading: commsLoading } = useQuery<AgentCommunication[]>({
-    queryKey: ["/api/projects", dealId, "agent-communications"],
+    queryKey: [`/api/projects/${projectId}/agent-communications`],
     queryFn: async () => {
       try {
-        const res = await fetch(`/api/projects/${dealId}/agent-communications`, { credentials: "include" });
+        const res = await fetch(`/api/projects/${projectId}/agent-communications`, { credentials: "include" });
         if (!res.ok) return [];
         return res.json();
       } catch {
         return [];
       }
     },
-    enabled: !!dealId,
+    enabled: !!projectId,
+  });
+  const { data: findingsData, isLoading: findingsLoading } = useQuery<any[]>({
+    queryKey: [`/api/projects/${projectId}/findings`],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/findings`, { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!projectId,
   });
 
   const invalidateDocData = () => {
@@ -482,7 +513,8 @@ export default function TabAIInsights({
     onError: () => toast({ title: "Failed to approve documents", variant: "destructive" }),
   });
 
-  const isLoading = docsLoading || insightsLoading || commsLoading;
+  const findings = Array.isArray(findingsData) ? findingsData : [];
+  const isLoading = docsLoading || insightsLoading || commsLoading || findingsLoading;
 
   if (isLoading) {
     return (
@@ -508,7 +540,7 @@ export default function TabAIInsights({
   const risks = insightsList.filter((i) => i.severity === "warning" || i.type === "risk");
   const recommendations = insightsList.filter((i) => i.severity !== "warning" && i.type !== "risk");
 
-  const hasAnyContent = reviewedDocs.length > 0 || insightsList.length > 0 || commsList.length > 0;
+  const hasAnyContent = reviewedDocs.length > 0 || insightsList.length > 0 || commsList.length > 0 || findings.length > 0;
 
   if (!hasAnyContent) {
     return (
@@ -576,6 +608,80 @@ export default function TabAIInsights({
             ))}
           </div>
         </div>
+      )}
+
+      {findings.length > 0 && (
+        <div data-testid="section-ai-insights">
+          <h4 className="text-[14px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            AI Insights ({findings.length})
+          </h4>
+          <div className="space-y-2">
+            {findings.map((finding: any) => {
+              const raw = finding.rawOutput || {};
+              const report = raw.internal_report || raw.internalReport || raw;
+              const dealHealth = report.deal_health || finding.dealHealthSummary || {};
+              const status = report.overall_status || finding.overallStatus || "pending";
+              const decisionStyle = getDecisionStyle(finding.lenderDecision);
+              const summaryForLO = report.summary_for_loan_officer || "";
+
+              return (
+                <div
+                  key={finding.id}
+                  className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer hover:border-primary/30 transition-colors"
+                  onClick={() => setViewingFinding(finding)}
+                  data-testid={`finding-card-${finding.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-amber-600" />
+                      <span className="text-[15px] font-medium">
+                        AI Analysis — {new Date(finding.createdAt).toLocaleDateString()}
+                      </span>
+                      <Badge variant="outline" className={cn("text-[11px] border", decisionStyle.bg)}>
+                        {decisionStyle.label}
+                      </Badge>
+                      <Badge variant="outline" className="text-[11px] capitalize">
+                        {status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs" data-testid={`view-finding-${finding.id}`}>
+                      <Eye className="h-3.5 w-3.5 mr-1" /> View Details
+                    </Button>
+                  </div>
+                  {dealHealth.approval_likelihood_pct != null && (
+                    <div className="flex items-center gap-4 text-[13px] text-muted-foreground">
+                      <span>Approval: <strong>{dealHealth.approval_likelihood_pct}%</strong></span>
+                      {dealHealth.current_stage && (
+                        <span>Stage: <strong className="capitalize">{dealHealth.current_stage.replace(/_/g, " ")}</strong></span>
+                      )}
+                      {dealHealth.estimated_days_to_closing != null && (
+                        <span>Days to close: <strong>{dealHealth.estimated_days_to_closing}</strong></span>
+                      )}
+                    </div>
+                  )}
+                  {summaryForLO && (
+                    <p className="text-[13px] text-muted-foreground line-clamp-2">{summaryForLO}</p>
+                  )}
+                  {finding.lenderDecisionNotes && (
+                    <p className="text-[12px] text-muted-foreground italic border-t pt-2 mt-2">
+                      Decision notes: {finding.lenderDecisionNotes}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {viewingFinding && (
+        <FindingsReviewModal
+          open={!!viewingFinding}
+          onClose={() => setViewingFinding(null)}
+          finding={viewingFinding}
+          projectId={Number(projectId)}
+        />
       )}
 
       {draftComms.length > 0 && (

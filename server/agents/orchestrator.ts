@@ -512,26 +512,34 @@ async function storeAgentOutput(
     } else if (agentType === "processor") {
       const docRules = output.documentRules || output.document_rules || null;
       const docReqFindings = output.documentRequirementFindings || output.document_requirement_findings || null;
+      const internalReport = output.internal_report || output.internalReport || output;
       await db.insert(agentFindings).values({
         projectId,
         agentRunId,
-        overallStatus: output.overallStatus || output.overall_status || "incomplete_data",
-        policyFindings: output.policyFindings || output.policy_findings || null,
+        overallStatus: internalReport.overall_status || output.overallStatus || output.overall_status || "incomplete_data",
+        policyFindings: internalReport.policy_findings || output.policyFindings || output.policy_findings || null,
         documentRequirementFindings: docRules || docReqFindings || null,
-        crossDocumentConsistency: output.crossDocumentConsistency || output.cross_document_consistency || null,
+        crossDocumentConsistency: internalReport.change_impact || output.crossDocumentConsistency || output.cross_document_consistency || null,
         missingDocuments: output.missingDocuments || output.missing_documents || null,
-        dealHealthSummary: output.dealHealthSummary || output.deal_health_summary || null,
-        recommendedNextActions: output.recommendedNextActions || output.recommended_next_actions || null,
+        dealHealthSummary: internalReport.deal_health || output.dealHealthSummary || output.deal_health_summary || null,
+        recommendedNextActions: internalReport.underwriting_team_actions || output.recommendedNextActions || output.recommended_next_actions || null,
+        rawOutput: output,
       });
     } else if (agentType === "communication") {
-      await db.insert(agentCommunications).values({
-        projectId,
-        agentRunId,
-        recipientType: output.recipient_type || "borrower",
-        subject: output.subject || "Deal Update",
-        body: typeof output.body === 'string' ? output.body : JSON.stringify(output.body || output),
-        status: "draft",
-      });
+      const emails = output.emails || [output];
+      const emailList = Array.isArray(emails) ? emails : [emails];
+      for (const email of emailList) {
+        await db.insert(agentCommunications).values({
+          projectId,
+          agentRunId,
+          recipientType: email.recipient_type || email.recipientType || "borrower",
+          recipientName: email.recipient_name || email.recipientName || null,
+          recipientEmail: email.recipient_email || email.recipientEmail || null,
+          subject: email.subject || "Deal Update",
+          body: typeof email.body === 'string' ? email.body : JSON.stringify(email.body || email),
+          status: "draft",
+        });
+      }
     }
   } catch (error) {
     console.error(`⚠️ Failed to store ${agentType} output:`, error);

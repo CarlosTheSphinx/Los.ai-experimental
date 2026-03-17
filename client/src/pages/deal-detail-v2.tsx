@@ -28,6 +28,8 @@ import TabTasks from "@/components/admin/deal-v2/TabTasks";
 import TabPeople from "@/components/admin/deal-v2/TabPeople";
 import TabComms from "@/components/admin/deal-v2/TabComms";
 import TabAIInsights from "@/components/admin/deal-v2/TabAIInsights";
+import { FindingsReviewModal } from "@/components/admin/FindingsReviewModal";
+import { EmailPreviewModal } from "@/components/admin/EmailPreviewModal";
 
 function formatCurrency(amount: number | undefined): string {
   if (!amount) return "$0";
@@ -345,6 +347,11 @@ export default function DealDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineProjectId, setPipelineProjectId] = useState<number | null>(null);
+  const [showFindingsModal, setShowFindingsModal] = useState(false);
+  const [latestFinding, setLatestFinding] = useState<any>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailGenerating, setEmailGenerating] = useState(false);
+  const [generatedComms, setGeneratedComms] = useState<any[]>([]);
   
   const { toast } = useToast();
 
@@ -428,17 +435,68 @@ export default function DealDetailV2() {
 
   const triggerPipeline = useMutation({
     mutationFn: async (projectId: number) => {
-      const res = await apiRequest("POST", "/api/admin/agents/pipeline/start", { projectId });
+      const res = await apiRequest("POST", "/api/admin/agents/pipeline/start", {
+        projectId,
+        agentSequence: ["document_intelligence", "processor"],
+      });
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "AI Pipeline Started", description: "Processing your deal automatically..." });
+      toast({ title: "AI Analysis Started", description: "Analyzing documents and processing deal..." });
       setPipelineRunning(true);
     },
     onError: (error: any) => {
       toast({ title: "Pipeline Error", description: error?.message || "Failed to start pipeline", variant: "destructive" });
     },
   });
+
+  const triggerCommunication = useMutation({
+    mutationFn: async (projectId: number) => {
+      const res = await apiRequest("POST", "/api/admin/agents/pipeline/generate-communication", { projectId });
+      return res.json();
+    },
+    onSuccess: () => {
+      setEmailGenerating(true);
+    },
+    onError: (error: any) => {
+      setEmailGenerating(false);
+      toast({ title: "Error", description: error?.message || "Failed to generate email", variant: "destructive" });
+    },
+  });
+
+  const { data: commPipelineStatus } = useQuery<{ hasRun: boolean; latestRun: any }>({
+    queryKey: ["/api/projects", pipelineProjectId, "pipeline", "status", "comm"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${pipelineProjectId}/pipeline/status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: emailGenerating && !!pipelineProjectId,
+    refetchInterval: emailGenerating ? 2000 : false,
+  });
+
+  useEffect(() => {
+    if (!emailGenerating) return;
+    const status = commPipelineStatus?.latestRun?.status;
+    if (status === "completed") {
+      setEmailGenerating(false);
+      fetch(`/api/projects/${pipelineProjectId}/agent-communications`, { credentials: "include" })
+        .then(r => r.json())
+        .then(comms => {
+          const drafts = (Array.isArray(comms) ? comms : []).filter((c: any) => c.status === "draft");
+          if (drafts.length > 0) {
+            setGeneratedComms(drafts);
+            setShowFindingsModal(false);
+            setShowEmailModal(true);
+          } else {
+            toast({ title: "No emails generated", description: "The AI did not produce any draft emails." });
+          }
+        });
+    } else if (status === "failed") {
+      setEmailGenerating(false);
+      toast({ title: "Email Generation Failed", description: "The communication agent encountered an error.", variant: "destructive" });
+    }
+  }, [commPipelineStatus?.latestRun?.status, emailGenerating]);
 
   const { data: pipelineStatus } = useQuery<{
     hasRun: boolean;
@@ -481,12 +539,24 @@ export default function DealDetailV2() {
   useEffect(() => {
     if (!pipelineRunning) return;
     if (pipelineStatusValue === "completed") {
-      toast({ title: "Pipeline Complete", description: "All AI agents have finished processing." });
+      toast({ title: "Analysis Complete", description: "AI findings are ready for your review." });
       setPipelineRunning(false);
-      setActiveTab("ai-reviews");
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${pipelineProjectId}/findings`] });
+
+      fetch(`/api/projects/${pipelineProjectId}/findings`, { credentials: "include" })
+        .then(r => r.json())
+        .then(findings => {
+          if (Array.isArray(findings) && findings.length > 0) {
+            setLatestFinding(findings[0]);
+            setShowFindingsModal(true);
+          } else {
+            setActiveTab("ai-reviews");
+          }
+        })
+        .catch(() => setActiveTab("ai-reviews"));
     } else if (pipelineStatusValue === "failed") {
       const errorMsg = pipelineStatus?.latestRun?.errorMessage || "Pipeline encountered an error";
       toast({ title: "Pipeline Failed", description: errorMsg, variant: "destructive" });
@@ -716,6 +786,32 @@ export default function DealDetailV2() {
           </TabsContent>
         </div>
       </div>
+
+      {pipelineProjectId && (
+        <>
+          <FindingsReviewModal
+            open={showFindingsModal}
+            onClose={() => setShowFindingsModal(false)}
+            finding={latestFinding}
+            projectId={pipelineProjectId}
+            emailGenerating={emailGenerating}
+            onGenerateEmail={() => {
+              setEmailGenerating(true);
+              triggerCommunication.mutate(pipelineProjectId);
+            }}
+          />
+          <EmailPreviewModal
+            open={showEmailModal}
+            onClose={() => {
+              setShowEmailModal(false);
+              setActiveTab("ai-reviews");
+              queryClient.invalidateQueries({ queryKey: [`/api/projects/${pipelineProjectId}/agent-communications`] });
+            }}
+            communications={generatedComms}
+            projectId={pipelineProjectId}
+          />
+        </>
+      )}
 
     </Tabs>
   );

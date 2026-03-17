@@ -1270,6 +1270,122 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
   );
 
   /**
+   * POST /api/admin/agents/pipeline/generate-communication
+   * Run only Agent 3 (Communication) for a deal using the latest findings
+   */
+  app.post(
+    '/api/admin/agents/pipeline/generate-communication',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { projectId } = req.body;
+
+        if (!projectId) {
+          return res.status(400).json({ error: 'projectId is required' });
+        }
+
+        const [project] = await db
+          .select()
+          .from(projects)
+          .where(eq(projects.id, parseInt(projectId)));
+
+        if (!project) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const [existingRun] = await db
+          .select()
+          .from(agentPipelineRuns)
+          .where(and(
+            eq(agentPipelineRuns.projectId, parseInt(projectId)),
+            eq(agentPipelineRuns.status, 'running')
+          ));
+
+        if (existingRun) {
+          return res.status(409).json({
+            error: 'A pipeline is already running for this deal',
+            pipelineRunId: existingRun.id,
+          });
+        }
+
+        const pipelineRun = await startPipeline(
+          parseInt(projectId),
+          req.user?.id || null,
+          'manual_communication',
+          ['communication']
+        );
+
+        res.status(202).json({
+          success: true,
+          pipelineRunId: pipelineRun.id,
+          status: pipelineRun.status,
+          message: 'Communication agent started'
+        });
+      } catch (error) {
+        console.error('Error starting communication pipeline:', error);
+        res.status(500).json({ error: 'Failed to start communication agent' });
+      }
+    }
+  );
+
+  /**
+   * PATCH /api/projects/:id/findings/:findingId/decision
+   * Save lender decision on AI findings
+   */
+  app.patch(
+    '/api/projects/:id/findings/:findingId/decision',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        const findingId = parseInt(req.params.findingId);
+        const { decision, notes } = req.body;
+
+        if (!decision || !['approve', 'conditional', 'deny', 'at_risk'].includes(decision)) {
+          return res.status(400).json({ error: 'Valid decision required: approve, conditional, deny, at_risk' });
+        }
+
+        const [updated] = await db
+          .update(agentFindings)
+          .set({
+            lenderDecision: decision,
+            lenderDecisionBy: req.user?.id || null,
+            lenderDecisionAt: new Date(),
+            lenderDecisionNotes: notes || null,
+          })
+          .where(and(
+            eq(agentFindings.id, findingId),
+            eq(agentFindings.projectId, projectId)
+          ))
+          .returning();
+
+        if (!updated) {
+          return res.status(404).json({ error: 'Finding not found' });
+        }
+
+        try {
+          await db.insert(dealMemoryEntries).values({
+            dealId: projectId,
+            entryType: 'lender_decision',
+            title: `Deal marked as ${decision.replace('_', ' ')}`,
+            description: notes || null,
+            sourceType: 'admin',
+            sourceUserId: req.user?.id || null,
+            metadata: { findingId, decision },
+          });
+        } catch (e) { console.error('Memory entry error:', e); }
+
+        res.json({ success: true, finding: updated });
+      } catch (error) {
+        console.error('Error saving finding decision:', error);
+        res.status(500).json({ error: 'Failed to save decision' });
+      }
+    }
+  );
+
+  /**
    * GET /api/projects/:id/pipeline/status
    * Get current pipeline status for a deal
    */

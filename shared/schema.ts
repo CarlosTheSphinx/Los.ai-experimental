@@ -3074,6 +3074,11 @@ export const agentFindings = pgTable("agent_findings", {
   missingDocuments: jsonb("missing_documents"),
   dealHealthSummary: jsonb("deal_health_summary"),
   recommendedNextActions: jsonb("recommended_next_actions"),
+  rawOutput: jsonb("raw_output"),
+  lenderDecision: varchar("lender_decision", { length: 50 }),
+  lenderDecisionBy: integer("lender_decision_by").references(() => users.id),
+  lenderDecisionAt: timestamp("lender_decision_at"),
+  lenderDecisionNotes: text("lender_decision_notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
