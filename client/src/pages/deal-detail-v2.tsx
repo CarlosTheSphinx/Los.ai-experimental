@@ -431,8 +431,13 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (initialPipelineStatus?.latestRun?.status === "running") {
-      setActivePipelineRunId(initialPipelineStatus.latestRun.id);
-      setPipelineRunning(true);
+      const startedAt = initialPipelineStatus.latestRun.startedAt;
+      const ageMs = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
+      const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+      if (ageMs < STALE_THRESHOLD_MS) {
+        setActivePipelineRunId(initialPipelineStatus.latestRun.id);
+        setPipelineRunning(true);
+      }
     }
   }, [initialPipelineStatus]);
 

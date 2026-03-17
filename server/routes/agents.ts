@@ -1231,7 +1231,6 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Check if there's already a running pipeline for this project
         const [existingRun] = await db
           .select()
           .from(agentPipelineRuns)
@@ -1241,13 +1240,21 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           ));
 
         if (existingRun) {
-          return res.status(409).json({
-            error: 'A pipeline is already running for this deal',
-            pipelineRunId: existingRun.id,
-          });
+          const startedAt = existingRun.startedAt ? new Date(existingRun.startedAt).getTime() : 0;
+          const ageMs = Date.now() - startedAt;
+          const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+          if (ageMs > STALE_THRESHOLD_MS) {
+            await db.update(agentPipelineRuns)
+              .set({ status: 'failed', completedAt: new Date().toISOString(), errorMessage: 'Auto-expired: exceeded 10 minute timeout' })
+              .where(eq(agentPipelineRuns.id, existingRun.id));
+          } else {
+            return res.status(409).json({
+              error: 'A pipeline is already running for this deal',
+              pipelineRunId: existingRun.id,
+            });
+          }
         }
 
-        // Start the pipeline (runs asynchronously)
         const sequence = agentSequence || ['document_intelligence', 'processor', 'communication'];
         const pipelineRun = await startPipeline(
           parseInt(projectId),
