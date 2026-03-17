@@ -347,10 +347,12 @@ export default function DealDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineProjectId, setPipelineProjectId] = useState<number | null>(null);
+  const [activePipelineRunId, setActivePipelineRunId] = useState<number | null>(null);
   const [showFindingsModal, setShowFindingsModal] = useState(false);
   const [latestFinding, setLatestFinding] = useState<any>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailGenerating, setEmailGenerating] = useState(false);
+  const [activeCommRunId, setActiveCommRunId] = useState<number | null>(null);
   const [generatedComms, setGeneratedComms] = useState<any[]>([]);
   
   const { toast } = useToast();
@@ -429,6 +431,7 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (initialPipelineStatus?.latestRun?.status === "running") {
+      setActivePipelineRunId(initialPipelineStatus.latestRun.id);
       setPipelineRunning(true);
     }
   }, [initialPipelineStatus]);
@@ -443,6 +446,7 @@ export default function DealDetailV2() {
     },
     onSuccess: (data) => {
       toast({ title: "AI Analysis Started", description: "Analyzing documents and processing deal..." });
+      setActivePipelineRunId(data.pipelineRunId || null);
       setPipelineRunning(true);
     },
     onError: (error: any) => {
@@ -455,7 +459,8 @@ export default function DealDetailV2() {
       const res = await apiRequest("POST", "/api/admin/agents/pipeline/generate-communication", { projectId });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setActiveCommRunId(data.pipelineRunId || null);
       setEmailGenerating(true);
     },
     onError: (error: any) => {
@@ -477,9 +482,13 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (!emailGenerating) return;
-    const status = commPipelineStatus?.latestRun?.status;
-    if (status === "completed") {
+    const latestRun = commPipelineStatus?.latestRun;
+    if (!latestRun) return;
+    if (activeCommRunId && latestRun.id !== activeCommRunId) return;
+
+    if (latestRun.status === "completed") {
       setEmailGenerating(false);
+      setActiveCommRunId(null);
       fetch(`/api/projects/${pipelineProjectId}/agent-communications`, { credentials: "include" })
         .then(r => r.json())
         .then(comms => {
@@ -492,11 +501,12 @@ export default function DealDetailV2() {
             toast({ title: "No emails generated", description: "The AI did not produce any draft emails." });
           }
         });
-    } else if (status === "failed") {
+    } else if (latestRun.status === "failed") {
       setEmailGenerating(false);
+      setActiveCommRunId(null);
       toast({ title: "Email Generation Failed", description: "The communication agent encountered an error.", variant: "destructive" });
     }
-  }, [commPipelineStatus?.latestRun?.status, emailGenerating]);
+  }, [commPipelineStatus?.latestRun?.id, commPipelineStatus?.latestRun?.status, emailGenerating]);
 
   const { data: pipelineStatus } = useQuery<{
     hasRun: boolean;
@@ -538,9 +548,14 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (!pipelineRunning) return;
-    if (pipelineStatusValue === "completed") {
+    const latestRun = pipelineStatus?.latestRun;
+    if (!latestRun) return;
+    if (activePipelineRunId && latestRun.id !== activePipelineRunId) return;
+
+    if (latestRun.status === "completed") {
       toast({ title: "Analysis Complete", description: "AI findings are ready for your review." });
       setPipelineRunning(false);
+      setActivePipelineRunId(null);
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "tasks"] });
@@ -557,12 +572,13 @@ export default function DealDetailV2() {
           }
         })
         .catch(() => setActiveTab("ai-reviews"));
-    } else if (pipelineStatusValue === "failed") {
-      const errorMsg = pipelineStatus?.latestRun?.errorMessage || "Pipeline encountered an error";
+    } else if (latestRun.status === "failed") {
+      const errorMsg = latestRun.errorMessage || "Pipeline encountered an error";
       toast({ title: "Pipeline Failed", description: errorMsg, variant: "destructive" });
       setPipelineRunning(false);
+      setActivePipelineRunId(null);
     }
-  }, [pipelineStatusValue, pipelineRunning]);
+  }, [pipelineStatus?.latestRun?.id, pipelineStatus?.latestRun?.status, pipelineRunning]);
 
   const handleAutoProcess = () => {
     const projectId = deal?.projectId || deal?.project_id;
