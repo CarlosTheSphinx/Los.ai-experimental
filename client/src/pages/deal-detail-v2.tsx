@@ -757,7 +757,7 @@ export default function DealDetailV2() {
           <TabsList className="bg-transparent rounded-none w-full justify-between p-0 h-auto">
             {[
               { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
-              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} pending` : String(documents.length) },
+              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} outstanding` : String(documents.length) },
               { value: "tasks", label: "Tasks", icon: CheckSquare, badge: String(tasks.length) },
               { value: "people", label: "People", icon: Users, badge: null },
               { value: "communications", label: "Communications", icon: MessageCircle, badge: null },
@@ -772,7 +772,7 @@ export default function DealDetailV2() {
                 <tab.icon className="h-4.5 w-4.5" />
                 {tab.label}
                 {tab.badge && (
-                  <span className={`text-[13px] ml-0.5 ${tab.badge.includes('pending') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
+                  <span className={`text-[13px] ml-0.5 ${tab.badge.includes('outstanding') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
                     {tab.badge}
                   </span>
                 )}

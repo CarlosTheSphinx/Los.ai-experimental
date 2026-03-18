@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -64,7 +65,7 @@ function statusDisplay(status: string, aiReviewStatus?: string, driveStatus?: st
   if (s === "not_applicable") {
     return { dot: "bg-gray-400", label: "N/A", step: 0 };
   }
-  return { dot: "bg-gray-300", label: "Pending", step: 1 };
+  return { dot: "bg-gray-300", label: "Outstanding", step: 1 };
 }
 
 function fileCountLabel(doc: any) {
@@ -900,6 +901,8 @@ function DocumentRow({
   const expandFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showNotePrompt, setShowNotePrompt] = useState(false);
+  const [updateNote, setUpdateNote] = useState("");
 
   const { dot, label } = statusDisplay(doc.status, doc.aiReviewStatus, doc.driveUploadStatus);
   const downloadUrl = `/api/admin/deals/${dealId}/documents/${doc.id}/download`;
@@ -941,19 +944,38 @@ function DocumentRow({
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
+    mutationFn: async ({ status, reviewNotes }: { status: string; reviewNotes?: string }) => {
       const res = await apiRequest("PATCH", `/api/admin/deals/${dealId}/documents/${doc.id}`, {
-        status: newStatus,
+        status,
+        ...(reviewNotes !== undefined ? { reviewNotes } : {}),
       });
       return res.json();
     },
-    onSuccess: (_data: any, newStatus: string) => {
+    onSuccess: (_data: any, variables: { status: string }) => {
       invalidateDocQueries();
-      const statusLabel = DOC_STATUS_OPTIONS.find(s => s.value === newStatus)?.label || newStatus;
+      const statusLabel = DOC_STATUS_OPTIONS.find(s => s.value === variables.status)?.label || variables.status;
       toast({ title: `Status set to ${statusLabel}` });
     },
     onError: () => {
       toast({ title: "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
+  const deleteFileMutation = useMutation({
+    mutationFn: async (fileId: number) => {
+      setDeletingFileId(fileId);
+      const res = await apiRequest("DELETE", `/api/admin/document-files/${fileId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      setDeletingFileId(null);
+      invalidateDocQueries();
+      toast({ title: "File removed" });
+    },
+    onError: () => {
+      setDeletingFileId(null);
+      toast({ title: "Failed to remove file", variant: "destructive" });
     },
   });
 
@@ -1245,6 +1267,21 @@ function DocumentRow({
                               </TooltipTrigger>
                               <TooltipContent>Download</TooltipContent>
                             </Tooltip>
+                            {file.id && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => deleteFileMutation.mutate(file.id)}
+                                    disabled={deletingFileId === file.id}
+                                    className="h-6 w-6 rounded bg-red-600/10 hover:bg-red-600/20 text-red-400 flex items-center justify-center transition-colors disabled:opacity-50"
+                                    data-testid={`button-remove-file-${file.id}`}
+                                  >
+                                    {deletingFileId === file.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Remove</TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1292,7 +1329,14 @@ function DocumentRow({
                         return (
                           <button
                             key={opt.value}
-                            onClick={() => statusMutation.mutate(opt.value)}
+                            onClick={() => {
+                              if (opt.value === "update_needed") {
+                                setUpdateNote("");
+                                setShowNotePrompt(true);
+                              } else {
+                                statusMutation.mutate({ status: opt.value });
+                              }
+                            }}
                             disabled={statusMutation.isPending}
                             className={cn(
                               "w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors text-left",
@@ -1308,6 +1352,43 @@ function DocumentRow({
                         );
                       })}
                     </div>
+                    {showNotePrompt && (
+                      <div className="space-y-2 pt-2 border-t border-border/30">
+                        <Label className="text-[12px] text-muted-foreground">Why is an update needed?</Label>
+                        <Textarea
+                          value={updateNote}
+                          onChange={(e) => setUpdateNote(e.target.value)}
+                          placeholder="Describe what needs to be updated..."
+                          className="text-[13px] min-h-[60px] resize-none"
+                          data-testid={`input-update-note-${doc.id}`}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            className="h-7 text-[12px]"
+                            disabled={!updateNote.trim() || statusMutation.isPending}
+                            onClick={() => {
+                              statusMutation.mutate({ status: "update_needed", reviewNotes: updateNote.trim() });
+                              setShowNotePrompt(false);
+                              setUpdateNote("");
+                            }}
+                            data-testid={`button-submit-update-note-${doc.id}`}
+                          >
+                            {statusMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                            Submit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-[12px]"
+                            onClick={() => { setShowNotePrompt(false); setUpdateNote(""); }}
+                            data-testid={`button-cancel-update-note-${doc.id}`}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {doc.reviewedAt && (

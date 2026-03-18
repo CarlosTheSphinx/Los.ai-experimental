@@ -9268,6 +9268,9 @@ export async function registerRoutes(
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
+      if (status === 'update_needed' && (!reviewNotes || !reviewNotes.trim())) {
+        return res.status(400).json({ error: 'A reason/note is required when setting status to Update Needed' });
+      }
       
       const updateData: Record<string, any> = {};
       if (status) updateData.status = status;
