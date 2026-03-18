@@ -432,6 +432,18 @@ export default function DealsV2() {
     queryKey: ["/api/admin/program-stages"],
   });
 
+  const { data: pendingReviewData } = useQuery<{ documents: Array<{ id: number; dealId: number; documentName: string }> }>({
+    queryKey: ["/api/documents/pending-review"],
+  });
+
+  const pendingReviewByDeal = useMemo(() => {
+    const map: Record<number, number> = {};
+    (pendingReviewData?.documents || []).forEach((doc) => {
+      map[doc.dealId] = (map[doc.dealId] || 0) + 1;
+    });
+    return map;
+  }, [pendingReviewData]);
+
   const programStages = useMemo(() => {
     return (allProgramStages || []).map((prog) => ({
       programName: prog.programName,
@@ -914,7 +926,15 @@ export default function DealsV2() {
                         {formatDate(deal.targetCloseDate)}
                       </td>
                       <td className="px-3 py-3">
-                        <StatusBadge variant={getStatusVariant(deal.status)} label={deal.status || "Unknown"} />
+                        <div className="flex items-center gap-2">
+                          <StatusBadge variant={getStatusVariant(deal.status)} label={deal.status || "Unknown"} />
+                          {pendingReviewByDeal[deal.id] > 0 && (
+                            <Badge className="bg-blue-500/15 text-blue-600 border-blue-200 text-[11px] font-medium gap-1 animate-pulse" data-testid={`badge-review-${deal.id}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+                              {pendingReviewByDeal[deal.id]} Review
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3 w-[120px]">
                         <div className="flex items-center gap-2">

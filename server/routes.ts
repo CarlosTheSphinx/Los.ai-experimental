@@ -1916,6 +1916,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/documents/pending-review', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.user!.id);
+      const tenantId = user && ['super_admin'].includes(user.role) ? undefined : (user as any)?.tenantId ?? req.user!.id;
+      const docs = await storage.getPendingReviewDocuments(tenantId);
+      res.json({ documents: docs });
+    } catch (error) {
+      console.error('Pending review docs error:', error);
+      res.status(500).json({ error: 'Failed to load pending review documents' });
+    }
+  });
+
   // Get document by ID
   app.get('/api/documents/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {

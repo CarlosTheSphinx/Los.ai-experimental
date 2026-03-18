@@ -672,6 +672,35 @@ export class DatabaseStorage implements IStorage {
     return dateCounts;
   }
 
+  async getPendingReviewDocuments(tenantId?: number | null): Promise<any[]> {
+    const conditions = [
+      eq(dealDocuments.status, 'uploaded'),
+      sql`${dealDocuments.filePath} IS NOT NULL`,
+      sql`${dealDocuments.reviewedAt} IS NULL`,
+    ];
+    if (tenantId != null) {
+      conditions.push(sql`${dealDocuments.dealId} IN (SELECT id FROM projects WHERE tenant_id = ${tenantId})`);
+    }
+    const docs = await db
+      .select({
+        id: dealDocuments.id,
+        dealId: dealDocuments.dealId,
+        documentName: dealDocuments.documentName,
+        documentCategory: dealDocuments.documentCategory,
+        fileName: dealDocuments.fileName,
+        uploadedAt: dealDocuments.uploadedAt,
+        projectName: projects.projectName,
+        borrowerName: projects.borrowerName,
+        loanNumber: projects.loanNumber,
+        projectNumber: projects.projectNumber,
+      })
+      .from(dealDocuments)
+      .innerJoin(projects, eq(dealDocuments.dealId, projects.id))
+      .where(and(...conditions))
+      .orderBy(sql`${dealDocuments.uploadedAt} DESC NULLS LAST`);
+    return docs;
+  }
+
   // Project activity methods
   async createProjectActivity(activity: InsertProjectActivity): Promise<ProjectActivity> {
     const [created] = await db.insert(projectActivity).values(activity).returning();

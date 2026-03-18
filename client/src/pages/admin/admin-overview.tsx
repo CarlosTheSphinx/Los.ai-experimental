@@ -19,6 +19,8 @@ import {
   CheckSquare,
   Clock,
   AlertCircle,
+  FileSearch,
+  FileText,
 } from 'lucide-react';
 
 function formatCurrency(value: number): string {
@@ -122,6 +124,10 @@ export default function AdminOverview() {
 
   const { data: dealsData, isLoading: dealsLoading } = useQuery<any>({
     queryKey: ['/api/deals'],
+  });
+
+  const { data: pendingReviewData } = useQuery<any>({
+    queryKey: ['/api/documents/pending-review'],
   });
 
   const completeTaskMutation = useMutation({
@@ -407,6 +413,71 @@ export default function AdminOverview() {
           )}
         </div>
       </div>
+
+      {(() => {
+        const pendingDocs = pendingReviewData?.documents || [];
+        const groupedByDeal = pendingDocs.reduce((acc: Record<number, any>, doc: any) => {
+          if (!acc[doc.dealId]) {
+            acc[doc.dealId] = {
+              dealId: doc.dealId,
+              loanNumber: doc.loanNumber || doc.projectNumber || `#${doc.dealId}`,
+              borrowerName: doc.borrowerName || doc.projectName,
+              documents: [],
+            };
+          }
+          acc[doc.dealId].documents.push(doc);
+          return acc;
+        }, {});
+        const dealGroups = Object.values(groupedByDeal) as any[];
+        return (
+          <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden" data-testid="pending-review-card">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[20px] font-bold">Ready for Review</h2>
+                {pendingDocs.length > 0 && (
+                  <Badge className="bg-blue-500/15 text-blue-600 border-blue-200 text-[13px] font-semibold" data-testid="badge-pending-review-count">
+                    {pendingDocs.length}
+                  </Badge>
+                )}
+              </div>
+              <FileSearch className="h-4 w-4 text-muted-foreground/60" />
+            </div>
+            <div className="px-4 py-3 space-y-2 max-h-[320px] overflow-y-auto" data-testid="pending-review-list">
+              {dealGroups.length === 0 ? (
+                <div className="px-5 py-8 text-center text-muted-foreground text-[14px]">
+                  All documents have been reviewed
+                </div>
+              ) : (
+                dealGroups.map((group: any) => (
+                  <div key={group.dealId} className="border rounded-[10px] px-4 py-3" data-testid={`review-group-${group.dealId}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-[14px] font-semibold text-primary">{group.loanNumber}</span>
+                        <span className="text-[13px] text-muted-foreground ml-2">{group.borrowerName}</span>
+                      </div>
+                      <Badge variant="outline" className="text-[11px]">{group.documents.length} doc{group.documents.length !== 1 ? 's' : ''}</Badge>
+                    </div>
+                    {group.documents.map((doc: any) => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => navigate(`/admin/deals/${doc.dealId}?tab=documents`)}
+                        data-testid={`review-doc-${doc.id}`}
+                      >
+                        <FileText className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                        <span className="text-[13px] flex-1 truncate">{doc.documentName}</span>
+                        {doc.uploadedAt && (
+                          <span className="text-[11px] text-muted-foreground flex-shrink-0">{formatTime(doc.uploadedAt)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden" data-testid="recent-deals">
         <div className="px-5 py-4 flex items-center justify-between border-b border-border/50">
