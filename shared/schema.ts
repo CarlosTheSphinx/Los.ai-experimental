@@ -521,6 +521,9 @@ export const projects = pgTable("projects", {
   lenderOriginationPoints: real("lender_origination_points"),
   brokerOriginationPoints: real("broker_origination_points"),
   brokerName: varchar("broker_name", { length: 255 }),
+  brokerEmail: varchar("broker_email", { length: 255 }),
+  brokerPhone: varchar("broker_phone", { length: 50 }),
+  brokerCompany: varchar("broker_company", { length: 255 }),
   prepaymentPenalty: varchar("prepayment_penalty", { length: 100 }),
   holdbackAmount: real("holdback_amount"),
 

@@ -7110,7 +7110,7 @@ export async function registerRoutes(
   app.patch('/api/admin/deals/:dealId/people', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { borrowerName, borrowerEmail, borrowerPhone, brokerId } = req.body;
+      const { borrowerName, borrowerEmail, borrowerPhone, brokerId, brokerName, brokerEmail, brokerPhone, brokerCompany } = req.body;
 
       const updateData: Record<string, any> = {};
 
@@ -7118,6 +7118,10 @@ export async function registerRoutes(
       if (borrowerEmail !== undefined) updateData.borrowerEmail = borrowerEmail || null;
       if (borrowerPhone !== undefined) updateData.borrowerPhone = borrowerPhone || null;
       if (brokerId !== undefined) updateData.userId = brokerId;
+      if (brokerName !== undefined) updateData.brokerName = brokerName || null;
+      if (brokerEmail !== undefined) updateData.brokerEmail = brokerEmail || null;
+      if (brokerPhone !== undefined) updateData.brokerPhone = brokerPhone || null;
+      if (brokerCompany !== undefined) updateData.brokerCompany = brokerCompany || null;
 
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
@@ -7149,8 +7153,10 @@ export async function registerRoutes(
         borrowerEmail: updated.borrowerEmail,
         borrowerPhone: updated.borrowerPhone,
         brokerId: updated.userId,
-        brokerName: userName,
-        brokerEmail: userEmail,
+        brokerName: updated.brokerName || userName,
+        brokerEmail: updated.brokerEmail || userEmail,
+        brokerPhone: updated.brokerPhone,
+        brokerCompany: updated.brokerCompany,
       });
     } catch (error) {
       console.error('Admin update deal people error:', error);
@@ -8354,6 +8360,9 @@ export async function registerRoutes(
         lenderOriginationPoints: projects.lenderOriginationPoints,
         brokerOriginationPoints: projects.brokerOriginationPoints,
         brokerName: projects.brokerName,
+        brokerEmail: projects.brokerEmail,
+        brokerPhone: projects.brokerPhone,
+        brokerCompany: projects.brokerCompany,
         prepaymentPenalty: projects.prepaymentPenalty,
         holdbackAmount: projects.holdbackAmount,
         googleDriveFolderId: projects.googleDriveFolderId,
@@ -8492,6 +8501,9 @@ export async function registerRoutes(
         lenderOriginationPoints: project.lenderOriginationPoints,
         brokerOriginationPoints: project.brokerOriginationPoints,
         brokerName: project.brokerName,
+        brokerEmail: project.brokerEmail || project.userEmail,
+        brokerPhone: project.brokerPhone,
+        brokerCompany: project.brokerCompany,
         prepaymentPenalty: project.prepaymentPenalty,
         holdbackAmount: project.holdbackAmount,
         loanAmount: project.loanAmount,
