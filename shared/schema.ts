@@ -2320,7 +2320,7 @@ export const PERMISSION_CATEGORIES: Record<
     ],
   },
   programs: {
-    label: "Programs",
+    label: "Processes",
     permissions: [
       { key: "programs.view", label: "View programs" },
       { key: "programs.manage", label: "Manage programs" },
