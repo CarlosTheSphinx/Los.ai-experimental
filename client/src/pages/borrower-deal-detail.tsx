@@ -1,12 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link } from "wouter";
 import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
-  Eye, X, ClipboardEdit, HelpCircle, ClipboardList,
+  Eye, ClipboardEdit, HelpCircle, ClipboardList,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -238,7 +238,8 @@ export default function BorrowerDealDetail() {
   const { toast } = useToast();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
-  const [previewDoc, setPreviewDoc] = useState<{ name: string; filePath: string; mimeType?: string; docId: number } | null>(null);
+
+
 
   const { data: dealData, isLoading, error: dealError } = useQuery<{
     project: any;
@@ -658,7 +659,7 @@ export default function BorrowerDealDetail() {
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs gap-1.5"
-                                    onClick={() => setPreviewDoc({ name: doc.documentName || doc.fileName, filePath: doc.filePath, mimeType: doc.mimeType, docId: doc.id })}
+                                    onClick={() => window.open(`/api/projects/${dealId}/deal-documents/${doc.id}/download`, '_blank', 'noopener,noreferrer')}
                                     data-testid={`button-preview-${doc.id}`}
                                   >
                                     <Eye className="h-3 w-3" />
@@ -697,74 +698,6 @@ export default function BorrowerDealDetail() {
         </Card>
       </div>
 
-      {previewDoc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setPreviewDoc(null)}
-          data-testid="preview-overlay"
-        >
-          <div
-            className="relative bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-b">
-              <h3 className="text-sm font-semibold truncate">{previewDoc.name}</h3>
-              <button
-                onClick={() => setPreviewDoc(null)}
-                className="p-1 rounded-md hover:bg-muted transition-colors"
-                data-testid="button-close-preview"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center min-h-[400px]">
-              {previewDoc.mimeType?.startsWith('image/') ? (
-                <img
-                  src={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                  alt={previewDoc.name}
-                  className="max-w-full max-h-[75vh] object-contain rounded"
-                  data-testid="preview-image"
-                />
-              ) : previewDoc.mimeType === 'application/pdf' ? (
-                <div className="w-full h-[75vh] flex flex-col">
-                  <iframe
-                    src={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                    className="w-full flex-1 rounded border"
-                    title={previewDoc.name}
-                    data-testid="preview-pdf"
-                  />
-                  <div className="flex justify-center pt-3">
-                    <a
-                      href={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
-                      data-testid="link-open-pdf-tab"
-                    >
-                      <Eye className="h-3 w-3" />
-                      Open in new tab
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center space-y-3 py-8">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Preview not available for this file type.</p>
-                  <a
-                    href={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download?download=true`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                    data-testid="link-download-file"
-                  >
-                    Download file
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

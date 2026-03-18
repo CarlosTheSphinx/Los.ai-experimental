@@ -201,7 +201,9 @@ export default function TabDocuments({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
-  const [previewDoc, setPreviewDoc] = useState<{ url: string; fileName: string; mimeType: string } | null>(null);
+  const openInNewTab = (doc: { url: string; fileName: string; mimeType: string }) => {
+    window.open(doc.url, '_blank', 'noopener,noreferrer');
+  };
 
   const apiBase = `/api/admin/deals`;
   const numericDealId = parseInt(dealId);
@@ -629,168 +631,11 @@ export default function TabDocuments({
             dealId={dealId}
             defaultOpen={idx === activeIdx}
             currentMode={currentMode}
-            onPreview={setPreviewDoc}
+            onPreview={openInNewTab}
           />
         ));
       })()}
 
-      {previewDoc && (
-        <DocumentPreviewModal
-          url={previewDoc.url}
-          fileName={previewDoc.fileName}
-          mimeType={previewDoc.mimeType}
-          onClose={() => setPreviewDoc(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function DocumentPreviewModal({
-  url,
-  fileName,
-  mimeType,
-  onClose,
-}: {
-  url: string;
-  fileName: string;
-  mimeType: string;
-  onClose: () => void;
-}) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const isImage = mimeType?.startsWith("image/");
-  const isPdf = mimeType === "application/pdf";
-
-  useEffect(() => {
-    if (isPdf) {
-      setLoading(false);
-      return;
-    }
-
-    let revoke: string | null = null;
-    const controller = new AbortController();
-
-    fetch(url, { credentials: "include", signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load file");
-        return res.blob();
-      })
-      .then((blob) => {
-        const objectUrl = URL.createObjectURL(blob);
-        revoke = objectUrl;
-        setBlobUrl(objectUrl);
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(err.message);
-      })
-      .finally(() => setLoading(false));
-
-    return () => {
-      controller.abort();
-      if (revoke) URL.revokeObjectURL(revoke);
-    };
-  }, [url, isPdf]);
-
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleEsc);
-    return () => document.removeEventListener("keydown", handleEsc);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-      onClick={onClose}
-      data-testid="preview-overlay"
-    >
-      <div
-        className="relative w-[90vw] h-[90vh] max-w-6xl bg-card rounded-lg shadow-2xl flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
-          <span className="text-[15px] font-semibold truncate mr-4">{fileName}</span>
-          <div className="flex items-center gap-2">
-            <a
-              href={`${url}?download=true`}
-              className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors"
-              data-testid="button-download-preview"
-            >
-              <Download className="h-4 w-4" />
-            </a>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 rounded-full bg-muted hover:bg-muted/80 text-foreground flex items-center justify-center transition-colors"
-              data-testid="button-close-preview"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto flex items-center justify-center p-4">
-          {isPdf ? (
-            <div className="w-full h-full flex flex-col">
-              <iframe
-                src={url}
-                className="w-full flex-1 rounded border"
-                title={fileName}
-                data-testid="preview-pdf"
-              />
-              <div className="flex justify-center pt-3 shrink-0">
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
-                  data-testid="link-open-pdf-tab"
-                >
-                  Open in new tab
-                </a>
-              </div>
-            </div>
-          ) : loading ? (
-            <div className="flex flex-col items-center gap-3" data-testid="preview-loading">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-              <p className="text-[14px] text-muted-foreground">Loading preview...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center space-y-4" data-testid="preview-error">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto" />
-              <p className="text-[16px] text-muted-foreground">Failed to load preview</p>
-              <a
-                href={`${url}?download=true`}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[14px] transition-colors"
-                data-testid="link-download-error"
-              >
-                <Download className="h-4 w-4" /> Download File
-              </a>
-            </div>
-          ) : blobUrl && isImage ? (
-            <img
-              src={blobUrl}
-              alt={fileName}
-              className="max-w-full max-h-full object-contain"
-              data-testid="preview-image"
-            />
-          ) : (
-            <div className="text-center space-y-4" data-testid="preview-unsupported">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto" />
-              <p className="text-[16px] text-muted-foreground">Preview not available for this file type</p>
-              <a
-                href={`${url}?download=true`}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[14px] transition-colors"
-                data-testid="link-download-unsupported"
-              >
-                <Download className="h-4 w-4" /> Download File
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1188,7 +1033,7 @@ function DocumentRow({
                     <Eye className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>Preview</TooltipContent>
+                <TooltipContent>View file</TooltipContent>
               </Tooltip>
             )}
           </div>
