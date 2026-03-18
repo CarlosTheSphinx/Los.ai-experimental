@@ -36,7 +36,7 @@ type QuoteFormField = {
 };
 
 const LOCKED_LOAN_FIELD_KEYS = new Set([
-  'ltv', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints',
+  'ltv', 'dscr', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints',
   'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term',
   'targetCloseDate',
 ]);
@@ -220,7 +220,17 @@ export default function TabOverview({
 
   const primaryProp = properties?.find((p: any) => p.isPrimary) || properties?.[0];
 
-  const propertyValue = deal.propertyValue || deal.applicationData?.propertyValue || primaryProp?.estimatedValue || deal.loanData?.propertyValue;
+  const allProps = properties || [];
+  const totalPropertyValue = allProps.length > 0
+    ? allProps.reduce((sum: number, p: any) => sum + (Number(p.estimatedValue) || 0), 0)
+    : null;
+  const totalMonthlyRent = allProps.reduce((sum: number, p: any) => sum + (Number(p.monthlyRent) || 0), 0);
+  const totalAnnualTaxes = allProps.reduce((sum: number, p: any) => sum + (Number(p.annualTaxes) || 0), 0);
+  const totalAnnualInsurance = allProps.reduce((sum: number, p: any) => sum + (Number(p.annualInsurance) || 0), 0);
+
+  const propertyValue = (totalPropertyValue && totalPropertyValue > 0)
+    ? totalPropertyValue
+    : (deal.propertyValue || deal.applicationData?.propertyValue || primaryProp?.estimatedValue || deal.loanData?.propertyValue);
   const loanAmount = deal.loanAmount || deal.loanData?.loanAmount;
   const interestRate = deal.interestRate;
   const termMonths = deal.termMonths || deal.loanTermMonths || deal.loanData?.loanTerm;
@@ -231,6 +241,22 @@ export default function TabOverview({
   const calculatedLtv = (loanAmount && propertyValue && Number(propertyValue) > 0)
     ? ((Number(loanAmount) / Number(propertyValue)) * 100).toFixed(1)
     : null;
+
+  const calculatedDscr = (() => {
+    const loan = Number(loanAmount) || 0;
+    if (loan <= 0) return null;
+    const noi = (totalMonthlyRent * 12) - totalAnnualTaxes - totalAnnualInsurance;
+    if (noi <= 0) return null;
+    const rateStr = String(interestRate || "").replace("%", "");
+    const annualRate = Number(rateStr) || 0;
+    if (annualRate <= 0) return null;
+    const monthlyRate = annualRate / 100 / 12;
+    const n = 360;
+    const monthlyPayment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
+    const annualDebtService = monthlyPayment * 12;
+    if (annualDebtService <= 0) return null;
+    return (noi / annualDebtService).toFixed(2);
+  })();
 
   const rateDisplay = interestRate && interestRate !== "—"
     ? (String(interestRate).includes("%") ? interestRate : `${Number(interestRate).toFixed(3)}%`)
@@ -385,7 +411,8 @@ export default function TabOverview({
     const fields: { label: string; value: string; tooltip?: string; key: string }[] = [];
 
     fields.push({ key: 'interestRate', label: "Interest Rate", value: rateDisplay });
-    fields.push({ key: 'ltv', label: "LTV", value: calculatedLtv ? `${calculatedLtv}%` : "—", tooltip: "Loan-to-Value ratio — auto-calculated as Loan Amount / Property Value" });
+    fields.push({ key: 'ltv', label: "LTV", value: calculatedLtv ? `${calculatedLtv}%` : "—", tooltip: "Auto-calculated: Loan Amount ÷ Total Property Value" });
+    fields.push({ key: 'dscr', label: "DSCR", value: calculatedDscr ? `${calculatedDscr}x` : "—", tooltip: "Auto-calculated: NOI ÷ Annual Debt Service (30yr amortization)" });
 
     if (isAdmin) {
       fields.push({ key: 'ysp', label: "YSP", value: yspValue != null ? `${yspValue}%` : "—", tooltip: "Yield Spread Premium — visible to lender admins only" });
@@ -940,7 +967,19 @@ export default function TabOverview({
                   loanForm.loanAmount && propertyValue && Number(propertyValue) > 0
                     ? `${((Number(loanForm.loanAmount) / Number(propertyValue)) * 100).toFixed(1)}%`
                     : (calculatedLtv ? `${calculatedLtv}%` : "—")
-                } tooltip="Auto-calculated from Loan Amount / Property Value" />
+                } tooltip="Auto-calculated: Loan Amount ÷ Total Property Value" />
+                <Field label="DSCR" value={(() => {
+                  const loan = Number(loanForm.loanAmount) || Number(loanAmount) || 0;
+                  if (loan <= 0) return calculatedDscr ? `${calculatedDscr}x` : "—";
+                  const noi = (totalMonthlyRent * 12) - totalAnnualTaxes - totalAnnualInsurance;
+                  if (noi <= 0) return "—";
+                  const rateStr = String(loanForm.interestRate || interestRate || "").replace("%", "");
+                  const annualRate = Number(rateStr) || 0;
+                  if (annualRate <= 0) return "—";
+                  const monthlyRate = annualRate / 100 / 12;
+                  const mp = loan * (monthlyRate * Math.pow(1 + monthlyRate, 360)) / (Math.pow(1 + monthlyRate, 360) - 1);
+                  return mp > 0 ? `${(noi / (mp * 12)).toFixed(2)}x` : "—";
+                })()} tooltip="Auto-calculated: NOI ÷ Annual Debt Service (30yr amortization)" />
                 <EditField label="Interest Rate %" value={loanForm.interestRate} onChange={(v) => setLoanForm({ ...loanForm, interestRate: v })} type="number" />
                 {isAdmin && (
                   <EditField label="YSP %" value={loanForm.ysp} onChange={(v) => setLoanForm({ ...loanForm, ysp: v })} type="number" />
