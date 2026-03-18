@@ -238,7 +238,7 @@ export default function AdminOverview() {
 
         <div className="bg-card border rounded-[10px] shadow-sm px-5 py-4" data-testid="stat-tasks-due">
           <div className="flex items-center justify-between">
-            <p className="text-[13px] uppercase tracking-wider text-muted-foreground font-medium">Tasks Due Today</p>
+            <p className="text-[13px] uppercase tracking-wider text-muted-foreground font-medium">Tasks Due / Overdue</p>
             <CheckSquare className="h-4 w-4 text-muted-foreground/60" />
           </div>
           <div className="flex items-end justify-between mt-2">
@@ -343,7 +343,7 @@ export default function AdminOverview() {
             </div>
           ) : tasks.length === 0 ? (
             <div className="px-5 py-8 text-center text-muted-foreground text-[14px]">
-              No tasks for this date
+              {taskFilter === 'date' ? 'No tasks due on this date' : 'No pending tasks'}
             </div>
           ) : (
             tasks.map((task: any) => {

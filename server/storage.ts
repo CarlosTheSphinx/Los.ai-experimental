@@ -593,6 +593,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(projectTasks.assignedTo, String(filters.userId)));
     }
 
+    const priorityOrder = sql`CASE ${projectTasks.priority} WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`;
+    const dueDateSort = sql`CASE WHEN ${projectTasks.dueDate} IS NULL THEN 1 ELSE 0 END`;
+
     const tasks = await db
       .select({
         id: projectTasks.id,
@@ -618,7 +621,7 @@ export class DatabaseStorage implements IStorage {
       .from(projectTasks)
       .innerJoin(projects, eq(projectTasks.projectId, projects.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(asc(projectTasks.dueDate), asc(projectTasks.priority));
+      .orderBy(dueDateSort, asc(projectTasks.dueDate), priorityOrder);
     
     return tasks;
   }
@@ -948,9 +951,12 @@ export class DatabaseStorage implements IStorage {
       count: count() 
     }).from(documents).where(eq(documents.status, 'completed'));
     
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
     const taskConditions = [
       sql`${projectTasks.status} != 'completed'`,
-      sql`${projectTasks.status} != 'not_applicable'`
+      sql`${projectTasks.status} != 'not_applicable'`,
+      sql`(${projectTasks.dueDate} IS NOT NULL AND ${projectTasks.dueDate} <= ${endOfToday})`
     ];
     if (tenantId != null) {
       taskConditions.push(sql`${projectTasks.projectId} IN (SELECT id FROM projects WHERE tenant_id = ${tenantId})`);

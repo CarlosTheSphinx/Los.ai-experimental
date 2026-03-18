@@ -66,6 +66,10 @@ export async function buildProjectPipelineFromProgram(
   const stageIdByOrder = new Map<number, number>();
   const stageIdByStepId = new Map<number, number>();
 
+  const now = new Date();
+  const defaultDueDayOffsets: Record<number, number> = { 1: 3, 2: 7, 3: 14 };
+  const defaultFallbackOffset = 21;
+
   for (const step of workflowSteps) {
     const [stage] = await dbOrTx.insert(projectStages).values({
       projectId,
@@ -83,6 +87,10 @@ export async function buildProjectPipelineFromProgram(
     stageIdByStepId.set(step.stepId, stage.id);
     stagesCreated++;
 
+    const dueDayOffset = step.estimatedDays
+      ? cumulativeDaysForStage(workflowSteps, step.stepOrder)
+      : (defaultDueDayOffsets[step.stepOrder] ?? defaultFallbackOffset);
+
     const tasks = await dbOrTx.select()
       .from(programTaskTemplates)
       .where(and(
@@ -96,6 +104,8 @@ export async function buildProjectPipelineFromProgram(
       const isBorrowerVisible = taskVisibility === 'all' || taskVisibility === 'borrower';
       const assignRole = (task.assignToRole || '').toLowerCase();
       const isBorrowerAssigned = assignRole === 'user' || assignRole === 'borrower';
+      const taskDueDate = new Date(now);
+      taskDueDate.setDate(taskDueDate.getDate() + dueDayOffset);
       await dbOrTx.insert(projectTasks).values({
         projectId,
         stageId: stage.id,
@@ -110,6 +120,7 @@ export async function buildProjectPipelineFromProgram(
         borrowerActionRequired: isBorrowerAssigned || !!task.formTemplateId,
         status: 'pending',
         formTemplateId: task.formTemplateId || null,
+        dueDate: taskDueDate,
       });
       tasksCreated++;
     }
@@ -643,4 +654,17 @@ async function syncSingleProject(
   }
 
   return { stagesCreated, tasksCreated, documentsCreated, documentsPreserved };
+}
+
+function cumulativeDaysForStage(
+  steps: { stepOrder: number; estimatedDays: number | null }[],
+  targetOrder: number
+): number {
+  let total = 0;
+  for (const s of steps) {
+    if (s.stepOrder <= targetOrder) {
+      total += s.estimatedDays || 7;
+    }
+  }
+  return total;
 }
