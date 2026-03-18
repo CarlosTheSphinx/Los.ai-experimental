@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Pencil, Building2, User, Plus, DollarSign
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +31,8 @@ type QuoteFormField = {
   computedFrom?: string[];
   repeatable?: boolean;
   repeatGroupKey?: string;
+  conditionalOn?: string;
+  conditionalValue?: string;
 };
 
 const LOCKED_LOAN_FIELD_KEYS = new Set([
@@ -240,6 +248,12 @@ export default function TabOverview({
   const [editProperty, setEditProperty] = useState(false);
   const [propForm, setPropForm] = useState<Record<string, string>>({});
 
+  const [showAddProperty, setShowAddProperty] = useState(false);
+  const [newPropForm, setNewPropForm] = useState<Record<string, string>>({
+    address: "", city: "", state: "", propertyType: "", units: "",
+    monthlyRent: "", annualTaxes: "", annualInsurance: "", estimatedValue: "",
+  });
+
   const invalidateDeal = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
@@ -285,15 +299,38 @@ export default function TabOverview({
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
+  const addPropertyMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      return apiRequest("POST", `${apiBase}/deals/${dealId}/properties`, data);
+    },
+    onSuccess: () => {
+      setShowAddProperty(false);
+      setNewPropForm({ address: "", city: "", state: "", propertyType: "", units: "", monthlyRent: "", annualTaxes: "", annualInsurance: "", estimatedValue: "" });
+      invalidateDeal();
+      toast({ title: "Property added" });
+    },
+    onError: () => toast({ title: "Failed to add property", variant: "destructive" }),
+  });
+
   const rateNum = interestRate && interestRate !== "—" ? String(interestRate).replace("%", "") : "";
   const appData = deal.applicationData || {};
 
   const quoteFormFields: QuoteFormField[] = deal.quoteFormFields || [];
   const hasProgram = quoteFormFields.length > 0;
 
+  const isConditionMet = (f: QuoteFormField): boolean => {
+    if (!f.conditionalOn) return true;
+    const watchedVal = getFieldValue(f.conditionalOn);
+    if (f.conditionalValue) {
+      return String(watchedVal || '').toLowerCase() === String(f.conditionalValue).toLowerCase();
+    }
+    return !!watchedVal;
+  };
+
   const getFieldsByGroup = (group: string) =>
     quoteFormFields.filter(f => {
       if (f.visible === false || CONTACT_FIELD_KEYS.has(f.fieldKey)) return false;
+      if (!isConditionMet(f)) return false;
       const dg = f.displayGroup || 'loan_details';
       if (dg === group) return true;
       if (dg === 'application_details' && group === 'loan_details') return true;
@@ -499,6 +536,15 @@ export default function TabOverview({
         .forEach(f => {
           form[f.fieldKey] = String(getFieldValue(f.fieldKey) ?? "");
         });
+
+      const memberCount = appData._memberCount || 1;
+      const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
+      for (let m = 2; m <= memberCount; m++) {
+        member1Templates.forEach(tmpl => {
+          const mKey = tmpl.fieldKey.replace('member1', `member${m}`);
+          form[mKey] = String(appData[mKey] ?? "");
+        });
+      }
     }
     setBorrowerForm(form);
     setEditBorrower(true);
@@ -585,16 +631,45 @@ export default function TabOverview({
                   {hasProgram && (() => {
                     const programBorrowerFields = getFieldsByGroup('borrower_details');
                     const baseKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address', 'fullName']);
-                    return programBorrowerFields
-                      .filter(f => !baseKeys.has(f.fieldKey))
-                      .map(f => (
+                    const member1Fields = programBorrowerFields.filter(f => !baseKeys.has(f.fieldKey));
+                    const memberCount = appData._memberCount || 1;
+                    const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
+
+                    const allEditFields: React.ReactNode[] = [];
+
+                    member1Fields.forEach(f => {
+                      allEditFields.push(
                         <DynamicEditField
                           key={f.fieldKey}
                           field={f}
                           value={borrowerForm[f.fieldKey] || ""}
-                          onChange={(v) => setBorrowerForm({ ...borrowerForm, [f.fieldKey]: v })}
+                          onChange={(v) => setBorrowerForm(prev => ({ ...prev, [f.fieldKey]: v }))}
                         />
-                      ));
+                      );
+                    });
+
+                    for (let m = 2; m <= memberCount; m++) {
+                      allEditFields.push(
+                        <div key={`member-${m}-divider`} className="col-span-2 border-t border-muted pt-2 mt-1">
+                          <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Member {m}</span>
+                        </div>
+                      );
+                      member1Templates.forEach(tmpl => {
+                        const mKey = tmpl.fieldKey.replace('member1', `member${m}`);
+                        const mLabel = tmpl.label.replace('Member 1', `Member ${m}`).replace('member 1', `Member ${m}`);
+                        const mField: QuoteFormField = { ...tmpl, fieldKey: mKey, label: mLabel };
+                        allEditFields.push(
+                          <DynamicEditField
+                            key={mKey}
+                            field={mField}
+                            value={borrowerForm[mKey] || ""}
+                            onChange={(v) => setBorrowerForm(prev => ({ ...prev, [mKey]: v }))}
+                          />
+                        );
+                      });
+                    }
+
+                    return allEditFields;
                   })()}
                 </div>
               )}
@@ -614,7 +689,7 @@ export default function TabOverview({
                     <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={startEditProperty} data-testid="button-edit-property">
                       <Pencil className="h-3 w-3" /> Edit
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-add-property">
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7" data-testid="button-add-property" onClick={() => setShowAddProperty(true)}>
                       <Plus className="h-3 w-3" /> Add Property
                     </Button>
                   </>
@@ -697,6 +772,45 @@ export default function TabOverview({
               )}
             </CardContent>
           </Card>
+
+          <Dialog open={showAddProperty} onOpenChange={setShowAddProperty}>
+            <DialogContent className="max-w-lg" data-testid="dialog-add-property">
+              <DialogHeader>
+                <DialogTitle className="text-lg">Add Property</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-2">
+                <div className="col-span-2">
+                  <EditField label="Address" value={newPropForm.address} onChange={(v) => setNewPropForm({ ...newPropForm, address: v })} />
+                </div>
+                <EditField label="City" value={newPropForm.city} onChange={(v) => setNewPropForm({ ...newPropForm, city: v })} />
+                <EditField label="State" value={newPropForm.state} onChange={(v) => setNewPropForm({ ...newPropForm, state: v })} />
+                <EditField label="Property Type" value={newPropForm.propertyType} onChange={(v) => setNewPropForm({ ...newPropForm, propertyType: v })} />
+                <EditField label="Units" value={newPropForm.units} onChange={(v) => setNewPropForm({ ...newPropForm, units: v })} type="number" />
+                <EditField label="Monthly Rent" value={newPropForm.monthlyRent} onChange={(v) => setNewPropForm({ ...newPropForm, monthlyRent: v })} type="number" />
+                <EditField label="Annual Taxes" value={newPropForm.annualTaxes} onChange={(v) => setNewPropForm({ ...newPropForm, annualTaxes: v })} type="number" />
+                <EditField label="Annual Insurance" value={newPropForm.annualInsurance} onChange={(v) => setNewPropForm({ ...newPropForm, annualInsurance: v })} type="number" />
+                <EditField label="Estimated Value" value={newPropForm.estimatedValue} onChange={(v) => setNewPropForm({ ...newPropForm, estimatedValue: v })} type="number" />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="ghost" size="sm" onClick={() => setShowAddProperty(false)} data-testid="button-cancel-add-property">Cancel</Button>
+                <Button size="sm" disabled={addPropertyMutation.isPending || !newPropForm.address.trim()} data-testid="button-save-add-property" onClick={() => {
+                  addPropertyMutation.mutate({
+                    address: newPropForm.address,
+                    city: newPropForm.city,
+                    state: newPropForm.state,
+                    propertyType: newPropForm.propertyType,
+                    units: newPropForm.units ? Number(newPropForm.units) : null,
+                    monthlyRent: newPropForm.monthlyRent ? Number(newPropForm.monthlyRent) : null,
+                    annualTaxes: newPropForm.annualTaxes ? Number(newPropForm.annualTaxes) : null,
+                    annualInsurance: newPropForm.annualInsurance ? Number(newPropForm.annualInsurance) : null,
+                    estimatedValue: newPropForm.estimatedValue ? Number(newPropForm.estimatedValue) : null,
+                  });
+                }}>
+                  {addPropertyMutation.isPending ? "Adding..." : "Add Property"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Right column: Loan Details + Deal Controls */}
