@@ -428,11 +428,21 @@ export default function DealsV2() {
     return Array.from(names).sort();
   }, [deals]);
 
+  const { data: pipelineData } = useQuery<{ programs: Array<{ programId: number; programName: string; steps: Array<{ stepName: string; stepKey: string }> }> }>({
+    queryKey: ["/api/admin/pipeline"],
+  });
+
   const uniqueStages = useMemo(() => {
-    const stages = new Set<string>();
-    deals.forEach((d) => { if (d.currentStage) stages.add(d.currentStage); });
-    return Array.from(stages).sort();
-  }, [deals]);
+    const stageMap = new Map<string, string>();
+    pipelineData?.programs?.forEach((prog) => {
+      prog.steps?.forEach((step) => {
+        if (step.stepKey && step.stepName && !stageMap.has(step.stepKey)) {
+          stageMap.set(step.stepKey, step.stepName);
+        }
+      });
+    });
+    return Array.from(stageMap.entries()).map(([key, label]) => ({ key, label }));
+  }, [pipelineData]);
 
   // Compute summary metrics
   const metrics = useMemo(() => {
@@ -787,7 +797,7 @@ export default function DealsV2() {
                   >
                     <option value="all">All Stages</option>
                     {uniqueStages.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s.key} value={s.key}>{s.label}</option>
                     ))}
                   </select>
                 </div>
