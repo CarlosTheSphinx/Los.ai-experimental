@@ -10599,6 +10599,24 @@ export async function registerRoutes(
         }
         
         const updatedPt = await storage.updateTask(taskId, ptUpdates);
+
+        const ptTaskLabel = resolvedTitle || existingPt.taskTitle || 'Task';
+        let ptActivityDesc = '';
+        if (status) {
+          ptActivityDesc = `Task "${ptTaskLabel}" marked as ${status}`;
+        } else if (assignedTo !== undefined) {
+          ptActivityDesc = `Task "${ptTaskLabel}" ${assignedTo ? `assigned to ${assignedTo}` : 'unassigned'}`;
+        } else {
+          ptActivityDesc = `Task "${ptTaskLabel}" updated`;
+        }
+        await storage.createProjectActivity({
+          projectId: dealId,
+          userId: req.user!.id,
+          activityType: status === 'completed' ? 'task_completed' : 'task_updated',
+          activityDescription: ptActivityDesc,
+          visibleToBorrower: existingPt.visibleToBorrower ?? false,
+        });
+
         return res.json({ task: { ...updatedPt, taskName: updatedPt?.taskTitle, _type: 'project_task' } });
       }
 
@@ -10644,6 +10662,24 @@ export async function registerRoutes(
           });
         }
       }
+
+      const dtTaskLabel = updated.taskName || existingTask.taskName || 'Task';
+      let dtActivityDesc = '';
+      if (status) {
+        dtActivityDesc = `Task "${dtTaskLabel}" marked as ${status}`;
+      } else if (assignedTo !== undefined) {
+        const assigneeName = assignedTo ? (await storage.getUserById(parseInt(assignedTo)))?.fullName || 'someone' : 'unassigned';
+        dtActivityDesc = `Task "${dtTaskLabel}" assigned to ${assigneeName}`;
+      } else {
+        dtActivityDesc = `Task "${dtTaskLabel}" updated`;
+      }
+      await storage.createProjectActivity({
+        projectId: dealId,
+        userId: req.user!.id,
+        activityType: status === 'completed' ? 'task_completed' : 'task_updated',
+        activityDescription: dtActivityDesc,
+        visibleToBorrower: false,
+      });
 
       // Send notification if task was just completed
       if (status === 'completed' && !wasCompleted) {
@@ -20338,7 +20374,7 @@ Return JSON only:
       const dealId = parseInt(req.params.dealId);
       if (isNaN(dealId)) return res.status(400).json({ error: 'Invalid deal ID' });
 
-      const notes = await db
+      const rawNotes = await db
         .select({
           id: dealNotes.id,
           dealId: dealNotes.dealId,
@@ -20359,6 +20395,12 @@ Return JSON only:
         .leftJoin(users, eq(dealNotes.userId, users.id))
         .where(eq(dealNotes.dealId, dealId))
         .orderBy(asc(dealNotes.createdAt));
+
+      const notes = rawNotes.map(n => ({
+        ...n,
+        createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : n.createdAt,
+        updatedAt: n.updatedAt instanceof Date ? n.updatedAt.toISOString() : n.updatedAt,
+      }));
 
       res.json({ notes });
     } catch (error) {

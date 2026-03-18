@@ -31,6 +31,8 @@ function getActivityDotColor(type: string | undefined): string {
     case "document_review":
     case "ai_review": return "bg-orange-400";
     case "note": return "bg-orange-400";
+    case "task_updated":
+    case "task_completed": return "bg-blue-500";
     case "system": return "bg-green-500";
     default: return "bg-orange-400";
   }
@@ -174,10 +176,13 @@ export default function TabComms({
   const activityEntries = activities
     .filter(a => {
       const desc = (a.activityDescription || a.description || "").toLowerCase();
-      return desc.includes("moved") || desc.includes("stage") || desc.includes("review") ||
+      const type = (a.activityType || "").toLowerCase();
+      return type.includes("task") ||
+             desc.includes("moved") || desc.includes("stage") || desc.includes("review") ||
              desc.includes("approved") || desc.includes("rejected") || desc.includes("updated") ||
              desc.includes("created") || desc.includes("assigned") || desc.includes("note") ||
-             desc.includes("document") || desc.includes("uploaded");
+             desc.includes("document") || desc.includes("uploaded") || desc.includes("task") ||
+             desc.includes("completed") || desc.includes("marked");
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
