@@ -256,6 +256,7 @@ export default function BorrowerDealDetail() {
     },
     enabled: !!dealId,
     retry: 2,
+    refetchInterval: 15000,
   });
 
   const deal = dealData?.project;
