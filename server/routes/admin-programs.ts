@@ -108,7 +108,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1298,7 +1297,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1424,7 +1422,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
