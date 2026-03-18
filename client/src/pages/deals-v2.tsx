@@ -432,16 +432,14 @@ export default function DealsV2() {
     queryKey: ["/api/admin/pipeline"],
   });
 
-  const uniqueStages = useMemo(() => {
-    const stageMap = new Map<string, string>();
-    pipelineData?.programs?.forEach((prog) => {
-      prog.steps?.forEach((step) => {
-        if (step.stepKey && step.stepName && !stageMap.has(step.stepKey)) {
-          stageMap.set(step.stepKey, step.stepName);
-        }
-      });
-    });
-    return Array.from(stageMap.entries()).map(([key, label]) => ({ key, label }));
+  const programStages = useMemo(() => {
+    return (pipelineData?.programs || []).map((prog) => ({
+      programName: prog.programName,
+      steps: (prog.steps || []).map((step) => ({
+        key: step.stepKey,
+        label: step.stepName,
+      })),
+    })).filter((p) => p.steps.length > 0);
   }, [pipelineData]);
 
   // Compute summary metrics
@@ -796,8 +794,12 @@ export default function DealsV2() {
                     data-testid="select-stage-filter"
                   >
                     <option value="all">All Stages</option>
-                    {uniqueStages.map((s) => (
-                      <option key={s.key} value={s.key}>{s.label}</option>
+                    {programStages.map((prog) => (
+                      <optgroup key={prog.programName} label={prog.programName}>
+                        {prog.steps.map((s) => (
+                          <option key={`${prog.programName}-${s.key}`} value={s.key}>{s.label}</option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </div>
