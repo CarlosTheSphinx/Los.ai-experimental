@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatPhoneNumber } from "@/lib/validation";
+import { sortByActionPriority, docActionPriority, taskActionPriority } from "@/lib/utils";
 
 function fmt(amount: number | string | undefined | null): string {
   if (amount === null || amount === undefined || amount === "" || amount === "—") return "—";
@@ -578,7 +579,7 @@ export default function BorrowerDealDetail() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    {borrowerTasks.map((task: any) => (
+                    {sortByActionPriority(borrowerTasks, (t: any) => taskActionPriority(t.status)).map((task: any) => (
                       <div key={task.id} className="flex flex-col gap-1 py-2 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
                         <div className="flex items-center gap-3">
                           {task.status === 'completed' ? (
@@ -621,7 +622,7 @@ export default function BorrowerDealDetail() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    {documents.map((doc: any) => {
+                    {sortByActionPriority(documents, (d: any) => docActionPriority(d.status)).map((doc: any) => {
                       const isExpanded = expandedDocs.has(doc.id);
                       const toggleDoc = () => setExpandedDocs(prev => {
                         const next = new Set(prev);

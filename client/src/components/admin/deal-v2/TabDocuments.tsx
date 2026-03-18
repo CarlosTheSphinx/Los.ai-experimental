@@ -6,7 +6,7 @@ import {
   XCircle, Shield, ShieldCheck, Play, RotateCw, HardDriveUpload, ExternalLink,
   X, Download, Plus, User,
 } from "lucide-react";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, sortByActionPriority, docActionPriority } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -348,6 +348,9 @@ export default function TabDocuments({
     const key = doc.stageId || null;
     if (!docsByStage.has(key)) docsByStage.set(key, []);
     docsByStage.get(key)!.push(doc);
+  });
+  docsByStage.forEach((docs, key) => {
+    docsByStage.set(key, sortByActionPriority(docs, (d) => docActionPriority(d.status)));
   });
 
   const sortedStageKeys: (number | null)[] = [];

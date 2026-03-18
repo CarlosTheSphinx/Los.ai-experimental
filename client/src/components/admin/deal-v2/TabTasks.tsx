@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, sortByActionPriority, taskActionPriority } from "@/lib/utils";
 
 function getPriorityColor(priority: string): string {
   switch (priority?.toLowerCase()) {
@@ -261,6 +261,9 @@ export default function TabTasks({
     const key = task.stageId || null;
     if (!tasksByStage.has(key)) tasksByStage.set(key, []);
     tasksByStage.get(key)!.push(task);
+  });
+  tasksByStage.forEach((items, key) => {
+    tasksByStage.set(key, sortByActionPriority(items, (t) => taskActionPriority(t.status)));
   });
 
   const sortedStageKeys: (number | null)[] = [];

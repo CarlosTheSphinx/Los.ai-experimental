@@ -42,3 +42,40 @@ export function formatTimestamp(value: string | number | Date | null | undefined
   if (!d) return fallback;
   return d.toLocaleString('en-US');
 }
+
+export function docActionPriority(status: string | null | undefined): number {
+  switch (status) {
+    case 'approved':
+    case 'accepted':
+    case 'waived':
+    case 'not_applicable':
+      return 3;
+    case 'update_needed':
+    case 'rejected':
+    case 'uploaded':
+    case 'submitted':
+    case 'ai_reviewed':
+    case 'conditional':
+    case 'at_risk':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+export function taskActionPriority(status: string | null | undefined): number {
+  switch (status) {
+    case 'completed':
+    case 'done':
+      return 3;
+    case 'in_progress':
+    case 'blocked':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+export function sortByActionPriority<T>(items: T[], getPriority: (item: T) => number): T[] {
+  return [...items].sort((a, b) => getPriority(a) - getPriority(b));
+}

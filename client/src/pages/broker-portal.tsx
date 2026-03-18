@@ -28,6 +28,7 @@ import { format } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { sortByActionPriority, docActionPriority } from "@/lib/utils";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
 import { PortalSidebar, type PortalView } from "@/components/portal/PortalSidebar";
 
@@ -512,7 +513,7 @@ function BrokerPortalContent({ token }: { token: string }) {
               </Card>
             ) : (
               <div className="space-y-3">
-                {documents.map((doc) => (
+                {sortByActionPriority(documents, (d: any) => docActionPriority(d.status)).map((doc) => (
                   <Card key={doc.id} data-testid={`doc-card-${doc.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
