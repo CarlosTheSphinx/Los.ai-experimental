@@ -43,6 +43,23 @@ const LOCKED_LOAN_FIELD_KEYS = new Set([
 
 const CONTACT_FIELD_KEYS = new Set(['firstName', 'lastName', 'email', 'phone', 'address']);
 
+const PROPERTY_TYPE_OPTIONS = [
+  { value: "SINGLE_FAMILY_RESIDENCE", label: "Single Family Residence" },
+  { value: "TWO_FOUR_UNIT", label: "2-4 Unit" },
+  { value: "MULTIFAMILY", label: "Multifamily (5+ Units)" },
+  { value: "RENTAL_PORTFOLIO", label: "Rental Portfolio" },
+  { value: "MIXED_USE", label: "Mixed-Use" },
+  { value: "INFILL_LOT", label: "Infill Lot" },
+  { value: "LAND", label: "Land" },
+  { value: "OFFICE", label: "Office" },
+  { value: "RETAIL", label: "Retail" },
+  { value: "HOSPITALITY", label: "Hospitality" },
+  { value: "INDUSTRIAL", label: "Industrial" },
+  { value: "MEDICAL", label: "Medical" },
+  { value: "AGRICULTURAL", label: "Agricultural" },
+  { value: "SPECIAL_PURPOSE", label: "Special Purpose" },
+];
+
 function fmt(amount: number | string | undefined | null): string {
   if (amount === null || amount === undefined || amount === "" || amount === "—") return "—";
   const n = typeof amount === "string" ? parseFloat(amount.replace(/[^0-9.-]/g, "")) : amount;
@@ -106,6 +123,26 @@ function EditField({ label, value, onChange, type = "text" }: { label: string; v
         className="h-8 text-[16px] mt-0.5"
         data-testid={`input-edit-${label.toLowerCase().replace(/\s+/g, "-")}`}
       />
+    </div>
+  );
+}
+
+function PropertyTypeSelectField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-8 text-[16px] mt-0.5" data-testid="select-property-type">
+          <SelectValue placeholder="Select property type" />
+        </SelectTrigger>
+        <SelectContent>
+          {PROPERTY_TYPE_OPTIONS.map(opt => (
+            <SelectItem key={opt.value} value={opt.value} data-testid={`select-property-type-${opt.value.toLowerCase()}`}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -421,7 +458,7 @@ export default function TabOverview({
         });
     } else {
       baseFields.push(
-        { key: 'propertyType', label: "Property Type", value: primaryProp?.propertyType || deal.propertyType || "—" },
+        { key: 'propertyType', label: "Property Type", value: (() => { const raw = primaryProp?.propertyType || deal.propertyType; return PROPERTY_TYPE_OPTIONS.find(o => o.value === raw)?.label || raw || "—"; })() },
         { key: 'units', label: "Units", value: primaryProp?.units ? String(primaryProp.units) : "—" },
         { key: 'monthlyRent', label: "Monthly Rent", value: fmt(primaryProp?.monthlyRent) },
         { key: 'annualTaxes', label: "Annual Taxes", value: fmt(primaryProp?.annualTaxes) },
@@ -743,7 +780,7 @@ export default function TabOverview({
                   </div>
                   {!hasProgram ? (
                     <>
-                      <EditField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
+                      <PropertyTypeSelectField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
                       <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
                       <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
                       <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
@@ -773,6 +810,28 @@ export default function TabOverview({
                   })()}
                 </div>
               )}
+
+              {(() => {
+                const additionalProps = properties?.filter((p: any) => p.id !== primaryProp?.id) || [];
+                if (additionalProps.length === 0) return null;
+                const getTypeLabel = (val: string) => PROPERTY_TYPE_OPTIONS.find(o => o.value === val)?.label || val || "—";
+                return additionalProps.map((prop: any, idx: number) => (
+                  <div key={prop.id || idx} data-testid={`additional-property-${prop.id || idx}`}>
+                    <div className="border-t border-muted my-4" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Additional Property {idx + 1}</p>
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                      <Field label="Address" value={prop.address || "—"} />
+                      <Field label="City / State" value={[prop.city, prop.state].filter(Boolean).join(", ") || "—"} />
+                      <Field label="Property Type" value={getTypeLabel(prop.propertyType)} />
+                      <Field label="Units" value={prop.units ? String(prop.units) : "—"} />
+                      <Field label="Monthly Rent" value={fmt(prop.monthlyRent)} />
+                      <Field label="Annual Taxes" value={fmt(prop.annualTaxes)} />
+                      <Field label="Annual Insurance" value={fmt(prop.annualInsurance)} />
+                      <Field label="Estimated Value" value={fmt(prop.estimatedValue)} />
+                    </div>
+                  </div>
+                ));
+              })()}
             </CardContent>
           </Card>
 
@@ -787,7 +846,7 @@ export default function TabOverview({
                 </div>
                 <EditField label="City" value={newPropForm.city} onChange={(v) => setNewPropForm({ ...newPropForm, city: v })} />
                 <EditField label="State" value={newPropForm.state} onChange={(v) => setNewPropForm({ ...newPropForm, state: v })} />
-                <EditField label="Property Type" value={newPropForm.propertyType} onChange={(v) => setNewPropForm({ ...newPropForm, propertyType: v })} />
+                <PropertyTypeSelectField label="Property Type" value={newPropForm.propertyType} onChange={(v) => setNewPropForm({ ...newPropForm, propertyType: v })} />
                 <EditField label="Units" value={newPropForm.units} onChange={(v) => setNewPropForm({ ...newPropForm, units: v })} type="number" />
                 <EditField label="Monthly Rent" value={newPropForm.monthlyRent} onChange={(v) => setNewPropForm({ ...newPropForm, monthlyRent: v })} type="number" />
                 <EditField label="Annual Taxes" value={newPropForm.annualTaxes} onChange={(v) => setNewPropForm({ ...newPropForm, annualTaxes: v })} type="number" />
