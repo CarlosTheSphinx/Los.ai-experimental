@@ -217,7 +217,23 @@ function DealStrip({
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
+        <ControlCard label="Loan Program">
+          <Select
+            value={deal.programId ? String(deal.programId) : "none"}
+            onValueChange={handleProgramChange}
+            disabled={convertProgramMutation.isPending || !isAdmin}
+          >
+            <SelectTrigger className="h-8 border-0 shadow-none px-0 text-[18px] font-bold focus:ring-0" data-testid="select-loan-program">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No Program</SelectItem>
+              {programs.map((p: any) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </ControlCard>
         <ControlCard label="Deal Status">
           <Select
             value={deal.projectStatus || deal.status || "active"}
@@ -250,23 +266,7 @@ function DealStrip({
         </ControlCard>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-        <ControlCard label="Loan Program">
-          <Select
-            value={deal.programId ? String(deal.programId) : "none"}
-            onValueChange={handleProgramChange}
-            disabled={convertProgramMutation.isPending || !isAdmin}
-          >
-            <SelectTrigger className="h-8 border-0 shadow-none px-0 text-[18px] font-bold focus:ring-0" data-testid="select-loan-program">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No Program</SelectItem>
-              {programs.map((p: any) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </ControlCard>
+        <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
         <KpiCard
           icon={Percent}
           label="Origination"
