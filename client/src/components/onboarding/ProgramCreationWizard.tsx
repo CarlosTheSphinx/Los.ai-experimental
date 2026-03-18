@@ -1059,7 +1059,7 @@ export function ProgramCreationWizard({
               ) : (
                 <Button
                   onClick={() => {
-                    if (wizardStep === 'template') {
+                    if (wizardStep === 'template' && !isEditMode) {
                       applyTemplateDefaults();
                     }
                     goNext();
