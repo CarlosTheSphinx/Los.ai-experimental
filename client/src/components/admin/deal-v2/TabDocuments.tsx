@@ -703,6 +703,7 @@ function StageSection({
             <thead>
               <tr className="border-b border-border/30 text-left text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-2">Document</th>
+                <th className="px-4 py-2">Review</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2">Files</th>
                 <th className="px-4 py-2 text-right">Actions</th>
@@ -756,6 +757,7 @@ function DocumentRow({
   const downloadUrl = `/api/admin/deals/${dealId}/documents/${doc.id}/download`;
   const hasFile = doc.filePath || doc.fileName;
   const canReview = hasFile && (doc.aiReviewStatus === "not_reviewed" || doc.aiReviewStatus === "pending" || !doc.aiReviewStatus);
+  const needsReview = hasFile && doc.status === "uploaded" && !doc.reviewedAt && doc.status !== "approved" && doc.status !== "rejected" && doc.status !== "waived";
 
   const invalidateDocQueries = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
@@ -920,6 +922,16 @@ function DocumentRow({
           </div>
         </td>
         <td className="px-4 py-2.5">
+          {needsReview ? (
+            <Badge className="bg-blue-500/15 text-blue-600 border-blue-200 text-[11px] font-medium gap-1 animate-pulse" data-testid={`badge-needs-review-${doc.id}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+              Ready to Review
+            </Badge>
+          ) : (
+            <span className="text-[13px] text-muted-foreground">—</span>
+          )}
+        </td>
+        <td className="px-4 py-2.5">
           <div className="flex items-center gap-1.5">
             <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
             <span className="text-[14px] font-medium">{label}</span>
@@ -1042,7 +1054,7 @@ function DocumentRow({
 
       {expanded && (
         <tr data-testid={`doc-detail-${doc.id}`}>
-          <td colSpan={4} className="px-0 py-0">
+          <td colSpan={5} className="px-0 py-0">
             <div className="bg-muted/10 border-t border-border/20 px-6 py-4 space-y-4">
               <div className="flex items-start gap-6">
                 <div className="flex-1 space-y-3">

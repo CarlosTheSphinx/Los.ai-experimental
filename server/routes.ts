@@ -4399,9 +4399,10 @@ export async function registerRoutes(
       notifyDealAdmins(
         projectId,
         'document_uploaded',
-        'New Document Uploaded',
-        `${uploaderName} uploaded "${fileName || 'a document'}" to ${dealLabel}`,
-        userId
+        'Document Ready for Review',
+        `${uploaderName} uploaded "${fileName || 'a document'}" to ${dealLabel} — ready for your review`,
+        userId,
+        `/admin/deals/${projectId}?tab=documents`
       ).catch(err => console.error('Notification error:', err));
 
       // Google Drive sync (non-blocking)
@@ -4544,9 +4545,10 @@ export async function registerRoutes(
       notifyDealAdmins(
         projectId,
         'document_uploaded',
-        'New Document Uploaded',
-        `${uploaderName} uploaded "${updated?.document_name || fileName || 'a document'}" to ${dealLabel}`,
-        userId
+        'Document Ready for Review',
+        `${uploaderName} uploaded "${updated?.document_name || fileName || 'a document'}" to ${dealLabel} — ready for your review`,
+        userId,
+        `/admin/deals/${projectId}?tab=documents`
       ).catch(err => console.error('Notification error:', err));
 
       maybeAutoTriggerPipeline(projectId, userId);
@@ -20845,7 +20847,7 @@ Return JSON only:
     }
   }
 
-  async function notifyDealAdmins(dealId: number, type: string, title: string, message: string, excludeUserId?: number) {
+  async function notifyDealAdmins(dealId: number, type: string, title: string, message: string, excludeUserId?: number, customLink?: string) {
     try {
       const deal = await db.select().from(projects).where(eq(projects.id, dealId)).limit(1);
       if (!deal[0]) return;
@@ -20868,7 +20870,7 @@ Return JSON only:
           title,
           message,
           dealId,
-          link: `/admin/deals/${dealId}`,
+          link: customLink || `/admin/deals/${dealId}`,
         });
       }
     } catch (err) {
