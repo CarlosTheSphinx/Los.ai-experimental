@@ -2357,7 +2357,7 @@ function QuoteFormBuilderStep({
     const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
     setQuoteFormFields([
       ...quoteFormFields,
-      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false, displayGroup: 'loan_details' as DisplayGroup },
+      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false, displayGroup: newFieldGroup },
     ]);
     setNewFieldName('');
     setNewFieldType('text');
@@ -2453,6 +2453,66 @@ function QuoteFormBuilderStep({
   const requiredCount = allFields.filter((f) => f.required && f.visible).length;
   const optionalCount = allFields.filter((f) => !f.required && f.visible).length;
   const [showAddField, setShowAddField] = useState(false);
+  const [newFieldGroup, setNewFieldGroup] = useState<DisplayGroup>('loan_details');
+
+  const borrowerProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'borrower_details');
+  const loanProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'loan_details');
+  const propertyProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'property_details');
+
+  const renderGroupCard = (
+    title: string,
+    icon: React.ReactNode,
+    groupFields: QuoteFormField[],
+    includeContacts: boolean,
+  ) => {
+    const requiredF = groupFields.filter(f => f.required && f.visible);
+    const optionalF = groupFields.filter(f => !f.required && f.visible);
+    const hiddenF = groupFields.filter(f => !f.visible);
+    const total = (includeContacts ? contactFields.length : 0) + groupFields.length;
+
+    return (
+      <div className="rounded-[10px] border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b bg-muted/20 flex items-center gap-2">
+          {icon}
+          <span className="text-[15px] font-semibold">{title}</span>
+          <span className="text-[12px] text-muted-foreground ml-auto">{total} fields</span>
+        </div>
+        {includeContacts && contactFields.map((field, cIdx) => renderFieldRow(field, cIdx, false))}
+        {requiredF.length > 0 && (
+          <div className="px-4 py-2 bg-red-50/60 border-b border-red-200/40">
+            <span className="text-[11px] font-semibold text-red-500 uppercase tracking-wider">Required ({requiredF.length})</span>
+          </div>
+        )}
+        {requiredF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {optionalF.length > 0 && (
+          <div className="px-4 py-2 bg-slate-50/80 border-b border-border/40">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Optional ({optionalF.length})</span>
+          </div>
+        )}
+        {optionalF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {hiddenF.length > 0 && (
+          <div className="px-4 py-2 bg-slate-100/60 border-b border-border/40">
+            <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Hidden ({hiddenF.length})</span>
+          </div>
+        )}
+        {hiddenF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {total === 0 && (
+          <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+            No fields in this group. Change a field's group dropdown to move it here.
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderFieldRow = (field: QuoteFormField, pIdx: number, isDraggable: boolean) => {
     const isConfiguring = configuringIndex === field.fieldKey;
@@ -2712,7 +2772,7 @@ function QuoteFormBuilderStep({
       <div>
         <h2 className="text-[26px] font-bold leading-tight">Quote Form Fields</h2>
         <p className="text-[16px] text-muted-foreground mt-1">
-          Configure which fields brokers see when requesting a quote for this program. Drag to reorder.
+          Configure which fields brokers see when requesting a quote for this program. Use the group dropdown on each field to move it between cards.
         </p>
       </div>
 
@@ -2750,6 +2810,16 @@ function QuoteFormBuilderStep({
               ))}
             </SelectContent>
           </Select>
+          <Select value={newFieldGroup} onValueChange={(v) => setNewFieldGroup(v as DisplayGroup)}>
+            <SelectTrigger className="w-[150px]" data-testid="select-new-field-group">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DISPLAY_GROUP_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="default"
             onClick={() => { addCustomField(); setShowAddField(false); }}
@@ -2762,52 +2832,33 @@ function QuoteFormBuilderStep({
         </div>
       )}
 
-      <div className="rounded-[10px] border bg-white overflow-hidden">
-        {contactFields.map((field, cIdx) => renderFieldRow(field, cIdx, false))}
-        {(() => {
-          const requiredFields = programFields.filter(f => f.required && f.visible);
-          const optionalFields = programFields.filter(f => !f.required && f.visible);
-          const hiddenFields = programFields.filter(f => !f.visible);
-          return (
-            <>
-              {requiredFields.length > 0 && (
-                <div className="px-4 py-2 bg-red-50/60 border-b border-red-200/40">
-                  <span className="text-[11px] font-semibold text-red-500 uppercase tracking-wider">Required Fields ({requiredFields.length})</span>
-                </div>
-              )}
-              {requiredFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-              {optionalFields.length > 0 && (
-                <div className="px-4 py-2 bg-slate-50/80 border-b border-border/40">
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Optional Fields ({optionalFields.length})</span>
-                </div>
-              )}
-              {optionalFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-              {hiddenFields.length > 0 && (
-                <div className="px-4 py-2 bg-slate-100/60 border-b border-border/40">
-                  <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Hidden Fields ({hiddenFields.length})</span>
-                </div>
-              )}
-              {hiddenFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-            </>
-          );
-        })()}
-      </div>
+      {renderGroupCard(
+        "Borrower Details",
+        <Home className="h-4 w-4 text-muted-foreground" />,
+        borrowerProgramFields,
+        true,
+      )}
+
+      {renderGroupCard(
+        "Loan Details",
+        <Landmark className="h-4 w-4 text-muted-foreground" />,
+        loanProgramFields,
+        false,
+      )}
+
+      {renderGroupCard(
+        "Property Details",
+        <Building2 className="h-4 w-4 text-muted-foreground" />,
+        propertyProgramFields,
+        false,
+      )}
 
       <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
         <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
         <div>
           <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
           <span className="text-[14px] text-blue-800">
-            The quote form is what brokers fill out to request pricing on a deal. Required fields must be filled before a quote can be generated. Hidden fields won't appear on the form but can still be used in pricing rules.
+            The quote form is what brokers fill out to request pricing on a deal. Required fields must be filled before a quote can be generated. Change the group dropdown on any field to move it between cards.
           </span>
         </div>
       </div>
