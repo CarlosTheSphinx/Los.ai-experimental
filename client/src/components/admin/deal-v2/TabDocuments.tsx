@@ -2,10 +2,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Upload, FileText, CheckCircle2, Clock, AlertCircle, Eye,
-  Loader2, Zap, Hand, FolderOpen, ChevronDown, Bot, CloudUpload,
+  Loader2, Zap, Hand, FolderOpen, ChevronDown, ChevronRight, Bot, CloudUpload,
   XCircle, Shield, ShieldCheck, Play, RotateCw, HardDriveUpload, ExternalLink,
-  X, Download,
+  X, Download, Plus, User,
 } from "lucide-react";
+import { formatDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +30,9 @@ function statusDisplay(status: string, aiReviewStatus?: string, driveStatus?: st
   }
   if (s === "rejected" || s === "denied") {
     return { dot: "bg-red-500", label: s === "denied" ? "Denied" : "Rejected", step: 4 };
+  }
+  if (s === "update_needed") {
+    return { dot: "bg-amber-500", label: "Update Needed", step: 4 };
   }
   if (s === "conditional") {
     return { dot: "bg-amber-500", label: "Conditional", step: 4 };
@@ -873,6 +877,13 @@ function StageSection({
   );
 }
 
+const DOC_STATUS_OPTIONS = [
+  { value: "approved", label: "Approved", dot: "bg-emerald-500" },
+  { value: "update_needed", label: "Update Needed", dot: "bg-amber-500" },
+  { value: "rejected", label: "Rejected", dot: "bg-red-500" },
+  { value: "pending", label: "Outstanding", dot: "bg-gray-300" },
+] as const;
+
 function DocumentRow({
   doc,
   dealId,
@@ -886,12 +897,20 @@ function DocumentRow({
 }) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const expandFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  const { dot, label, step } = statusDisplay(doc.status, doc.aiReviewStatus, doc.driveUploadStatus);
+  const { dot, label } = statusDisplay(doc.status, doc.aiReviewStatus, doc.driveUploadStatus);
   const downloadUrl = `/api/admin/deals/${dealId}/documents/${doc.id}/download`;
   const hasFile = doc.filePath || doc.fileName;
   const canReview = hasFile && (doc.aiReviewStatus === "not_reviewed" || doc.aiReviewStatus === "pending" || !doc.aiReviewStatus);
+
+  const invalidateDocQueries = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
+  };
 
   const reviewMutation = useMutation({
     mutationFn: async () => {
@@ -899,9 +918,7 @@ function DocumentRow({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
+      invalidateDocQueries();
       toast({ title: "AI review triggered" });
     },
     onError: () => {
@@ -915,9 +932,7 @@ function DocumentRow({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
+      invalidateDocQueries();
       toast({ title: "Pushed to Google Drive" });
     },
     onError: () => {
@@ -925,277 +940,401 @@ function DocumentRow({
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: async () => {
+  const statusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
       const res = await apiRequest("PATCH", `/api/admin/deals/${dealId}/documents/${doc.id}`, {
-        status: "approved",
+        status: newStatus,
       });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
-      toast({ title: "Document approved" });
+    onSuccess: (_data: any, newStatus: string) => {
+      invalidateDocQueries();
+      const statusLabel = DOC_STATUS_OPTIONS.find(s => s.value === newStatus)?.label || newStatus;
+      toast({ title: `Status set to ${statusLabel}` });
     },
     onError: () => {
-      toast({ title: "Failed to approve document", variant: "destructive" });
+      toast({ title: "Failed to update status", variant: "destructive" });
     },
   });
 
   const isApproved = doc.status === "approved" || doc.status === "accepted";
-  const canApprove = hasFile && !isApproved;
 
   const isSynced = doc.driveUploadStatus === "ok" || doc.driveUploadStatus === "synced" || !!doc.googleDriveFileId;
   const canPushToDrive = hasFile && !isSynced;
 
   const handlePerDocUpload = async (files: FileList) => {
-    const file = files[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const urlRes = await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${doc.id}/upload-url`, {
-        name: file.name,
-        size: file.size,
-        contentType: file.type,
-      });
-      const urlData = await urlRes.json();
-
-      let objectPath: string;
-      if (urlData.useDirectUpload) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const dr = await fetch(urlData.uploadURL, { method: "POST", body: fd, credentials: "include" });
-        if (!dr.ok) throw new Error("Upload failed");
-        objectPath = (await dr.json()).objectPath;
-      } else {
-        await fetch(urlData.uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
+    for (const file of Array.from(files)) {
+      setUploading(true);
+      try {
+        const urlRes = await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${doc.id}/upload-url`, {
+          name: file.name,
+          size: file.size,
+          contentType: file.type,
         });
-        objectPath = urlData.objectPath;
+        const urlData = await urlRes.json();
+
+        let objectPath: string;
+        if (urlData.useDirectUpload) {
+          const fd = new FormData();
+          fd.append("file", file);
+          const dr = await fetch(urlData.uploadURL, { method: "POST", body: fd, credentials: "include" });
+          if (!dr.ok) throw new Error("Upload failed");
+          objectPath = (await dr.json()).objectPath;
+        } else {
+          await fetch(urlData.uploadURL, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+          });
+          objectPath = urlData.objectPath;
+        }
+
+        await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${doc.id}/upload-complete`, {
+          objectPath,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+        });
+
+        toast({ title: `Uploaded: ${file.name}` });
+      } catch {
+        toast({ title: `Failed to upload ${file.name}`, variant: "destructive" });
+      } finally {
+        setUploading(false);
       }
-
-      await apiRequest("POST", `/api/admin/deals/${dealId}/documents/${doc.id}/upload-complete`, {
-        objectPath,
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-      });
-
-      toast({ title: `Uploaded: ${file.name}` });
-      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals/${dealId}/documents`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/deals`, dealId, "documents"] });
-    } catch {
-      toast({ title: `Failed to upload ${file.name}`, variant: "destructive" });
-    } finally {
-      setUploading(false);
     }
+    invalidateDocQueries();
   };
 
-  const statusSteps = [
-    { key: 1, label: "Pending", icon: Clock },
-    { key: 2, label: "Uploaded", icon: CloudUpload },
-    { key: 3, label: "Reviewed", icon: Bot },
-    { key: 4, label: "Approved", icon: Shield },
-  ];
+  const files: any[] = doc.files || [];
+  const fileCount = doc.fileCount || files.length || (doc.filePath || doc.fileName ? 1 : 0);
+
+  const openFilePreview = (file: any) => {
+    const fileDownloadUrl = `/api/admin/document-files/${file.id}/download`;
+    const name = file.fileName || "Document";
+    let mime = file.mimeType || "";
+    if (!mime) {
+      const ext = name.split(".").pop()?.toLowerCase();
+      if (ext === "pdf") mime = "application/pdf";
+      else if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext || "")) mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
+    }
+    onPreview({ url: fileDownloadUrl, fileName: name, mimeType: mime });
+  };
 
   return (
-    <tr
-      className="border-b border-border/20 last:border-0 hover:bg-muted/30"
-      data-testid={`doc-row-${doc.id}`}
-    >
-      <td className="px-4 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="truncate font-medium">
-            {doc.documentName || doc.fileName || "Untitled"}
-          </span>
-          {doc.isRequired && (
-            <Badge variant="destructive" className="text-[11px] px-1.5 py-0 shrink-0">
-              REQ
-            </Badge>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-2.5">
-        <div className="space-y-1.5">
+    <>
+      <tr
+        className={cn(
+          "border-b border-border/20 last:border-0 hover:bg-muted/30 cursor-pointer transition-colors",
+          expanded && "bg-muted/20"
+        )}
+        data-testid={`doc-row-${doc.id}`}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <td className="px-4 py-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            {expanded ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform" />
+            )}
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="truncate font-medium">
+              {doc.documentName || doc.fileName || "Untitled"}
+            </span>
+            {doc.isRequired && (
+              <Badge variant="destructive" className="text-[11px] px-1.5 py-0 shrink-0">
+                REQ
+              </Badge>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-2.5">
           <div className="flex items-center gap-1.5">
             <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
             <span className="text-[14px] font-medium">{label}</span>
           </div>
-          <div className="flex items-center gap-0.5">
-            {statusSteps.map((s, i) => {
-              const isActive = step >= s.key;
-              const isCurrent = Math.floor(step) === s.key;
-              const isRejected = (s.key === 3 && (doc.aiReviewStatus === "denied")) ||
-                                 (s.key === 4 && doc.status === "rejected");
-              return (
-                <Tooltip key={s.key}>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center">
-                      <div
-                        className={cn(
-                          "w-5 h-1.5 rounded-full transition-colors",
-                          isRejected ? "bg-red-400" :
-                          isActive ? "bg-emerald-500" :
-                          isCurrent ? "bg-blue-400" :
-                          "bg-muted-foreground/20"
-                        )}
-                      />
-                      {i < statusSteps.length - 1 && (
-                        <div className="w-0.5" />
-                      )}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    {s.label}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
+        </td>
+        <td className="px-4 py-2.5 text-muted-foreground text-[14px]">
+          {fileCount === 0 ? "0 files" : fileCount === 1 ? "1 file" : `${fileCount} files`}
+        </td>
+        <td className="px-4 py-2.5">
+          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              data-testid={`input-upload-doc-${doc.id}`}
+              onChange={(e) => e.target.files && handlePerDocUpload(e.target.files)}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  data-testid={`button-upload-doc-${doc.id}`}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Upload File</TooltipContent>
+            </Tooltip>
+
+            {canReview && currentMode === "manual" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
+                    onClick={() => reviewMutation.mutate()}
+                    disabled={reviewMutation.isPending}
+                    data-testid={`button-review-doc-${doc.id}`}
+                  >
+                    {reviewMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Bot className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>AI Review</TooltipContent>
+              </Tooltip>
+            )}
+
+            {canPushToDrive && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
+                    onClick={() => driveSyncMutation.mutate()}
+                    disabled={driveSyncMutation.isPending}
+                    data-testid={`button-push-drive-${doc.id}`}
+                  >
+                    {driveSyncMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <HardDriveUpload className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Push to Drive</TooltipContent>
+              </Tooltip>
+            )}
+
+            {isSynced && doc.googleDriveFileUrl && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={doc.googleDriveFileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="h-7 w-7 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors"
+                    data-testid={`button-drive-link-${doc.id}`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>Open in Drive</TooltipContent>
+              </Tooltip>
+            )}
+
+            {(doc.filePath || doc.fileName) && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => {
+                      const name = doc.fileName || doc.documentName || "Document";
+                      let mime = doc.mimeType || "";
+                      if (!mime) {
+                        const ext = name.split(".").pop()?.toLowerCase();
+                        if (ext === "pdf") mime = "application/pdf";
+                        else if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext || "")) mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
+                      }
+                      onPreview({ url: downloadUrl, fileName: name, mimeType: mime });
+                    }}
+                    className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors"
+                    data-testid={`button-view-doc-${doc.id}`}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Preview</TooltipContent>
+              </Tooltip>
+            )}
           </div>
-          {doc.aiReviewReason && (step >= 3) && (
-            <p className="text-[12px] text-muted-foreground truncate max-w-[200px]" title={doc.aiReviewReason}>
-              {doc.aiReviewReason}
-            </p>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-2.5 text-muted-foreground text-[14px]">
-        {fileCountLabel(doc)}
-      </td>
-      <td className="px-4 py-2.5">
-        <div className="flex items-center justify-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            data-testid={`input-upload-doc-${doc.id}`}
-            onChange={(e) => e.target.files && handlePerDocUpload(e.target.files)}
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                data-testid={`button-upload-doc-${doc.id}`}
-              >
-                {uploading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Upload className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Upload File</TooltipContent>
-          </Tooltip>
+        </td>
+      </tr>
 
-          {canReview && currentMode === "manual" && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
-                  onClick={() => reviewMutation.mutate()}
-                  disabled={reviewMutation.isPending}
-                  data-testid={`button-review-doc-${doc.id}`}
-                >
-                  {reviewMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      {expanded && (
+        <tr data-testid={`doc-detail-${doc.id}`}>
+          <td colSpan={4} className="px-0 py-0">
+            <div className="bg-muted/10 border-t border-border/20 px-6 py-4 space-y-4">
+              <div className="flex items-start gap-6">
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Files ({fileCount})
+                    </h4>
+                    <input
+                      ref={expandFileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      data-testid={`input-expand-upload-doc-${doc.id}`}
+                      onChange={(e) => e.target.files && handlePerDocUpload(e.target.files)}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[12px] gap-1"
+                      onClick={() => expandFileInputRef.current?.click()}
+                      disabled={uploading}
+                      data-testid={`button-expand-upload-${doc.id}`}
+                    >
+                      {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                      Add File
+                    </Button>
+                  </div>
+
+                  {files.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {files.map((file: any, idx: number) => (
+                        <div
+                          key={file.id || idx}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-card border border-border/30 hover:border-border/60 transition-colors"
+                          data-testid={`doc-file-${doc.id}-${file.id || idx}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                            <span className="text-[13px] font-medium truncate">
+                              {file.fileName || `File ${idx + 1}`}
+                            </span>
+                            {file.uploadedAt && (
+                              <span className="text-[11px] text-muted-foreground shrink-0">
+                                {formatDateTime(file.uploadedAt)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => openFilePreview(file)}
+                                  className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                                  data-testid={`button-preview-file-${file.id || idx}`}
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Preview</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={`/api/admin/document-files/${file.id}/download?download=true`}
+                                  className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                                  data-testid={`button-download-file-${file.id || idx}`}
+                                >
+                                  <Download className="h-3 w-3" />
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent>Download</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : hasFile ? (
+                    <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-card border border-border/30">
+                      <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                      <span className="text-[13px] font-medium truncate">
+                        {doc.fileName || doc.documentName || "Uploaded file"}
+                      </span>
+                      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                        <button
+                          onClick={() => {
+                            const name = doc.fileName || doc.documentName || "Document";
+                            let mime = doc.mimeType || "";
+                            if (!mime) {
+                              const ext = name.split(".").pop()?.toLowerCase();
+                              if (ext === "pdf") mime = "application/pdf";
+                              else if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext || "")) mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
+                            }
+                            onPreview({ url: downloadUrl, fileName: name, mimeType: mime });
+                          }}
+                          className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                          data-testid={`button-preview-legacy-${doc.id}`}
+                        >
+                          <Eye className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
                   ) : (
-                    <Bot className="h-3.5 w-3.5" />
+                    <p className="text-[13px] text-muted-foreground italic px-1">No files uploaded yet</p>
                   )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>AI Review</TooltipContent>
-            </Tooltip>
-          )}
+                </div>
 
-          {canPushToDrive && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
-                  onClick={() => driveSyncMutation.mutate()}
-                  disabled={driveSyncMutation.isPending}
-                  data-testid={`button-push-drive-${doc.id}`}
-                >
-                  {driveSyncMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <HardDriveUpload className="h-3.5 w-3.5" />
+                <div className="w-px bg-border/40 self-stretch" />
+
+                <div className="w-[220px] shrink-0 space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Status</h4>
+                    <div className="space-y-1">
+                      {DOC_STATUS_OPTIONS.map((opt) => {
+                        const isSelected = doc.status === opt.value ||
+                          (opt.value === "approved" && doc.status === "accepted") ||
+                          (opt.value === "pending" && !["approved", "accepted", "update_needed", "rejected"].includes(doc.status));
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => statusMutation.mutate(opt.value)}
+                            disabled={statusMutation.isPending}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors text-left",
+                              isSelected
+                                ? "bg-card border border-border ring-1 ring-blue-500/40"
+                                : "hover:bg-muted/50"
+                            )}
+                            data-testid={`button-status-${opt.value}-${doc.id}`}
+                          >
+                            <span className={cn("w-2 h-2 rounded-full shrink-0", opt.dot)} />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {doc.reviewedAt && (
+                    <div className="space-y-1.5">
+                      <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Review</h4>
+                      <div className="flex items-start gap-2 text-[12px] text-muted-foreground">
+                        <User className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium text-foreground">{doc.reviewerName || "Admin"}</p>
+                          <p>{formatDateTime(doc.reviewedAt)}</p>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Push to Drive</TooltipContent>
-            </Tooltip>
-          )}
 
-          {isSynced && doc.googleDriveFileUrl && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a
-                  href={doc.googleDriveFileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="h-7 w-7 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors"
-                  data-testid={`button-drive-link-${doc.id}`}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent>Open in Drive</TooltipContent>
-            </Tooltip>
-          )}
-
-          {canApprove && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="h-7 w-7 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors disabled:opacity-50"
-                  onClick={() => approveMutation.mutate()}
-                  disabled={approveMutation.isPending}
-                  data-testid={`button-approve-doc-${doc.id}`}
-                >
-                  {approveMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="h-3.5 w-3.5" />
+                  {doc.reviewNotes && (
+                    <div className="space-y-1">
+                      <h4 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</h4>
+                      <p className="text-[12px] text-muted-foreground">{doc.reviewNotes}</p>
+                    </div>
                   )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Approve</TooltipContent>
-            </Tooltip>
-          )}
-
-          {(doc.filePath || doc.fileName) && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => {
-                    const name = doc.fileName || doc.documentName || "Document";
-                    let mime = doc.mimeType || "";
-                    if (!mime) {
-                      const ext = name.split(".").pop()?.toLowerCase();
-                      if (ext === "pdf") mime = "application/pdf";
-                      else if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext || "")) mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
-                    }
-                    onPreview({ url: downloadUrl, fileName: name, mimeType: mime });
-                  }}
-                  className="h-7 w-7 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors"
-                  data-testid={`button-view-doc-${doc.id}`}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Preview</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </td>
-    </tr>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

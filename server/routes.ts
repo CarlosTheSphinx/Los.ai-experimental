@@ -9227,9 +9227,26 @@ export async function registerRoutes(
             .orderBy(dealDocumentFiles.sortOrder, dealDocumentFiles.createdAt)
         : [];
 
+      const reviewerIds = [...new Set(docs.map(d => d.reviewedBy).filter(Boolean))] as number[];
+      const reviewerMap = new Map<number, string>();
+      if (reviewerIds.length > 0) {
+        const reviewers = await db.select({ id: users.id, fullName: users.fullName, email: users.email })
+          .from(users)
+          .where(inArray(users.id, reviewerIds));
+        reviewers.forEach(r => reviewerMap.set(r.id, r.fullName || r.email || `User #${r.id}`));
+      }
+
       const documents = docs.map(doc => ({
         ...doc,
-        files: allFiles.filter(f => f.documentId === doc.id),
+        reviewedAt: doc.reviewedAt ? doc.reviewedAt.toISOString() : null,
+        uploadedAt: doc.uploadedAt ? doc.uploadedAt.toISOString() : null,
+        createdAt: doc.createdAt ? doc.createdAt.toISOString() : null,
+        reviewerName: doc.reviewedBy ? reviewerMap.get(doc.reviewedBy) || null : null,
+        files: allFiles.filter(f => f.documentId === doc.id).map(f => ({
+          ...f,
+          uploadedAt: f.uploadedAt ? f.uploadedAt.toISOString() : null,
+          createdAt: f.createdAt ? f.createdAt.toISOString() : null,
+        })),
         fileCount: allFiles.filter(f => f.documentId === doc.id).length,
       }));
       
@@ -9247,7 +9264,7 @@ export async function registerRoutes(
       const docId = parseInt(req.params.docId);
       const { status, reviewNotes } = req.body;
       
-      const validStatuses = ['pending', 'uploaded', 'ai_reviewed', 'approved', 'rejected', 'not_applicable', 'conditional', 'at_risk', 'denied'];
+      const validStatuses = ['pending', 'uploaded', 'ai_reviewed', 'approved', 'rejected', 'not_applicable', 'conditional', 'at_risk', 'denied', 'update_needed'];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
@@ -9256,7 +9273,7 @@ export async function registerRoutes(
       if (status) updateData.status = status;
       if (reviewNotes !== undefined) updateData.reviewNotes = reviewNotes;
       
-      const decisionStatuses = ['approved', 'rejected', 'conditional', 'at_risk', 'denied'];
+      const decisionStatuses = ['approved', 'rejected', 'conditional', 'at_risk', 'denied', 'update_needed'];
       if (decisionStatuses.includes(status)) {
         updateData.reviewedAt = new Date();
         updateData.reviewedBy = req.user!.id;
