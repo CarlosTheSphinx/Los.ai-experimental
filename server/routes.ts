@@ -7319,7 +7319,7 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Convert deal to a different loan program (preserves uploaded documents)
+  // Admin - Convert deal to a different loan program (additive merge — preserves all existing data)
   app.post('/api/admin/projects/:id/convert-program', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
@@ -7349,7 +7349,7 @@ export async function registerRoutes(
         projectId,
         userId: req.user!.id,
         activityType: 'program_converted',
-        activityDescription: `Loan program changed to "${result.programName || 'Unknown'}". ${result.documentsPreserved} uploaded documents preserved. ${result.stagesCreated} stages, ${result.tasksCreated} tasks, ${result.documentsCreated} document requirements created.`,
+        activityDescription: `Loan program changed to "${result.programName || 'Unknown'}". Pipeline additively synced — existing data preserved. ${result.documentsPreserved} uploaded document(s) retained.`,
         visibleToBorrower: false,
       });
 
@@ -7364,6 +7364,44 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Convert program error:', error);
       res.status(500).json({ error: 'Failed to convert loan program' });
+    }
+  });
+
+  // Admin - Re-sync deal pipeline to its currently assigned program (additive, no data loss)
+  app.post('/api/admin/projects/:id/sync-program', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProjectByIdInternal(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      if (!project.programId) {
+        return res.status(400).json({ error: 'No program linked to this project. Please assign a program first.' });
+      }
+
+      const { syncDealToCurrentProgram } = await import('./services/projectPipeline');
+      const result = await syncDealToCurrentProgram(projectId);
+
+      await storage.createProjectActivity({
+        projectId,
+        userId: req.user!.id,
+        activityType: 'program_synced',
+        activityDescription: `Pipeline re-synced to program "${result.programName || 'Unknown'}". Existing data preserved. ${result.documentsPreserved} uploaded document(s) retained.`,
+        visibleToBorrower: false,
+      });
+
+      res.json({
+        success: true,
+        stagesCreated: result.stagesCreated,
+        tasksCreated: result.tasksCreated,
+        documentsCreated: result.documentsCreated,
+        documentsPreserved: result.documentsPreserved,
+        programName: result.programName,
+      });
+    } catch (error) {
+      console.error('Sync program error:', error);
+      res.status(500).json({ error: 'Failed to sync loan program' });
     }
   });
 

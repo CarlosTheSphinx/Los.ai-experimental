@@ -114,9 +114,24 @@ function DealStrip({
       invalidateDeal();
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "tasks"] });
-      toast({ title: "Loan program updated", description: "Documents and tasks have been synced to the new program." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "stages"] });
+      toast({ title: "Loan program updated", description: "Pipeline synced — existing data preserved." });
     },
     onError: () => toast({ title: "Failed to convert program", variant: "destructive" }),
+  });
+
+  const syncProgramMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/admin/projects/${projectId}/sync-program`, {});
+    },
+    onSuccess: () => {
+      invalidateDeal();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "stages"] });
+      toast({ title: "Pipeline synced", description: "Pipeline re-synced to current program. No data was deleted." });
+    },
+    onError: () => toast({ title: "Failed to sync program", variant: "destructive" }),
   });
 
   const { data: programsData } = useQuery<any[]>({
@@ -221,7 +236,7 @@ function DealStrip({
           <Select
             value={deal.programId ? String(deal.programId) : "none"}
             onValueChange={handleProgramChange}
-            disabled={convertProgramMutation.isPending || !isAdmin}
+            disabled={convertProgramMutation.isPending || syncProgramMutation.isPending || !isAdmin}
           >
             <SelectTrigger className="h-8 border-0 shadow-none px-0 text-[18px] font-bold focus:ring-0" data-testid="select-loan-program">
               <SelectValue />
@@ -233,6 +248,16 @@ function DealStrip({
               ))}
             </SelectContent>
           </Select>
+          {isAdmin && deal.programId && (
+            <button
+              onClick={() => syncProgramMutation.mutate()}
+              disabled={syncProgramMutation.isPending || convertProgramMutation.isPending}
+              className="mt-1 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="button-sync-program"
+            >
+              {syncProgramMutation.isPending ? "Syncing…" : "Sync to Program"}
+            </button>
+          )}
         </ControlCard>
         <ControlCard label="Deal Status">
           <Select
@@ -289,16 +314,15 @@ function DealStrip({
           <AlertDialogHeader>
             <AlertDialogTitle>Change Loan Program?</AlertDialogTitle>
             <AlertDialogDescription>
-              Changing the loan program will rebuild this deal's pipeline, including stages, document requirements, and tasks.
-              Uploaded documents will be preserved, but the checklist structure will be replaced with the new program's template.
-              This action cannot be undone.
+              The new program's stages, tasks, and document requirements will be merged into this deal's existing pipeline.
+              Completed tasks, uploaded documents, and stage progress will all be preserved — only new items from the new program will be added.
+              Stages and tasks from the old program that are not in the new one will be marked inactive rather than deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelProgramChange} data-testid="cancel-program-change">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmProgramChange}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="confirm-program-change"
             >
               Confirm Change
