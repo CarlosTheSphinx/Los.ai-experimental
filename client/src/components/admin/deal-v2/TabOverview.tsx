@@ -456,9 +456,9 @@ export default function TabOverview({
           });
         });
 
-      const memberCount = appData._memberCount || 1;
+      const resolvedMemberCount = parseInt(appData.entityMemberCount || appData._memberCount || '1', 10) || 1;
       const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
-      for (let m = 2; m <= memberCount; m++) {
+      for (let m = 2; m <= resolvedMemberCount; m++) {
         member1Templates.forEach(tmpl => {
           const mKey = tmpl.fieldKey.replace('member1', `member${m}`);
           const mLabel = tmpl.label.replace('Member 1', `Member ${m}`);
@@ -537,9 +537,9 @@ export default function TabOverview({
           form[f.fieldKey] = String(getFieldValue(f.fieldKey) ?? "");
         });
 
-      const memberCount = appData._memberCount || 1;
+      const resolvedMemberCount = parseInt(appData.entityMemberCount || appData._memberCount || '1', 10) || 1;
       const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
-      for (let m = 2; m <= memberCount; m++) {
+      for (let m = 2; m <= resolvedMemberCount; m++) {
         member1Templates.forEach(tmpl => {
           const mKey = tmpl.fieldKey.replace('member1', `member${m}`);
           form[mKey] = String(appData[mKey] ?? "");
@@ -601,6 +601,9 @@ export default function TabOverview({
                     Object.entries(borrowerForm).forEach(([k, v]) => {
                       if (!staticFields.includes(k)) appDataUpdates[k] = v || null;
                     });
+                    if (borrowerForm.entityMemberCount) {
+                      appDataUpdates._memberCount = parseInt(borrowerForm.entityMemberCount, 10) || 1;
+                    }
                     saveBorrowerMutation.mutate({
                       borrowerName: borrowerForm.fullName,
                       borrowerEmail: borrowerForm.email,
@@ -632,7 +635,7 @@ export default function TabOverview({
                     const programBorrowerFields = getFieldsByGroup('borrower_details');
                     const baseKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address', 'fullName']);
                     const member1Fields = programBorrowerFields.filter(f => !baseKeys.has(f.fieldKey));
-                    const memberCount = appData._memberCount || 1;
+                    const liveMemberCount = parseInt(borrowerForm.entityMemberCount || appData.entityMemberCount || appData._memberCount || '1', 10) || 1;
                     const member1Templates = programBorrowerFields.filter(f => f.repeatable && f.repeatGroupKey === 'member' && f.fieldKey.startsWith('member1'));
 
                     const allEditFields: React.ReactNode[] = [];
@@ -648,7 +651,7 @@ export default function TabOverview({
                       );
                     });
 
-                    for (let m = 2; m <= memberCount; m++) {
+                    for (let m = 2; m <= liveMemberCount; m++) {
                       allEditFields.push(
                         <div key={`member-${m}-divider`} className="col-span-2 border-t border-muted pt-2 mt-1">
                           <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Member {m}</span>
