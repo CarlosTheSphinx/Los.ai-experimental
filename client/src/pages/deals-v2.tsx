@@ -376,6 +376,7 @@ export default function DealsV2() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [brokerFilter, setBrokerFilter] = useState<string>("all");
   const [daysInStageFilter, setDaysInStageFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<string>("all");
   const [composeEmailDealId, setComposeEmailDealId] = useState<number | null>(null);
   const { toast } = useToast();
 
@@ -425,6 +426,12 @@ export default function DealsV2() {
     const names = new Set<string>();
     deals.forEach((d) => { if (d.userName) names.add(d.userName); });
     return Array.from(names).sort();
+  }, [deals]);
+
+  const uniqueStages = useMemo(() => {
+    const stages = new Set<string>();
+    deals.forEach((d) => { if (d.currentStage) stages.add(d.currentStage); });
+    return Array.from(stages).sort();
   }, [deals]);
 
   // Compute summary metrics
@@ -498,6 +505,9 @@ export default function DealsV2() {
       }
     }
 
+    // Stage filter
+    if (stageFilter !== "all") result = result.filter((d) => d.currentStage === stageFilter);
+
     // Property state filter
     if (stateFilter !== "all") {
       result = result.filter((d) => {
@@ -528,7 +538,7 @@ export default function DealsV2() {
     });
 
     return result;
-  }, [deals, searchQuery, activeFilter, typeFilter, statusFilter, sortOrder, programFilter, assignedFilter, amountMin, amountMax, closeDateFilter, stateFilter, brokerFilter, daysInStageFilter]);
+  }, [deals, searchQuery, activeFilter, typeFilter, statusFilter, sortOrder, programFilter, assignedFilter, amountMin, amountMax, closeDateFilter, stateFilter, brokerFilter, daysInStageFilter, stageFilter]);
 
   const isAdmin = user?.role && ["admin", "staff", "super_admin"].includes(user.role);
 
@@ -545,7 +555,7 @@ export default function DealsV2() {
         {isAdmin && (
           <Link href="/deals/new">
             <Button size="default" className="text-[18px] px-5 py-2.5 h-auto">
-              <Plus className="h-5 w-5 mr-1.5" /> New Deal
+              <Plus className="h-5 w-5 mr-1.5" /> Add Deal
             </Button>
           </Link>
         )}
@@ -652,7 +662,7 @@ export default function DealsV2() {
                     setProgramFilter("all"); setTypeFilter("all"); setAssignedFilter("all");
                     setAmountMin(""); setAmountMax(""); setCloseDateFilter("all");
                     setStateFilter("all"); setBrokerFilter("all"); setDaysInStageFilter("all");
-                    setStatusFilter("all");
+                    setStatusFilter("all"); setStageFilter("all");
                   }}
                   className="text-[14px] text-blue-600 hover:text-blue-700 transition-colors"
                   data-testid="button-clear-all-filters"
@@ -768,6 +778,20 @@ export default function DealsV2() {
                   </select>
                 </div>
                 <div>
+                  <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Current Stage</label>
+                  <select
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
+                    value={stageFilter}
+                    onChange={(e) => setStageFilter(e.target.value)}
+                    data-testid="select-stage-filter"
+                  >
+                    <option value="all">All Stages</option>
+                    {uniqueStages.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Days in Stage</label>
                   <select
                     className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
@@ -803,7 +827,7 @@ export default function DealsV2() {
             icon={FolderOpen}
             title="No deals found"
             description={searchQuery ? "Try adjusting your search or filters." : "Create your first deal to get started."}
-            actionLabel={isAdmin ? "+ New Deal" : undefined}
+            actionLabel={isAdmin ? "+ Add Deal" : undefined}
             onAction={isAdmin ? () => (window.location.href = "/deals/new") : undefined}
           />
         ) : (

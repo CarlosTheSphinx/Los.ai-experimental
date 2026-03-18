@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -175,28 +175,34 @@ function DealCardContent({
   dragHandleProps?: Record<string, any>;
   isDragOverlay?: boolean;
 }) {
+  const [, navigate] = useLocation();
   const nameParts = (project.borrowerName || project.projectName || "").split(" - ");
   const displayName = project.borrowerName || nameParts[0] || "Unknown";
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("[data-drag-handle]")) return;
+    navigate(`/admin/deals/${project.id}`);
+  };
+
   return (
     <Card
-      className={cn("overflow-visible", isDragOverlay && "shadow-lg opacity-90")}
+      className={cn("overflow-visible cursor-pointer hover:border-primary/40 transition-colors", isDragOverlay && "shadow-lg opacity-90")}
       data-testid={`kanban-deal-${project.id}`}
+      onClick={handleCardClick}
     >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-1">
-          <Link
-            href={`/admin/deals/${project.id}`}
+          <span
+            className="text-sm font-medium leading-tight line-clamp-2"
             data-testid={`link-kanban-deal-${project.id}`}
           >
-            <span className="text-sm font-medium hover:underline leading-tight line-clamp-2">
-              {displayName}
-            </span>
-          </Link>
+            {displayName}
+          </span>
           <div className="flex items-center gap-1 flex-shrink-0">
             {dragHandleProps && (
               <div
                 {...dragHandleProps}
+                data-drag-handle
                 className="cursor-grab active:cursor-grabbing p-0.5 rounded hover-elevate"
                 data-testid={`drag-handle-deal-${project.id}`}
               >
@@ -377,13 +383,9 @@ export default function DealsKanbanView() {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {pipelineData.unassigned.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/admin/deals/${project.id}`}
-                  data-testid={`link-unassigned-deal-${project.id}`}
-                >
+                <div key={project.id} data-testid={`link-unassigned-deal-${project.id}`}>
                   <DealCardContent project={project} />
-                </Link>
+                </div>
               ))}
             </div>
           </div>
