@@ -540,12 +540,19 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && selectedDocId) {
-      uploadMutation.mutate({ docId: selectedDocId, file });
-    }
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    const docId = selectedDocId;
     e.target.value = '';
+    if (files && files.length > 0 && docId) {
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await uploadMutation.mutateAsync({ docId, file: files[i] });
+        } catch {
+          // Error is handled by onError in the mutation; continue with remaining files
+        }
+      }
+    }
   };
 
   if (isLoading) {
@@ -617,6 +624,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
         type="file"
         ref={fileInputRef}
         className="hidden"
+        multiple
         onChange={handleFileChange}
         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.csv,.txt"
         data-testid="input-file-upload"

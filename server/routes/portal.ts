@@ -502,6 +502,41 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // Download a specific document file via portal token (borrower)
+  app.get('/api/portal/:token/document-files/:fileId/download', async (req: Request, res: Response) => {
+    try {
+      const { token, fileId } = req.params;
+      const project = await storage.getProjectByToken(token);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!project.borrowerPortalEnabled) return res.status(403).json({ error: 'Portal disabled' });
+
+      const fId = parseInt(fileId);
+      const [file] = await db.select().from(dealDocumentFiles).where(eq(dealDocumentFiles.id, fId)).limit(1);
+      if (!file || !file.filePath) return res.status(404).json({ error: 'File not found' });
+
+      // Verify file belongs to a document for this project
+      const [doc] = await db.select().from(dealDocuments).where(eq(dealDocuments.id, file.documentId)).limit(1);
+      if (!doc || doc.dealId !== project.id) return res.status(403).json({ error: 'Access denied' });
+
+      const objectFile = await objectStorageService.getObjectEntityFile(file.filePath);
+      res.set('X-Frame-Options', 'SAMEORIGIN');
+      res.removeHeader('Content-Security-Policy');
+      const safeFileName = file.fileName ? file.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/\\/g, '_').replace(/"/g, "'") : null;
+      if (req.query.download === 'true' && safeFileName) {
+        res.set('Content-Disposition', `attachment; filename="${safeFileName}"`);
+      } else {
+        res.set('Content-Disposition', `inline${safeFileName ? `; filename="${safeFileName}"` : ''}`);
+      }
+      if (file.mimeType) {
+        res.set('Content-Type', file.mimeType);
+      }
+      await objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error('Portal file download error:', error);
+      res.status(500).json({ error: 'Failed to download file' });
+    }
+  });
+
   // ==================== BROKER PORTAL ENDPOINT ====================
 
   app.get('/api/broker-portal/:token', async (req: Request, res: Response) => {

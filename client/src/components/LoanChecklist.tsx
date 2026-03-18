@@ -12,10 +12,12 @@ import {
   FileText,
   CheckSquare,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   ClipboardEdit,
   Send,
   HelpCircle,
+  Plus,
   Eye,
   Download,
 } from "lucide-react";
@@ -585,12 +587,6 @@ function FormTaskInline({
   );
 }
 
-function getFileUrl(filePath: string): string {
-  if (filePath.startsWith('/objects/uploads/')) return filePath;
-  const id = filePath.replace(/^\/?(objects\/)?uploads\//, '');
-  return `/objects/uploads/${id}`;
-}
-
 function ChecklistItemRow({
   item,
   mode,
@@ -604,6 +600,7 @@ function ChecklistItemRow({
   onUploadDoc?: (docId: number) => void;
   onReviewDoc?: (docId: number, decision: "approved" | "rejected", notes?: string) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isDocument = item.type === "document";
   const canUpload = isDocument && (item.status === "pending" || item.status === "rejected");
   const canReview = isDocument && mode === "admin" && (item.status === "uploaded" || item.status === "submitted" || item.status === "ai_reviewed");
@@ -611,21 +608,33 @@ function ChecklistItemRow({
   const hasForm = !isDocument && item.formTemplateId && item.formTemplate;
   const isFormTask = hasForm && mode === "borrower" && portalToken;
   const isAdminViewForm = hasForm && mode === "admin";
-  const multiFiles = item.files && item.files.length > 0 ? item.files.filter(f => f.filePath) : [];
-  const showSingleFileActions = isDocument && mode === "borrower" && !!item.filePath && multiFiles.length === 0;
-  const showMultiFileActions = isDocument && mode === "borrower" && multiFiles.length > 0;
-  const [filesExpanded, setFilesExpanded] = useState(false);
+  const files = item.files ?? [];
+  const hasFiles = files.length > 0;
+  const isBorrowerOrBroker = mode === "borrower" || mode === "broker";
+  const canAddMoreFiles = isDocument && isBorrowerOrBroker && item.status !== "approved" && onUploadDoc;
+  const isExpandable = isDocument && isBorrowerOrBroker && (hasFiles || canAddMoreFiles);
+
+  const getFileDownloadUrl = (fileId: number, download?: boolean) => {
+    if (portalToken) {
+      return `/api/portal/${portalToken}/document-files/${fileId}/download${download ? "?download=true" : ""}`;
+    }
+    return `/api/admin/document-files/${fileId}/download${download ? "?download=true" : ""}`;
+  };
 
   return (
     <div
-      className={`p-3 rounded-md border transition-colors ${
+      className={`rounded-md border transition-colors ${
         item.status === "rejected" ? "border-destructive/50 bg-destructive/5" :
         item.status === "ai_reviewed" ? "border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-900/10" :
         "border-border"
       } ${item.status === "approved" || item.status === "completed" ? "border-success/30 bg-success/5" : ""}`}
       data-testid={`checklist-item-${item.id}`}
     >
-      <div className="flex items-center gap-3">
+      <div
+        className={`p-3 flex items-center gap-3 ${isExpandable ? "cursor-pointer select-none" : ""}`}
+        onClick={isExpandable ? () => setIsExpanded(v => !v) : undefined}
+        data-testid={isExpandable ? `button-expand-checklist-${item.id}` : undefined}
+      >
         {getStatusIcon(item.status, item.type)}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -638,7 +647,7 @@ function ChecklistItemRow({
             }`}>
               {item.title}
             </span>
-            {isDocument && item.description && (mode === "borrower" || mode === "broker") && (
+            {isDocument && item.description && isBorrowerOrBroker && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -692,24 +701,8 @@ function ChecklistItemRow({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
           {getStatusBadge(item.status, item.type)}
-          {showSingleFileActions && item.filePath && (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" asChild data-testid={`button-view-doc-${item.id}`}>
-                <a href={getFileUrl(item.filePath)} target="_blank" rel="noopener noreferrer">
-                  <Eye className="h-4 w-4 mr-1" />
-                  View
-                </a>
-              </Button>
-              <Button variant="ghost" size="sm" asChild data-testid={`button-download-doc-${item.id}`}>
-                <a href={getFileUrl(item.filePath)} download={item.fileName || true}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Download
-                </a>
-              </Button>
-            </div>
-          )}
           {showUploadButton && onUploadDoc && (
             <Button
               variant="outline"
@@ -746,43 +739,95 @@ function ChecklistItemRow({
               </Button>
             </div>
           )}
+          {isExpandable && (
+            isExpanded
+              ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+              : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+          )}
         </div>
       </div>
-      {showMultiFileActions && (
-        <div className="mt-2 ml-7" data-testid={`multi-files-${item.id}`}>
-          <button
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setFilesExpanded(prev => !prev)}
-            data-testid={`button-toggle-files-${item.id}`}
-          >
-            {filesExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {multiFiles.length} attached {multiFiles.length === 1 ? "file" : "files"}
-          </button>
-          {filesExpanded && (
-            <div className="mt-1 space-y-1">
-              {multiFiles.map((f) => (
-                <div key={f.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground pl-4">
-                  <span className="truncate">{f.fileName || `File ${f.id}`}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" asChild data-testid={`button-view-file-${f.id}`}>
-                      <a href={getFileUrl(f.filePath!)} target="_blank" rel="noopener noreferrer">
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </a>
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" asChild data-testid={`button-download-file-${f.id}`}>
-                      <a href={getFileUrl(f.filePath!)} download={f.fileName || true}>
-                        <Download className="h-3 w-3 mr-1" />
-                        Download
-                      </a>
-                    </Button>
+
+      {isExpandable && isExpanded && (
+        <div className="border-t border-border/40 px-4 py-3 space-y-3 bg-muted/10" data-testid={`checklist-detail-${item.id}`}>
+          <div className="flex items-center justify-between">
+            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Files ({files.length})
+            </h4>
+            {canAddMoreFiles && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[12px] gap-1"
+                onClick={() => onUploadDoc!(item.itemId)}
+                data-testid={`button-add-file-${item.id}`}
+              >
+                <Plus className="h-3 w-3" />
+                Add File
+              </Button>
+            )}
+          </div>
+
+          {files.length > 0 ? (
+            <div className="space-y-1.5">
+              {files.map((file, idx) => (
+                <div
+                  key={file.id || idx}
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-card border border-border/30 hover:border-border/60 transition-colors"
+                  data-testid={`checklist-file-${item.id}-${file.id || idx}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                    <span className="text-[13px] font-medium truncate">
+                      {file.fileName || `File ${idx + 1}`}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0 hidden sm:inline">
+                      {file.fileSize ? `${(file.fileSize / 1024).toFixed(1)} KB` : ""}
+                      {file.uploadedAt ? ` · ${formatDateTime(file.uploadedAt)}` : ""}
+                    </span>
                   </div>
+                  {file.id && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={getFileDownloadUrl(file.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                              data-testid={`button-preview-checklist-file-${file.id}`}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>Preview</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={getFileDownloadUrl(file.id, true)}
+                              className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                              data-testid={`button-download-checklist-file-${file.id}`}
+                            >
+                              <Download className="h-3 w-3" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>Download</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+          ) : (
+            <p className="text-[12px] text-muted-foreground py-1">No files uploaded yet.</p>
           )}
         </div>
       )}
+
       {isFormTask && portalToken && item.status !== "completed" && (
         <FormTaskInline item={item} portalToken={portalToken} />
       )}
