@@ -848,6 +848,7 @@ export const dealTasks = pgTable("deal_tasks", {
 
   assignedTo: integer("assigned_to").references(() => users.id),
   dueDate: timestamp("due_date"),
+  stageId: integer("stage_id"),
 
   completedAt: timestamp("completed_at"),
   completedBy: integer("completed_by").references(() => users.id),

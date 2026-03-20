@@ -10672,6 +10672,7 @@ export async function registerRoutes(
             priority: priority || 'medium',
             assignedTo: assignedTo ? parseInt(assignedTo) : null,
             dueDate: dueDate ? new Date(dueDate) : null,
+            stageId: stageId ? parseInt(stageId) : null,
             createdBy: req.user!.id,
           })
           .returning();
@@ -10780,6 +10781,7 @@ export async function registerRoutes(
       if (priority !== undefined) updateData.priority = priority;
       if (assignedTo !== undefined) updateData.assignedTo = assignedTo ? parseInt(assignedTo) : null;
       if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+      if (stageId !== undefined) updateData.stageId = stageId ? parseInt(stageId) : null;
       
       if (status === 'completed') {
         updateData.completedAt = new Date();
