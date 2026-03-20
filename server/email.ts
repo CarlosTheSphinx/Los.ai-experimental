@@ -345,7 +345,7 @@ export async function sendPasswordResetEmail(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail,
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: recipientEmail,
       subject: 'Password Reset Request - Lendry.AI',
       html: `

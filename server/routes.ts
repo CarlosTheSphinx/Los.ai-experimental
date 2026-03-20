@@ -6004,6 +6004,7 @@ export async function registerRoutes(
           fullName: user.fullName,
           companyName: user.companyName,
           phone: user.phone,
+          title: user.title,
           role: user.role,
           userType: user.role,
           isActive: user.isActive,
@@ -6124,7 +6125,11 @@ export async function registerRoutes(
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const resetUrl = `${baseUrl}/reset-password/${resetToken}`;
 
-      await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
+      const emailResult = await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
+      if (!emailResult.success) {
+        console.error('Password reset email failed:', emailResult.error);
+        return res.status(500).json({ error: emailResult.error || 'Failed to send password reset email' });
+      }
 
       await storage.createAdminActivity({
         userId: req.user!.id,
@@ -6134,9 +6139,9 @@ export async function registerRoutes(
       });
 
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin reset password error:', error);
-      res.status(500).json({ error: 'Failed to send password reset email' });
+      res.status(500).json({ error: error.message || 'Failed to send password reset email' });
     }
   });
 
@@ -6437,10 +6442,20 @@ export async function registerRoutes(
       const { getPrimaryRole } = await import('@shared/schema');
       const updates: Record<string, any> = {};
       
+      const callerRole = req.user!.role;
+      const privilegedRoles = ['super_admin', 'admin', 'lender'];
+      const canSetPrivilegedRole = callerRole === 'super_admin';
+
       if (rolesInput !== undefined && Array.isArray(rolesInput)) {
+        if (rolesInput.some((r: string) => privilegedRoles.includes(r)) && !canSetPrivilegedRole) {
+          return res.status(403).json({ error: 'Only super admins can assign privileged roles' });
+        }
         updates.roles = rolesInput;
         updates.role = getPrimaryRole(rolesInput);
       } else if (role !== undefined && ['super_admin', 'lender', 'processor', 'broker', 'borrower', 'admin', 'staff', 'user'].includes(role)) {
+        if (privilegedRoles.includes(role) && !canSetPrivilegedRole) {
+          return res.status(403).json({ error: 'Only super admins can assign privileged roles' });
+        }
         updates.role = role;
         updates.roles = [role];
       }

@@ -132,7 +132,7 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<"email" | "phone" | "fullName" | "companyName" | null>(null);
+  const [editingField, setEditingField] = useState<"email" | "phone" | "fullName" | "companyName" | "title" | null>(null);
   const [editValue, setEditValue] = useState("");
 
   const { data, isLoading, refetch } = useQuery<{
@@ -185,8 +185,8 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     onSuccess: () => {
       toast({ title: "Password reset email sent" });
     },
-    onError: () => {
-      toast({ title: "Failed to send password reset email", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: err?.message || "Failed to send password reset email", variant: "destructive" });
     },
   });
 
@@ -205,12 +205,13 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     },
   });
 
-  const startEditing = (field: "email" | "phone" | "fullName" | "companyName") => {
+  const startEditing = (field: "email" | "phone" | "fullName" | "companyName" | "title") => {
     setEditingField(field);
     if (field === "email") setEditValue(user?.email || "");
     else if (field === "phone") setEditValue(user?.phone || "");
     else if (field === "fullName") setEditValue(user?.fullName || "");
     else if (field === "companyName") setEditValue(user?.companyName || "");
+    else if (field === "title") setEditValue(user?.title || "");
   };
 
   const saveEdit = () => {
@@ -355,9 +356,18 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
               </div>
             )}
           </div>
-          <Badge variant="secondary" className="capitalize shrink-0" data-testid="badge-detail-type">
-            {user.role || "broker"}
-          </Badge>
+          <Select
+            value={user.role || "broker"}
+            onValueChange={(val) => updateFieldMutation.mutate({ role: val })}
+          >
+            <SelectTrigger className="h-7 w-auto text-xs capitalize shrink-0" data-testid="select-detail-role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="borrower">Borrower</SelectItem>
+              <SelectItem value="broker">Broker</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex items-center gap-1.5">
           {editingField === "companyName" ? (
@@ -382,6 +392,35 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
             <>
               <p className="text-sm text-muted-foreground">{user.companyName || "No company"}</p>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("companyName")} data-testid="button-edit-company">
+                <Pencil className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {editingField === "title" ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Input
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="h-7 text-sm flex-1"
+                autoFocus
+                placeholder="Job title"
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingField(null); }}
+                data-testid="input-edit-title"
+              />
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-title">
+                <Check className="h-3.5 w-3.5 text-green-600" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit-title">
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Briefcase className="h-3 w-3 text-muted-foreground shrink-0" />
+              <p className="text-xs text-muted-foreground">{user.title || "No title"}</p>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("title")} data-testid="button-edit-title">
                 <Pencil className="h-3 w-3 text-muted-foreground" />
               </Button>
             </>
