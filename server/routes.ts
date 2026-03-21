@@ -7254,6 +7254,35 @@ export async function registerRoutes(
       if (brokerPhone !== undefined) updateData.brokerPhone = brokerPhone || null;
       if (brokerCompany !== undefined) updateData.brokerCompany = brokerCompany || null;
 
+      if (brokerEmail !== undefined && brokerEmail) {
+        const existingProject = await storage.getProjectByIdInternal(dealId);
+        const oldBrokerEmail = existingProject?.brokerEmail?.toLowerCase().trim();
+        const newBrokerEmail = brokerEmail.toLowerCase().trim();
+
+        if (oldBrokerEmail !== newBrokerEmail) {
+          let brokerUser = await storage.getUserByEmail(newBrokerEmail);
+          if (!brokerUser) {
+            const inviteToken = generateRandomToken();
+            brokerUser = await storage.createUser({
+              email: newBrokerEmail,
+              passwordHash: null,
+              fullName: brokerName || null,
+              companyName: brokerCompany || null,
+              phone: brokerPhone || null,
+              role: 'broker',
+              roles: ['broker'],
+              userType: 'broker',
+              isActive: true,
+              emailVerified: false,
+              inviteToken,
+              inviteStatus: 'none',
+              tenantId: existingProject?.tenantId || (req as any).user?.tenantId || null,
+            });
+          }
+          updateData.userId = brokerUser.id;
+        }
+      }
+
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
       }
@@ -20084,16 +20113,31 @@ Return JSON only:
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      const brokerId = project.userId;
-      let user = brokerId ? await storage.getUserById(brokerId) : null;
+      let user = project.userId ? await storage.getUserById(project.userId) : null;
 
-      if (user && user.inviteToken) {
-        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        return res.json({ token: user.inviteToken, url: `${baseUrl}/join/personal/${user.inviteToken}` });
+      if (user && user.email?.toLowerCase() !== project.brokerEmail?.toLowerCase() && project.brokerEmail) {
+        const brokerByEmail = await storage.getUserByEmail(project.brokerEmail);
+        if (brokerByEmail) {
+          user = brokerByEmail;
+          await db.update(projects).set({ userId: brokerByEmail.id }).where(eq(projects.id, projectId));
+        }
+      }
+
+      if (!user && project.brokerEmail) {
+        const brokerByEmail = await storage.getUserByEmail(project.brokerEmail);
+        if (brokerByEmail) {
+          user = brokerByEmail;
+          await db.update(projects).set({ userId: brokerByEmail.id }).where(eq(projects.id, projectId));
+        }
       }
 
       if (!user) {
         return res.status(400).json({ error: 'Deal has no broker assigned' });
+      }
+
+      if (user.inviteToken) {
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        return res.json({ token: user.inviteToken, url: `${baseUrl}/join/personal/${user.inviteToken}` });
       }
 
       const inviteToken = generateRandomToken();

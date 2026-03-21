@@ -213,6 +213,7 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/projects", dealId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/projects", deal.id, "broker-link"] });
       toast({ title: "Broker info updated" });
       setEditingBroker(false);
     },
