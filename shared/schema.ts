@@ -4039,3 +4039,143 @@ export const quotePdfTemplates = pgTable("quote_pdf_templates", {
 export const insertQuotePdfTemplateSchema = createInsertSchema(quotePdfTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export type QuotePdfTemplate = typeof quotePdfTemplates.$inferSelect;
 export type InsertQuotePdfTemplate = z.infer<typeof insertQuotePdfTemplateSchema>;
+
+// =============================================
+// COMMERCIAL DEAL INTAKE & FUND MATCHMAKING
+// =============================================
+
+export const funds = pgTable("funds", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  fundName: varchar("fund_name", { length: 255 }).notNull(),
+  providerName: varchar("provider_name", { length: 255 }),
+  contactEmail: varchar("contact_email", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 50 }),
+  ltvMin: real("ltv_min"),
+  ltvMax: real("ltv_max"),
+  ltcMin: real("ltc_min"),
+  ltcMax: real("ltc_max"),
+  loanAmountMin: integer("loan_amount_min"),
+  loanAmountMax: integer("loan_amount_max"),
+  allowedStates: jsonb("allowed_states").$type<string[]>(),
+  allowedAssetTypes: jsonb("allowed_asset_types").$type<string[]>(),
+  fundDescription: text("fund_description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFundSchema = createInsertSchema(funds).omit({ id: true, createdAt: true, updatedAt: true });
+export type Fund = typeof funds.$inferSelect;
+export type InsertFund = z.infer<typeof insertFundSchema>;
+
+export const intakeDeals = pgTable("intake_deals", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  brokerId: integer("broker_id").references(() => users.id, { onDelete: "set null" }),
+  dealName: varchar("deal_name", { length: 255 }),
+  loanAmount: integer("loan_amount"),
+  assetType: varchar("asset_type", { length: 100 }),
+  propertyAddress: varchar("property_address", { length: 500 }),
+  propertyCity: varchar("property_city", { length: 100 }),
+  propertyState: varchar("property_state", { length: 2 }),
+  propertyZip: varchar("property_zip", { length: 10 }),
+  propertyValue: integer("property_value"),
+  ltvPct: real("ltv_pct"),
+  ltcPct: real("ltc_pct"),
+  noiAnnual: integer("noi_annual"),
+  dscr: real("dscr"),
+  occupancyPct: integer("occupancy_pct"),
+  borrowerName: varchar("borrower_name", { length: 255 }),
+  borrowerEntityType: varchar("borrower_entity_type", { length: 50 }),
+  borrowerCreditScore: integer("borrower_credit_score"),
+  hasGuarantor: boolean("has_guarantor").default(false),
+  status: varchar("status", { length: 50 }).default("draft").notNull(),
+  dealFormJson: jsonb("deal_form_json"),
+  linkedProjectId: integer("linked_project_id").references(() => projects.id, { onDelete: "set null" }),
+  submittedAt: timestamp("submitted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntakeDealSchema = createInsertSchema(intakeDeals).omit({ id: true, createdAt: true, updatedAt: true });
+export type IntakeDeal = typeof intakeDeals.$inferSelect;
+export type InsertIntakeDeal = z.infer<typeof insertIntakeDealSchema>;
+
+export const intakeDealDocuments = pgTable("intake_deal_documents", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => intakeDeals.id, { onDelete: "cascade" }).notNull(),
+  documentType: varchar("document_type", { length: 100 }).notNull(),
+  version: integer("version").default(1).notNull(),
+  fileName: varchar("file_name", { length: 500 }),
+  filePath: varchar("file_path", { length: 1000 }),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  isCurrent: boolean("is_current").default(true).notNull(),
+  comments: text("comments"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertIntakeDealDocumentSchema = createInsertSchema(intakeDealDocuments).omit({ id: true, uploadedAt: true });
+export type IntakeDealDocument = typeof intakeDealDocuments.$inferSelect;
+export type InsertIntakeDealDocument = z.infer<typeof insertIntakeDealDocumentSchema>;
+
+export const intakeDocumentRules = pgTable("intake_document_rules", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  ruleName: varchar("rule_name", { length: 255 }).notNull(),
+  conditions: jsonb("conditions").$type<Record<string, any>>().notNull(),
+  requiredDocuments: jsonb("required_documents").$type<string[]>().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntakeDocumentRuleSchema = createInsertSchema(intakeDocumentRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type IntakeDocumentRule = typeof intakeDocumentRules.$inferSelect;
+export type InsertIntakeDocumentRule = z.infer<typeof insertIntakeDocumentRuleSchema>;
+
+export const intakeAiAnalysis = pgTable("intake_ai_analysis", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => intakeDeals.id, { onDelete: "cascade" }).notNull(),
+  agent1Validation: jsonb("agent1_validation"),
+  agent2Matching: jsonb("agent2_matching"),
+  agent3Feedback: jsonb("agent3_feedback"),
+  overallVerdict: varchar("overall_verdict", { length: 50 }),
+  confidenceScore: integer("confidence_score"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertIntakeAiAnalysisSchema = createInsertSchema(intakeAiAnalysis).omit({ id: true, createdAt: true });
+export type IntakeAiAnalysis = typeof intakeAiAnalysis.$inferSelect;
+export type InsertIntakeAiAnalysis = z.infer<typeof insertIntakeAiAnalysisSchema>;
+
+export const intakeDealStatusHistory = pgTable("intake_deal_status_history", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => intakeDeals.id, { onDelete: "cascade" }).notNull(),
+  fromStatus: varchar("from_status", { length: 50 }),
+  toStatus: varchar("to_status", { length: 50 }).notNull(),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertIntakeDealStatusHistorySchema = createInsertSchema(intakeDealStatusHistory).omit({ id: true, createdAt: true });
+export type IntakeDealStatusHistory = typeof intakeDealStatusHistory.$inferSelect;
+export type InsertIntakeDealStatusHistory = z.infer<typeof insertIntakeDealStatusHistorySchema>;
+
+export const intakeDealFundSubmissions = pgTable("intake_deal_fund_submissions", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => intakeDeals.id, { onDelete: "cascade" }).notNull(),
+  fundId: integer("fund_id").references(() => funds.id, { onDelete: "cascade" }).notNull(),
+  submittedBy: integer("submitted_by").references(() => users.id, { onDelete: "set null" }),
+  fundResponseStatus: varchar("fund_response_status", { length: 50 }).default("pending"),
+  fundResponseAt: timestamp("fund_response_at"),
+  notes: text("notes"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+})
+
+export const insertIntakeDealFundSubmissionSchema = createInsertSchema(intakeDealFundSubmissions).omit({ id: true, submittedAt: true });
+export type IntakeDealFundSubmission = typeof intakeDealFundSubmissions.$inferSelect;
+export type InsertIntakeDealFundSubmission = z.infer<typeof insertIntakeDealFundSubmissionSchema>;

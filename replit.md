@@ -19,7 +19,7 @@ The application is built using a modern web stack: React 18 with TypeScript for 
 -   **Core Functionality**: JWT-based authentication with Google OAuth 2.0, multi-tenant architecture, user role differentiation, automated notifications, and orchestration of external pricing requests.
 -   **Security**: Implements SOC 2 compliance features including account lockout, immutable audit logging, password management, JWT invalidation, PII encryption, and Content-Security-Policy. Includes SOC 2-compliant API Key Management and Webhook System.
 
-**Database Schema Highlights**: Manages users, pricing requests, quotes, documents, e-signatures, audit logs, projects (deals), tasks, activities, system settings, partners, loan programs, message threads, and commercial loan submissions.
+**Database Schema Highlights**: Manages users, pricing requests, quotes, documents, e-signatures, audit logs, projects (deals), tasks, activities, system settings, partners, loan programs, message threads, commercial loan submissions, and the commercial intake system (funds, intake_deals, intake_deal_documents, intake_document_rules, intake_ai_analysis, intake_deal_status_history, intake_deal_fund_submissions).
 
 **Key Architectural Decisions:**
 -   **Multi-Tenancy**: Ensures full data isolation using `tenantId`.
@@ -41,6 +41,7 @@ The application is built using a modern web stack: React 18 with TypeScript for 
 -   **Borrower Portal**: Redesigned portal with a "My Loans" dashboard, read-only deal details, document upload/replace, and borrower-visible tasks. Includes a persistent document vault and profile management.
 -   **Broker Portal**: Unified authenticated experience with dedicated navigation for quotes, loans, commissions, contacts, and settings. Broker deal detail mirrors the borrower portal layout (stage progress bar, loan overview, document checklist with upload, inline form tasks) with added commission summary card showing broker points and YSP. Legacy token-based `/broker-portal/:token` links redirect to the logged-in app. Brokers see deals matched by their email (`brokerEmail` on projects) with tenant-scoped access control.
 -   **Per-Person Invite Links**: Consolidated portal link system using `users.inviteToken` for account setup and access.
+-   **Commercial Deal Intake & Fund Matchmaking**: A full intake pipeline for commercial real estate deals with AI-powered screening. Sidebar labels: "Commercial Pipeline" (admin/lender) and "Commercial Deals" (broker). Features include fund management (CRUD with LTV/state/asset-type criteria), conditional document rules engine (IF/THEN logic for document requirements), broker deal submission form with auto-calculated LTV/DSCR, 3-agent AI pipeline (validator → fund matcher → feedback generator) with rule-based fallback, lender deal review dashboard with AI analysis display, and intake-to-origination transfer. Backend routes in `server/routes/commercialIntake.ts`, AI agents in `server/agents/intakeAgents.ts`. All endpoints tenant-scoped with admin role checks for write operations.
 
 ## External Dependencies
 

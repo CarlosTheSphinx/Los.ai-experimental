@@ -70,6 +70,11 @@ import OnboardingConfigPage from "@/pages/admin/onboarding-config";
 
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
+import CommercialPipelinePage from "@/pages/admin/commercial-pipeline";
+import CommercialPipelineDetailPage from "@/pages/admin/commercial-pipeline-detail";
+import FundManagementPage from "@/pages/admin/fund-management";
+import DocumentRulesPage from "@/pages/admin/document-rules";
+import BrokerCommercialDeals, { DealForm as BrokerDealForm, DealDetail as BrokerDealDetail } from "@/pages/broker-commercial-deals";
 import SettingsPage from "@/pages/settings";
 import BorrowerDocumentsPage from "@/pages/borrower-documents";
 import QuoteDocuments from "@/pages/quote-documents";
@@ -283,6 +288,11 @@ function MainRoutes() {
           <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
           <Route path="/commercial-submission/:id" component={() => <ProtectedRoute component={CommercialSubmissionDetail} />} />
 
+          {/* Broker Commercial Deals */}
+          <Route path="/commercial-deals/new" component={() => <ProtectedRoute component={BrokerDealForm} />} />
+          <Route path="/commercial-deals/:id" component={() => <ProtectedRoute component={BrokerDealDetail} />} />
+          <Route path="/commercial-deals" component={() => <ProtectedRoute component={BrokerCommercialDeals} />} />
+
           {/* Broker CRM Routes */}
           <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
           <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
@@ -310,6 +320,10 @@ function MainRoutes() {
           <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
           <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
 
+          <Route path="/admin/commercial-pipeline" component={() => <AdminProtectedRoute component={CommercialPipelinePage} />} />
+          <Route path="/admin/commercial-pipeline/:id" component={() => <AdminProtectedRoute component={CommercialPipelineDetailPage} />} />
+          <Route path="/admin/commercial/funds" component={() => <AdminProtectedRoute component={FundManagementPage} />} />
+          <Route path="/admin/commercial/document-rules" component={() => <AdminProtectedRoute component={DocumentRulesPage} />} />
           <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
           <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
           <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />

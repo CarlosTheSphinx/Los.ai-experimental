@@ -1,0 +1,1166 @@
+# Commercial Real Estate Deal Intake & Fund Matchmaking System
+
+## System Overview
+
+A broker-to-lender deal intake platform that auto-matches deals against a configurable fund database, enforces conditional document requirements, saves in-progress deals, and provides AI-driven deal flaws/feedback analysis.
+
+**Key Features:**
+- Fund database with lender-managed criteria (LTV, LTC, amount, geography, asset types)
+- Automatic deal-to-fund matching
+- Conditional document requirements (nested rule engine)
+- Save-in-progress deals with frozen AI feedback
+- Multi-agent AI analysis (validation → policy check → feedback generation)
+- Status pipeline tracking
+- Document version history
+- Lender dashboard for deal review and distribution
+
+---
+
+## Part 1: High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     BROKER SIDE (Deal Entry)                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Broker fills Deal Form (loan amount, asset type, property      │
+│  address, borrower info, etc.)                                  │
+│         ↓                                                         │
+│  System validates deal structure                                │
+│         ↓                                                         │
+│  Broker saves as draft OR submits                               │
+│         ↓                                                         │
+│  [SUBMISSION] → Sent immediately to lender                      │
+│                                                                   │
+│  Broker can see:                                                 │
+│  - Deal list with status (draft, submitted, under review, etc.) │
+│  - Document checklist (which docs are required)                 │
+│  - ONLY if immediate no-match: "No funds available" alert       │
+│  - Not: AI feedback, flaws, confidence scores (lender only)     │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│               LENDER SIDE (Deal Review & Analysis)               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  New deal arrives → auto-routed to lender's inbox               │
+│         ↓                                                         │
+│  [AI ANALYSIS] Multi-agent pipeline runs:                       │
+│    Agent 1: Validate & structure deal data                      │
+│    Agent 2: Analyze against all funds + policies                │
+│    Agent 3: Generate flaws report + feedback                    │
+│         ↓                                                         │
+│  Lender sees:                                                    │
+│  - Deal summary + all submitted docs                            │
+│  - AI analysis report (flaws, fund recommendations)             │
+│  - Confidence score (fund fit + deal health)                    │
+│  - Pass/conditional/fail verdict                                │
+│  - Deal status pipeline (review status)                         │
+│  - Document version history                                     │
+│         ↓                                                         │
+│  Lender distributes to specific funds (manually or via email)   │
+│         ↓                                                         │
+│  Lender (or fund mgr) updates deal status                       │
+│  (approved/conditional/rejected)                                │
+│         ↓                                                         │
+│  Broker sees status update                                       │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│          FUND MANAGEMENT (Lender + Fund Manager Config)          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Lender uploads fund to database:                               │
+│  - Fund name, contact, provider details                         │
+│  - Criteria (LTV min/max, LTC min/max, amount range, etc.)     │
+│  - Conditional document rules                                   │
+│         ↓                                                         │
+│  Fund manager can customize:                                    │
+│  - Tighten criteria (override base template)                    │
+│  - Add/remove document requirements                             │
+│  - Set custom fields/questions                                  │
+│         ↓                                                         │
+│  Fund database ready for matching                               │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Part 2: Deal Submission & Matching Flow
+
+### Broker: Deal Entry Form
+
+**Fields broker must fill (deal form):**
+```
+Basic Info:
+  - Deal name
+  - Loan amount
+  - Asset type (dropdown: Apartment, Office, Hotel, Retail, Industrial, Land, etc.)
+  - Property address (city, state, zip)
+  - Property type (stabilized, value-add, development)
+
+Borrower Info:
+  - Borrower name
+  - Borrower entity type (individual, LLC, Corp, etc.)
+  - Credit score (estimated)
+  - Guarantees (yes/no, details if yes)
+
+Property Metrics:
+  - Property value/appraisal
+  - Loan-to-value (LTV) %
+  - Loan-to-cost (LTC) % (if applicable)
+  - Annual NOI or gross revenue
+  - Occupancy %
+  - Major tenants (if applicable)
+
+Documents (conditional list based on above):
+  - Required docs (based on asset type + loan structure)
+  - Optional docs
+  - Broker can upload files or mark "coming soon"
+```
+
+**Broker workflow:**
+
+1. **Start deal entry:**
+   - Broker opens form
+   - Starts filling fields
+
+2. **Save as draft (optional):**
+   - At any point, broker can save work-in-progress
+   - Deal status = "draft"
+   - Required documents marked as incomplete
+   - Broker can return later and continue
+
+3. **Submit deal:**
+   - Broker fills all required fields
+   - Uploads all required documents (hard block if missing)
+   - Clicks "Submit to Lender"
+   - System validates:
+     - All required docs present
+     - Deal data complete and valid
+     - Document file formats valid
+
+4. **Validation checks (before submission):**
+   ```
+   if any required document missing:
+     → Show error: "Please upload [doc name]"
+     → Block submission
+
+   if deal data has validation errors:
+     → Show error: "Loan amount must be between $[min] and $[max]"
+     → Block submission
+
+   if all checks pass:
+     → Enable "Submit" button
+   ```
+
+5. **Post-submission:**
+   - Deal automatically routed to lender
+   - Broker sees status = "submitted"
+   - Can see all submitted docs + timestamps
+   - CANNOT edit or revise after submission
+   - But CAN add new versions of docs (versioned upload)
+
+**Important:** Brokers do NOT see confidence scores or AI feedback UNLESS the deal matches zero funds (immediate no).
+
+---
+
+### Automatic Fund Matching
+
+**When deal is submitted:**
+
+1. **System queries all funds in database:**
+   ```
+   For each fund:
+     - Check LTV: is deal_ltv between fund_ltv_min and fund_ltv_max?
+     - Check LTC: is deal_ltc between fund_ltc_min and fund_ltc_max?
+     - Check amount: is loan_amount between fund_min_amount and fund_max_amount?
+     - Check geography: is property_state in fund_allowed_states?
+     - Check asset type: is deal_asset_type in fund_allowed_asset_types?
+     - Check custom criteria (if any)
+
+     if ALL criteria met:
+       → ADD to list of eligible_funds
+   ```
+
+2. **Results:**
+   ```
+   if eligible_funds is empty:
+     → Lender gets feedback: "This deal doesn't match any available funds"
+     → Broker gets feedback: "No available funds for this deal type"
+        (IMMEDIATE NO - broker sees this before lender)
+     → Deal status = "no_match"
+
+   if eligible_funds NOT empty:
+     → Proceed to AI analysis
+     → Lender sees AI report + list of eligible_funds
+     → Lender decides which fund(s) to submit to
+   ```
+
+**Key insight:** Brokers do NOT see the match results (which funds matched). Lender decides who to send deals to.
+
+---
+
+## Part 3: Conditional Document Requirements Engine
+
+### Document Rule Definition (Lender configures)
+
+**Goal:** Ensure every deal submitted has documents required for that specific scenario.
+
+**Example rules:**
+
+```
+Rule 1: If asset_type = "Hotel" then require ["FFE_Appraisal", "Room_Rate_Analysis", "Franchisor_Approval"]
+
+Rule 2: If asset_type = "Multifamily" AND loan_amount > $10M then require ["Full_Rent_Roll", "Operating_Statement_3yr", "Tenant_NamedCreditReport"]
+
+Rule 3: If borrower_has_guarantor = true then require ["Guarantor_Financial_Statement", "Guarantor_PersonalTaxReturns"]
+
+Rule 4: If property_state = "California" then require ["Environmental_Phase1", "Seismic_Report"]
+
+Rule 5: If LTC > 70% then require ["Lease_Legal_Review", "Mezzanine_Docs"]
+```
+
+### Rule Engine Architecture
+
+**Lender-side rule builder UI:**
+
+```
+[Add New Rule]
+
+  IF:
+    [ condition_type: dropdown (asset_type, loan_amount, borrower_type, state, LTV, LTC, etc.) ]
+    [ operator: dropdown (=, >, <, >=, <=, IN, NOT_IN) ]
+    [ value: text/number/multiselect input ]
+
+  AND/OR:
+    [ Add additional conditions ]
+
+  THEN:
+    [ require_documents: multiselect checkbox ]
+    [X] FFE_Appraisal
+    [X] Room_Rate_Analysis
+    [ ] Franchisor_Approval
+    ...
+
+  [Save Rule]
+```
+
+### Rule Evaluation (at submission time)
+
+```python
+# When broker submits deal
+def evaluate_required_documents(deal, rules):
+    required_docs = set()
+
+    for rule in rules:
+        if rule.conditions_met(deal):
+            required_docs.update(rule.required_documents)
+
+    return required_docs
+
+# Validation
+submitted_docs = set of documents_broker_uploaded
+required_docs = evaluate_required_documents(deal, all_rules)
+missing_docs = required_docs - submitted_docs
+
+if missing_docs:
+    raise ValidationError(f"Missing required documents: {missing_docs}")
+```
+
+### Document Storage & Versioning
+
+**Each submitted document has:**
+```json
+{
+  "document_id": "uuid",
+  "deal_id": "DEAL-2026-00123",
+  "document_type": "FFE_Appraisal",
+  "version": 1,
+  "file_name": "FFE_Appraisal_200Commerce_v1.pdf",
+  "file_path": "/deals/DEAL-2026-00123/documents/FFE_Appraisal_v1.pdf",
+  "file_size": 2500000,
+  "mime_type": "application/pdf",
+  "uploaded_by": "broker_id",
+  "uploaded_at": "2026-03-15T14:30:00Z",
+  "is_current": true,
+  "comments": "Initial FFE appraisal from Colliers"
+}
+```
+
+**Version history:**
+```
+Broker uploads FFE_Appraisal.pdf (v1) → March 15
+Broker uploads FFE_Appraisal_updated.pdf (v2) → March 18 (revised appraisal)
+Lender can view both, see timestamps, understand what changed
+```
+
+---
+
+## Part 4: AI Orchestration Layer
+
+### Three-Agent Pipeline (at submission)
+
+**Trigger:** When deal is submitted, AI analysis begins automatically.
+
+```
+DEAL SUBMITTED
+    ↓
+AGENT 1: Deal Validator & Structurer
+  - Extracts all deal fields from submission
+  - Validates data types (amount = number, dates = ISO, etc.)
+  - Flags missing/invalid data
+  - Produces structured deal JSON
+    ↓
+AGENT 2: Fund Matching & Policy Analyzer
+  - Receives structured deal from Agent 1
+  - Compares against all fund criteria
+  - Identifies eligible funds
+  - Flags deals that don't fit ANY fund
+  - Assesses deal health (borrower strength, property metrics)
+  - Produces matching report + risk assessment
+    ↓
+AGENT 3: Feedback Generator
+  - Receives matching report + risk assessment from Agent 2
+  - Generates human-readable feedback:
+    * Key flaws/concerns
+    * Strengths
+    * Fund recommendations
+    * Confidence score (0-100)
+    * Pass/conditional/fail verdict
+  - Formats for lender dashboard
+```
+
+### Agent 1: Deal Validator
+
+**Input:** Raw deal form submission (JSON)
+
+**Output:** Validated structured deal object
+
+**Responsibilities:**
+- Parse all fields
+- Validate data types (LTV must be 0-100%, loan_amount must be positive integer, dates must be valid ISO 8601, etc.)
+- Extract key metrics:
+  - LTV = (loan_amount / property_value) * 100
+  - LTC = (loan_amount + other_costs) / property_value * 100 (if applicable)
+  - Debt service coverage = NOI / annual_debt_service
+- Flag missing/invalid data
+- Produce clean JSON for Agent 2
+
+**Sample output:**
+```json
+{
+  "deal_id": "DEAL-2026-00523",
+  "validation_status": "valid",
+  "validation_errors": [],
+  "structured_deal": {
+    "basic_info": {
+      "deal_name": "200 Commerce Avenue",
+      "loan_amount": 2500000,
+      "asset_type": "Office",
+      "property_address": "200 Commerce Avenue, Denver, CO 80202"
+    },
+    "borrower_info": {
+      "name": "John Smith",
+      "entity_type": "LLC",
+      "credit_score": 715
+    },
+    "metrics": {
+      "property_value": 2450000,
+      "ltv_pct": 102.04,
+      "noi_annual": 285000,
+      "dscr": 1.45,
+      "occupancy_pct": 94
+    },
+    "documents_submitted": ["1003", "BankStatement", "TaxReturn", "Appraisal", "PurchaseContract"],
+    "documents_missing": []
+  }
+}
+```
+
+### Agent 2: Fund Matcher & Policy Analyzer
+
+**Input:** Validated deal from Agent 1 + fund database
+
+**Output:** Matching report + risk/deal health assessment
+
+**Responsibilities:**
+1. **Fund matching:**
+   ```python
+   eligible_funds = []
+   for fund in all_funds:
+     if (deal.ltv_pct <= fund.ltv_max AND
+         deal.ltv_pct >= fund.ltv_min AND
+         deal.loan_amount >= fund.min_amount AND
+         deal.loan_amount <= fund.max_amount AND
+         deal.property_state in fund.allowed_states AND
+         deal.asset_type in fund.allowed_asset_types):
+       eligible_funds.append(fund)
+   ```
+
+2. **Deal health assessment:**
+   - Borrower strength (credit score, entity type, guarantees)
+   - Property performance (occupancy, NOI, DSCR, debt service coverage)
+   - Loan structure (LTV, LTC, amortization)
+   - Market risk (market conditions, geographic factors)
+   - Documentation completeness
+
+3. **Risk scoring by category (0-100 each):**
+   - Borrower risk: Based on credit score, financial position
+   - Property risk: Based on metrics, condition, market
+   - Loan structure risk: Based on LTV, DSCR, amortization
+   - Documentation risk: Based on what's provided vs. what's needed
+
+**Sample output:**
+```json
+{
+  "deal_id": "DEAL-2026-00523",
+  "matching": {
+    "eligible_funds": [
+      {
+        "fund_id": "FUND-001",
+        "fund_name": "Prime Capital Fund",
+        "match_score": 92
+      },
+      {
+        "fund_id": "FUND-003",
+        "fund_name": "Growth Finance Partners",
+        "match_score": 78
+      }
+    ],
+    "total_funds_in_database": 15,
+    "match_percentage": 13
+  },
+  "deal_health": {
+    "borrower_risk_score": 20,
+    "borrower_risk_detail": "Strong borrower profile. Credit score 715, good financial position.",
+    "property_risk_score": 35,
+    "property_risk_detail": "Stabilized office with 94% occupancy. NOI strong. Market fundamentals solid.",
+    "loan_structure_risk_score": 45,
+    "loan_structure_risk_detail": "LTV at 102% (exceeds policy limits). DSCR 1.45x is healthy. Loan structure is concern.",
+    "documentation_risk_score": 25,
+    "documentation_risk_detail": "All critical docs submitted. Complete package."
+  }
+}
+```
+
+### Agent 3: Feedback Generator
+
+**Input:** Matching report + deal health from Agent 2
+
+**Output:** Human-readable feedback for lender dashboard
+
+**Responsibilities:**
+1. **Identify key flaws:**
+   - Policy violations (e.g., LTV > limit)
+   - Documentation gaps
+   - Borrower concerns
+   - Property red flags
+
+2. **Score confidence (0-100):**
+   - Fund fit component (60%): How well does deal match available funds?
+   - Deal health component (40%): How solid is the deal itself?
+   - Formula: (fund_fit_score * 0.6) + (deal_health_score * 0.4)
+
+3. **Verdict:**
+   - Pass (>75): "Deal is fundable with strong positioning"
+   - Conditional (50-75): "Deal is fundable with conditions/remediation"
+   - Fail (<50): "Deal does not meet fund criteria in current form"
+
+4. **Format feedback:**
+
+```json
+{
+  "deal_id": "DEAL-2026-00523",
+  "ai_analysis": {
+    "overall_verdict": "conditional",
+    "confidence_score": 68,
+    "confidence_breakdown": {
+      "fund_fit": 72,
+      "deal_health": 64
+    },
+    "key_flaws": [
+      {
+        "flaw": "Loan-to-value exceeds policy limits",
+        "severity": "critical",
+        "detail": "LTV is 102% (exceeds 75% policy maximum). Borrower must contribute additional equity or renegotiate price.",
+        "remediation": "Option 1: Borrower contributes $560k additional equity. Option 2: Reduce purchase price by ~4%. Option 3: Request waiver (requires VP approval)."
+      },
+      {
+        "flaw": "Loan structure",
+        "severity": "high",
+        "detail": "Loan-to-cost ratio needs verification. Request full cost breakdown.",
+        "remediation": "Obtain detailed cost documentation from borrower."
+      }
+    ],
+    "strengths": [
+      {
+        "strength": "Strong borrower profile",
+        "detail": "Credit score 715, strong financials, good market position."
+      },
+      {
+        "strength": "Healthy debt service coverage",
+        "detail": "DSCR 1.45x exceeds policy minimum. Property NOI supports debt."
+      }
+    ],
+    "fund_recommendations": [
+      {
+        "fund_name": "Prime Capital Fund",
+        "match_score": 92,
+        "recommendation": "Excellent match. Once LTV issue resolved, this fund will likely approve. Strong fit."
+      },
+      {
+        "fund_name": "Growth Finance Partners",
+        "match_score": 78,
+        "recommendation": "Good match. More flexible on LTV. Consider as alternative."
+      }
+    ],
+    "next_steps": [
+      "Address LTV overage (critical blocker)",
+      "Verify LTC and obtain cost breakdown",
+      "Confirm property documentation package"
+    ]
+  }
+}
+```
+
+### Lender Dashboard Display
+
+**What lender sees after deal is analyzed:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  DEAL: 200 Commerce Avenue (DEAL-2026-00523)            │
+│  Status: Submitted | Analyzed                            │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  AI ANALYSIS SUMMARY                                     │
+│  ────────────────────                                    │
+│  Verdict: CONDITIONAL ⚠                                  │
+│  Confidence: 68% (Fund fit: 72%, Deal health: 64%)      │
+│                                                           │
+│  KEY FLAWS (Must Address)                               │
+│  ────────────────────────                               │
+│  ⚠ CRITICAL: LTV at 102% (policy max 75%)              │
+│      → Borrower needs additional equity or price cut    │
+│                                                           │
+│  ⚠ HIGH: LTC needs verification                         │
+│      → Request cost breakdown from borrower             │
+│                                                           │
+│  STRENGTHS                                               │
+│  ────────                                                │
+│  ✓ Strong borrower (credit 715, solid financials)       │
+│  ✓ Healthy DSCR (1.45x, exceeds 1.25x minimum)         │
+│  ✓ Stabilized asset with good occupancy (94%)           │
+│                                                           │
+│  ELIGIBLE FUNDS                                          │
+│  ──────────────                                          │
+│  1. Prime Capital Fund (92% match)                       │
+│     → Excellent fit. Good option once LTV resolved.     │
+│                                                          │
+│  2. Growth Finance Partners (78% match)                  │
+│     → Good match. More flexible on LTV.                 │
+│                                                          │
+│  DOCUMENTS RECEIVED (5)                                  │
+│  ──────────────────────                                  │
+│  [+] Loan Application 1003 (v1, Mar 15)                 │
+│  [+] Bank Statement (v1, Mar 15)                         │
+│  [+] Tax Return 2024 (v1, Mar 15)                        │
+│  [+] Property Appraisal (v1, Mar 15)                    │
+│  [+] Purchase Contract (v2, Mar 18 - updated)           │
+│                                                          │
+│  ACTIONS                                                 │
+│  ───────                                                 │
+│  [ Request more docs from broker ]                       │
+│  [ Send to Prime Capital Fund ]                          │
+│  [ Send to Growth Finance Partners ]                     │
+│  [ Mark as Approved | Conditional | Rejected ]          │
+│  [ Add note ]                                            │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Part 5: Database Schema
+
+```sql
+-- FUNDS TABLE
+CREATE TABLE funds (
+  fund_id VARCHAR(50) PRIMARY KEY,
+  lender_id VARCHAR(50) NOT NULL,
+  fund_name VARCHAR(255) NOT NULL,
+  provider_name VARCHAR(255),
+  contact_email VARCHAR(255),
+  contact_phone VARCHAR(20),
+
+  -- Core criteria
+  ltv_min DECIMAL(5,2),
+  ltv_max DECIMAL(5,2),
+  ltc_min DECIMAL(5,2),
+  ltc_max DECIMAL(5,2),
+  loan_amount_min BIGINT,
+  loan_amount_max BIGINT,
+
+  -- Geographic
+  allowed_states JSON, -- ["CA", "CO", "NY", ...]
+  allowed_regions JSON, -- or zip codes, counties, etc.
+
+  -- Asset types
+  allowed_asset_types JSON, -- ["Multifamily", "Office", "Retail", ...]
+
+  -- Metadata
+  fund_description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  is_active BOOLEAN DEFAULT true,
+
+  INDEX (lender_id),
+  INDEX (is_active)
+);
+
+-- FUND MANAGERS (if fund manager customization is needed)
+CREATE TABLE fund_managers (
+  fund_manager_id VARCHAR(50) PRIMARY KEY,
+  fund_id VARCHAR(50) NOT NULL,
+  manager_name VARCHAR(255),
+  manager_email VARCHAR(255),
+  can_customize_criteria BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (fund_id) REFERENCES funds(fund_id),
+  INDEX (fund_id)
+);
+
+-- DEALS TABLE
+CREATE TABLE deals (
+  deal_id VARCHAR(50) PRIMARY KEY,
+  broker_id VARCHAR(50) NOT NULL,
+  lender_id VARCHAR(50) NOT NULL,
+
+  -- Deal info
+  deal_name VARCHAR(255),
+  loan_amount BIGINT NOT NULL,
+  asset_type VARCHAR(50),
+  property_address VARCHAR(500),
+  property_city VARCHAR(100),
+  property_state VARCHAR(2),
+  property_zip VARCHAR(10),
+
+  -- Metrics
+  property_value BIGINT,
+  ltv_pct DECIMAL(6,2),
+  ltc_pct DECIMAL(6,2),
+  noi_annual BIGINT,
+  dscr DECIMAL(4,2),
+  occupancy_pct INT,
+
+  -- Borrower info
+  borrower_name VARCHAR(255),
+  borrower_entity_type VARCHAR(50),
+  borrower_credit_score INT,
+  has_guarantor BOOLEAN,
+
+  -- Status
+  status VARCHAR(50), -- draft, submitted, under_review, approved, conditional, rejected, no_match
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  submitted_at TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  -- Raw data
+  deal_form_json JSONB, -- complete form submission
+
+  INDEX (broker_id),
+  INDEX (lender_id),
+  INDEX (status),
+  INDEX (created_at)
+);
+
+-- DEAL DOCUMENTS TABLE
+CREATE TABLE deal_documents (
+  document_id VARCHAR(50) PRIMARY KEY,
+  deal_id VARCHAR(50) NOT NULL,
+  document_type VARCHAR(100), -- "FFE_Appraisal", "Rent_Roll", etc.
+  version INT DEFAULT 1,
+
+  file_name VARCHAR(500),
+  file_path VARCHAR(1000),
+  file_size BIGINT,
+  mime_type VARCHAR(100),
+
+  uploaded_by VARCHAR(50), -- broker_id
+  uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  is_current BOOLEAN DEFAULT true,
+  comments TEXT,
+
+  INDEX (deal_id),
+  INDEX (document_type),
+  INDEX (is_current)
+);
+
+-- DOCUMENT RULES TABLE
+CREATE TABLE document_rules (
+  rule_id VARCHAR(50) PRIMARY KEY,
+  lender_id VARCHAR(50) NOT NULL,
+
+  rule_name VARCHAR(255),
+
+  -- Conditions (JSON for flexibility)
+  conditions JSON, -- { "asset_type": ["Hotel"], "loan_amount_gt": 5000000 }
+
+  -- Required documents
+  required_documents JSON, -- ["FFE_Appraisal", "Franchisor_Approval"]
+
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX (lender_id),
+  INDEX (is_active)
+);
+
+-- AI ANALYSIS RESULTS TABLE
+CREATE TABLE ai_analysis_results (
+  analysis_id VARCHAR(50) PRIMARY KEY,
+  deal_id VARCHAR(50) NOT NULL,
+
+  -- Agent outputs
+  agent1_validation JSON, -- Deal validator output
+  agent2_matching JSON, -- Fund matcher + risk assessment output
+  agent3_feedback JSON, -- Feedback generator output
+
+  -- Summary
+  overall_verdict VARCHAR(50), -- pass, conditional, fail
+  confidence_score INT, -- 0-100
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  INDEX (deal_id),
+  UNIQUE KEY (deal_id) -- one analysis per deal (latest)
+);
+
+-- DEAL STATUS PIPELINE TABLE
+CREATE TABLE deal_status_history (
+  history_id VARCHAR(50) PRIMARY KEY,
+  deal_id VARCHAR(50) NOT NULL,
+
+  from_status VARCHAR(50),
+  to_status VARCHAR(50),
+
+  updated_by VARCHAR(50), -- broker_id or lender_id
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT,
+
+  INDEX (deal_id),
+  INDEX (updated_at)
+);
+
+-- DEAL TO FUND MAPPING (after lender decides to send)
+CREATE TABLE deal_fund_submissions (
+  submission_id VARCHAR(50) PRIMARY KEY,
+  deal_id VARCHAR(50) NOT NULL,
+  fund_id VARCHAR(50) NOT NULL,
+  lender_id VARCHAR(50) NOT NULL,
+
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fund_response_status VARCHAR(50), -- approved, conditional, rejected, pending
+  fund_response_at TIMESTAMP,
+
+  INDEX (deal_id),
+  INDEX (fund_id),
+  INDEX (lender_id),
+  UNIQUE KEY (deal_id, fund_id) -- each deal to fund combo once
+);
+```
+
+---
+
+## Part 6: Key Workflows
+
+### Workflow 1: Broker Submits Deal
+
+```
+1. Broker opens deal entry form
+2. Fills required fields (loan amount, asset type, property info, etc.)
+3. System evaluates which documents are required (based on conditions)
+4. Broker uploads documents OR saves as draft
+5. Broker clicks "Submit to Lender"
+
+System validation:
+  IF any required document missing:
+    → Show error message
+    → Block submission
+
+  IF all required docs present:
+    → Proceed to submission
+
+6. Deal submitted → status changes to "submitted"
+7. Deal immediately sent to lender (auto-routed)
+8. AI analysis kicks off (Agents 1, 2, 3 run in sequence)
+9. Lender sees completed analysis
+
+Broker view:
+  ✓ Can see deal status (submitted)
+  ✓ Can see all documents with timestamps
+  ✗ Cannot see AI feedback/flaws/confidence score
+  ✗ Cannot edit deal after submission
+  ✓ Can upload new versions of documents
+```
+
+### Workflow 2: Broker Saves Draft
+
+```
+1. Broker filling form, clicks "Save Draft" button
+2. System stores deal with status = "draft"
+3. Saves current state of form (all filled fields)
+4. Creates frozen snapshot of required documents list
+5. Shows message: "Draft saved. You can continue anytime."
+
+6. Broker closes browser/exits
+
+7. [Later] Broker returns and opens saved draft
+8. Form populated with saved data
+9. Broker can:
+   - Edit fields
+   - Upload missing documents
+   - Continue filling form
+
+10. When ready, click "Submit to Lender" (same as fresh submission)
+
+Note: Feedback snapshot is frozen at save time. If funds/policies change
+between save and submission, feedback doesn't auto-update.
+```
+
+### Workflow 3: Lender Reviews Deal & Distributes
+
+```
+1. Deal arrives in lender's inbox (auto-routed from broker submission)
+2. Status = "submitted"
+3. Lender opens deal dashboard, sees:
+   - Deal summary + all documents
+   - AI analysis report (verdict, confidence, flaws)
+   - Eligible funds list (ranked by match score)
+
+4. Lender reviews AI feedback, decides next step:
+
+   Option A: Send to specific fund(s)
+     → Click "Send to Prime Capital Fund"
+     → May compose personal message or use default
+     → Email sent to fund contact (or manual delivery)
+     → Status changes to "under_review"
+
+   Option B: Request more info from broker
+     → Click "Request additional documents"
+     → Send message to broker with specific asks
+     → Status stays "submitted"
+     → Broker uploads new docs (versioned)
+     → Lender reviews again
+
+   Option C: Reject deal
+     → Click "Reject"
+     → Add reason (e.g., "LTV too high, not fundable in current form")
+     → Status = "rejected"
+     → Broker notified
+
+5. Lender can update status at any time:
+   → Approved
+   → Conditional (with conditions listed)
+   → Rejected (with reason)
+
+6. Broker sees status updates in real-time
+```
+
+### Workflow 4: Fund Manager Customizes Criteria
+
+```
+1. Lender creates fund "Prime Capital Fund" with base criteria:
+   - LTV max: 75%
+   - LTC max: 80%
+   - Min amount: $500k
+   - Max amount: $10M
+   - States: CA, CO, TX
+   - Assets: Apartment, Office, Retail
+
+2. Fund manager (at Prime Capital) logs in
+3. Sees customization option (if lender enabled it)
+4. Can override:
+   - Tighten LTV to 70% (more strict)
+   - Add requirement: "Borrower net worth > $5M"
+   - Add document requirement: "Audit certified financial statements"
+
+5. Changes saved
+6. Next deal submitted matches against updated criteria
+```
+
+---
+
+## Part 7: Lender Configuration Interface
+
+### Fund Management UI
+
+**Lender dashboard:**
+```
+[Manage Funds]
+
+  Existing Funds:
+  ┌──────────────────────────────┐
+  │ Prime Capital Fund           │ [Edit] [Delete]
+  │ Contact: john@primecap.com   │
+  │ Status: Active               │
+  │ LTV: 70-75% | LTC: 75-80%   │
+  │ Amount: $500k - $10M         │
+  │ States: CA, CO, TX           │
+  └──────────────────────────────┘
+
+  [+ Add New Fund]
+```
+
+**Edit fund details:**
+```
+Fund Name: Prime Capital Fund
+Provider Name: Prime Capital Partners
+Contact Email: john@primecap.com
+Contact Phone: (303) 555-0100
+
+─── CRITERIA ───
+LTV Min: 65
+LTV Max: 75
+LTC Min: 70
+LTC Max: 80
+
+Loan Amount Min: $500,000
+Loan Amount Max: $10,000,000
+
+─── GEOGRAPHY ───
+Allowed States: [CA] [CO] [TX] [NY] [FL]
+                [+] Add more
+
+─── ASSET TYPES ───
+[X] Multifamily
+[X] Office
+[X] Retail
+[ ] Industrial
+[ ] Hotel
+[ ] Land
+[ ] Development
+
+─── DOCUMENT REQUIREMENTS ───
+[Manage Rules]
+  [+ Add Rule]
+
+─── MANAGERS ───
+Assign fund managers who can customize criteria:
+  john@primecap.com [Edit]
+  [+ Add manager]
+
+[Save Fund]
+```
+
+### Document Rules Builder UI
+
+```
+[Manage Document Rules]
+
+Existing Rules:
+┌────────────────────────────────────┐
+│ Rule 1: Hotel properties           │ [Edit] [Delete]
+│ If asset_type = Hotel              │
+│ Then require: FFE_Appraisal,        │
+│              Room_Rate_Analysis     │
+└────────────────────────────────────┘
+
+[+ Add New Rule]
+
+─────────────────────
+
+[Create New Rule]
+
+IF:
+  [ Asset Type ]     [equals]     [Hotel, Motel]
+
+  [+ AND]
+  [ Loan Amount ]    [greater]    [5000000]
+
+  [+ AND/OR]
+
+THEN REQUIRE:
+  [X] FFE_Appraisal
+  [X] Room_Rate_Analysis
+  [X] Franchisor_Approval
+  [ ] Management_Agreement
+  [ ] Reservation_System_Analysis
+
+  [+ Add more documents]
+
+[Save Rule]
+```
+
+---
+
+## Part 8: Data Flow Sequence
+
+```
+BROKER SIDE:
+┌─────────────────────────┐
+│ Broker fills deal form  │
+└────────────┬────────────┘
+             │
+             ↓
+┌─────────────────────────────────────────────┐
+│ System evaluates required documents based   │
+│ on asset_type, loan_amount, geography, etc. │
+│ (uses conditional rule engine)              │
+└────────────┬────────────────────────────────┘
+             │
+             ↓
+┌─────────────────────────────────────────────┐
+│ Broker uploads all required documents       │
+└────────────┬────────────────────────────────┘
+             │
+             ↓
+        [SUBMIT]
+             │
+             ↓
+LENDER SIDE:
+┌──────────────────────────────────────────────────┐
+│ Deal arrives in lender's inbox (auto-routed)    │
+│ Status = "submitted"                            │
+└────────────┬─────────────────────────────────────┘
+             │
+             ↓
+    ┌────────┴────────┐
+    ↓                 ↓
+┌──────────────┐ ┌───────────────────────────────┐
+│ AGENT 1:     │ │ Parallel execution can occur  │
+│ Validate &   │ │ for faster processing         │
+│ Structure    │ │ if system designed for it     │
+└──────┬───────┘ │ But sequential is safer for   │
+       │         │ dependencies                   │
+       ↓         └───────────────────────────────┘
+┌──────────────┐
+│ AGENT 2:     │
+│ Fund Match   │
+│ & Analyze    │
+└──────┬───────┘
+       │
+       ↓
+┌──────────────┐
+│ AGENT 3:     │
+│ Generate     │
+│ Feedback     │
+└──────┬───────┘
+       │
+       ↓
+┌──────────────────────────────────────┐
+│ AI analysis complete                 │
+│ Results stored in database           │
+│ Lender dashboard updated             │
+└────────────┬─────────────────────────┘
+             │
+             ↓
+┌──────────────────────────────────────┐
+│ Lender reviews AI feedback + flaws   │
+│ Decides which fund(s) to send to     │
+└────────────┬─────────────────────────┘
+             │
+             ↓
+┌──────────────────────────────────────┐
+│ Lender sends deal to specific fund(s)│
+│ (manually or auto-email with config) │
+│ Status = "under_review"              │
+└────────────┬─────────────────────────┘
+             │
+             ↓
+┌──────────────────────────────────────┐
+│ Fund manager reviews (if applicable) │
+│ Lender updates deal status           │
+│ (approved/conditional/rejected)      │
+└────────────┬─────────────────────────┘
+             │
+             ↓
+        BROKER
+             │
+             ↓
+┌──────────────────────────────────────┐
+│ Broker sees deal status update       │
+│ in their dashboard                   │
+└──────────────────────────────────────┘
+```
+
+---
+
+## Part 9: System Requirements & Integration Points
+
+### Real-time Requirements:
+- Form submission should trigger AI analysis within seconds
+- Document upload/processing on-demand
+- Dashboard updates reflect status changes in real-time
+
+### Integration Points:
+1. **Broker portal integration:** Embed deal form in broker's existing portal or provide standalone
+2. **Lender internal systems:** May need to integrate with lender's loan origination system for status updates
+3. **Email system:** Auto-sending deal summaries/requests to fund contacts (optional)
+4. **Document storage:** S3 or similar for secure, versioned document storage
+5. **Authentication:** SSO for broker/lender/fund manager login
+
+### Security Considerations:
+- Document encryption (at rest and in transit)
+- Role-based access control (broker sees only their deals, lender sees all)
+- Audit trails for all document uploads/deletions
+- Version history prevents accidental overwrites
+
+---
+
+## Part 10: Implementation Roadmap
+
+### Phase 1: Core Intake & Matching (Weeks 1-3)
+- [ ] Deal form builder
+- [ ] Document requirement rules engine
+- [ ] Fund database + criteria setup
+- [ ] Basic deal-to-fund matching logic
+- [ ] Broker dashboard (see drafts, submitted deals)
+- [ ] Lender dashboard (see submitted deals)
+
+### Phase 2: AI Analysis Layer (Weeks 4-5)
+- [ ] Agent 1: Deal Validator
+- [ ] Agent 2: Fund Matcher & Analyzer
+- [ ] Agent 3: Feedback Generator
+- [ ] Analysis results storage
+- [ ] Lender sees AI feedback on dashboard
+
+### Phase 3: Status Tracking & Workflows (Weeks 6)
+- [ ] Deal status pipeline
+- [ ] Status history logging
+- [ ] Lender can update deal status
+- [ ] Broker sees status updates
+- [ ] Deal-to-fund submission tracking
+
+### Phase 4: Fund Manager Customization (Week 7, Optional)
+- [ ] Fund manager login
+- [ ] Customization interface
+- [ ] Override criteria/documents
+- [ ] Feedback loop with lender
+
+### Phase 5: Advanced Features (Future)
+- [ ] Auto-email deal summaries to fund contacts
+- [ ] Lender can configure email templates
+- [ ] Deal analytics dashboard
+- [ ] Fund performance tracking
+- [ ] Broker deal pipeline forecasting
+
+---
+
+## Summary
+
+This system creates a **smart deal intake gateway** that:
+
+1. **For brokers:** Simple deal entry, save in-progress, upload docs (with conditional requirements enforced)
+2. **For lenders:** Automatic deal matching + multi-agent AI analysis, comprehensive feedback on flaws/funding viability, manual distribution to funds
+3. **For funds:** Customizable criteria and document requirements
+4. **For the system:** Version-tracked documents, AI-driven risk assessment, deal status pipeline, audit trail
+
+The key innovation is **automatic fund matching + AI-driven deal assessment** replacing manual sourcing, enabling lenders to instantly see deal viability before distributing to their fund network.

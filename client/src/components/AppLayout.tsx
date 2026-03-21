@@ -100,6 +100,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/", label: "New Quote", icon: Sparkles, shortcut: undefined },
   { href: "/quotes", label: "Quotes", icon: FileText, shortcut: undefined },
   { href: "/deals", label: "My Loans", icon: FolderKanban, shortcut: undefined },
+  { href: "/commercial-deals", label: "Commercial Deals", icon: Building2, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
   { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: undefined },
@@ -120,6 +121,7 @@ const borrowerNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
@@ -132,6 +134,7 @@ const adminNavItems: NavItem[] = [
 const adminNavItemsV2: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
