@@ -433,16 +433,16 @@ export default function BrokerDealDetail() {
   const yspFee = ysp && loanAmount ? (Number(ysp) / 100 * Number(loanAmount)) : null;
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4 space-y-5">
-      <div className="flex items-center gap-3 mb-2">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-3 sm:px-4 space-y-4 sm:space-y-5">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2">
         <Link href="/">
-          <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-[13px] text-muted-foreground font-medium" data-testid="text-loan-number">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className="text-[12px] sm:text-[13px] text-muted-foreground font-medium" data-testid="text-loan-number">
               {deal.loanNumber || `Loan #${deal.id}`}
             </span>
             <Badge
@@ -453,10 +453,10 @@ export default function BrokerDealDetail() {
               {deal.status === 'active' ? 'In Progress' : deal.status === 'completed' ? 'Completed' : deal.status}
             </Badge>
           </div>
-          <h1 className="text-xl font-bold truncate" data-testid="text-deal-title">
+          <h1 className="text-lg sm:text-xl font-bold truncate" data-testid="text-deal-title">
             {deal.projectName || deal.propertyAddress || `Loan #${deal.id}`}
           </h1>
-          <p className="text-sm text-muted-foreground" data-testid="text-deal-subtitle">
+          <p className="text-xs sm:text-sm text-muted-foreground truncate" data-testid="text-deal-subtitle">
             {[deal.programName, deal.loanType, deal.propertyAddress?.replace(/,?\s*United States of America$/i, '')].filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -470,39 +470,39 @@ export default function BrokerDealDetail() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="overflow-hidden" data-testid="card-loan-overview">
-          <div className="w-full flex items-center justify-between px-5 py-3" data-testid="header-overview">
-            <CardTitle className="text-[18px] flex items-center gap-2">
+          <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3" data-testid="header-overview">
+            <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-muted-foreground" />
               Loan Overview
             </CardTitle>
           </div>
-          <CardContent className="pt-0 pb-5">
+          <CardContent className="pt-0 pb-4 sm:pb-5 px-3 sm:px-6">
             <div className="border-t mb-4" />
             <div className="space-y-5">
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
+                  <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
                 </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                   {propertyFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                 </div>
               </div>
               <div className="border-t pt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Loan Details</span>
+                  <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Loan Details</span>
                 </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                   {loanFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                 </div>
               </div>
               <div className="border-t pt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Info</span>
+                  <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Info</span>
                 </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                   <Field label="Name" value={deal.borrowerName || `${deal.customerFirstName || ""} ${deal.customerLastName || ""}`.trim() || "—"} />
                   <Field label="Email" value={deal.borrowerEmail || deal.customerEmail || "—"} />
                   <Field label="Phone" value={deal.borrowerPhone || deal.customerPhone || "—"} />
@@ -514,8 +514,8 @@ export default function BrokerDealDetail() {
 
         <div className="space-y-4">
           <Card className="overflow-hidden" data-testid="card-broker-checklist">
-            <div className="w-full flex items-center justify-between px-5 py-3" data-testid="header-checklist">
-              <CardTitle className="text-[18px] flex items-center gap-2">
+            <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3" data-testid="header-checklist">
+              <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-muted-foreground" />
                 Loan Checklist
                 {(brokerTasks.filter((t: any) => t.status !== 'completed').length + pendingDocs.length) > 0 && (
@@ -528,7 +528,7 @@ export default function BrokerDealDetail() {
                 <span className="text-sm text-muted-foreground">{completedItems}/{totalItems}</span>
               </div>
             </div>
-            <CardContent className="pt-0 pb-4">
+            <CardContent className="pt-0 pb-4 px-3 sm:px-6">
               <div className="border-t mb-3" />
 
               {brokerTasks.length > 0 && (
@@ -542,7 +542,7 @@ export default function BrokerDealDetail() {
                   </div>
                   <div className="space-y-1">
                     {sortByActionPriority(brokerTasks, (t: any) => taskActionPriority(t.status)).map((task: any) => (
-                      <div key={task.id} className="flex flex-col gap-1 py-2 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
+                      <div key={task.id} className="flex flex-col gap-1 py-2 px-3 rounded-lg hover:bg-muted/30 min-h-[44px]" data-testid={`task-row-${task.id}`}>
                         <div className="flex items-center gap-3">
                           {task.status === 'completed' ? (
                             <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
@@ -596,7 +596,7 @@ export default function BrokerDealDetail() {
                         <div key={doc.id} className="rounded-lg border border-border/60 overflow-hidden" data-testid={`doc-row-${doc.id}`}>
                           <button
                             onClick={toggleDoc}
-                            className="w-full flex items-center gap-3 py-2.5 px-3 hover:bg-muted/30 transition-colors"
+                            className="w-full flex items-center gap-3 py-3 sm:py-2.5 px-3 hover:bg-muted/30 transition-colors min-h-[44px]"
                             data-testid={`toggle-doc-${doc.id}`}
                           >
                             {getDocStatusIcon(doc.status)}
@@ -681,15 +681,15 @@ export default function BrokerDealDetail() {
 
           {(brokerPoints != null || ysp != null) && (
             <Card className="overflow-hidden" data-testid="card-commission">
-              <div className="w-full flex items-center justify-between px-5 py-3">
-                <CardTitle className="text-[18px] flex items-center gap-2">
+              <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3">
+                <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
                   <Percent className="h-4 w-4 text-muted-foreground" />
                   Commission Summary
                 </CardTitle>
               </div>
-              <CardContent className="pt-0 pb-5">
+              <CardContent className="pt-0 pb-4 sm:pb-5 px-3 sm:px-6">
                 <div className="border-t mb-4" />
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
                   {brokerPoints != null && (
                     <>
                       <Field label="Broker Points" value={`${Number(brokerPoints).toFixed(2)}%`} />
