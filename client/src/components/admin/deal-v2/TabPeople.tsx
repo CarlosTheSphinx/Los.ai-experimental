@@ -74,7 +74,7 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
   const [editingBroker, setEditingBroker] = useState(false);
   const [brokerForm, setBrokerForm] = useState(emptyBrokerForm);
 
-  const dealId = deal.projectId || deal.id;
+  const dealId = String(deal.projectId || deal.id);
 
   const { data: teamData } = useQuery<{ teamMembers: { id: number; fullName: string; email: string; role: string }[] }>({
     queryKey: ["/api/admin/team-members"],
