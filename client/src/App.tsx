@@ -71,6 +71,7 @@ import OnboardingConfigPage from "@/pages/admin/onboarding-config";
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
 import CommercialPipelinePage from "@/pages/admin/commercial-pipeline";
+import CommercialFormConfigPage from "@/pages/admin/commercial-form-config";
 import CommercialPipelineDetailPage from "@/pages/admin/commercial-pipeline-detail";
 import FundManagementPage from "@/pages/admin/fund-management";
 import DocumentRulesPage from "@/pages/admin/document-rules";
@@ -320,6 +321,7 @@ function MainRoutes() {
           <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
           <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
 
+          <Route path="/admin/commercial-form-config" component={() => <AdminProtectedRoute component={CommercialFormConfigPage} />} />
           <Route path="/admin/commercial-pipeline" component={() => <AdminProtectedRoute component={CommercialPipelinePage} />} />
           <Route path="/admin/commercial-pipeline/:id" component={() => <AdminProtectedRoute component={CommercialPipelineDetailPage} />} />
           <Route path="/admin/commercial/funds" component={() => <AdminProtectedRoute component={FundManagementPage} />} />

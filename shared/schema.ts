@@ -4178,4 +4178,22 @@ export const intakeDealFundSubmissions = pgTable("intake_deal_fund_submissions",
 
 export const insertIntakeDealFundSubmissionSchema = createInsertSchema(intakeDealFundSubmissions).omit({ id: true, submittedAt: true });
 export type IntakeDealFundSubmission = typeof intakeDealFundSubmissions.$inferSelect;
+
+export const commercialFormConfig = pgTable("commercial_form_config", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  fieldKey: varchar("field_key", { length: 100 }).notNull(),
+  fieldLabel: varchar("field_label", { length: 255 }).notNull(),
+  section: varchar("section", { length: 100 }).notNull(),
+  fieldType: varchar("field_type", { length: 50 }).notNull(),
+  isVisible: boolean("is_visible").default(true).notNull(),
+  isRequired: boolean("is_required").default(false).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  options: jsonb("options"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCommercialFormConfigSchema = createInsertSchema(commercialFormConfig).omit({ id: true, updatedAt: true });
+export type CommercialFormConfig = typeof commercialFormConfig.$inferSelect;
+export type InsertCommercialFormConfig = z.infer<typeof insertCommercialFormConfigSchema>;
 export type InsertIntakeDealFundSubmission = z.infer<typeof insertIntakeDealFundSubmissionSchema>;

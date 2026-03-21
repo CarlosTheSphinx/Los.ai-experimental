@@ -30,6 +30,7 @@ import {
   MessageSquare,
   BotMessageSquare,
   Home,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Select,
@@ -122,6 +123,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
+  { href: "/admin/commercial-form-config", label: "Form Builder", icon: SlidersHorizontal },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
@@ -135,6 +137,7 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
   { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
+  { href: "/admin/commercial-form-config", label: "Form Builder", icon: SlidersHorizontal },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },

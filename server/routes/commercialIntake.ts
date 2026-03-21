@@ -4,6 +4,7 @@ import {
   funds, intakeDeals, intakeDealDocuments, intakeDocumentRules,
   intakeAiAnalysis, intakeDealStatusHistory, intakeDealFundSubmissions,
   insertFundSchema, insertIntakeDealSchema, insertIntakeDocumentRuleSchema,
+  commercialFormConfig,
   projects, users,
   type Fund, type IntakeDeal, type IntakeDocumentRule, type IntakeAiAnalysis,
   type IntakeDealStatusHistory, type IntakeDealFundSubmission, type IntakeDealDocument,
@@ -674,6 +675,87 @@ router.get("/api/commercial/portfolio-summary", async (req: Request, res: Respon
     };
 
     res.json({ intake });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== FORM CONFIGURATION =====
+
+const DEFAULT_FORM_FIELDS = [
+  { fieldKey: "dealName", fieldLabel: "Deal Name", section: "Deal Basics", fieldType: "text", isRequired: true, sortOrder: 1 },
+  { fieldKey: "loanAmount", fieldLabel: "Loan Amount ($)", section: "Deal Basics", fieldType: "number", isRequired: true, sortOrder: 2 },
+  { fieldKey: "assetType", fieldLabel: "Asset Type", section: "Deal Basics", fieldType: "select", isRequired: true, sortOrder: 3, options: { choices: ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"] } },
+  { fieldKey: "propertyAddress", fieldLabel: "Property Address", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 4 },
+  { fieldKey: "propertyCity", fieldLabel: "City", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 5 },
+  { fieldKey: "propertyState", fieldLabel: "State", section: "Deal Basics", fieldType: "select", isRequired: false, sortOrder: 6, options: { choices: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"] } },
+  { fieldKey: "propertyZip", fieldLabel: "ZIP Code", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 7 },
+  { fieldKey: "borrowerName", fieldLabel: "Borrower / Entity Name", section: "Borrower Information", fieldType: "text", isRequired: false, sortOrder: 10 },
+  { fieldKey: "borrowerEntityType", fieldLabel: "Entity Type", section: "Borrower Information", fieldType: "select", isRequired: false, sortOrder: 11, options: { choices: ["Individual","LLC","Corporation","Partnership","Trust"] } },
+  { fieldKey: "borrowerCreditScore", fieldLabel: "Credit Score", section: "Borrower Information", fieldType: "number", isRequired: false, sortOrder: 12 },
+  { fieldKey: "hasGuarantor", fieldLabel: "Has Guarantor?", section: "Borrower Information", fieldType: "radio", isRequired: false, sortOrder: 13, options: { choices: ["Yes","No"] } },
+  { fieldKey: "propertyValue", fieldLabel: "Property Appraisal Value ($)", section: "Property Metrics", fieldType: "number", isRequired: true, sortOrder: 20 },
+  { fieldKey: "noiAnnual", fieldLabel: "Annual NOI ($)", section: "Property Metrics", fieldType: "number", isRequired: false, sortOrder: 21 },
+  { fieldKey: "occupancyPct", fieldLabel: "Occupancy %", section: "Property Metrics", fieldType: "number", isRequired: false, sortOrder: 22 },
+];
+
+router.get("/api/commercial/form-config", async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const conditions = [];
+    if (tenantId) conditions.push(eq(commercialFormConfig.tenantId, tenantId));
+
+    let fields = await db.select().from(commercialFormConfig)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(commercialFormConfig.sortOrder);
+
+    if (fields.length === 0) {
+      const inserted = [];
+      for (const field of DEFAULT_FORM_FIELDS) {
+        const [row] = await db.insert(commercialFormConfig).values({
+          ...field,
+          tenantId,
+          isVisible: true,
+          isRequired: field.isRequired,
+          options: field.options || null,
+        } as any).returning();
+        inserted.push(row);
+      }
+      fields = inserted;
+    }
+
+    res.json(fields);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put("/api/commercial/form-config", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const tenantId = getTenantId(req);
+    const { fields } = req.body;
+    if (!Array.isArray(fields)) return res.status(400).json({ error: "fields must be an array" });
+
+    const updated = [];
+    for (const field of fields) {
+      const conditions = [eq(commercialFormConfig.id, field.id)];
+      if (tenantId) conditions.push(eq(commercialFormConfig.tenantId, tenantId));
+
+      const [row] = await db.update(commercialFormConfig)
+        .set({
+          fieldLabel: field.fieldLabel,
+          isVisible: field.isVisible,
+          isRequired: field.isRequired,
+          sortOrder: field.sortOrder,
+          updatedAt: new Date(),
+        })
+        .where(and(...conditions))
+        .returning();
+      if (row) updated.push(row);
+    }
+
+    res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

@@ -10,7 +10,7 @@ import type { OrchestrationEvent, OrchestrationSession } from '@/types/orchestra
 import { X, Bug, Wifi, WifiOff, Clock, Trash2, FileText, ChevronDown, Upload, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type TabType = 'sessions' | 'credit_policy' | 'log';
+type TabType = 'sessions' | 'credit_policy' | 'intake' | 'log';
 
 export function AIOrchestrationDebugger() {
   const [isOpen, setIsOpen] = useState(false);
@@ -225,6 +225,17 @@ export function AIOrchestrationDebugger() {
           </button>
           <button
             className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
+              activeTab === 'intake'
+                ? 'text-amber-400 border-b-2 border-amber-500'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            onClick={() => setActiveTab('intake')}
+            data-testid="debugger-tab-intake"
+          >
+            Intake AI
+          </button>
+          <button
+            className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
               activeTab === 'log'
                 ? 'text-cyan-400 border-b-2 border-cyan-500'
                 : 'text-slate-400 hover:text-white'
@@ -238,6 +249,19 @@ export function AIOrchestrationDebugger() {
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {activeTab === 'log' ? (
             <RealTimeOutput events={allEvents} selectedAgent={null} />
+
+          ) : activeTab === 'intake' ? (
+            <IntakeAITab
+              sessions={sessions.filter(s =>
+                s.events.some(e =>
+                  e.agentName?.startsWith('intake_') || e.agentName === 'rule_based_fallback'
+                )
+              )}
+              onViewSession={(sessionId) => {
+                setActiveSessionId(sessionId);
+                setActiveTab('sessions');
+              }}
+            />
 
           ) : activeTab === 'credit_policy' ? (
             <CreditPolicyTab
@@ -579,6 +603,100 @@ function CreditPolicyTab({
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface IntakeAITabProps {
+  sessions: OrchestrationSession[];
+  onViewSession: (sessionId: string) => void;
+}
+
+function IntakeAITab({ sessions, onViewSession }: IntakeAITabProps) {
+  const AGENT_LABELS: Record<string, string> = {
+    intake_validator: 'Deal Validator',
+    intake_fund_matcher: 'Fund Matcher',
+    intake_feedback_generator: 'Feedback Generator',
+    rule_based_fallback: 'Rule-Based Fallback',
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-amber-900/30 rounded-lg border border-amber-700/40 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <FileText className="h-4 w-4 text-amber-400" />
+          <h3 className="text-[13px] font-semibold text-amber-300">Commercial Intake Analysis</h3>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          3-agent AI pipeline: Validator → Fund Matcher → Feedback Generator. Traces appear here when deals are submitted for AI analysis.
+        </p>
+      </div>
+
+      <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 space-y-2">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+          Pipeline Agents
+        </p>
+        <div className="space-y-1.5">
+          {['intake_validator', 'intake_fund_matcher', 'intake_feedback_generator'].map((agentType, idx) => (
+            <div key={agentType} className="flex items-center gap-2 bg-slate-900/50 rounded px-2.5 py-1.5 border border-slate-700/30">
+              <span className="text-[10px] text-amber-400/70 font-mono w-4 text-center">{idx + 1}</span>
+              <span className="text-[11px] text-slate-300 flex-1">{AGENT_LABELS[agentType]}</span>
+              <span className="text-[9px] text-slate-500 font-mono">gpt-4o-mini</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {sessions.length > 0 ? (
+        <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 space-y-2">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Recent Sessions ({sessions.length})
+          </p>
+          <div className="space-y-1">
+            {sessions.map(s => {
+              const intakeEvents = s.events.filter(e =>
+                e.agentName?.startsWith('intake_') || e.agentName === 'rule_based_fallback'
+              );
+              const completedAgents = intakeEvents.filter(e => e.eventType === 'agent_complete').length;
+              const hasError = intakeEvents.some(e => e.eventType === 'agent_error');
+              const isRunning = s.status === 'running';
+
+              return (
+                <button
+                  key={s.sessionId}
+                  onClick={() => onViewSession(s.sessionId)}
+                  className="w-full text-left bg-slate-900/50 rounded p-2 border border-slate-700/30 hover:border-amber-500/40 transition-colors"
+                  data-testid={`intake-session-${s.sessionId.slice(0, 8)}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-300 font-mono">{s.sessionId.slice(0, 12)}...</span>
+                    <div className="flex items-center gap-1.5">
+                      {isRunning && <span className="animate-pulse text-amber-400 text-[10px]">●</span>}
+                      <span className={`text-[10px] ${
+                        isRunning ? 'text-amber-400' : hasError ? 'text-red-400' : 'text-green-400'
+                      }`}>
+                        {isRunning ? 'running' : hasError ? 'error' : 'completed'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-slate-500">{completedAgents}/3 agents</span>
+                    <span className="text-[10px] text-slate-600">·</span>
+                    <span className="text-[10px] text-slate-500">{s.startTime.toLocaleTimeString()}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <Bug className="h-6 w-6 text-slate-600 mx-auto mb-2" />
+          <p className="text-[11px] text-slate-500">
+            No intake AI sessions yet. Submit a commercial deal for AI analysis to see traces here.
+          </p>
         </div>
       )}
     </div>

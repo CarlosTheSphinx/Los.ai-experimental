@@ -111,10 +111,74 @@ function DealsList() {
   );
 }
 
+interface FormFieldConfig {
+  id: number;
+  fieldKey: string;
+  fieldLabel: string;
+  section: string;
+  fieldType: string;
+  isVisible: boolean;
+  isRequired: boolean;
+  sortOrder: number;
+  options: any;
+}
+
+function DynamicField({ field, value, onChange }: { field: FormFieldConfig; value: any; onChange: (v: any) => void }) {
+  const label = `${field.fieldLabel}${field.isRequired ? " *" : ""}`;
+  const inputClass = "bg-[#0f1629] border-slate-700 text-white text-sm";
+
+  if (field.fieldType === "select" && field.options?.choices) {
+    return (
+      <div>
+        <Label className="text-xs text-slate-400">{label}</Label>
+        <Select value={value || ""} onValueChange={onChange}>
+          <SelectTrigger className={inputClass} data-testid={field.fieldKey}>
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.choices.map((c: string) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (field.fieldType === "radio" && field.options?.choices) {
+    return (
+      <div>
+        <Label className="text-xs text-slate-400 mb-2 block">{label}</Label>
+        <RadioGroup value={value ? "yes" : "no"} onValueChange={v => onChange(v === "yes")} className="flex gap-4">
+          {field.options.choices.map((c: string) => (
+            <div key={c} className="flex items-center gap-1.5">
+              <RadioGroupItem value={c.toLowerCase()} id={`${field.fieldKey}-${c}`} />
+              <Label htmlFor={`${field.fieldKey}-${c}`} className="text-xs text-slate-400">{c}</Label>
+            </div>
+          ))}
+        </RadioGroup>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Label className="text-xs text-slate-400">{label}</Label>
+      <Input
+        type={field.fieldType === "number" ? "number" : "text"}
+        value={value || ""}
+        onChange={e => onChange(e.target.value)}
+        className={inputClass}
+        data-testid={field.fieldKey}
+      />
+    </div>
+  );
+}
+
 function DealForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<Record<string, any>>({
     dealName: "",
     loanAmount: "",
     assetType: "",
@@ -129,6 +193,10 @@ function DealForm() {
     borrowerEntityType: "",
     borrowerCreditScore: "",
     hasGuarantor: false,
+  });
+
+  const { data: formConfig = [] } = useQuery<FormFieldConfig[]>({
+    queryKey: ["/api/commercial/form-config"],
   });
 
   const loanAmt = parseFloat(form.loanAmount) || 0;
@@ -223,111 +291,74 @@ function DealForm() {
         <h1 className="text-xl font-semibold text-white">Submit New Deal</h1>
       </div>
 
-      <Card className="bg-[#1a2038] border-slate-700/50">
-        <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Deal Basics</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label className="text-xs text-slate-400">Deal Name *</Label>
-            <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="deal-name" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
-              <Input type="number" value={form.loanAmount} onChange={e => update("loanAmount", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400">Asset Type *</Label>
-              <Select value={form.assetType} onValueChange={v => update("assetType", v)}>
-                <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs text-slate-400">Property Address *</Label>
-            <Input value={form.propertyAddress} onChange={e => update("propertyAddress", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="property-address" />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs text-slate-400">City</Label>
-              <Input value={form.propertyCity} onChange={e => update("propertyCity", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400">State</Label>
-              <Select value={form.propertyState} onValueChange={v => update("propertyState", v)}>
-                <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="property-state"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>{US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400">ZIP</Label>
-              <Input value={form.propertyZip} onChange={e => update("propertyZip", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {(() => {
+        const visibleFields = formConfig.filter(f => f.isVisible);
+        const sections = visibleFields.reduce((acc, field) => {
+          if (!acc[field.section]) acc[field.section] = [];
+          acc[field.section].push(field);
+          return acc;
+        }, {} as Record<string, FormFieldConfig[]>);
+        Object.values(sections).forEach(arr => arr.sort((a, b) => a.sortOrder - b.sortOrder));
 
-      <Card className="bg-[#1a2038] border-slate-700/50">
-        <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Borrower Information</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-slate-400">Borrower Name *</Label>
-              <Input value={form.borrowerName} onChange={e => update("borrowerName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="borrower-name" />
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400">Entity Type *</Label>
-              <Select value={form.borrowerEntityType} onValueChange={v => update("borrowerEntityType", v)}>
-                <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="entity-type"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>{ENTITY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-slate-400">Credit Score</Label>
-              <Input type="number" value={form.borrowerCreditScore} onChange={e => update("borrowerCreditScore", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="credit-score" />
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400 mb-2 block">Has Guarantor?</Label>
-              <RadioGroup value={form.hasGuarantor ? "yes" : "no"} onValueChange={v => update("hasGuarantor", v === "yes")} className="flex gap-4">
-                <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id="guar-yes" /><Label htmlFor="guar-yes" className="text-xs text-slate-400">Yes</Label></div>
-                <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id="guar-no" /><Label htmlFor="guar-no" className="text-xs text-slate-400">No</Label></div>
-              </RadioGroup>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        if (Object.keys(sections).length === 0) {
+          return (
+            <>
+              <Card className="bg-[#1a2038] border-slate-700/50">
+                <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Deal Basics</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label className="text-xs text-slate-400">Deal Name *</Label>
+                    <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="deal-name" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
+                      <Input type="number" value={form.loanAmount} onChange={e => update("loanAmount", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-400">Asset Type *</Label>
+                      <Select value={form.assetType} onValueChange={v => update("assetType", v)}>
+                        <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
+                        <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          );
+        }
 
-      <Card className="bg-[#1a2038] border-slate-700/50">
-        <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Property Metrics</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-slate-400">Property Appraisal Value ($) *</Label>
-              <Input type="number" value={form.propertyValue} onChange={e => update("propertyValue", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="property-value" />
-            </div>
-            <div>
-              <Label className="text-xs text-slate-400">Annual NOI ($)</Label>
-              <Input type="number" value={form.noiAnnual} onChange={e => update("noiAnnual", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="noi-annual" />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs text-slate-400">Occupancy %</Label>
-            <Input type="number" value={form.occupancyPct} onChange={e => update("occupancyPct", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="occupancy" />
-          </div>
-          <div className="flex gap-6 p-3 rounded bg-[#0f1629] border border-slate-700/50">
-            <div>
-              <p className="text-xs text-slate-500">LTV (auto-calculated)</p>
-              <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-white"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">DSCR (auto-calculated)</p>
-              <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-white"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        return Object.entries(sections).map(([sectionName, sectionFields]) => (
+          <Card key={sectionName} className="bg-[#1a2038] border-slate-700/50">
+            <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">{sectionName}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {sectionFields.map(field => (
+                  <DynamicField
+                    key={field.id}
+                    field={field}
+                    value={form[field.fieldKey]}
+                    onChange={v => update(field.fieldKey, v)}
+                  />
+                ))}
+              </div>
+              {sectionName === "Property Metrics" && (
+                <div className="flex gap-6 p-3 rounded bg-[#0f1629] border border-slate-700/50">
+                  <div>
+                    <p className="text-xs text-slate-500">LTV (auto-calculated)</p>
+                    <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-white"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">DSCR (auto-calculated)</p>
+                    <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-white"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ));
+      })()}
 
       <Card className="bg-[#1a2038] border-slate-700/50">
         <CardHeader className="pb-3">

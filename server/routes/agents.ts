@@ -1694,6 +1694,36 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
             modelName: 'gpt-4o',
             maxTokens: 1024,
             temperature: 0.2
+          },
+          {
+            agentType: 'intake_validator',
+            name: 'Commercial Intake Validator',
+            systemPrompt: `You are a Commercial Real Estate Deal Validator AI Agent. Your job is to:\n1. Parse and validate all deal fields from a commercial real estate submission\n2. Validate data types (amounts must be positive numbers, percentages 0-100, dates valid, state codes 2-letter)\n3. Calculate key metrics:\n   - LTV = (loan_amount / property_value) * 100\n   - DSCR = NOI / (loan_amount * 0.07) (approximate annual debt service at 7%)\n4. Flag missing or invalid data\n5. Produce a clean structured deal JSON\n\nReturn a JSON object with:\n{\n  "validation_status": "valid" | "invalid",\n  "validation_errors": [{"field": "...", "error": "..."}],\n  "structured_deal": {\n    "basic_info": { "deal_name", "loan_amount", "asset_type", "property_address", "property_city", "property_state", "property_zip" },\n    "borrower_info": { "name", "entity_type", "credit_score", "has_guarantor" },\n    "metrics": { "property_value", "ltv_pct", "noi_annual", "dscr", "occupancy_pct" },\n    "documents_submitted": ["doc_type1", ...],\n    "documents_missing": []\n  }\n}`,
+            toolDefinitions: ['deal_validation', 'metrics_calculation'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
+          },
+          {
+            agentType: 'intake_fund_matcher',
+            name: 'Commercial Fund Matcher',
+            systemPrompt: `You are a Commercial Real Estate Fund Matcher & Risk Analyzer AI Agent. Your job is to:\n1. Compare a validated deal against available fund criteria\n2. For each fund, check: LTV in range, LTC in range (if applicable), loan amount in range, state/geography eligible, asset type eligible\n3. Score each eligible fund 0-100 based on how well the deal fits\n4. Assess deal health across 4 risk categories (each scored 0-100, lower is better/less risky):\n   - Borrower risk, Property risk, Loan structure risk, Documentation risk\n\nReturn JSON with:\n{\n  "eligible_funds": [{ "fund_id": N, "fund_name": "...", "match_score": 0-100, "match_reason": "..." }],\n  "total_funds_checked": N,\n  "deal_health": {\n    "borrower_risk_score": 0-100, "borrower_risk_detail": "...",\n    "property_risk_score": 0-100, "property_risk_detail": "...",\n    "loan_structure_risk_score": 0-100, "loan_structure_risk_detail": "...",\n    "documentation_risk_score": 0-100, "documentation_risk_detail": "..."\n  }\n}`,
+            toolDefinitions: ['fund_matching', 'risk_analysis'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
+          },
+          {
+            agentType: 'intake_feedback_generator',
+            name: 'Commercial Feedback Generator',
+            systemPrompt: `You are a Commercial Real Estate Deal Feedback Generator AI Agent. Your job is to:\n1. Analyze the fund matching report and deal health assessment\n2. Identify key flaws with severity (critical, high, medium, low) and remediation suggestions\n3. List deal strengths\n4. Calculate composite confidence score: (fund_fit_score * 0.6) + (deal_health_score * 0.4)\n5. Generate verdict: >75 = "pass", 50-75 = "conditional", <50 = "fail"\n6. Provide per-fund recommendations and next steps\n\nReturn JSON with:\n{\n  "overall_verdict": "pass" | "conditional" | "fail",\n  "confidence_score": 0-100,\n  "confidence_breakdown": { "fund_fit": 0-100, "deal_health": 0-100 },\n  "key_flaws": [{ "flaw": "...", "severity": "critical|high|medium|low", "detail": "...", "remediation": "..." }],\n  "strengths": [{ "strength": "...", "detail": "..." }],\n  "fund_recommendations": [{ "fund_name": "...", "match_score": 0-100, "recommendation": "..." }],\n  "next_steps": ["..."]\n}`,
+            toolDefinitions: ['feedback_generation', 'verdict_calculation'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
           }
         ];
 
