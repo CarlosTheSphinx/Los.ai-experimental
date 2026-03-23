@@ -78,6 +78,7 @@ import DocumentRulesPage from "@/pages/admin/document-rules";
 import BrokerCommercialDeals, { DealForm as BrokerDealForm, DealDetail as BrokerDealDetail } from "@/pages/broker-commercial-deals";
 import SettingsPage from "@/pages/settings";
 import BorrowerDocumentsPage from "@/pages/borrower-documents";
+import BrokerDocumentsPage from "@/pages/broker-documents";
 import QuoteDocuments from "@/pages/quote-documents";
 import BorrowerPreview from "@/pages/borrower-preview";
 
@@ -294,7 +295,8 @@ function MainRoutes() {
           <Route path="/commercial-deals/:id" component={() => <ProtectedRoute component={BrokerDealDetail} />} />
           <Route path="/commercial-deals" component={() => <ProtectedRoute component={BrokerCommercialDeals} />} />
 
-          {/* Broker CRM Routes */}
+          {/* Broker Routes */}
+          <Route path="/broker/documents" component={() => <ProtectedRoute component={BrokerDocumentsPage} />} />
           <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
           <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
           <Route path="/borrower-preview" component={() => <AdminProtectedRoute component={BorrowerPreview} />} />

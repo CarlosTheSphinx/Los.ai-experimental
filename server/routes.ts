@@ -4666,6 +4666,14 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Document file not found' });
       }
 
+      const currentUser = await storage.getUserById(userId);
+      if (currentUser && (currentUser.role === 'broker' || currentUser.role === 'borrower')) {
+        const allowedVisibility = ['all', currentUser.role];
+        if (doc.visibility && !allowedVisibility.includes(doc.visibility)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
       const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
 
       res.set('X-Frame-Options', 'SAMEORIGIN');
@@ -21462,6 +21470,100 @@ Return JSON only:
     } catch (error) {
       console.error('Error updating deal review mode:', error);
       res.status(500).json({ error: 'Failed to update review mode' });
+    }
+  });
+
+  app.get('/api/broker/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const currentUser = await storage.getUserById(userId);
+      if (!currentUser?.email) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const userEmail = currentUser.email.toLowerCase().trim();
+      const { category, search } = req.query;
+
+      let conditions: any[] = [
+        sql`LOWER(TRIM(${projects.brokerEmail})) = ${userEmail}`,
+      ];
+      if (currentUser.tenantId) {
+        conditions.push(eq(projects.tenantId, currentUser.tenantId));
+      }
+
+      const brokerProjects = await db.select({
+        id: projects.id,
+        projectName: projects.projectName,
+        propertyAddress: projects.propertyAddress,
+        status: projects.status,
+        loanNumber: projects.loanNumber,
+      }).from(projects).where(and(...conditions));
+
+      if (brokerProjects.length === 0) {
+        return res.json({ documents: [] });
+      }
+
+      const projectIds = brokerProjects.map(p => p.id);
+      const projectMap = new Map(brokerProjects.map(p => [p.id, p]));
+
+      let docConditions: any[] = [
+        inArray(dealDocuments.dealId, projectIds),
+      ];
+
+      if (category && typeof category === 'string' && category !== 'all') {
+        docConditions.push(eq(dealDocuments.documentCategory, category));
+      }
+
+      if (search && typeof search === 'string') {
+        docConditions.push(
+          sql`LOWER(${dealDocuments.documentName}) LIKE ${`%${search.toLowerCase()}%`}`
+        );
+      }
+
+      const docs = await db.select({
+        id: dealDocuments.id,
+        dealId: dealDocuments.dealId,
+        documentName: dealDocuments.documentName,
+        documentCategory: dealDocuments.documentCategory,
+        status: dealDocuments.status,
+        isRequired: dealDocuments.isRequired,
+        fileName: dealDocuments.fileName,
+        fileSize: dealDocuments.fileSize,
+        filePath: dealDocuments.filePath,
+        uploadedAt: dealDocuments.uploadedAt,
+        visibility: dealDocuments.visibility,
+      }).from(dealDocuments)
+        .where(and(...docConditions))
+        .orderBy(desc(dealDocuments.uploadedAt));
+
+      const visibleDocs = docs.filter(d =>
+        !d.visibility || d.visibility === 'all' || d.visibility === 'broker'
+      );
+
+      const result = visibleDocs.map(doc => {
+        const project = projectMap.get(doc.dealId);
+        return {
+          id: doc.id,
+          dealId: doc.dealId,
+          dealName: project?.projectName || `Deal #${doc.dealId}`,
+          loanNumber: project?.loanNumber || null,
+          propertyAddress: project?.propertyAddress || null,
+          dealStatus: project?.status || null,
+          documentName: doc.documentName,
+          documentCategory: doc.documentCategory,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          hasFile: !!doc.filePath,
+          uploadedAt: doc.uploadedAt,
+        };
+      });
+
+      res.json({ documents: result });
+    } catch (error) {
+      console.error('Error fetching broker documents:', error);
+      res.status(500).json({ error: 'Failed to fetch documents' });
     }
   });
 
