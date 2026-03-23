@@ -103,7 +103,6 @@ const brokerNavItems: NavItem[] = [
   { href: "/deals", label: "My Loans", icon: FolderKanban, shortcut: undefined },
   { href: "/commercial-deals", label: "Commercial Deals", icon: Building2, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
-  { href: "/broker/documents", label: "Documents", icon: FolderOpen, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
   { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
