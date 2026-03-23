@@ -21477,7 +21477,7 @@ Return JSON only:
     try {
       const userId = req.user!.id;
       const currentUser = await storage.getUserById(userId);
-      if (!currentUser?.email) {
+      if (!currentUser?.email || currentUser.role !== 'broker') {
         return res.status(403).json({ error: 'Access denied' });
       }
 
