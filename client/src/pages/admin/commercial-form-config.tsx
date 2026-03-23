@@ -78,44 +78,20 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
   const [docTemplates, setDocTemplates] = useState<Record<string, { url: string; fileName: string }>>(
     (rule?.documentTemplates || {}) as Record<string, { url: string; fileName: string }>
   );
-  const [uploadingTemplate, setUploadingTemplate] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
 
-  const handleTemplateUpload = async (docType: string, file: File) => {
-    if (!rule?.id) {
-      toast({ title: "Save the rule first", description: "You need to save the rule before uploading templates.", variant: "destructive" });
-      return;
-    }
-    setUploadingTemplate(docType);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("docType", docType);
-      const res = await fetch(`/api/commercial/document-rules/${rule.id}/template`, { method: "POST", body: formData, credentials: "include" });
-      if (!res.ok) throw new Error("Upload failed");
-      const updated = await res.json();
-      setDocTemplates((updated.documentTemplates || {}) as Record<string, { url: string; fileName: string }>);
-      onRefresh?.();
-      toast({ title: "Template uploaded", description: `Template for "${docType}" uploaded successfully.` });
-    } catch {
-      toast({ title: "Upload failed", description: "Could not upload template file.", variant: "destructive" });
-    } finally {
-      setUploadingTemplate(null);
-    }
+  const handleTemplateSelect = (docType: string, file: File) => {
+    setPendingFiles(prev => ({ ...prev, [docType]: file }));
+    setDocTemplates(prev => ({ ...prev, [docType]: { url: "", fileName: file.name } }));
   };
 
   const handleTemplateRemove = async (docType: string) => {
-    if (!rule?.id) return;
-    try {
-      const res = await fetch(`/api/commercial/document-rules/${rule.id}/template/${encodeURIComponent(docType)}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Delete failed");
-      const updated = await res.json();
-      setDocTemplates((updated.documentTemplates || {}) as Record<string, { url: string; fileName: string }>);
+    if (rule?.id && docTemplates[docType]?.url) {
+      await fetch(`/api/commercial/document-rules/${rule.id}/template/${encodeURIComponent(docType)}`, { method: "DELETE", credentials: "include" });
       onRefresh?.();
-      toast({ title: "Template removed" });
-    } catch {
-      toast({ title: "Failed to remove template", variant: "destructive" });
     }
+    setPendingFiles(prev => { const n = { ...prev }; delete n[docType]; return n; });
+    setDocTemplates(prev => { const n = { ...prev }; delete n[docType]; return n; });
   };
 
   const addCondition = () => setConditions([...conditions, { field: "asset_type", operator: "equals", value: "" }]);
@@ -137,7 +113,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
         condObj.property_state = c.value.split(",").map(s => s.trim().toUpperCase());
       }
     });
-    onSave({ ruleName, conditions: condObj, requiredDocuments: selectedDocs, isActive });
+    onSave({ ruleName, conditions: condObj, requiredDocuments: selectedDocs, isActive, _pendingTemplateFiles: pendingFiles });
   };
 
   return (
@@ -231,9 +207,9 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
                     </>
                   ) : (
                     <label className="cursor-pointer flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors">
-                      <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) handleTemplateUpload(doc, f); e.target.value = ""; }} />
-                      {uploadingTemplate === doc ? <RefreshCw size={10} className="animate-spin" /> : <Upload size={10} />}
-                      <span>{rule?.id ? "Attach template" : "Save first"}</span>
+                      <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) handleTemplateSelect(doc, f); e.target.value = ""; }} />
+                      <Upload size={10} />
+                      <span>Attach template</span>
                     </label>
                   )}
                 </div>
@@ -300,13 +276,36 @@ function DocumentRulesSection() {
 
   const { data: rules = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/commercial/document-rules"] });
 
+  const uploadPendingTemplates = async (ruleId: number, pendingFiles: Record<string, File>) => {
+    for (const [docType, file] of Object.entries(pendingFiles)) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("docType", docType);
+      await fetch(`/api/commercial/document-rules/${ruleId}/template`, { method: "POST", body: formData, credentials: "include" });
+    }
+  };
+
   const createMut = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/commercial/document-rules", data),
+    mutationFn: async (data: any) => {
+      const { _pendingTemplateFiles, ...ruleData } = data;
+      const res = await apiRequest("POST", "/api/commercial/document-rules", ruleData);
+      const created = await res.json();
+      if (_pendingTemplateFiles && Object.keys(_pendingTemplateFiles).length > 0) {
+        await uploadPendingTemplates(created.id, _pendingTemplateFiles);
+      }
+      return created;
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/commercial/document-rules"] }); setDialogOpen(false); toast({ title: "Rule created" }); },
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/commercial/document-rules/${id}`, data),
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const { _pendingTemplateFiles, ...ruleData } = data;
+      await apiRequest("PATCH", `/api/commercial/document-rules/${id}`, ruleData);
+      if (_pendingTemplateFiles && Object.keys(_pendingTemplateFiles).length > 0) {
+        await uploadPendingTemplates(id, _pendingTemplateFiles);
+      }
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/commercial/document-rules"] }); setDialogOpen(false); setEditingRule(null); toast({ title: "Rule updated" }); },
   });
 
