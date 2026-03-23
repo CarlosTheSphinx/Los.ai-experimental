@@ -4078,7 +4078,7 @@ export const intakeDeals = pgTable("intake_deals", {
   assetType: varchar("asset_type", { length: 100 }),
   propertyAddress: varchar("property_address", { length: 500 }),
   propertyCity: varchar("property_city", { length: 100 }),
-  propertyState: varchar("property_state", { length: 2 }),
+  propertyState: varchar("property_state", { length: 100 }),
   propertyZip: varchar("property_zip", { length: 10 }),
   propertyValue: integer("property_value"),
   ltvPct: real("ltv_pct"),

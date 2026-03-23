@@ -114,7 +114,7 @@ export function AddressAutocomplete({
         formatted,
         addressLine1: suggestion.properties?.address_line1,
         city: suggestion.properties?.city,
-        state: suggestion.properties?.state,
+        state: suggestion.properties?.state_code || suggestion.properties?.state,
         zip: suggestion.properties?.postcode,
       });
     }
