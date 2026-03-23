@@ -260,7 +260,7 @@ export default function CommercialPipelineDetailPage() {
               />
 
               {/* Key Flaws */}
-              {feedback.key_flaws?.length > 0 && (
+              {Array.isArray(feedback.key_flaws) && feedback.key_flaws.length > 0 && (
                 <div>
                   <button
                     onClick={() => setShowFlaws(!showFlaws)}
@@ -273,29 +273,36 @@ export default function CommercialPipelineDetailPage() {
                   </button>
                   {showFlaws && (
                     <div className="space-y-2">
-                      {feedback.key_flaws.map((flaw: any, i: number) => (
-                        <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50" data-testid={`flaw-${i}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge className={`text-[10px] ${
-                              flaw.severity === "critical" ? "bg-red-500/20 text-red-400" :
-                              flaw.severity === "high" ? "bg-amber-500/20 text-amber-400" :
-                              "bg-slate-500/20 text-slate-400"
-                            }`}>{flaw.severity}</Badge>
-                            <span className="text-sm font-medium text-white">{flaw.flaw}</span>
+                      {feedback.key_flaws.map((flaw: any, i: number) => {
+                        const flawObj = typeof flaw === "string" ? { flaw, severity: "medium", detail: flaw } : flaw;
+                        const severity = String(flawObj.severity || flawObj.level || "medium");
+                        const title = String(flawObj.flaw || flawObj.issue || flawObj.title || flawObj.description || "Issue");
+                        const detail = String(flawObj.detail || flawObj.description || flawObj.message || "");
+                        const remediation = flawObj.remediation || flawObj.fix || flawObj.suggestion;
+                        return (
+                          <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50" data-testid={`flaw-${i}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge className={`text-[10px] ${
+                                severity === "critical" ? "bg-red-500/20 text-red-400" :
+                                severity === "high" ? "bg-amber-500/20 text-amber-400" :
+                                "bg-slate-500/20 text-slate-400"
+                              }`}>{severity}</Badge>
+                              <span className="text-sm font-medium text-white">{title}</span>
+                            </div>
+                            {detail && detail !== title && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
+                            {remediation && (
+                              <p className="text-xs text-blue-400 mt-1">→ {String(remediation)}</p>
+                            )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">{flaw.detail}</p>
-                          {flaw.remediation && (
-                            <p className="text-xs text-blue-400 mt-1">→ {flaw.remediation}</p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
               {/* Strengths */}
-              {feedback.strengths?.length > 0 && (
+              {Array.isArray(feedback.strengths) && feedback.strengths.length > 0 && (
                 <div>
                   <button
                     onClick={() => setShowStrengths(!showStrengths)}
@@ -308,49 +315,62 @@ export default function CommercialPipelineDetailPage() {
                   </button>
                   {showStrengths && (
                     <div className="space-y-2">
-                      {feedback.strengths.map((s: any, i: number) => (
-                        <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-emerald-500/20" data-testid={`strength-${i}`}>
-                          <span className="text-sm text-emerald-400">{s.strength}</span>
-                          <p className="text-xs text-slate-400 mt-1">{s.detail}</p>
-                        </div>
-                      ))}
+                      {feedback.strengths.map((s: any, i: number) => {
+                        const sObj = typeof s === "string" ? { strength: s, detail: "" } : s;
+                        const title = String(sObj.strength || sObj.title || sObj.name || sObj.positive || "Strength");
+                        const detail = String(sObj.detail || sObj.description || sObj.explanation || "");
+                        return (
+                          <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-emerald-500/20" data-testid={`strength-${i}`}>
+                            <span className="text-sm text-emerald-400">{title}</span>
+                            {detail && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
               {/* Fund Recommendations */}
-              {feedback.fund_recommendations?.length > 0 && (
+              {Array.isArray(feedback.fund_recommendations) && feedback.fund_recommendations.length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
                     <Building2 size={14} /> Fund Recommendations
                   </p>
                   <div className="space-y-2">
-                    {feedback.fund_recommendations.map((fr: any, i: number) => (
-                      <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50 flex items-center gap-3" data-testid={`fund-rec-${i}`}>
-                        <div className="flex-1">
-                          <p className="text-sm text-white">{fr.fund_name}</p>
-                          <p className="text-xs text-slate-400 mt-1">{fr.recommendation}</p>
+                    {feedback.fund_recommendations.map((fr: any, i: number) => {
+                      const frObj = typeof fr === "string" ? { fund_name: fr, recommendation: "", match_score: 0 } : fr;
+                      return (
+                        <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50 flex items-center gap-3" data-testid={`fund-rec-${i}`}>
+                          <div className="flex-1">
+                            <p className="text-sm text-white">{String(frObj.fund_name || frObj.fundName || frObj.name || "Fund")}</p>
+                            <p className="text-xs text-slate-400 mt-1">{String(frObj.recommendation || frObj.reason || frObj.notes || "")}</p>
+                          </div>
+                          {(frObj.match_score || frObj.matchScore) != null && (
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                              {frObj.match_score || frObj.matchScore}% match
+                            </Badge>
+                          )}
                         </div>
-                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                          {fr.match_score}% match
-                        </Badge>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Next Steps */}
-              {feedback.next_steps?.length > 0 && (
+              {Array.isArray(feedback.next_steps) && feedback.next_steps.length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-slate-300 mb-2">Next Steps</p>
                   <ul className="space-y-1">
-                    {feedback.next_steps.map((step: string, i: number) => (
-                      <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
-                        <span className="text-blue-400 mt-0.5">•</span> {step}
-                      </li>
-                    ))}
+                    {feedback.next_steps.map((step: any, i: number) => {
+                      const text = typeof step === "string" ? step : String(step.step || step.action || step.description || step.text || JSON.stringify(step));
+                      return (
+                        <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
+                          <span className="text-blue-400 mt-0.5">•</span> {text}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
