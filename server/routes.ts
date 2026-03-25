@@ -1358,14 +1358,15 @@ export async function registerRoutes(
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       const templateId = req.query.templateId ? parseInt(req.query.templateId as string) : null;
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+      const userTenantId1 = await getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(templateId);
-        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+        if (template && (template.tenantId === null || userTenantId1 === null || template.tenantId === String(userTenantId1))) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(req.user!.tenantId || undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId1 != null ? String(userTenantId1) : undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1461,7 +1462,8 @@ export async function registerRoutes(
         let templateConfig = DEFAULT_TEMPLATE_CONFIG;
         if (templateId) {
           const template = await storage.getQuotePdfTemplateById(templateId);
-          if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+          const uTid = await getTenantId(req.user!);
+          if (template && (template.tenantId === null || uTid === null || template.tenantId === String(uTid))) {
             templateConfig = template.config;
           }
         }
@@ -1600,14 +1602,15 @@ export async function registerRoutes(
       const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+      const userTenantId3 = await getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(parseInt(templateId));
-        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+        if (template && (template.tenantId === null || userTenantId3 === null || template.tenantId === String(userTenantId3))) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(req.user!.tenantId || undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId3 != null ? String(userTenantId3) : undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1637,7 +1640,8 @@ export async function registerRoutes(
   // ==================== QUOTE PDF TEMPLATES ====================
   app.get('/api/quote-pdf-templates', authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const templates = await storage.getQuotePdfTemplates(req.user!.tenantId || undefined);
+      const tId = await getTenantId(req.user!);
+      const templates = await storage.getQuotePdfTemplates(tId != null ? String(tId) : undefined);
       res.json(templates);
     } catch (error) {
       console.error('Error fetching quote PDF templates:', error);
@@ -1651,7 +1655,8 @@ export async function registerRoutes(
         res.status(403).json({ success: false, error: 'Admin access required' });
         return;
       }
-      const data = { ...req.body, tenantId: req.user!.tenantId || null };
+      const tId = await getTenantId(req.user!);
+      const data = { ...req.body, tenantId: tId != null ? String(tId) : null };
       const template = await storage.createQuotePdfTemplate(data);
       res.json(template);
     } catch (error) {
@@ -1672,7 +1677,8 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      if (existing.tenantId && existing.tenantId !== (req.user!.tenantId || null)) {
+      const tId = await getTenantId(req.user!);
+      if (tId !== null && existing.tenantId && existing.tenantId !== String(tId)) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
       }
@@ -1696,7 +1702,8 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      if (existing.tenantId && existing.tenantId !== (req.user!.tenantId || null)) {
+      const tId = await getTenantId(req.user!);
+      if (tId !== null && existing.tenantId && existing.tenantId !== String(tId)) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
       }
@@ -7097,7 +7104,7 @@ export async function registerRoutes(
         .from(projects)
         .where(
           and(
-            eq(projects.tenantId, tenantId),
+            ...(tenantId != null ? [eq(projects.tenantId, tenantId)] : []),
             isNotNull(projects.borrowerPortalToken),
           )
         )
@@ -7288,7 +7295,7 @@ export async function registerRoutes(
               emailVerified: false,
               inviteToken,
               inviteStatus: 'none',
-              tenantId: existingProject?.tenantId || (req as any).user?.tenantId || null,
+              tenantId: existingProject?.tenantId || null,
             });
           }
           updateData.userId = brokerUser.id;
@@ -11367,7 +11374,7 @@ export async function registerRoutes(
 
       let scopeFilter;
       if (!isSuperAdmin) {
-        const userTenantId = req.user!.tenantId;
+        const userTenantId = await getTenantId(req.user!);
         if (userTenantId) {
           scopeFilter = or(
             eq(loanPrograms.tenantId, userTenantId),

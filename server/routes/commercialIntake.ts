@@ -14,6 +14,7 @@ import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { runIntakeAiPipeline } from "../agents/intakeAgents";
 import { ObjectStorageService } from "../replit_integrations/object_storage/objectStorage";
+import { getTenantId as resolveUserTenant } from "../utils/tenant";
 
 import OpenAI from "openai";
 
@@ -49,8 +50,10 @@ const templateUpload = multer({
 
 const router = Router();
 
-function getTenantId(req: Request): number | null {
-  return (req as any).user?.tenantId || (req as any).user?.id || null;
+async function getTenantId(req: Request): Promise<number | null> {
+  const user = (req as any).user;
+  if (!user) return null;
+  return resolveUserTenant({ id: user.id, role: user.role, invitedBy: user.invitedBy ?? null });
 }
 
 function getUserId(req: Request): number | null {
@@ -83,7 +86,7 @@ function safeParseId(param: string): number | null {
 
 router.get("/api/commercial/funds", async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const conditions = [];
     if (tenantId) conditions.push(eq(funds.tenantId, tenantId));
     const result = await db.select().from(funds)
@@ -99,7 +102,7 @@ router.get("/api/commercial/funds/:id", async (req: Request, res: Response) => {
   try {
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid fund ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [fund] = await db.select().from(funds).where(and(eq(funds.id, id), tenantId ? eq(funds.tenantId, tenantId) : undefined));
     if (!fund) return res.status(404).json({ error: "Fund not found" });
     res.json(fund);
@@ -111,7 +114,7 @@ router.get("/api/commercial/funds/:id", async (req: Request, res: Response) => {
 router.post("/api/commercial/funds", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const data = { ...req.body, tenantId };
     const [created] = await db.insert(funds).values(data).returning();
     res.status(201).json(created);
@@ -125,7 +128,7 @@ router.patch("/api/commercial/funds/:id", async (req: Request, res: Response) =>
     if (!requireAdmin(req, res)) return;
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid fund ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [updated] = await db.update(funds)
       .set({ ...req.body, updatedAt: new Date() })
       .where(and(eq(funds.id, id), tenantId ? eq(funds.tenantId, tenantId) : undefined))
@@ -142,7 +145,7 @@ router.delete("/api/commercial/funds/:id", async (req: Request, res: Response) =
     if (!requireAdmin(req, res)) return;
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid fund ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const result = await db.delete(funds).where(and(eq(funds.id, id), tenantId ? eq(funds.tenantId, tenantId) : undefined)).returning();
     if (!result.length) return res.status(404).json({ error: "Fund not found" });
     res.json({ success: true });
@@ -155,7 +158,7 @@ router.delete("/api/commercial/funds/:id", async (req: Request, res: Response) =
 
 router.get("/api/commercial/document-rules", async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const conditions = [];
     if (tenantId) conditions.push(eq(intakeDocumentRules.tenantId, tenantId));
     const result = await db.select().from(intakeDocumentRules)
@@ -170,7 +173,7 @@ router.get("/api/commercial/document-rules", async (req: Request, res: Response)
 router.post("/api/commercial/document-rules", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const data = { ...req.body, tenantId };
     const [created] = await db.insert(intakeDocumentRules).values(data).returning();
     res.status(201).json(created);
@@ -184,7 +187,7 @@ router.patch("/api/commercial/document-rules/:id", async (req: Request, res: Res
     if (!requireAdmin(req, res)) return;
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid rule ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [updated] = await db.update(intakeDocumentRules)
       .set({ ...req.body, updatedAt: new Date() })
       .where(and(eq(intakeDocumentRules.id, id), tenantId ? eq(intakeDocumentRules.tenantId, tenantId) : undefined))
@@ -201,7 +204,7 @@ router.delete("/api/commercial/document-rules/:id", async (req: Request, res: Re
     if (!requireAdmin(req, res)) return;
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid rule ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const result = await db.delete(intakeDocumentRules).where(and(eq(intakeDocumentRules.id, id), tenantId ? eq(intakeDocumentRules.tenantId, tenantId) : undefined)).returning();
     if (!result.length) return res.status(404).json({ error: "Rule not found" });
     res.json({ success: true });
@@ -221,7 +224,7 @@ router.post("/api/commercial/document-rules/:id/template", templateUpload.single
     if (!docType) return res.status(400).json({ error: "docType is required" });
     if (!req.file) return res.status(400).json({ error: "No file provided" });
 
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [rule] = await db.select().from(intakeDocumentRules)
       .where(and(eq(intakeDocumentRules.id, id), tenantId ? eq(intakeDocumentRules.tenantId, tenantId) : undefined));
     if (!rule) return res.status(404).json({ error: "Rule not found" });
@@ -254,7 +257,7 @@ router.delete("/api/commercial/document-rules/:id/template/:docType", async (req
     if (!id) return res.status(400).json({ error: "Invalid rule ID" });
     const docType = decodeURIComponent(req.params.docType);
 
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [rule] = await db.select().from(intakeDocumentRules)
       .where(and(eq(intakeDocumentRules.id, id), tenantId ? eq(intakeDocumentRules.tenantId, tenantId) : undefined));
     if (!rule) return res.status(404).json({ error: "Rule not found" });
@@ -302,7 +305,7 @@ router.get("/api/commercial/document-rules/:id/template/:docType/download", asyn
 
 router.post("/api/commercial/evaluate-document-rules", async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { assetType, loanAmount, propertyState } = req.body;
     const conditions = [eq(intakeDocumentRules.isActive, true)];
     if (tenantId) conditions.push(eq(intakeDocumentRules.tenantId, tenantId));
@@ -354,7 +357,7 @@ router.get("/api/commercial/deals", async (req: Request, res: Response) => {
   try {
     const role = getUserRole(req);
     const userId = getUserId(req);
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { status } = req.query;
 
     const conditions = [];
@@ -401,7 +404,7 @@ router.get("/api/commercial/deals/:id", async (req: Request, res: Response) => {
   try {
     const dealId = safeParseId(req.params.id);
     if (!dealId) return res.status(400).json({ error: "Invalid deal ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const userId = getUserId(req);
     const role = getUserRole(req);
 
@@ -457,7 +460,7 @@ router.get("/api/commercial/deals/:id", async (req: Request, res: Response) => {
 router.post("/api/commercial/deals", async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const role = getUserRole(req);
 
     let dealTenantId = tenantId;
@@ -621,7 +624,7 @@ router.post("/api/commercial/deals/:id/update-status", async (req: Request, res:
     const dealId = safeParseId(req.params.id);
     if (!dealId) return res.status(400).json({ error: "Invalid deal ID" });
     const userId = getUserId(req);
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { status, notes } = req.body;
 
     const whereConditions = [eq(intakeDeals.id, dealId)];
@@ -653,7 +656,7 @@ router.post("/api/commercial/deals/:id/send-to-fund", async (req: Request, res: 
     const dealId = safeParseId(req.params.id);
     if (!dealId) return res.status(400).json({ error: "Invalid deal ID" });
     const userId = getUserId(req);
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { fundId, notes } = req.body;
 
     const parsedFundId = safeParseId(fundId);
@@ -710,7 +713,7 @@ router.post("/api/commercial/deals/:id/transfer", async (req: Request, res: Resp
     const dealId = safeParseId(req.params.id);
     if (!dealId) return res.status(400).json({ error: "Invalid deal ID" });
     const userId = getUserId(req);
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
 
     const whereConditions = [eq(intakeDeals.id, dealId)];
     const [deal] = await db.select().from(intakeDeals).where(and(...whereConditions));
@@ -764,7 +767,7 @@ router.post("/api/commercial/deals/:id/reanalyze", async (req: Request, res: Res
     if (!requireAdmin(req, res)) return;
     const dealId = safeParseId(req.params.id);
     if (!dealId) return res.status(400).json({ error: "Invalid deal ID" });
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const [deal] = await db.select().from(intakeDeals).where(eq(intakeDeals.id, dealId));
     if (!deal) return res.status(404).json({ error: "Deal not found" });
 
@@ -824,7 +827,7 @@ const DEFAULT_FORM_FIELDS = [
 
 router.get("/api/commercial/form-config", async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const conditions = [];
     if (tenantId) conditions.push(eq(commercialFormConfig.tenantId, tenantId));
 
@@ -856,7 +859,7 @@ router.get("/api/commercial/form-config", async (req: Request, res: Response) =>
 router.put("/api/commercial/form-config", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { fields } = req.body;
     if (!Array.isArray(fields)) return res.status(400).json({ error: "fields must be an array" });
 
@@ -890,7 +893,7 @@ router.put("/api/commercial/form-config", async (req: Request, res: Response) =>
 router.post("/api/commercial/form-config", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const { fieldKey, fieldLabel, section, fieldType, displayFormat, isRequired, sortOrder, options } = req.body;
 
     if (!fieldKey || !fieldLabel || !section || !fieldType) {
@@ -974,7 +977,7 @@ router.post("/api/commercial/deals/:id/transcribe-story", audioUpload.single("au
 router.delete("/api/commercial/form-config/:id", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = getTenantId(req);
+    const tenantId = await getTenantId(req);
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid field id" });
 
