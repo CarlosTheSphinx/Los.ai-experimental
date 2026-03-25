@@ -307,9 +307,14 @@ router.post("/api/commercial/evaluate-document-rules", async (req: Request, res:
   try {
     const tenantId = await getTenantId(req);
     const { assetType, loanAmount, propertyState } = req.body;
-    const conditions = [eq(intakeDocumentRules.isActive, true)];
-    if (tenantId) conditions.push(eq(intakeDocumentRules.tenantId, tenantId));
-    const rules = await db.select().from(intakeDocumentRules).where(and(...conditions));
+    const rules = await db.select().from(intakeDocumentRules).where(
+      and(
+        eq(intakeDocumentRules.isActive, true),
+        tenantId
+          ? sql`(${intakeDocumentRules.tenantId} = ${tenantId} OR ${intakeDocumentRules.tenantId} IS NULL)`
+          : undefined,
+      )
+    );
 
     const baseDocuments = [
       "Loan Application (1003)",

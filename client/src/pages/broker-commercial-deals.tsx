@@ -219,6 +219,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
   const [, navigate] = useLocation();
   const location = useLocation()[0];
   const { toast } = useToast();
+  const [step, setStep] = useState(1);
 
   const urlEditId = editDealId || (() => {
     const match = location.match(/\/commercial-deals\/(\d+)\/edit/);
@@ -317,6 +318,14 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
   }
   const [uploadedDocs, setUploadedDocs] = useState<Record<string, Array<{ file: File; name: string }>>>({});
 
+  const totalRequired = requiredDocs.requiredDocuments.length;
+  const docsUploaded = requiredDocs.requiredDocuments.filter((docType: string) => {
+    const newFiles = uploadedDocs[docType] || [];
+    const existingFiles = existingDocsByType[docType] || [];
+    return newFiles.length > 0 || existingFiles.length > 0;
+  }).length;
+  const allDocsUploaded = totalRequired > 0 && docsUploaded === totalRequired;
+
   const saveMut = useMutation({
     mutationFn: async (submit: boolean) => {
       const body: any = {
@@ -398,6 +407,8 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
 
   const update = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }));
 
+  const canAdvance = !!form.dealName && !!form.loanAmount && !!form.assetType;
+
   if (isEditing && loadingDeal) {
     return <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-slate-400" /></div>;
   }
@@ -405,201 +416,263 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-3xl" data-testid="deal-form-page">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/commercial-deals")} className="text-slate-400" data-testid="back-button">
-          <ArrowLeft size={16} className="mr-1" /> Back
+        <Button variant="ghost" size="sm" onClick={() => step === 2 ? setStep(1) : navigate("/commercial-deals")} className="text-slate-400" data-testid="back-button">
+          <ArrowLeft size={16} className="mr-1" /> {step === 2 ? "Back to Deal Info" : "Back"}
         </Button>
         <h1 className="text-xl font-semibold text-white">{isEditing ? "Edit Draft Deal" : "Submit New Deal"}</h1>
         {isEditing && <Badge className="text-xs bg-slate-500/20 text-slate-400 border-slate-500/30">Draft</Badge>}
       </div>
 
-      {(() => {
-        const visibleFields = formConfig.filter(f => f.isVisible);
-        const sections = visibleFields.reduce((acc, field) => {
-          if (!acc[field.section]) acc[field.section] = [];
-          acc[field.section].push(field);
-          return acc;
-        }, {} as Record<string, FormFieldConfig[]>);
-        Object.values(sections).forEach(arr => arr.sort((a, b) => a.sortOrder - b.sortOrder));
+      {/* Step Indicator */}
+      <div className="flex items-center gap-3" data-testid="step-indicator">
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 1 ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>
+          {step > 1 ? <CheckCircle2 size={14} /> : <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold">1</span>}
+          Deal Info
+        </div>
+        <div className="w-8 h-px bg-slate-700" />
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 2 ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-slate-500/10 text-slate-500 border border-slate-700/50"}`}>
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? "bg-blue-500 text-white" : "bg-slate-700 text-slate-400"}`}>2</span>
+          Documents
+        </div>
+      </div>
 
-        if (Object.keys(sections).length === 0) {
-          return (
-            <>
-              <Card className="bg-[#1a2038] border-slate-700/50">
-                <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Deal Basics</CardTitle></CardHeader>
+      {/* STEP 1: Deal Information */}
+      {step === 1 && (
+        <>
+          {(() => {
+            const visibleFields = formConfig.filter(f => f.isVisible);
+            const sections = visibleFields.reduce((acc, field) => {
+              if (!acc[field.section]) acc[field.section] = [];
+              acc[field.section].push(field);
+              return acc;
+            }, {} as Record<string, FormFieldConfig[]>);
+            Object.values(sections).forEach(arr => arr.sort((a, b) => a.sortOrder - b.sortOrder));
+
+            if (Object.keys(sections).length === 0) {
+              return (
+                <Card className="bg-[#1a2038] border-slate-700/50">
+                  <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Deal Basics</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <Label className="text-xs text-slate-400">Deal Name *</Label>
+                      <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="deal-name" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
+                        <Input type="number" value={form.loanAmount} onChange={e => update("loanAmount", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-slate-400">Asset Type *</Label>
+                        <Select value={form.assetType} onValueChange={v => update("assetType", v)}>
+                          <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
+                          <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            return Object.entries(sections).map(([sectionName, sectionFields]) => (
+              <Card key={sectionName} className="bg-[#1a2038] border-slate-700/50">
+                <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">{sectionName}</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
-                  <div>
-                    <Label className="text-xs text-slate-400">Deal Name *</Label>
-                    <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="deal-name" />
-                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
-                      <Input type="number" value={form.loanAmount} onChange={e => update("loanAmount", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-slate-400">Asset Type *</Label>
-                      <Select value={form.assetType} onValueChange={v => update("assetType", v)}>
-                        <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
-                        <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
+                    {sectionFields.map(field => (
+                      <DynamicField
+                        key={field.id}
+                        field={field}
+                        value={form[field.fieldKey]}
+                        onChange={v => update(field.fieldKey, v)}
+                        onAddressSelect={(data) => {
+                          update("propertyCity", data.city || "");
+                          update("propertyState", data.state || "");
+                          update("propertyZip", data.zip || "");
+                        }}
+                      />
+                    ))}
                   </div>
+                  {sectionName === "Property Metrics" && (
+                    <div className="flex gap-6 p-3 rounded bg-[#0f1629] border border-slate-700/50">
+                      <div>
+                        <p className="text-xs text-slate-500">LTV (auto-calculated)</p>
+                        <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-white"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">DSCR (auto-calculated)</p>
+                        <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-white"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            </>
-          );
-        }
+            ));
+          })()}
 
-        return Object.entries(sections).map(([sectionName, sectionFields]) => (
-          <Card key={sectionName} className="bg-[#1a2038] border-slate-700/50">
-            <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">{sectionName}</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {sectionFields.map(field => (
-                  <DynamicField
-                    key={field.id}
-                    field={field}
-                    value={form[field.fieldKey]}
-                    onChange={v => update(field.fieldKey, v)}
-                    onAddressSelect={(data) => {
-                      update("propertyCity", data.city || "");
-                      update("propertyState", data.state || "");
-                      update("propertyZip", data.zip || "");
-                    }}
-                  />
-                ))}
+          <DealStoryRecorder
+            dealId={savedDealId || urlEditId}
+            transcript={form.dealStoryTranscript || ""}
+            onTranscriptChange={(t) => update("dealStoryTranscript", t)}
+            disabled={saveMut.isPending}
+          />
+
+          <div className="flex flex-wrap items-center gap-3 pb-6">
+            <Button
+              variant="outline"
+              onClick={() => saveMut.mutate(false)}
+              disabled={saveMut.isPending}
+              className="border-slate-700 text-slate-300"
+              data-testid="save-draft-button"
+            >
+              <Save size={14} className="mr-1" /> {isEditing ? "Update Draft" : "Save as Draft"}
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="outline"
+              onClick={() => navigate("/commercial-deals")}
+              className="border-slate-700 text-slate-300"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => setStep(2)}
+              disabled={!canAdvance}
+              className="bg-blue-600 hover:bg-blue-700"
+              data-testid="next-step-button"
+            >
+              Next: Upload Documents <ArrowRight size={14} className="ml-1" />
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* STEP 2: Document Upload */}
+      {step === 2 && (
+        <>
+          <Card className="bg-[#1a2038] border-slate-700/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm text-slate-300">Required Documents</CardTitle>
+                <Badge className={`text-xs ${allDocsUploaded ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-slate-500/20 text-slate-400 border-slate-500/30"}`} data-testid="doc-progress-badge">
+                  {docsUploaded} of {totalRequired} uploaded
+                </Badge>
               </div>
-              {sectionName === "Property Metrics" && (
-                <div className="flex gap-6 p-3 rounded bg-[#0f1629] border border-slate-700/50">
-                  <div>
-                    <p className="text-xs text-slate-500">LTV (auto-calculated)</p>
-                    <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-white"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Based on your deal ({form.assetType || "—"}, ${loanAmt ? `${(loanAmt / 1000000).toFixed(1)}M` : "—"}, {form.propertyState || "—"})
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {requiredDocs.requiredDocuments.map((docType: string) => {
+                const template = requiredDocs.templates?.[docType];
+                const newFiles = uploadedDocs[docType] || [];
+                const existingFiles = existingDocsByType[docType] || [];
+                const hasFiles = newFiles.length > 0 || existingFiles.length > 0;
+                return (
+                  <div key={docType} className={`p-3 rounded border ${hasFiles ? "bg-emerald-500/5 border-emerald-500/20" : "bg-[#0f1629] border-slate-700/50"}`} data-testid={`doc-req-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+                    <div className="flex items-center gap-3">
+                      {hasFiles ? (
+                        <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      ) : (
+                        <FileText size={16} className="text-slate-500 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white">{docType}</p>
+                        {hasFiles && (
+                          <p className="text-[10px] text-slate-500">{existingFiles.length + newFiles.length} file{(existingFiles.length + newFiles.length) !== 1 ? "s" : ""}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {template && (
+                          <a
+                            href={`/api/commercial/document-rules/${template.ruleId}/template/${encodeURIComponent(docType)}/download`}
+                            className="text-xs px-3 py-1.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20 transition-colors flex items-center gap-1"
+                            data-testid={`template-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                            download
+                          >
+                            <Download size={12} />
+                            Template
+                          </a>
+                        )}
+                        <label className="cursor-pointer">
+                          <input
+                            type="file"
+                            className="hidden"
+                            multiple
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
+                            onChange={e => { handleFileSelect(docType, e.target.files); e.target.value = ""; }}
+                          />
+                          <span className="text-xs px-3 py-1.5 rounded border transition-colors bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 flex items-center gap-1" data-testid={`upload-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+                            <Upload size={12} />
+                            {hasFiles ? "Add More" : "Upload"}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                    {(existingFiles.length > 0 || newFiles.length > 0) && (
+                      <div className="mt-2 ml-7 space-y-1">
+                        {existingFiles.map((doc: any) => (
+                          <div key={doc.id} className="flex items-center gap-2 text-xs text-slate-400 py-0.5">
+                            <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />
+                            <span className="truncate flex-1">{doc.fileName}</span>
+                            <span className="text-slate-600 shrink-0">v{doc.version}</span>
+                          </div>
+                        ))}
+                        {newFiles.map((f, i) => (
+                          <div key={`new-${i}`} className="flex items-center gap-2 text-xs text-blue-400 py-0.5">
+                            <Plus size={10} className="text-blue-400 shrink-0" />
+                            <span className="truncate flex-1">{f.name}</span>
+                            <button type="button" onClick={() => removeUploadedFile(docType, i)} className="text-slate-500 hover:text-red-400 shrink-0" data-testid={`remove-file-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${i}`}>
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500">DSCR (auto-calculated)</p>
-                    <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-white"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </CardContent>
           </Card>
-        ));
-      })()}
 
-      <DealStoryRecorder
-        dealId={savedDealId || urlEditId}
-        transcript={form.dealStoryTranscript || ""}
-        onTranscriptChange={(t) => update("dealStoryTranscript", t)}
-        disabled={saveMut.isPending}
-      />
+          <div className="flex flex-wrap items-center gap-3 pb-6">
+            <Button
+              variant="outline"
+              onClick={() => setStep(1)}
+              className="border-slate-700 text-slate-300"
+              data-testid="back-to-step1-button"
+            >
+              <ArrowLeft size={14} className="mr-1" /> Back to Deal Info
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => saveMut.mutate(false)}
+              disabled={saveMut.isPending}
+              className="border-slate-700 text-slate-300"
+              data-testid="save-draft-button-step2"
+            >
+              <Save size={14} className="mr-1" /> Save as Draft
+            </Button>
+            <div className="flex-1" />
+            <Button
+              onClick={() => saveMut.mutate(true)}
+              disabled={saveMut.isPending || !allDocsUploaded}
+              className="bg-blue-600 hover:bg-blue-700"
+              data-testid="submit-deal-button"
+            >
+              <Send size={14} className="mr-1" /> {saveMut.isPending ? "Submitting..." : "Submit to Lender"}
+            </Button>
+          </div>
 
-      <Card className="bg-[#1a2038] border-slate-700/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-slate-300">Required Documents</CardTitle>
-          <p className="text-xs text-slate-500 mt-1">
-            Based on your deal ({form.assetType || "—"}, ${loanAmt ? `${(loanAmt / 1000000).toFixed(1)}M` : "—"}, {form.propertyState || "—"})
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {requiredDocs.requiredDocuments.map((docType: string) => {
-            const template = requiredDocs.templates?.[docType];
-            const newFiles = uploadedDocs[docType] || [];
-            const existingFiles = existingDocsByType[docType] || [];
-            const hasFiles = newFiles.length > 0 || existingFiles.length > 0;
-            return (
-              <div key={docType} className="p-3 rounded bg-[#0f1629] border border-slate-700/50" data-testid={`doc-req-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
-                <div className="flex items-center gap-3">
-                  {hasFiles ? (
-                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                  ) : (
-                    <FileText size={16} className="text-slate-500 shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white">{docType}</p>
-                    {hasFiles && (
-                      <p className="text-[10px] text-slate-500">{existingFiles.length + newFiles.length} file{(existingFiles.length + newFiles.length) !== 1 ? "s" : ""}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {template && (
-                      <a
-                        href={`/api/commercial/document-rules/${template.ruleId}/template/${encodeURIComponent(docType)}/download`}
-                        className="text-xs px-3 py-1.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20 transition-colors flex items-center gap-1"
-                        data-testid={`template-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                        download
-                      >
-                        <Download size={12} />
-                        Template
-                      </a>
-                    )}
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        className="hidden"
-                        multiple
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
-                        onChange={e => { handleFileSelect(docType, e.target.files); e.target.value = ""; }}
-                      />
-                      <span className="text-xs px-3 py-1.5 rounded border transition-colors bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 flex items-center gap-1" data-testid={`upload-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
-                        <Upload size={12} />
-                        {hasFiles ? "Add More" : "Upload"}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-                {(existingFiles.length > 0 || newFiles.length > 0) && (
-                  <div className="mt-2 ml-7 space-y-1">
-                    {existingFiles.map((doc: any) => (
-                      <div key={doc.id} className="flex items-center gap-2 text-xs text-slate-400 py-0.5">
-                        <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />
-                        <span className="truncate flex-1">{doc.fileName}</span>
-                        <span className="text-slate-600 shrink-0">v{doc.version}</span>
-                      </div>
-                    ))}
-                    {newFiles.map((f, i) => (
-                      <div key={`new-${i}`} className="flex items-center gap-2 text-xs text-blue-400 py-0.5">
-                        <Plus size={10} className="text-blue-400 shrink-0" />
-                        <span className="truncate flex-1">{f.name}</span>
-                        <button type="button" onClick={() => removeUploadedFile(docType, i)} className="text-slate-500 hover:text-red-400 shrink-0" data-testid={`remove-file-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${i}`}>
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-3 pb-6">
-        <Button
-          variant="outline"
-          onClick={() => saveMut.mutate(false)}
-          disabled={saveMut.isPending}
-          className="border-slate-700 text-slate-300"
-          data-testid="save-draft-button"
-        >
-          <Save size={14} className="mr-1" /> {isEditing ? "Update Draft" : "Save as Draft"}
-        </Button>
-        <div className="flex-1" />
-        <Button
-          variant="outline"
-          onClick={() => navigate("/commercial-deals")}
-          className="border-slate-700 text-slate-300"
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={() => saveMut.mutate(true)}
-          disabled={saveMut.isPending || !form.dealName || !form.loanAmount || !form.assetType}
-          className="bg-blue-600 hover:bg-blue-700"
-          data-testid="submit-deal-button"
-        >
-          <Send size={14} className="mr-1" /> Submit to Lender
-        </Button>
-      </div>
+          {!allDocsUploaded && (
+            <p className="text-xs text-amber-400 text-center pb-4" data-testid="docs-required-warning">
+              <AlertTriangle size={12} className="inline mr-1" />
+              Upload all {totalRequired} required documents before submitting
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
