@@ -159,6 +159,7 @@ export default function MessagesPage() {
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
   const isBorrower = user?.role === 'borrower';
+  const isBroker = user?.role === 'broker';
 
   const toggleStarred = (threadId: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -288,7 +289,7 @@ export default function MessagesPage() {
 
   const { data: projectsData } = useQuery<{ projects: any[] }>({
     queryKey: ["/api/projects"],
-    enabled: !!isBorrower,
+    enabled: !!isBorrower || !!isBroker,
   });
 
   const { data: emailThreadsData, isLoading: emailThreadsLoading } = useQuery<{ threads: any[]; total: number }>({
@@ -449,7 +450,7 @@ export default function MessagesPage() {
 
   // Handle URL params for opening new thread with pre-selected deal
   // Wait for the appropriate deals data to be loaded before opening dialog
-  const dealsReady = isBorrower ? !!projectsData?.projects : !!quotesData?.quotes;
+  const dealsReady = (isBorrower || isBroker) ? !!projectsData?.projects : !!quotesData?.quotes;
   useEffect(() => {
     if (urlDealId && openNew && dealsReady) {
       setSelectedDealId(urlDealId);
@@ -703,7 +704,7 @@ export default function MessagesPage() {
                     <SelectValue placeholder="Select a deal..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {isBorrower ? (
+                    {(isBorrower || isBroker) ? (
                       <>
                         {projectsData?.projects?.map((p) => (
                           <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-deal-option-${p.id}`}>
