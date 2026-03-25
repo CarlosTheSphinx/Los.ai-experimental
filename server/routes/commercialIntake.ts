@@ -368,7 +368,7 @@ router.get("/api/commercial/deals", async (req: Request, res: Response) => {
 
     if (status && typeof status === "string") {
       if (status === "new") {
-        conditions.push(inArray(intakeDeals.status, ["submitted", "analyzed"]));
+        conditions.push(inArray(intakeDeals.status, ["submitted", "analyzed", "no_match"]));
       } else if (status === "review") {
         conditions.push(eq(intakeDeals.status, "under_review"));
       } else if (status === "completed") {

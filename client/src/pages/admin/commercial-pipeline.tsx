@@ -102,7 +102,7 @@ export default function CommercialPipelinePage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
         {[
-          { label: "New", value: (intakeStats.submitted || 0) + (intakeStats.analyzed || 0), icon: Clock },
+          { label: "New", value: (intakeStats.submitted || 0) + (intakeStats.analyzed || 0) + (intakeStats.no_match || 0), icon: Clock },
           { label: "Under Review", value: intakeStats.under_review || 0, icon: Eye },
           { label: "Approved", value: intakeStats.approved || 0, icon: CheckCircle2 },
           { label: "Conditional", value: intakeStats.conditional || 0, icon: AlertTriangle },
