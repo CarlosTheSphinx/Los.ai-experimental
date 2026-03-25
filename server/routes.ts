@@ -6224,6 +6224,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/join/personal/:token/auto-login', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
+      if (!user) return res.status(404).json({ error: 'Invalid invite link' });
+
+      if (!user.passwordHash) {
+        return res.status(400).json({ error: 'Account not set up yet', needsSetup: true });
+      }
+
+      const newToken = generateRandomToken();
+      await db.update(users).set({ inviteToken: newToken }).where(eq(users.id, user.id));
+
+      const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
+      setAuthCookie(res, authToken);
+
+      res.json({ success: true, userType: user.role, newToken: newToken });
+    } catch (error) {
+      console.error('Personal invite auto-login error:', error);
+      res.status(500).json({ error: 'Auto-login failed' });
+    }
+  });
+
   // Public - Complete personal invite registration
   app.post('/api/join/personal/:token/register', async (req: Request, res: Response) => {
     try {
