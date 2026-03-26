@@ -1,7 +1,8 @@
--- Pre-migration: Convert varchar tenant_id columns to integer before Drizzle auto-migration
--- This handles the USING clause that Drizzle's auto-generated migration doesn't include
+-- Pre-migration: Normalize tenant_id values and convert varchar columns to integer
+-- Production tenant_id columns currently store user IDs (8, 29, 9, etc.)
+-- These must ALL be normalized to 1 (Sphinx Capital) before FK constraints are added
 
--- Create tenants table if not exists
+-- Step 1: Create tenants table if not exists
 CREATE TABLE IF NOT EXISTS tenants (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
@@ -16,7 +17,19 @@ INSERT INTO tenants (id, name, slug, is_active)
 VALUES (1, 'Sphinx Capital', 'sphinx-capital', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Convert quote_pdf_templates.tenant_id from varchar to integer
+-- Step 2: Normalize ALL integer tenant_id columns to 1 (they currently hold user IDs)
+UPDATE funds SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE projects SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE intake_deals SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE partners SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE pricing_requests SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE admin_tasks SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE commercial_form_config SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE intake_document_rules SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE system_settings SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+UPDATE team_chats SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
+
+-- Step 3: Convert quote_pdf_templates.tenant_id from varchar to integer with USING
 DO $$
 BEGIN
   IF EXISTS (
@@ -24,12 +37,14 @@ BEGIN
     WHERE table_name = 'quote_pdf_templates' AND column_name = 'tenant_id'
     AND data_type = 'character varying'
   ) THEN
-    UPDATE quote_pdf_templates SET tenant_id = '1' WHERE tenant_id IS NULL OR tenant_id = '';
+    UPDATE quote_pdf_templates SET tenant_id = '1';
     ALTER TABLE quote_pdf_templates ALTER COLUMN tenant_id TYPE integer USING tenant_id::integer;
+  ELSE
+    UPDATE quote_pdf_templates SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
   END IF;
 END $$;
 
--- Convert loan_programs.tenant_id from varchar to integer
+-- Step 4: Convert loan_programs.tenant_id from varchar to integer with USING
 DO $$
 BEGIN
   IF EXISTS (
@@ -37,12 +52,14 @@ BEGIN
     WHERE table_name = 'loan_programs' AND column_name = 'tenant_id'
     AND data_type = 'character varying'
   ) THEN
-    UPDATE loan_programs SET tenant_id = '1' WHERE tenant_id IS NULL OR tenant_id = '';
+    UPDATE loan_programs SET tenant_id = '1';
     ALTER TABLE loan_programs ALTER COLUMN tenant_id TYPE integer USING tenant_id::integer;
+  ELSE
+    UPDATE loan_programs SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
   END IF;
 END $$;
 
--- Add tenant_id to users if not exists
+-- Step 5: Add tenant_id to users if not exists
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -50,24 +67,11 @@ BEGIN
     WHERE table_name = 'users' AND column_name = 'tenant_id'
   ) THEN
     ALTER TABLE users ADD COLUMN tenant_id INTEGER;
-    UPDATE users SET tenant_id = 1;
   END IF;
 END $$;
 
--- Backfill NULL tenant_ids
-UPDATE funds SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE projects SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE intake_deals SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE loan_programs SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE partners SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE pricing_requests SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE admin_tasks SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE commercial_form_config SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE intake_document_rules SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE system_settings SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE quote_pdf_templates SET tenant_id = 1 WHERE tenant_id IS NULL;
-UPDATE team_chats SET tenant_id = 1 WHERE tenant_id IS NULL;
+UPDATE users SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id != 1;
 
--- Add new columns to intake_deals if not exist
+-- Step 6: Add new columns to intake_deals if not exist
 ALTER TABLE intake_deals ADD COLUMN IF NOT EXISTS loan_type VARCHAR(100);
 ALTER TABLE intake_deals ADD COLUMN IF NOT EXISTS number_of_units INTEGER;
