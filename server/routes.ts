@@ -8973,7 +8973,7 @@ export async function registerRoutes(
     try {
       const dealId = parseInt(req.params.dealId);
       const propId = parseInt(req.params.propId);
-      const { address, city, state, zip, propertyType, estimatedValue, isPrimary } = req.body;
+      const { address, city, state, zip, propertyType, estimatedValue, isPrimary, units, monthlyRent, annualTaxes, annualInsurance, metadata } = req.body;
       const updateData: Record<string, any> = {};
       if (address !== undefined) updateData.address = address.trim();
       if (city !== undefined) updateData.city = city;
@@ -8981,6 +8981,11 @@ export async function registerRoutes(
       if (zip !== undefined) updateData.zip = zip;
       if (propertyType !== undefined) updateData.propertyType = propertyType;
       if (estimatedValue !== undefined) updateData.estimatedValue = estimatedValue;
+      if (units !== undefined) updateData.units = units != null ? Number(units) : null;
+      if (monthlyRent !== undefined) updateData.monthlyRent = monthlyRent != null ? Number(monthlyRent) : null;
+      if (annualTaxes !== undefined) updateData.annualTaxes = annualTaxes != null ? Number(annualTaxes) : null;
+      if (annualInsurance !== undefined) updateData.annualInsurance = annualInsurance != null ? Number(annualInsurance) : null;
+      if (metadata !== undefined) updateData.metadata = metadata;
       if (isPrimary !== undefined) {
         updateData.isPrimary = isPrimary;
         if (isPrimary) {

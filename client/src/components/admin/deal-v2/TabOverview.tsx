@@ -313,8 +313,9 @@ export default function TabOverview({
 
   const [showAddProperty, setShowAddProperty] = useState(false);
   const [newPropForm, setNewPropForm] = useState<Record<string, string>>({
-    address: "", city: "", state: "", propertyType: "", units: "",
-    monthlyRent: "", annualTaxes: "", annualInsurance: "", estimatedValue: "",
+    address: "", city: "", state: "", zip: "", propertyType: "", units: "",
+    originalPurchaseDate: "", originalPurchasePrice: "",
+    monthlyRent: "", annualTaxes: "", annualInsurance: "", annualHOA: "", estimatedValue: "",
   });
 
   const invalidateDeal = () => {
@@ -368,7 +369,7 @@ export default function TabOverview({
     },
     onSuccess: () => {
       setShowAddProperty(false);
-      setNewPropForm({ address: "", city: "", state: "", propertyType: "", units: "", monthlyRent: "", annualTaxes: "", annualInsurance: "", estimatedValue: "" });
+      setNewPropForm({ address: "", city: "", state: "", zip: "", propertyType: "", units: "", originalPurchaseDate: "", originalPurchasePrice: "", monthlyRent: "", annualTaxes: "", annualInsurance: "", annualHOA: "", estimatedValue: "" });
       invalidateDeal();
       toast({ title: "Property added" });
     },
@@ -481,15 +482,21 @@ export default function TabOverview({
           });
         });
     } else {
+      const meta = primaryProp?.metadata || {};
       baseFields.push(
         { key: 'propertyType', label: "Property Type", value: (() => { const raw = primaryProp?.propertyType || deal.propertyType; return PROPERTY_TYPE_OPTIONS.find(o => o.value === raw)?.label || raw || "—"; })() },
-        { key: 'units', label: "Units", value: primaryProp?.units ? String(primaryProp.units) : "—" },
+        { key: 'units', label: "Number of Units", value: primaryProp?.units ? String(primaryProp.units) : "—" },
+        { key: 'originalPurchaseDate', label: "Original Purchase Date", value: fmtDate(meta.originalPurchaseDate) },
+        { key: 'originalPurchasePrice', label: "Original Purchase Price", value: fmt(meta.originalPurchasePrice) },
+        { key: 'estimatedValue', label: "As-Is Value", value: fmt(primaryProp?.estimatedValue) },
         { key: 'monthlyRent', label: "Monthly Rent", value: fmt(primaryProp?.monthlyRent) },
         { key: 'annualTaxes', label: "Annual Taxes", value: fmt(primaryProp?.annualTaxes) },
         { key: 'annualInsurance', label: "Annual Insurance", value: fmt(primaryProp?.annualInsurance) },
+        { key: 'annualHOA', label: "Annual HOA", value: fmt(meta.annualHOA) },
       );
+      const annualHOA = Number(meta.annualHOA) || 0;
       const noi = primaryProp
-        ? ((primaryProp.monthlyRent || 0) * 12 - (primaryProp.annualTaxes || 0) - (primaryProp.annualInsurance || 0))
+        ? ((primaryProp.monthlyRent || 0) * 12 - (primaryProp.annualTaxes || 0) - (primaryProp.annualInsurance || 0) - annualHOA)
         : null;
       baseFields.push({ key: 'noi', label: "NOI", value: noi !== null && noi !== 0 ? fmt(noi) : "—", tooltip: "Net Operating Income" });
     }
@@ -612,15 +619,20 @@ export default function TabOverview({
   };
 
   const startEditProperty = () => {
+    const meta = primaryProp?.metadata || {};
     const form: Record<string, string> = {
       address: primaryProp?.address || deal.propertyAddress || "",
       city: primaryProp?.city || "",
       state: primaryProp?.state || "",
+      zip: primaryProp?.zip || "",
       propertyType: primaryProp?.propertyType || deal.propertyType || "",
       units: String(primaryProp?.units || ""),
+      originalPurchaseDate: String(meta.originalPurchaseDate || ""),
+      originalPurchasePrice: String(meta.originalPurchasePrice || ""),
       monthlyRent: String(primaryProp?.monthlyRent || ""),
       annualTaxes: String(primaryProp?.annualTaxes || ""),
       annualInsurance: String(primaryProp?.annualInsurance || ""),
+      annualHOA: String(meta.annualHOA || ""),
       estimatedValue: String(primaryProp?.estimatedValue || ""),
     };
     if (hasProgram) {
@@ -761,21 +773,30 @@ export default function TabOverview({
                   <>
                     <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setEditProperty(false)} data-testid="button-cancel-property">Cancel</Button>
                     <Button size="sm" className="text-xs h-7" disabled={savePropertyMutation.isPending} data-testid="button-save-property" onClick={() => {
-                      const staticPropKeys = new Set(['address', 'city', 'state', 'propertyType', 'units', 'monthlyRent', 'annualTaxes', 'annualInsurance', 'estimatedValue']);
+                      const staticPropKeys = new Set(['address', 'city', 'state', 'zip', 'propertyType', 'units', 'monthlyRent', 'annualTaxes', 'annualInsurance', 'estimatedValue', 'originalPurchaseDate', 'originalPurchasePrice', 'annualHOA']);
                       const appDataUpdates: Record<string, any> = {};
                       Object.entries(propForm).forEach(([k, v]) => {
                         if (!staticPropKeys.has(k)) appDataUpdates[k] = v || null;
                       });
+                      const propMetadata: Record<string, any> = { ...(primaryProp?.metadata || {}) };
+                      if (propForm.originalPurchaseDate) propMetadata.originalPurchaseDate = propForm.originalPurchaseDate;
+                      else delete propMetadata.originalPurchaseDate;
+                      if (propForm.originalPurchasePrice) propMetadata.originalPurchasePrice = Number(propForm.originalPurchasePrice);
+                      else delete propMetadata.originalPurchasePrice;
+                      if (propForm.annualHOA) propMetadata.annualHOA = Number(propForm.annualHOA);
+                      else delete propMetadata.annualHOA;
                       savePropertyMutation.mutate({
                         address: propForm.address,
                         city: propForm.city,
                         state: propForm.state,
+                        zip: propForm.zip || null,
                         propertyType: propForm.propertyType,
                         units: propForm.units ? Number(propForm.units) : null,
                         monthlyRent: propForm.monthlyRent ? Number(propForm.monthlyRent) : null,
                         annualTaxes: propForm.annualTaxes ? Number(propForm.annualTaxes) : null,
                         annualInsurance: propForm.annualInsurance ? Number(propForm.annualInsurance) : null,
                         estimatedValue: propForm.estimatedValue ? Number(propForm.estimatedValue) : null,
+                        metadata: Object.keys(propMetadata).length > 0 ? propMetadata : null,
                       });
                       if (Object.keys(appDataUpdates).length > 0) {
                         saveLoanMutation.mutate({ applicationData: appDataUpdates });
@@ -802,14 +823,18 @@ export default function TabOverview({
                     <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
                     <EditField label="State" value={propForm.state} onChange={(v) => setPropForm({ ...propForm, state: v })} />
                   </div>
+                  <EditField label="Zip Code" value={propForm.zip} onChange={(v) => setPropForm({ ...propForm, zip: v })} />
                   {!hasProgram ? (
                     <>
                       <PropertyTypeSelectField label="Property Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
                       <EditField label="Units" value={propForm.units} onChange={(v) => setPropForm({ ...propForm, units: v })} type="number" />
+                      <EditField label="Original Purchase Date" value={propForm.originalPurchaseDate} onChange={(v) => setPropForm({ ...propForm, originalPurchaseDate: v })} type="date" />
+                      <EditField label="Original Purchase Price" value={propForm.originalPurchasePrice} onChange={(v) => setPropForm({ ...propForm, originalPurchasePrice: v })} type="number" />
+                      <EditField label="As-Is Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
                       <EditField label="Monthly Rent" value={propForm.monthlyRent} onChange={(v) => setPropForm({ ...propForm, monthlyRent: v })} type="number" />
                       <EditField label="Annual Taxes" value={propForm.annualTaxes} onChange={(v) => setPropForm({ ...propForm, annualTaxes: v })} type="number" />
                       <EditField label="Annual Insurance" value={propForm.annualInsurance} onChange={(v) => setPropForm({ ...propForm, annualInsurance: v })} type="number" />
-                      <EditField label="Estimated Value" value={propForm.estimatedValue} onChange={(v) => setPropForm({ ...propForm, estimatedValue: v })} type="number" />
+                      <EditField label="Annual HOA" value={propForm.annualHOA} onChange={(v) => setPropForm({ ...propForm, annualHOA: v })} type="number" />
                     </>
                   ) : (() => {
                     const programPropertyFields = getFieldsByGroup('property_details');
@@ -839,22 +864,29 @@ export default function TabOverview({
                 const additionalProps = properties?.filter((p: any) => p.id !== primaryProp?.id) || [];
                 if (additionalProps.length === 0) return null;
                 const getTypeLabel = (val: string) => PROPERTY_TYPE_OPTIONS.find(o => o.value === val)?.label || val || "—";
-                return additionalProps.map((prop: any, idx: number) => (
-                  <div key={prop.id || idx} data-testid={`additional-property-${prop.id || idx}`}>
-                    <div className="border-t border-muted my-4" />
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Additional Property {idx + 1}</p>
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                      <Field label="Address" value={prop.address || "—"} />
-                      <Field label="City / State" value={[prop.city, prop.state].filter(Boolean).join(", ") || "—"} />
-                      <Field label="Property Type" value={getTypeLabel(prop.propertyType)} />
-                      <Field label="Units" value={prop.units ? String(prop.units) : "—"} />
-                      <Field label="Monthly Rent" value={fmt(prop.monthlyRent)} />
-                      <Field label="Annual Taxes" value={fmt(prop.annualTaxes)} />
-                      <Field label="Annual Insurance" value={fmt(prop.annualInsurance)} />
-                      <Field label="Estimated Value" value={fmt(prop.estimatedValue)} />
+                return additionalProps.map((prop: any, idx: number) => {
+                  const meta = prop.metadata || {};
+                  return (
+                    <div key={prop.id || idx} data-testid={`additional-property-${prop.id || idx}`}>
+                      <div className="border-t border-muted my-4" />
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Additional Property {idx + 1}</p>
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                        <Field label="Property Address" value={prop.address || "—"} />
+                        <Field label="State" value={prop.state || "—"} />
+                        <Field label="Zip Code" value={prop.zip || "—"} />
+                        <Field label="Property Type" value={getTypeLabel(prop.propertyType)} />
+                        <Field label="Number of Units" value={prop.units ? String(prop.units) : "—"} />
+                        <Field label="Original Purchase Date" value={fmtDate(meta.originalPurchaseDate)} />
+                        <Field label="Original Purchase Price" value={fmt(meta.originalPurchasePrice)} />
+                        <Field label="As-Is Value" value={fmt(prop.estimatedValue)} />
+                        <Field label="Monthly Rent" value={fmt(prop.monthlyRent)} />
+                        <Field label="Annual Taxes" value={fmt(prop.annualTaxes)} />
+                        <Field label="Annual Insurance" value={fmt(prop.annualInsurance)} />
+                        <Field label="Annual HOA" value={fmt(meta.annualHOA)} />
+                      </div>
                     </div>
-                  </div>
-                ));
+                  );
+                });
               })()}
             </CardContent>
           </Card>
@@ -870,26 +902,36 @@ export default function TabOverview({
                 </div>
                 <EditField label="City" value={newPropForm.city} onChange={(v) => setNewPropForm({ ...newPropForm, city: v })} />
                 <EditField label="State" value={newPropForm.state} onChange={(v) => setNewPropForm({ ...newPropForm, state: v })} />
+                <EditField label="Zip Code" value={newPropForm.zip} onChange={(v) => setNewPropForm({ ...newPropForm, zip: v })} />
                 <PropertyTypeSelectField label="Property Type" value={newPropForm.propertyType} onChange={(v) => setNewPropForm({ ...newPropForm, propertyType: v })} />
-                <EditField label="Units" value={newPropForm.units} onChange={(v) => setNewPropForm({ ...newPropForm, units: v })} type="number" />
+                <EditField label="Number of Units" value={newPropForm.units} onChange={(v) => setNewPropForm({ ...newPropForm, units: v })} type="number" />
+                <EditField label="Original Purchase Date" value={newPropForm.originalPurchaseDate} onChange={(v) => setNewPropForm({ ...newPropForm, originalPurchaseDate: v })} type="date" />
+                <EditField label="Original Purchase Price" value={newPropForm.originalPurchasePrice} onChange={(v) => setNewPropForm({ ...newPropForm, originalPurchasePrice: v })} type="number" />
+                <EditField label="As-Is Value" value={newPropForm.estimatedValue} onChange={(v) => setNewPropForm({ ...newPropForm, estimatedValue: v })} type="number" />
                 <EditField label="Monthly Rent" value={newPropForm.monthlyRent} onChange={(v) => setNewPropForm({ ...newPropForm, monthlyRent: v })} type="number" />
                 <EditField label="Annual Taxes" value={newPropForm.annualTaxes} onChange={(v) => setNewPropForm({ ...newPropForm, annualTaxes: v })} type="number" />
                 <EditField label="Annual Insurance" value={newPropForm.annualInsurance} onChange={(v) => setNewPropForm({ ...newPropForm, annualInsurance: v })} type="number" />
-                <EditField label="Estimated Value" value={newPropForm.estimatedValue} onChange={(v) => setNewPropForm({ ...newPropForm, estimatedValue: v })} type="number" />
+                <EditField label="Annual HOA" value={newPropForm.annualHOA} onChange={(v) => setNewPropForm({ ...newPropForm, annualHOA: v })} type="number" />
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="ghost" size="sm" onClick={() => setShowAddProperty(false)} data-testid="button-cancel-add-property">Cancel</Button>
                 <Button size="sm" disabled={addPropertyMutation.isPending || !newPropForm.address.trim()} data-testid="button-save-add-property" onClick={() => {
+                  const newPropMetadata: Record<string, any> = {};
+                  if (newPropForm.originalPurchaseDate) newPropMetadata.originalPurchaseDate = newPropForm.originalPurchaseDate;
+                  if (newPropForm.originalPurchasePrice) newPropMetadata.originalPurchasePrice = Number(newPropForm.originalPurchasePrice);
+                  if (newPropForm.annualHOA) newPropMetadata.annualHOA = Number(newPropForm.annualHOA);
                   addPropertyMutation.mutate({
                     address: newPropForm.address,
                     city: newPropForm.city,
                     state: newPropForm.state,
+                    zip: newPropForm.zip || null,
                     propertyType: newPropForm.propertyType,
                     units: newPropForm.units ? Number(newPropForm.units) : null,
                     monthlyRent: newPropForm.monthlyRent ? Number(newPropForm.monthlyRent) : null,
                     annualTaxes: newPropForm.annualTaxes ? Number(newPropForm.annualTaxes) : null,
                     annualInsurance: newPropForm.annualInsurance ? Number(newPropForm.annualInsurance) : null,
                     estimatedValue: newPropForm.estimatedValue ? Number(newPropForm.estimatedValue) : null,
+                    metadata: Object.keys(newPropMetadata).length > 0 ? newPropMetadata : null,
                   });
                 }}>
                   {addPropertyMutation.isPending ? "Adding..." : "Add Property"}
