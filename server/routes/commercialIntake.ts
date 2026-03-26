@@ -117,7 +117,8 @@ router.get("/api/commercial/funds/:id", async (req: Request, res: Response) => {
 router.post("/api/commercial/funds", async (req: Request, res: Response) => {
   try {
     if (!requireAdmin(req, res)) return;
-    const tenantId = await getTenantId(req);
+    let tenantId = await getTenantId(req);
+    if (!tenantId && req.body.tenantId) tenantId = req.body.tenantId;
     const data = { ...req.body, tenantId };
     const [created] = await db.insert(funds).values(data).returning();
     if (created.fundDescription) {
@@ -148,6 +149,25 @@ router.patch("/api/commercial/funds/:id", async (req: Request, res: Response) =>
       }
     }
     res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/commercial/funds/assign-tenant", async (req: Request, res: Response) => {
+  try {
+    const role = getUserRole(req);
+    if (role !== "super_admin") return res.status(403).json({ error: "Super admin only" });
+
+    const { targetTenantId } = req.body;
+    if (!targetTenantId) return res.status(400).json({ error: "targetTenantId required" });
+
+    const result = await db.update(funds)
+      .set({ tenantId: targetTenantId, updatedAt: new Date() })
+      .where(sql`${funds.tenantId} IS NULL`)
+      .returning({ id: funds.id });
+
+    res.json({ updated: result.length, message: `Assigned ${result.length} orphaned funds to tenant ${targetTenantId}` });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1685,7 +1705,7 @@ router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), 
         const existingId = existingMap.get(cleanParsed.fundName.toLowerCase());
         if (existingId) {
           if (duplicateAction === "update") {
-            await db.update(funds).set({ ...cleanParsed, updatedAt: new Date() }).where(eq(funds.id, existingId));
+            await db.update(funds).set({ ...cleanParsed, tenantId, updatedAt: new Date() }).where(eq(funds.id, existingId));
             updated++;
             fundId = existingId;
           } else {
