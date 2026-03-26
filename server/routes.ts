@@ -7327,6 +7327,7 @@ export async function registerRoutes(
         propertyAddress: (v) => v || null,
         propertyType: (v) => v || null,
         currentStage: (v) => v || null,
+        appraisalStatus: (v) => v || null,
         brokerName: (v) => v || null,
         prepaymentPenalty: (v) => v || null,
         holdbackAmount: (v) => v !== null && v !== '' ? Number(v) : null,
@@ -8714,6 +8715,7 @@ export async function registerRoutes(
         googleDriveFolderId: projects.googleDriveFolderId,
         loanNumber: projects.loanNumber,
         googleDriveFolderUrl: projects.googleDriveFolderUrl,
+        appraisalStatus: projects.appraisalStatus,
         userName: users.fullName,
         userEmail: users.email,
       })
@@ -8857,6 +8859,7 @@ export async function registerRoutes(
         loanNumber: project.loanNumber,
         googleDriveFolderId: project.googleDriveFolderId,
         googleDriveFolderUrl: project.googleDriveFolderUrl,
+        appraisalStatus: project.appraisalStatus,
       };
       
       const docs = await db.select()

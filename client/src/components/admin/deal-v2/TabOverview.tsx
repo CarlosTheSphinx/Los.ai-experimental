@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Pencil, Building2, User, Plus, DollarSign
+  Pencil, Building2, User, Plus, DollarSign, Clock, CalendarDays
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -407,6 +407,16 @@ export default function TabOverview({
       toast({ title: "Property added" });
     },
     onError: () => toast({ title: "Failed to add property", variant: "destructive" }),
+  });
+
+  const saveTimelineFieldMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      return apiRequest("PATCH", `${apiBase}/projects/${deal.projectId || deal.id}`, data);
+    },
+    onSuccess: () => {
+      invalidateDeal();
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
   const rateNum = interestRate && interestRate !== "—" ? String(interestRate).replace("%", "") : "";
@@ -1174,6 +1184,79 @@ export default function TabOverview({
                 <EditField label="Estimated Closing Date" value={loanForm.targetCloseDate} onChange={(v) => setLoanForm({ ...loanForm, targetCloseDate: v })} type="date" />
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-0">
+            <CardTitle className="text-[22px] flex items-center gap-2">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              Timeline
+            </CardTitle>
+          </CardHeader>
+          <div className="mx-6 mt-2 mb-3 border-b border-muted" />
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground" data-testid="label-timeline-created">Created</span>
+                <span className="text-sm font-medium" data-testid="text-timeline-created">
+                  {deal.createdAt ? new Date(deal.createdAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "—"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground" data-testid="label-timeline-target-close">Target Close</span>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="date"
+                    className="h-7 w-[150px] text-sm text-right"
+                    value={(() => {
+                      if (!deal.targetCloseDate) return "";
+                      const d = new Date(deal.targetCloseDate);
+                      if (isNaN(d.getTime())) return "";
+                      return d.toISOString().split("T")[0];
+                    })()}
+                    onChange={(e) => {
+                      saveTimelineFieldMutation.mutate({ targetCloseDate: e.target.value || null });
+                    }}
+                    data-testid="input-timeline-target-close"
+                  />
+                  <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground" data-testid="label-timeline-appraisal">Appraisal Status</span>
+                <Select
+                  value={deal.appraisalStatus || ""}
+                  onValueChange={(v) => {
+                    saveTimelineFieldMutation.mutate({ appraisalStatus: v });
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[150px] text-sm" data-testid="select-timeline-appraisal">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_ordered">Not Ordered</SelectItem>
+                    <SelectItem value="ordered">Ordered</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground" data-testid="label-timeline-time-in-stage">Time in Stage</span>
+                <span className="text-sm font-medium" data-testid="text-timeline-time-in-stage">
+                  {(() => {
+                    if (!deal.createdAt) return "—";
+                    const created = new Date(deal.createdAt);
+                    if (isNaN(created.getTime())) return "—";
+                    const diff = Math.floor((Date.now() - created.getTime()) / (1000 * 60 * 60 * 24));
+                    return `${diff} day${diff !== 1 ? "s" : ""}`;
+                  })()}
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
