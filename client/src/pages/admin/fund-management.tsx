@@ -24,7 +24,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ExpandableRow } from "@/components/ui/phase1/expandable-row";
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
-const ASSET_TYPES = ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"];
+import { STANDARD_LOAN_TYPES, STANDARD_PROPERTY_TYPES } from "@shared/loanConstants";
+const ASSET_TYPES = STANDARD_PROPERTY_TYPES.map(t => t.value);
+const LOAN_TYPES = STANDARD_LOAN_TYPES.map(t => t.value);
 const KNOWLEDGE_CATEGORIES = ["general", "rates", "terms", "eligibility", "guidelines", "specialty"];
 
 const FUND_FIELD_OPTIONS: { value: string; label: string; group: string }[] = [
@@ -59,6 +61,7 @@ const FUND_FIELD_OPTIONS: { value: string; label: string; group: string }[] = [
   { value: "allowedStates", label: "States / Region", group: "Criteria" },
   { value: "allowedAssetTypes", label: "Property / Asset Types", group: "Criteria" },
   { value: "loanStrategy", label: "Loan Strategy (Bridge/Permanent/Both)", group: "Criteria" },
+  { value: "loanTypes", label: "Loan Types", group: "Criteria" },
   { value: "isActive", label: "Active Status", group: "Other" },
 ];
 
@@ -91,6 +94,7 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
     allowedStates: (fund?.allowedStates || []) as string[],
     allowedAssetTypes: (fund?.allowedAssetTypes || []) as string[],
     loanStrategy: fund?.loanStrategy || "",
+    loanTypes: ((fund as any)?.loanTypes || []) as string[],
     fundDescription: fund?.fundDescription || "",
     isActive: fund?.isActive ?? true,
   });
@@ -110,6 +114,15 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
       allowedAssetTypes: f.allowedAssetTypes.includes(type)
         ? f.allowedAssetTypes.filter(t => t !== type)
         : [...f.allowedAssetTypes, type],
+    }));
+  };
+
+  const toggleLoanType = (type: string) => {
+    setForm(f => ({
+      ...f,
+      loanTypes: f.loanTypes.includes(type)
+        ? f.loanTypes.filter((t: string) => t !== type)
+        : [...f.loanTypes, type],
     }));
   };
 
@@ -258,20 +271,20 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
         </div>
       </div>
       <div>
-        <Label className="text-xs text-slate-400 mb-1 block">Loan Strategy</Label>
-        <div className="flex gap-2">
-          {["Bridge", "Permanent", "Both"].map(s => (
+        <Label className="text-xs text-slate-400 mb-2 block">Loan Types</Label>
+        <div className="flex flex-wrap gap-2">
+          {LOAN_TYPES.map(type => (
             <button
-              key={s}
+              key={type}
               type="button"
-              onClick={() => setForm(f => ({ ...f, loanStrategy: f.loanStrategy === s ? "" : s }))}
+              onClick={() => toggleLoanType(type)}
               className={`px-3 py-1 rounded text-xs border transition-colors ${
-                form.loanStrategy === s
+                form.loanTypes.includes(type)
                   ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
                   : "bg-[#0f1629] text-slate-500 border-slate-700 hover:border-slate-500"
               }`}
-              data-testid={`strategy-${s.toLowerCase()}`}
-            >{s}</button>
+              data-testid={`loan-type-${type.toLowerCase().replace(/[\s&]/g, "-")}`}
+            >{type}</button>
           ))}
         </div>
       </div>
@@ -1435,12 +1448,19 @@ export function FundManagementContent() {
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
                             <span className="text-[16px] font-medium text-blue-600" data-testid={`fund-name-${fund.id}`}>{fund.fundName}</span>
-                            {fund.loanStrategy && (
+                            {(fund as any).loanTypes && (fund as any).loanTypes.length > 0 ? (
+                              (fund as any).loanTypes.slice(0, 3).map((lt: string) => (
+                                <Badge key={lt} variant="outline" className="text-[10px] px-1.5 py-0 text-blue-400 border-blue-500/30" data-testid={`fund-loantype-${fund.id}-${lt}`}>{lt}</Badge>
+                              ))
+                            ) : fund.loanStrategy ? (
                               <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
                                 fund.loanStrategy === "Bridge" ? "text-amber-600 border-amber-300" :
                                 fund.loanStrategy === "Permanent" ? "text-emerald-600 border-emerald-300" :
                                 "text-blue-600 border-blue-300"
                               }`} data-testid={`fund-strategy-${fund.id}`}>{fund.loanStrategy}</Badge>
+                            ) : null}
+                            {(fund as any).loanTypes && (fund as any).loanTypes.length > 3 && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-slate-400 border-slate-600">+{(fund as any).loanTypes.length - 3}</Badge>
                             )}
                           </div>
                           {fund.providerName && <div className="text-[13px] text-muted-foreground">{fund.providerName}</div>}

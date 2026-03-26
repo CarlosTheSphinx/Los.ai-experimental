@@ -1396,72 +1396,85 @@ const PROPERTY_TYPE_MAP: Record<string, string> = {
   "multi-family": "Multifamily", "apartment": "Multifamily", "apartments": "Multifamily",
   "office": "Office", "retail": "Retail", "industrial": "Industrial",
   "warehouse": "Industrial", "flex": "Industrial",
-  "hotel": "Hotel", "hospitality": "Hotel", "land": "Land",
+  "hotel": "Hospitality", "hospitality": "Hospitality", "resort": "Hospitality",
+  "motel": "Hospitality", "land": "Land",
   "mixed use": "Mixed Use", "mixed-use": "Mixed Use",
-  "self storage": "Self Storage", "storage": "Self Storage",
-  "mobile home park": "Mobile Home Park", "mhp": "Mobile Home Park",
-  "manufactured housing": "Mobile Home Park",
-  "healthcare": "Healthcare", "medical": "Healthcare",
+  "self storage": "Self-Storage", "self-storage": "Self-Storage", "storage": "Self-Storage",
+  "mobile home park": "Residential", "mhp": "Residential",
+  "manufactured housing": "Residential",
+  "healthcare": "Office", "medical": "Office",
   "student housing": "Student Housing",
-  "commercial": "Commercial", "small commercial": "Commercial",
+  "commercial": null, "small commercial": null,
   "condo": "Multifamily", "condo inventory": "Multifamily",
+  "residential": "Residential",
 };
 
-const BRIDGE_TERMS = new Set([
-  "rtl", "bridge", "construction", "development", "a&d", "acquisition",
-  "ground up", "fix and flip", "fix & flip", "value add", "value-add",
-  "transitional", "rehab", "renovation", "hard money",
-]);
-
-const PERMANENT_TERMS = new Set([
-  "dscr", "permanent", "long term", "long-term", "stabilized",
-  "fannie mae", "freddie mac", "fha", "cmbs", "agency",
-  "str dscr", "str dscr's",
-]);
+const LOAN_TYPE_TERM_MAP: Record<string, string> = {
+  "rtl": "Bridge",
+  "bridge": "Bridge",
+  "hard money": "Bridge",
+  "transitional": "Bridge",
+  "value add": "Bridge",
+  "value-add": "Bridge",
+  "construction": "Construction",
+  "ground up": "Construction",
+  "rehab": "Construction",
+  "renovation": "Construction",
+  "development": "Land Development",
+  "land development": "Land Development",
+  "a&d": "A&D",
+  "acquisition": "A&D",
+  "fix and flip": "Fix & Flip",
+  "fix & flip": "Fix & Flip",
+  "dscr": "DSCR",
+  "str dscr": "DSCR",
+  "str dscr's": "DSCR",
+  "permanent": "Long-Term Financing",
+  "long term": "Long-Term Financing",
+  "long-term": "Long-Term Financing",
+  "stabilized": "Long-Term Financing",
+  "fannie mae": "Long-Term Financing",
+  "freddie mac": "Long-Term Financing",
+  "fha": "Long-Term Financing",
+  "cmbs": "Long-Term Financing",
+  "agency": "Long-Term Financing",
+};
 
 interface SpecialtyParsed {
-  loanStrategy: "Bridge" | "Permanent" | "Both" | null;
+  loanTypes: string[];
   assetTypes: string[];
 }
 
-function parseSpecialtyToStrategy(specialty: string): SpecialtyParsed {
+function parseSpecialtyToLoanTypes(specialty: string): SpecialtyParsed {
   const lower = specialty.toLowerCase().trim();
   const parts = lower.split(/[,;|&+\/]+/).map(s => s.trim()).filter(Boolean);
 
-  let hasBridge = false;
-  let hasPermanent = false;
+  const loanTypes = new Set<string>();
   const assetTypes = new Set<string>();
 
   for (const part of parts) {
-    if (BRIDGE_TERMS.has(part)) {
-      hasBridge = true;
-      continue;
-    }
-    if (PERMANENT_TERMS.has(part)) {
-      hasPermanent = true;
+    const directLoanType = LOAN_TYPE_TERM_MAP[part];
+    if (directLoanType) {
+      loanTypes.add(directLoanType);
       continue;
     }
 
-    for (const term of BRIDGE_TERMS) {
-      if (part.includes(term)) { hasBridge = true; break; }
-    }
-    for (const term of PERMANENT_TERMS) {
-      if (part.includes(term)) { hasPermanent = true; break; }
+    for (const [term, loanType] of Object.entries(LOAN_TYPE_TERM_MAP)) {
+      if (part.includes(term)) { loanTypes.add(loanType); break; }
     }
 
     const compoundPatterns: [RegExp, string, string][] = [
-      [/multifamily\s*development/, "Bridge", "Multifamily"],
-      [/residential\s*development/, "Bridge", "Residential"],
-      [/residential\s*construction/, "Bridge", "Residential"],
-      [/commercial\s*bridge/, "Bridge", "Commercial"],
+      [/multifamily\s*development/, "Construction", "Multifamily"],
+      [/residential\s*development/, "Construction", "Residential"],
+      [/residential\s*construction/, "Construction", "Residential"],
+      [/commercial\s*bridge/, "Bridge", "Office"],
       [/multifamily\s*bridge/, "Bridge", "Multifamily"],
-      [/land\s*development/, "Bridge", "Land"],
+      [/land\s*development/, "Land Development", "Land"],
     ];
     let matched = false;
-    for (const [pattern, strategy, asset] of compoundPatterns) {
+    for (const [pattern, loanType, asset] of compoundPatterns) {
       if (pattern.test(part)) {
-        if (strategy === "Bridge") hasBridge = true;
-        else hasPermanent = true;
+        loanTypes.add(loanType);
         assetTypes.add(asset);
         matched = true;
         break;
@@ -1474,17 +1487,12 @@ function parseSpecialtyToStrategy(specialty: string): SpecialtyParsed {
       assetTypes.add(mapped);
     } else {
       for (const [key, val] of Object.entries(PROPERTY_TYPE_MAP)) {
-        if (part.includes(key)) { assetTypes.add(val); break; }
+        if (part.includes(key) && val) { assetTypes.add(val); break; }
       }
     }
   }
 
-  let loanStrategy: "Bridge" | "Permanent" | "Both" | null = null;
-  if (hasBridge && hasPermanent) loanStrategy = "Both";
-  else if (hasBridge) loanStrategy = "Bridge";
-  else if (hasPermanent) loanStrategy = "Permanent";
-
-  return { loanStrategy, assetTypes: Array.from(assetTypes) };
+  return { loanTypes: Array.from(loanTypes), assetTypes: Array.from(assetTypes) };
 }
 
 const COLUMN_ALIASES: Record<string, string[]> = {
@@ -1515,7 +1523,8 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   originationFeeMax: ["origination fee max", "origination_fee_max", "fee max"],
   allowedStates: ["states", "allowed states", "allowed_states", "state", "region"],
   allowedAssetTypes: ["asset types", "allowed asset types", "allowed_asset_types", "asset type", "property type", "property types"],
-  loanStrategy: ["loan strategy", "loan_strategy", "loan type", "loan_type", "strategy", "financing type"],
+  loanStrategy: ["loan strategy", "loan_strategy", "strategy", "financing type"],
+  loanTypes: ["loan types", "loan_types", "loan type", "loan_type", "product types"],
   fundDescription: ["description", "notes", "fund description", "fund_description", "terms"],
   _specialty: ["bread & butter", "bread and butter", "specialty", "specialties", "bread butter", "focus"],
   isActive: ["active", "is active", "is_active", "status"],
@@ -1638,9 +1647,16 @@ function processVirtualColumns(parsed: Record<string, any>): { knowledgeEntries:
 
   if (parsed._specialty) {
     knowledgeEntries.push({ content: `Specialty / Focus: ${parsed._specialty}`, category: "specialty" });
-    const specialtyParsed = parseSpecialtyToStrategy(parsed._specialty);
-    if (specialtyParsed.loanStrategy && !parsed.loanStrategy) {
-      parsed.loanStrategy = specialtyParsed.loanStrategy;
+    const specialtyParsed = parseSpecialtyToLoanTypes(parsed._specialty);
+    if (specialtyParsed.loanTypes.length > 0 && (!parsed.loanTypes || parsed.loanTypes.length === 0)) {
+      parsed.loanTypes = specialtyParsed.loanTypes;
+    }
+    if (!parsed.loanStrategy && specialtyParsed.loanTypes.length > 0) {
+      const hasBridge = specialtyParsed.loanTypes.some((t: string) => ["Bridge", "Fix & Flip"].includes(t));
+      const hasPerm = specialtyParsed.loanTypes.some((t: string) => ["Long-Term Financing", "DSCR"].includes(t));
+      if (hasBridge && hasPerm) parsed.loanStrategy = "Both";
+      else if (hasBridge) parsed.loanStrategy = "Bridge";
+      else if (hasPerm) parsed.loanStrategy = "Permanent";
     }
     if (specialtyParsed.assetTypes.length > 0) {
       const existing = new Set<string>(parsed.allowedAssetTypes || []);
@@ -2089,40 +2105,88 @@ router.post("/api/commercial/funds/backfill-strategy", async (req: Request, res:
       return res.status(403).json({ error: "Super admin access required" });
     }
 
+    const { PROPERTY_TYPE_NORMALIZATION_MAP } = await import("@shared/loanConstants");
+    const { LOAN_TYPE_NORMALIZATION_MAP } = await import("@shared/loanConstants");
+
+    const allFunds = await db.select({
+      id: funds.id,
+      loanStrategy: funds.loanStrategy,
+      loanTypes: funds.loanTypes,
+      allowedAssetTypes: funds.allowedAssetTypes,
+    }).from(funds);
+
+    let updated = 0;
+
+    for (const fund of allFunds) {
+      const updateData: any = {};
+
+      if (fund.loanStrategy && (!fund.loanTypes || (fund.loanTypes as string[]).length === 0)) {
+        const mapped = LOAN_TYPE_NORMALIZATION_MAP[fund.loanStrategy];
+        if (mapped) {
+          updateData.loanTypes = mapped;
+        }
+      }
+
+      if (fund.allowedAssetTypes && (fund.allowedAssetTypes as string[]).length > 0) {
+        const normalized = new Set<string>();
+        for (const at of fund.allowedAssetTypes as string[]) {
+          const norm = PROPERTY_TYPE_NORMALIZATION_MAP[at];
+          if (norm) {
+            normalized.add(norm);
+          } else {
+            const standardPropTypes = ["Residential", "Multifamily", "Office", "Retail", "Industrial", "Land", "Development", "Mixed Use", "Hospitality", "Student Housing", "Self-Storage"];
+            if (standardPropTypes.includes(at)) {
+              normalized.add(at);
+            }
+          }
+        }
+        if (normalized.size > 0) {
+          updateData.allowedAssetTypes = Array.from(normalized);
+        }
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await db.update(funds).set(updateData).where(eq(funds.id, fund.id));
+        updated++;
+      }
+    }
+
     const specialtyEntries = await db.select({
       fundId: fundKnowledgeEntries.fundId,
       content: fundKnowledgeEntries.content,
     }).from(fundKnowledgeEntries)
       .where(eq(fundKnowledgeEntries.category, "specialty"));
 
-    let updated = 0;
+    let specialtyUpdated = 0;
     for (const entry of specialtyEntries) {
       const raw = entry.content.replace(/^Specialty\s*\/?\s*Focus:\s*/i, "").trim();
       if (!raw) continue;
 
-      const parsed = parseSpecialtyToStrategy(raw);
+      const parsed = parseSpecialtyToLoanTypes(raw);
 
-      const fund = await db.select({ id: funds.id, allowedAssetTypes: funds.allowedAssetTypes })
+      const fund = await db.select({ id: funds.id, loanTypes: funds.loanTypes, allowedAssetTypes: funds.allowedAssetTypes })
         .from(funds).where(eq(funds.id, entry.fundId)).limit(1);
       if (!fund.length) continue;
 
       const updateData: any = {};
-      if (parsed.loanStrategy) {
-        updateData.loanStrategy = parsed.loanStrategy;
+      if (parsed.loanTypes.length > 0) {
+        const existing = new Set<string>((fund[0].loanTypes as string[]) || []);
+        for (const lt of parsed.loanTypes) existing.add(lt);
+        updateData.loanTypes = Array.from(existing);
       }
       if (parsed.assetTypes.length > 0) {
-        const existing = new Set<string>(fund[0].allowedAssetTypes || []);
+        const existing = new Set<string>((fund[0].allowedAssetTypes as string[]) || []);
         for (const at of parsed.assetTypes) existing.add(at);
         updateData.allowedAssetTypes = Array.from(existing);
       }
 
       if (Object.keys(updateData).length > 0) {
         await db.update(funds).set(updateData).where(eq(funds.id, entry.fundId));
-        updated++;
+        specialtyUpdated++;
       }
     }
 
-    res.json({ success: true, updated, total: specialtyEntries.length });
+    res.json({ success: true, updated, specialtyUpdated, totalFunds: allFunds.length, totalSpecialtyEntries: specialtyEntries.length });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
