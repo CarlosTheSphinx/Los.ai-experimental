@@ -595,11 +595,13 @@ router.post("/api/commercial/deals/:id/notes", async (req: Request, res: Respons
 router.get("/api/commercial/deals/:id/tasks", async (req: Request, res: Response) => {
   try {
     const dealId = parseInt(req.params.id);
-    const role = getUserRole(req);
+    if (!requireAdmin(req, res)) return;
+    const tenantId = await getTenantId(req);
 
-    if (!["super_admin", "lender", "processor"].includes(role || "")) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    const dealConditions = [eq(intakeDeals.id, dealId)];
+    if (tenantId) dealConditions.push(eq(intakeDeals.tenantId, tenantId));
+    const [deal] = await db.select().from(intakeDeals).where(and(...dealConditions));
+    if (!deal) return res.status(404).json({ error: "Deal not found" });
 
     const tasks = await db.select().from(intakeDealTasks)
       .where(eq(intakeDealTasks.dealId, dealId))
@@ -613,17 +615,16 @@ router.get("/api/commercial/deals/:id/tasks", async (req: Request, res: Response
 router.post("/api/commercial/deals/:id/tasks", async (req: Request, res: Response) => {
   try {
     const dealId = parseInt(req.params.id);
+    if (!requireAdmin(req, res)) return;
     const userId = getUserId(req);
-    const role = getUserRole(req);
-
-    if (!["super_admin", "lender", "processor"].includes(role || "")) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    const tenantId = await getTenantId(req);
 
     const { taskTitle, taskDescription, priority, assignedTo, dueDate } = req.body;
     if (!taskTitle?.trim()) return res.status(400).json({ error: "Task title is required" });
 
-    const [deal] = await db.select().from(intakeDeals).where(eq(intakeDeals.id, dealId));
+    const dealConditions = [eq(intakeDeals.id, dealId)];
+    if (tenantId) dealConditions.push(eq(intakeDeals.tenantId, tenantId));
+    const [deal] = await db.select().from(intakeDeals).where(and(...dealConditions));
     if (!deal) return res.status(404).json({ error: "Deal not found" });
 
     const [task] = await db.insert(intakeDealTasks).values({
@@ -646,12 +647,14 @@ router.patch("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request,
   try {
     const dealId = parseInt(req.params.dealId);
     const taskId = parseInt(req.params.taskId);
+    if (!requireAdmin(req, res)) return;
     const userId = getUserId(req);
-    const role = getUserRole(req);
+    const tenantId = await getTenantId(req);
 
-    if (!["super_admin", "lender", "processor"].includes(role || "")) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    const dealConditions = [eq(intakeDeals.id, dealId)];
+    if (tenantId) dealConditions.push(eq(intakeDeals.tenantId, tenantId));
+    const [deal] = await db.select().from(intakeDeals).where(and(...dealConditions));
+    if (!deal) return res.status(404).json({ error: "Deal not found" });
 
     const [existingTask] = await db.select().from(intakeDealTasks)
       .where(and(eq(intakeDealTasks.id, taskId), eq(intakeDealTasks.dealId, dealId)));
@@ -692,11 +695,13 @@ router.delete("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request
   try {
     const dealId = parseInt(req.params.dealId);
     const taskId = parseInt(req.params.taskId);
-    const role = getUserRole(req);
+    if (!requireAdmin(req, res)) return;
+    const tenantId = await getTenantId(req);
 
-    if (!["super_admin", "lender", "processor"].includes(role || "")) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    const dealConditions = [eq(intakeDeals.id, dealId)];
+    if (tenantId) dealConditions.push(eq(intakeDeals.tenantId, tenantId));
+    const [deal] = await db.select().from(intakeDeals).where(and(...dealConditions));
+    if (!deal) return res.status(404).json({ error: "Deal not found" });
 
     const [deleted] = await db.delete(intakeDealTasks)
       .where(and(eq(intakeDealTasks.id, taskId), eq(intakeDealTasks.dealId, dealId)))
