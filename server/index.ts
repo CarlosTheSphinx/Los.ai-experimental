@@ -212,6 +212,18 @@ app.use((req, res, next) => {
   const { backfillTenantIds } = await import('./utils/backfill-tenants');
   await backfillTenantIds();
 
+  setTimeout(async () => {
+    try {
+      const { backfillEmbeddings } = await import('./services/embeddings');
+      const result = await backfillEmbeddings();
+      if (result.knowledgeCount > 0 || result.fundCount > 0) {
+        console.log(`[Startup Embeddings] Backfilled ${result.knowledgeCount} knowledge entries, ${result.fundCount} fund descriptions (${result.errors} errors)`);
+      }
+    } catch (err) {
+      console.warn("[Startup Embeddings] Background backfill skipped:", (err as Error).message);
+    }
+  }, 5000);
+
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.

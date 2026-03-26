@@ -1216,6 +1216,19 @@ export function FundManagementContent() {
     },
   });
 
+  const backfillMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/commercial/embeddings/backfill");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Embeddings synced", description: `${data.fundCount || 0} funds, ${data.knowledgeCount || 0} knowledge entries processed` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Sync failed", description: err.message || "Check API quota", variant: "destructive" });
+    },
+  });
+
   if (selectedFundId) {
     return (
       <div className="p-6" data-testid="fund-detail-page">
@@ -1266,6 +1279,16 @@ export function FundManagementContent() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => backfillMut.mutate()}
+                disabled={backfillMut.isPending}
+                data-testid="backfill-embeddings-button"
+              >
+                <RefreshCw size={14} className={`mr-1 ${backfillMut.isPending ? "animate-spin" : ""}`} />
+                {backfillMut.isPending ? "Processing..." : "Sync AI"}
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)} data-testid="import-funds-button">
                 <Upload size={14} className="mr-1" /> Import
               </Button>

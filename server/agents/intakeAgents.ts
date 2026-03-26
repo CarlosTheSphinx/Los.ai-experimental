@@ -222,13 +222,16 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
   let knowledgeByFund: Record<number, string[]> = {};
   let fundSimilarityScores: Record<number, number> = {};
   const dealSummary = `${dealAsset} property in ${dealState}, loan amount $${dealAmount}, LTV ${dealLtv}%, borrower: ${structuredDeal.structured_deal?.borrower_info?.name || "unknown"}, DSCR ${metrics.dscr || "N/A"}`;
+  let embeddingsAvailable = false;
 
   if (fundsToUse.length > 0) {
+    const fundIds = fundsToUse.map(f => f.id);
+
     try {
-      const fundIds = fundsToUse.map(f => f.id);
       const dealEmbedding = await generateEmbedding(dealSummary);
 
       if (dealEmbedding) {
+        embeddingsAvailable = true;
         const embeddingStr = `[${dealEmbedding.join(",")}]`;
 
         interface DescSimilarityRow { id: number; similarity: string }
@@ -260,66 +263,79 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
           if (!knowledgeByFund[fid]) knowledgeByFund[fid] = [];
           knowledgeByFund[fid].push(`[${row.category}] ${row.content}`);
         }
-      }
-
-      const fundsWithoutKnowledge = fundIds.filter(id => !knowledgeByFund[id] || knowledgeByFund[id].length === 0);
-      if (fundsWithoutKnowledge.length > 0) {
-        const fallbackRows = await db.select({
-          fundId: fundKnowledgeEntries.fundId,
-          content: fundKnowledgeEntries.content,
-          category: fundKnowledgeEntries.category,
-        }).from(fundKnowledgeEntries)
-          .where(inArray(fundKnowledgeEntries.fundId, fundsWithoutKnowledge));
-        for (const row of fallbackRows) {
-          if (!knowledgeByFund[row.fundId]) knowledgeByFund[row.fundId] = [];
-          if (knowledgeByFund[row.fundId].length < 8) {
-            knowledgeByFund[row.fundId].push(`[${row.category}] ${row.content}`);
-          }
-        }
+      } else {
+        console.warn("[Intake AI] Deal embedding failed — using text-only fund context");
       }
     } catch (e) {
-      console.error("Knowledge retrieval error:", e);
-      try {
-        const fundIds = fundsToUse.map(f => f.id);
+      console.warn("[Intake AI] Embedding similarity unavailable, using text-only fund context:", (e as Error).message);
+    }
+
+    try {
+      const fundsNeedingKnowledge = fundIds.filter(id => !knowledgeByFund[id] || knowledgeByFund[id].length === 0);
+      if (fundsNeedingKnowledge.length > 0) {
         const fallbackRows = await db.select({
           fundId: fundKnowledgeEntries.fundId,
           content: fundKnowledgeEntries.content,
           category: fundKnowledgeEntries.category,
         }).from(fundKnowledgeEntries)
-          .where(inArray(fundKnowledgeEntries.fundId, fundIds));
+          .where(inArray(fundKnowledgeEntries.fundId, fundsNeedingKnowledge));
         for (const row of fallbackRows) {
           if (!knowledgeByFund[row.fundId]) knowledgeByFund[row.fundId] = [];
           if (knowledgeByFund[row.fundId].length < 8) {
             knowledgeByFund[row.fundId].push(`[${row.category}] ${row.content}`);
           }
         }
-      } catch (e2) {
-        console.error("Knowledge fallback retrieval error:", e2);
       }
+    } catch (e2) {
+      console.error("Knowledge fallback retrieval error:", e2);
     }
   }
 
   const rankedFunds = [...fundsToUse].sort((a, b) => {
     const scoreA = fundSimilarityScores[a.id] || 0;
     const scoreB = fundSimilarityScores[b.id] || 0;
-    return scoreB - scoreA;
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    const aHasKnowledge = (knowledgeByFund[a.id]?.length || 0) > 0 ? 1 : 0;
+    const bHasKnowledge = (knowledgeByFund[b.id]?.length || 0) > 0 ? 1 : 0;
+    return bHasKnowledge - aHasKnowledge;
   });
+
+  console.log(`[Intake AI] Fund context: embeddings=${embeddingsAvailable}, knowledge_funds=${Object.keys(knowledgeByFund).length}/${fundsToUse.length}`);
 
   const userMessage = JSON.stringify({
     deal: structuredDeal,
-    funds: rankedFunds.map(f => ({
-      fund_id: f.id, fund_name: f.fundName,
-      ltv_min: f.ltvMin, ltv_max: f.ltvMax, ltc_min: f.ltcMin, ltc_max: f.ltcMax,
-      loan_amount_min: f.loanAmountMin, loan_amount_max: f.loanAmountMax,
-      interest_rate_min: f.interestRateMin, interest_rate_max: f.interestRateMax,
-      min_dscr: f.minDscr, min_credit_score: f.minCreditScore,
-      recourse_type: f.recourseType,
-      allowed_states: f.allowedStates, allowed_asset_types: f.allowedAssetTypes,
-      description: f.fundDescription || null,
-      description_similarity: fundSimilarityScores[f.id] !== undefined
-        ? Math.round(fundSimilarityScores[f.id] * 100) / 100 : null,
-      knowledge: knowledgeByFund[f.id]?.slice(0, 8) || [],
-    })),
+    funds: rankedFunds.map(f => {
+      const fundContext: string[] = [];
+      if (f.fundDescription) fundContext.push(`Description: ${f.fundDescription}`);
+      if (f.allowedAssetTypes?.length) fundContext.push(`Asset types: ${f.allowedAssetTypes.join(", ")}`);
+      if (f.allowedStates?.length) {
+        fundContext.push(`States: ${f.allowedStates.length >= 45 ? "Nationwide" : f.allowedStates.join(", ")}`);
+      }
+      if (f.loanAmountMin || f.loanAmountMax) {
+        fundContext.push(`Loan range: $${(f.loanAmountMin || 0).toLocaleString()} - $${(f.loanAmountMax || 0).toLocaleString()}`);
+      }
+      if (f.ltvMax) fundContext.push(`Max LTV: ${f.ltvMax}%`);
+      if (f.minDscr) fundContext.push(`Min DSCR: ${f.minDscr}x`);
+      if (f.recourseType) fundContext.push(`Recourse: ${f.recourseType}`);
+      if (f.interestRateMin || f.interestRateMax) {
+        fundContext.push(`Rate: ${f.interestRateMin || '?'}% - ${f.interestRateMax || '?'}%`);
+      }
+
+      return {
+        fund_id: f.id, fund_name: f.fundName,
+        ltv_min: f.ltvMin, ltv_max: f.ltvMax, ltc_min: f.ltcMin, ltc_max: f.ltcMax,
+        loan_amount_min: f.loanAmountMin, loan_amount_max: f.loanAmountMax,
+        interest_rate_min: f.interestRateMin, interest_rate_max: f.interestRateMax,
+        min_dscr: f.minDscr, min_credit_score: f.minCreditScore,
+        recourse_type: f.recourseType,
+        allowed_states: f.allowedStates, allowed_asset_types: f.allowedAssetTypes,
+        description: f.fundDescription || null,
+        fund_summary: fundContext.join(" | "),
+        description_similarity: fundSimilarityScores[f.id] !== undefined
+          ? Math.round(fundSimilarityScores[f.id] * 100) / 100 : null,
+        knowledge: knowledgeByFund[f.id]?.slice(0, 8) || [],
+      };
+    }),
   });
 
   const agentFn = async () => {
