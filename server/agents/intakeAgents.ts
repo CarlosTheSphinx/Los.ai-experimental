@@ -183,7 +183,7 @@ function normalizeAgent3Result(result: any): any {
 async function agent1ValidateAndStructure(deal: any, documents: any[], sessionId?: string): Promise<any> {
   const config = await getAgentConfig("intake_validator");
   const basePrompt = config?.systemPrompt || DEFAULT_PROMPTS.validator;
-  const systemPrompt = basePrompt + JSON_FORMAT_SUFFIX.validator;
+  const systemPrompt = basePrompt + "\n\n" + AI_REFERENCE_KEY + JSON_FORMAT_SUFFIX.validator;
   const model = config?.modelName || "gpt-4o-mini";
   const temperature = config?.temperature ?? 0.3;
 
@@ -248,7 +248,7 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
       (f.allowedStates && f.allowedStates.length > 0);
     if (!hasAnyCriteria) return true;
 
-    const fundLoanTypes = (f as any).loanTypes as string[] | null;
+    const fundLoanTypes = f.loanTypes;
     if (dealLoanType && fundLoanTypes && fundLoanTypes.length > 0) {
       if (!fundLoanTypes.includes(dealLoanType)) return false;
     }
@@ -348,7 +348,7 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
     deal: structuredDeal,
     funds: rankedFunds.map(f => {
       const fundContext: string[] = [];
-      const fundLoanTypes = (f as any).loanTypes as string[] | null;
+      const fundLoanTypes = f.loanTypes;
       if (fundLoanTypes && fundLoanTypes.length > 0) fundContext.push(`Loan types: ${fundLoanTypes.join(", ")}`);
       if (f.loanStrategy) fundContext.push(`Loan strategy: ${f.loanStrategy}`);
       if (f.fundDescription) fundContext.push(`Description: ${f.fundDescription}`);
@@ -368,7 +368,7 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
 
       return {
         fund_id: f.id, fund_name: f.fundName,
-        loan_types: (f as any).loanTypes || null,
+        loan_types: f.loanTypes || null,
         loan_strategy: f.loanStrategy || null,
         ltv_min: f.ltvMin, ltv_max: f.ltvMax, ltc_min: f.ltcMin, ltc_max: f.ltcMax,
         loan_amount_min: f.loanAmountMin, loan_amount_max: f.loanAmountMax,

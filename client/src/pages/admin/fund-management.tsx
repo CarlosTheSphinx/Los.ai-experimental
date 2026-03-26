@@ -94,7 +94,7 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
     allowedStates: (fund?.allowedStates || []) as string[],
     allowedAssetTypes: (fund?.allowedAssetTypes || []) as string[],
     loanStrategy: fund?.loanStrategy || "",
-    loanTypes: ((fund as any)?.loanTypes || []) as string[],
+    loanTypes: (fund?.loanTypes || []) as string[],
     fundDescription: fund?.fundDescription || "",
     isActive: fund?.isActive ?? true,
   });
@@ -1448,13 +1448,13 @@ export function FundManagementContent() {
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
                             <span className="text-[16px] font-medium text-blue-600" data-testid={`fund-name-${fund.id}`}>{fund.fundName}</span>
-                            {Array.isArray((fund as any).loanTypes) && (fund as any).loanTypes.length > 0 ? (
+                            {Array.isArray(fund.loanTypes) && fund.loanTypes.length > 0 ? (
                               <>
-                                {(fund as any).loanTypes.slice(0, 3).map((lt: string) => (
+                                {fund.loanTypes.slice(0, 3).map((lt: string) => (
                                   <Badge key={lt} variant="outline" className="text-[10px] px-1.5 py-0 text-blue-400 border-blue-500/30" data-testid={`fund-loantype-${fund.id}-${lt}`}>{lt}</Badge>
                                 ))}
-                                {(fund as any).loanTypes.length > 3 && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-slate-400 border-slate-600">+{(fund as any).loanTypes.length - 3}</Badge>
+                                {fund.loanTypes.length > 3 && (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-slate-400 border-slate-600">+{fund.loanTypes.length - 3}</Badge>
                                 )}
                               </>
                             ) : fund.loanStrategy ? (
@@ -1669,14 +1669,14 @@ export function FundManagementContent() {
           >
             <ToggleLeft className="h-3.5 w-3.5 mr-1" /> Deactivate
           </Button>
-          <Select onValueChange={(val) => bulkActionMut.mutate({ ids: Array.from(selectedIds), action: "update", data: { loanStrategy: val || null } })}>
-            <SelectTrigger className="w-[140px] h-8 text-[13px] bg-transparent border-slate-500/40 text-slate-300" data-testid="bulk-strategy-select">
-              <SelectValue placeholder="Set Strategy" />
+          <Select onValueChange={(val) => bulkActionMut.mutate({ ids: Array.from(selectedIds), action: "update", data: { loanTypes: [val] } })}>
+            <SelectTrigger className="w-[160px] h-8 text-[13px] bg-transparent border-slate-500/40 text-slate-300" data-testid="bulk-loantype-select">
+              <SelectValue placeholder="Set Loan Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Bridge">Bridge</SelectItem>
-              <SelectItem value="Permanent">Permanent</SelectItem>
-              <SelectItem value="Both">Both</SelectItem>
+              {STANDARD_LOAN_TYPES.map(lt => (
+                <SelectItem key={lt.value} value={lt.value}>{lt.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <div className="h-5 w-px bg-slate-600" />
