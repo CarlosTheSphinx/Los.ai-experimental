@@ -22,7 +22,7 @@ The application is built using a modern web stack: React 18 with TypeScript for 
 **Database Schema Highlights**: Manages users, pricing requests, quotes, documents, e-signatures, audit logs, projects (deals), tasks, activities, system settings, partners, loan programs, message threads, commercial loan submissions, and the commercial intake system (funds, fund_documents, fund_knowledge_entries, intake_deals, intake_deal_documents, intake_deal_tasks, intake_document_rules, intake_ai_analysis, intake_deal_status_history, intake_deal_fund_submissions).
 
 **Key Architectural Decisions:**
--   **Multi-Tenancy**: Ensures full data isolation using `tenantId`.
+-   **Multi-Tenancy**: Proper `tenants` table (id=1 is Sphinx Capital). All users have `tenant_id` referencing `tenants.id`. All 12 data tables (`funds`, `projects`, `intake_deals`, `loan_programs`, `partners`, `pricing_requests`, `admin_tasks`, `commercial_form_config`, `intake_document_rules`, `quote_pdf_templates`, `system_settings`, `team_chats`) reference `tenants.id` instead of `users.id`. `getTenantId()` (in `server/utils/tenant.ts`) simply returns `user.tenantId` — no recursive lookups. The auth middleware (`server/auth.ts`) loads `tenantId` onto `req.user` for all authenticated requests.
 -   **Consolidated Role System**: A single `role` field drives all permission checks, navigation routing, and portal access (`super_admin`, `lender`, `processor`, `broker`, `borrower`).
 -   **Google Drive Integration**: Automates folder creation and document synchronization per project.
 -   **Multi-Property Support**: Handles multiple properties per loan with auto-calculated LTV and DSCR.

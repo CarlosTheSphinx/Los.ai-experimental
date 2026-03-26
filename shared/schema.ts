@@ -29,7 +29,20 @@ const vector = customType<{ data: number[]; driverParam: string }>({
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table for multi-tenancy
+export const tenants = pgTable("tenants", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 100 }).unique().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  settings: jsonb("settings"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTenantSchema = createInsertSchema(tenants).omit({ id: true, createdAt: true, updatedAt: true });
+export type Tenant = typeof tenants.$inferSelect;
+export type InsertTenant = z.infer<typeof insertTenantSchema>;
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).unique().notNull(),
@@ -82,6 +95,7 @@ export const users = pgTable("users", {
   accountLockedUntil: timestamp("account_locked_until"),
   passwordExpiresAt: timestamp("password_expires_at"),
   tokenVersion: integer("token_version").default(0).notNull(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -98,7 +112,7 @@ export const pricingRequests = pgTable("pricing_requests", {
   requestData: jsonb("request_data").notNull(),
   responseData: jsonb("response_data"),
   status: text("status").notNull(), // 'pending', 'success', 'error'
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -115,7 +129,7 @@ export const partners = pgTable("partners", {
   ), // beginner, intermediate, experienced
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -554,7 +568,7 @@ export const projects = pgTable("projects", {
   ),
   driveSyncError: text("drive_sync_error"),
 
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
 
   aiReviewMode: varchar("ai_review_mode", { length: 20 }).default("manual"),
   aiReviewIntervalMinutes: integer("ai_review_interval_minutes"),
@@ -886,7 +900,7 @@ export const systemSettings = pgTable("system_settings", {
   settingKey: varchar("setting_key", { length: 100 }).notNull(),
   settingValue: text("setting_value").notNull(),
   settingDescription: text("setting_description"),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   updatedBy: integer("updated_by").references(() => users.id),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -925,7 +939,7 @@ export const adminTasks = pgTable("admin_tasks", {
 
   internalNotes: text("internal_notes"),
 
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1046,7 +1060,7 @@ export const loanPrograms = pgTable("loan_programs", {
   createdBy: integer("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -3702,7 +3716,7 @@ export const teamChats = pgTable("team_chats", {
   name: varchar("name", { length: 255 }),
   isGroup: boolean("is_group").default(false).notNull(),
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
-  tenantId: integer("tenant_id"),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -4043,7 +4057,7 @@ export interface QuotePdfTemplateConfig {
 
 export const quotePdfTemplates = pgTable("quote_pdf_templates", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 100 }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   name: varchar("name", { length: 255 }).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   config: jsonb("config").notNull().$type<QuotePdfTemplateConfig>(),
@@ -4061,7 +4075,7 @@ export type InsertQuotePdfTemplate = z.infer<typeof insertQuotePdfTemplateSchema
 
 export const funds = pgTable("funds", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   fundName: varchar("fund_name", { length: 255 }).notNull(),
   providerName: varchar("provider_name", { length: 255 }),
   website: varchar("website", { length: 500 }),
@@ -4134,7 +4148,7 @@ export type InsertFundKnowledgeEntry = z.infer<typeof insertFundKnowledgeEntrySc
 
 export const intakeDeals = pgTable("intake_deals", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   brokerId: integer("broker_id").references(() => users.id, { onDelete: "set null" }),
   dealName: varchar("deal_name", { length: 255 }),
   loanAmount: integer("loan_amount"),
@@ -4208,7 +4222,7 @@ export type InsertIntakeDealDocument = z.infer<typeof insertIntakeDealDocumentSc
 
 export const intakeDocumentRules = pgTable("intake_document_rules", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   ruleName: varchar("rule_name", { length: 255 }).notNull(),
   conditions: jsonb("conditions").$type<Record<string, any>>().notNull(),
   requiredDocuments: jsonb("required_documents").$type<string[]>().notNull(),
@@ -4267,7 +4281,7 @@ export type IntakeDealFundSubmission = typeof intakeDealFundSubmissions.$inferSe
 
 export const commercialFormConfig = pgTable("commercial_form_config", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   fieldKey: varchar("field_key", { length: 100 }).notNull(),
   fieldLabel: varchar("field_label", { length: 255 }).notNull(),
   section: varchar("section", { length: 100 }).notNull(),

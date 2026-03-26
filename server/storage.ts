@@ -177,9 +177,9 @@ export interface IStorage {
   deleteMessageTemplate(id: number, userId: number): Promise<boolean>;
 
   // Quote PDF Templates
-  getQuotePdfTemplates(tenantId?: string): Promise<QuotePdfTemplate[]>;
+  getQuotePdfTemplates(tenantId?: number): Promise<QuotePdfTemplate[]>;
   getQuotePdfTemplateById(id: number): Promise<QuotePdfTemplate | undefined>;
-  getDefaultQuotePdfTemplate(tenantId?: string): Promise<QuotePdfTemplate | undefined>;
+  getDefaultQuotePdfTemplate(tenantId?: number): Promise<QuotePdfTemplate | undefined>;
   createQuotePdfTemplate(data: InsertQuotePdfTemplate): Promise<QuotePdfTemplate>;
   updateQuotePdfTemplate(id: number, data: Partial<InsertQuotePdfTemplate>): Promise<QuotePdfTemplate | undefined>;
   deleteQuotePdfTemplate(id: number): Promise<boolean>;
@@ -1681,7 +1681,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getQuotePdfTemplates(tenantId?: string): Promise<QuotePdfTemplate[]> {
+  async getQuotePdfTemplates(tenantId?: number): Promise<QuotePdfTemplate[]> {
     if (tenantId) {
       return await db.select().from(quotePdfTemplates)
         .where(or(eq(quotePdfTemplates.tenantId, tenantId), isNull(quotePdfTemplates.tenantId)))
@@ -1695,7 +1695,7 @@ export class DatabaseStorage implements IStorage {
     return template;
   }
 
-  async getDefaultQuotePdfTemplate(tenantId?: string): Promise<QuotePdfTemplate | undefined> {
+  async getDefaultQuotePdfTemplate(tenantId?: number): Promise<QuotePdfTemplate | undefined> {
     const conditions = [eq(quotePdfTemplates.isDefault, true)];
     if (tenantId) {
       conditions.push(eq(quotePdfTemplates.tenantId, tenantId));

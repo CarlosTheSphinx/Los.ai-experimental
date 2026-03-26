@@ -1358,15 +1358,15 @@ export async function registerRoutes(
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       const templateId = req.query.templateId ? parseInt(req.query.templateId as string) : null;
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
-      const userTenantId1 = await getTenantId(req.user!);
+      const userTenantId1 = getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(templateId);
-        if (template && (template.tenantId === null || userTenantId1 === null || template.tenantId === String(userTenantId1))) {
+        if (template && (template.tenantId === null || userTenantId1 === null || template.tenantId === userTenantId1)) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId1 != null ? String(userTenantId1) : undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId1 ?? undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1462,7 +1462,7 @@ export async function registerRoutes(
         let templateConfig = DEFAULT_TEMPLATE_CONFIG;
         if (templateId) {
           const template = await storage.getQuotePdfTemplateById(templateId);
-          const uTid = await getTenantId(req.user!);
+          const uTid = getTenantId(req.user!);
           if (template && (template.tenantId === null || uTid === null || template.tenantId === String(uTid))) {
             templateConfig = template.config;
           }
@@ -1602,15 +1602,15 @@ export async function registerRoutes(
       const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
-      const userTenantId3 = await getTenantId(req.user!);
+      const userTenantId3 = getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(parseInt(templateId));
-        if (template && (template.tenantId === null || userTenantId3 === null || template.tenantId === String(userTenantId3))) {
+        if (template && (template.tenantId === null || userTenantId3 === null || template.tenantId === userTenantId3)) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId3 != null ? String(userTenantId3) : undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId3 ?? undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1640,7 +1640,7 @@ export async function registerRoutes(
   // ==================== QUOTE PDF TEMPLATES ====================
   app.get('/api/quote-pdf-templates', authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const tId = await getTenantId(req.user!);
+      const tId = getTenantId(req.user!);
       const templates = await storage.getQuotePdfTemplates(tId != null ? String(tId) : undefined);
       res.json(templates);
     } catch (error) {
@@ -1655,7 +1655,7 @@ export async function registerRoutes(
         res.status(403).json({ success: false, error: 'Admin access required' });
         return;
       }
-      const tId = await getTenantId(req.user!);
+      const tId = getTenantId(req.user!);
       const data = { ...req.body, tenantId: tId != null ? String(tId) : null };
       const template = await storage.createQuotePdfTemplate(data);
       res.json(template);
@@ -1677,7 +1677,7 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      const tId = await getTenantId(req.user!);
+      const tId = getTenantId(req.user!);
       if (tId !== null && existing.tenantId && existing.tenantId !== String(tId)) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
@@ -1702,7 +1702,7 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      const tId = await getTenantId(req.user!);
+      const tId = getTenantId(req.user!);
       if (tId !== null && existing.tenantId && existing.tenantId !== String(tId)) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
@@ -3598,7 +3598,7 @@ export async function registerRoutes(
 
       let projectsList: any[];
       if (isAdminRole) {
-        const tenantId = await getTenantId(req.user!);
+        const tenantId = getTenantId(req.user!);
         projectsList = await storage.getAllProjects({
           status: status as string | undefined,
           tenantId,
@@ -3746,7 +3746,7 @@ export async function registerRoutes(
       const projectNumber = await storage.generateProjectNumber();
       const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
       
-      const userTenantId = await getTenantId(req.user!);
+      const userTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId,
         projectName,
@@ -5805,7 +5805,7 @@ export async function registerRoutes(
   // Admin Dashboard Stats
   app.get('/api/admin/dashboard', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const stats = await storage.getAdminDashboardStats(tenantId);
       const recentActivity = await storage.getRecentAdminActivity(10);
       
@@ -6932,7 +6932,7 @@ export async function registerRoutes(
   // Admin - Pipeline grouped by program (for Kanban + pipeline summary views)
   app.get('/api/admin/pipeline', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const allProjects = await storage.getAllProjects({ status: 'active', tenantId });
 
       const projectsWithStages = await Promise.all(allProjects.map(async (p) => {
@@ -7204,7 +7204,7 @@ export async function registerRoutes(
       const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const projectsList = await storage.getAllProjects({ status, stage, userId, tenantId });
 
       // Batch-fetch all unique owner IDs to avoid N+1 queries
@@ -7237,7 +7237,7 @@ export async function registerRoutes(
 
   app.get('/api/admin/portal-preview-deals', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const deals = await db.select({
         id: projects.id,
         dealName: projects.projectName,
@@ -7947,7 +7947,7 @@ export async function registerRoutes(
   // Admin - System settings
   app.get('/api/admin/settings', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const settings = await storage.getAllSettings(tenantId);
       res.json({ settings });
     } catch (error) {
@@ -7970,7 +7970,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Value is required' });
       }
 
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const setting = await storage.upsertSetting(key, value, description || null, req.user!.id, tenantId);
       
       res.json({ setting });
@@ -7983,7 +7983,7 @@ export async function registerRoutes(
   app.delete('/api/admin/settings/:key', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { key } = req.params;
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       await storage.deleteSetting(key, tenantId);
       res.json({ success: true });
     } catch (error) {
@@ -8644,7 +8644,7 @@ export async function registerRoutes(
         ? new Date(targetCloseDate) 
         : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
       
-      const adminTenantId = await getTenantId(req.user!);
+      const adminTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId: req.user!.id,
         projectName: `${borrowerName} - ${propertyAddress}`,
@@ -11210,7 +11210,7 @@ export async function registerRoutes(
     try {
       const search = req.query.search as string | undefined;
       
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const partnerConditions = [];
       if (tenantId != null) {
         partnerConditions.push(eq(partners.tenantId, tenantId));
@@ -11534,7 +11534,7 @@ export async function registerRoutes(
 
       let scopeFilter;
       if (!isSuperAdmin) {
-        const userTenantId = await getTenantId(req.user!);
+        const userTenantId = getTenantId(req.user!);
         if (userTenantId) {
           scopeFilter = or(
             eq(loanPrograms.tenantId, userTenantId),
@@ -14098,7 +14098,7 @@ If the user provides specific criteria, extract as many rules as you can from th
       const isBroker = user?.role === 'broker';
 
       if (!isSuperAdmin) {
-        const resolvedTenantId = await getTenantId({ id: user!.id, role: user!.role, invitedBy: user!.invitedBy ?? undefined });
+        const resolvedTenantId = getTenantId({ id: user!.id, role: user!.role, tenantId: user!.tenantId ?? null });
 
         if (isBorrower) {
           const collectedTenantIds = new Set<number>();
@@ -18289,7 +18289,7 @@ If the user provides specific criteria, extract as many rules as you can from th
         if (quoteUser?.phone) borrowerPhone = quoteUser.phone;
       }
 
-      const envelopeTenantId = await getTenantId(req.user!);
+      const envelopeTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId: quote.userId || envelope.createdBy!,
         projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,

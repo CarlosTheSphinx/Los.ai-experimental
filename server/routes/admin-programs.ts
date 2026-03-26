@@ -24,7 +24,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   async function resolveUserTenantId(userId: number): Promise<number | null> {
     const user = await storage.getUserById(userId);
     if (!user) return null;
-    return getTenantId({ id: user.id, role: user.role, invitedBy: user.invitedBy ?? undefined });
+    return getTenantId({ id: user.id, role: user.role, tenantId: user.tenantId ?? null });
   }
 
   async function verifyProgramOwnership(req: AuthRequest, res: Response, programId: number): Promise<boolean> {
