@@ -5865,11 +5865,19 @@ export async function registerRoutes(
       }
 
       if (source === 'commercial') {
+        const [task] = await db.select().from(intakeDealTasks).where(eq(intakeDealTasks.id, id));
+        if (!task) return res.status(404).json({ error: 'Commercial task not found' });
+        const { intakeDeals } = await import('@shared/schema');
+        const [deal] = await db.select().from(intakeDeals).where(eq(intakeDeals.id, task.dealId));
+        if (!deal) return res.status(404).json({ error: 'Deal not found' });
+        const userTenantId = req.user?.tenantId ?? req.user?.id;
+        if (deal.tenantId && userTenantId && deal.tenantId !== userTenantId && req.user?.role !== 'super_admin') {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         const [updated] = await db.update(intakeDealTasks)
           .set(updates)
           .where(eq(intakeDealTasks.id, id))
           .returning();
-        if (!updated) return res.status(404).json({ error: 'Commercial task not found' });
         return res.json({ ...updated, source: 'commercial' });
       }
       

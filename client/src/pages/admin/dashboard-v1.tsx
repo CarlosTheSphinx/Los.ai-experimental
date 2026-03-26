@@ -147,11 +147,11 @@ function TaskBoard() {
       });
       toast({ title: "Error", description: "Failed to complete task", variant: "destructive" });
     },
-    onSettled: (_data, _err, taskId) => {
+    onSettled: (_data, _err, vars) => {
       setTimeout(() => {
         setCompletingIds(prev => {
           const next = new Set(prev);
-          next.delete(taskId);
+          next.delete(vars?.taskId ?? 0);
           return next;
         });
       }, 500);
