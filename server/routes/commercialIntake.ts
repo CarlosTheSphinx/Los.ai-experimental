@@ -6,6 +6,7 @@ import {
   intakeAiAnalysis, intakeDealStatusHistory, intakeDealFundSubmissions,
   insertFundSchema, insertIntakeDealSchema, insertIntakeDocumentRuleSchema,
   commercialFormConfig,
+  fundDocuments, fundKnowledgeEntries,
   projects, users,
   type Fund, type IntakeDeal, type IntakeDocumentRule, type IntakeAiAnalysis,
   type IntakeDealStatusHistory, type IntakeDealFundSubmission, type IntakeDealDocument,
@@ -1124,6 +1125,420 @@ router.delete("/api/commercial/form-config/:id", async (req: Request, res: Respo
       .returning();
 
     if (!deleted) return res.status(404).json({ error: "Field not found or cannot be deleted (system fields cannot be removed)" });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const fundFileUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    const allowedExts = ['.xlsx', '.xls', '.csv'];
+    const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
+    cb(null, allowedExts.includes(ext));
+  },
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+const COLUMN_ALIASES: Record<string, string[]> = {
+  fundName: ["fund name", "fund_name", "fundname", "name", "lender", "lender name", "lender_name"],
+  providerName: ["provider", "provider name", "provider_name", "company"],
+  contactEmail: ["email", "contact email", "contact_email", "e-mail"],
+  contactPhone: ["phone", "contact phone", "contact_phone", "telephone"],
+  ltvMin: ["ltv min", "ltv_min", "min ltv", "min_ltv", "ltv minimum"],
+  ltvMax: ["ltv max", "ltv_max", "max ltv", "max_ltv", "ltv maximum"],
+  ltcMin: ["ltc min", "ltc_min", "min ltc", "min_ltc"],
+  ltcMax: ["ltc max", "ltc_max", "max ltc", "max_ltc"],
+  loanAmountMin: ["loan min", "loan_min", "min loan", "min_loan", "loan amount min", "loan_amount_min", "min loan amount"],
+  loanAmountMax: ["loan max", "loan_max", "max loan", "max_loan", "loan amount max", "loan_amount_max", "max loan amount"],
+  interestRateMin: ["rate min", "rate_min", "min rate", "interest rate min", "interest_rate_min"],
+  interestRateMax: ["rate max", "rate_max", "max rate", "interest rate max", "interest_rate_max"],
+  termMin: ["term min", "term_min", "min term"],
+  termMax: ["term max", "term_max", "max term"],
+  recourseType: ["recourse", "recourse type", "recourse_type"],
+  minDscr: ["dscr", "min dscr", "min_dscr", "dscr min", "minimum dscr"],
+  minCreditScore: ["credit score", "fico", "min credit", "min_credit_score", "min credit score"],
+  prepaymentTerms: ["prepayment", "prepayment terms", "prepayment_terms", "prepay"],
+  closingTimeline: ["closing", "closing timeline", "closing_timeline", "close timeline"],
+  originationFeeMin: ["origination fee min", "origination_fee_min", "fee min"],
+  originationFeeMax: ["origination fee max", "origination_fee_max", "fee max"],
+  allowedStates: ["states", "allowed states", "allowed_states", "state"],
+  allowedAssetTypes: ["asset types", "allowed asset types", "allowed_asset_types", "asset type", "property type", "property types"],
+  fundDescription: ["description", "notes", "fund description", "fund_description"],
+  isActive: ["active", "is active", "is_active", "status"],
+};
+
+function mapColumnName(header: string): string | null {
+  const normalized = header.toLowerCase().trim().replace(/[\s_-]+/g, " ");
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    if (aliases.includes(normalized) || field.toLowerCase() === normalized) {
+      return field;
+    }
+  }
+  return null;
+}
+
+function parseRowValue(field: string, value: any): any {
+  if (value === null || value === undefined || value === "") return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  const floatFields = ["ltvMin", "ltvMax", "ltcMin", "ltcMax", "interestRateMin", "interestRateMax", "minDscr", "originationFeeMin", "originationFeeMax"];
+  const intFields = ["loanAmountMin", "loanAmountMax", "termMin", "termMax", "minCreditScore"];
+  const arrayFields = ["allowedStates", "allowedAssetTypes"];
+
+  if (floatFields.includes(field)) return parseFloat(str) || null;
+  if (intFields.includes(field)) return parseInt(str) || null;
+  if (arrayFields.includes(field)) {
+    if (Array.isArray(value)) return value;
+    return str.split(/[,;|]+/).map((s: string) => s.trim()).filter(Boolean);
+  }
+  if (field === "isActive") {
+    const lower = str.toLowerCase();
+    return lower === "false" || lower === "no" || lower === "0" || lower === "inactive" ? false : true;
+  }
+  return str;
+}
+
+router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"), async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.read(file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    if (rawData.length < 2) return res.status(400).json({ error: "File must have a header row and at least one data row" });
+
+    const headers = (rawData[0] as string[]).map(h => String(h || "").trim());
+    const columnMapping: Record<number, string> = {};
+    const unmappedColumns: string[] = [];
+
+    headers.forEach((h, i) => {
+      const mapped = mapColumnName(h);
+      if (mapped) columnMapping[i] = mapped;
+      else if (h) unmappedColumns.push(h);
+    });
+
+    const rows: any[] = [];
+    const errors: { row: number; message: string }[] = [];
+
+    for (let r = 1; r < rawData.length; r++) {
+      const rowData = rawData[r] as any[];
+      if (!rowData || rowData.every(c => c === null || c === undefined || c === "")) continue;
+
+      const parsed: Record<string, any> = {};
+      for (const [colIdx, field] of Object.entries(columnMapping)) {
+        parsed[field] = parseRowValue(field, rowData[parseInt(colIdx)]);
+      }
+
+      if (!parsed.fundName) {
+        errors.push({ row: r + 1, message: "Missing fund name" });
+        continue;
+      }
+
+      rows.push({ rowNumber: r + 1, data: parsed });
+    }
+
+    const tenantId = await getTenantId(req);
+    const conditions = [];
+    if (tenantId) conditions.push(eq(funds.tenantId, tenantId));
+    const existingFunds = await db.select({ fundName: funds.fundName, id: funds.id })
+      .from(funds)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const existingNames = new Set(existingFunds.map(f => f.fundName.toLowerCase()));
+
+    const duplicates = rows.filter(r => existingNames.has(r.data.fundName.toLowerCase()));
+
+    res.json({
+      totalRows: rows.length,
+      validRows: rows.length - errors.length,
+      errors,
+      duplicates: duplicates.map(d => ({ rowNumber: d.rowNumber, fundName: d.data.fundName })),
+      columnMapping: Object.entries(columnMapping).map(([colIdx, field]) => ({ column: headers[parseInt(colIdx)], mappedTo: field })),
+      unmappedColumns,
+      preview: rows.slice(0, 10),
+    });
+  } catch (error: any) {
+    console.error("Bulk preview error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    const duplicateAction = req.body?.duplicateAction || "skip";
+
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.read(file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    if (rawData.length < 2) return res.status(400).json({ error: "File must have data rows" });
+
+    const headers = (rawData[0] as string[]).map(h => String(h || "").trim());
+    const columnMapping: Record<number, string> = {};
+    headers.forEach((h, i) => {
+      const mapped = mapColumnName(h);
+      if (mapped) columnMapping[i] = mapped;
+    });
+
+    const tenantId = await getTenantId(req);
+    const conditions = [];
+    if (tenantId) conditions.push(eq(funds.tenantId, tenantId));
+    const existingFunds = await db.select({ fundName: funds.fundName, id: funds.id })
+      .from(funds)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const existingMap = new Map(existingFunds.map(f => [f.fundName.toLowerCase(), f.id]));
+
+    let created = 0, updated = 0, skipped = 0, failed = 0;
+
+    for (let r = 1; r < rawData.length; r++) {
+      const rowData = rawData[r] as any[];
+      if (!rowData || rowData.every(c => c === null || c === undefined || c === "")) continue;
+
+      const parsed: Record<string, any> = {};
+      for (const [colIdx, field] of Object.entries(columnMapping)) {
+        parsed[field] = parseRowValue(field, rowData[parseInt(colIdx)]);
+      }
+
+      if (!parsed.fundName) { failed++; continue; }
+
+      try {
+        const existingId = existingMap.get(parsed.fundName.toLowerCase());
+        if (existingId) {
+          if (duplicateAction === "update") {
+            await db.update(funds).set({ ...parsed, updatedAt: new Date() }).where(eq(funds.id, existingId));
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          await db.insert(funds).values({ ...parsed, tenantId });
+          created++;
+        }
+      } catch (e: any) {
+        console.error(`Row ${r + 1} import error:`, e.message);
+        failed++;
+      }
+    }
+
+    res.json({ created, updated, skipped, failed, total: created + updated + skipped + failed });
+  } catch (error: any) {
+    console.error("Bulk import error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+async function verifyFundTenant(req: Request, fundId: number): Promise<boolean> {
+  const tenantId = await getTenantId(req);
+  if (!tenantId) return true;
+  const [fund] = await db.select({ tenantId: funds.tenantId }).from(funds).where(eq(funds.id, fundId)).limit(1);
+  return fund ? (fund.tenantId === tenantId || fund.tenantId === null) : false;
+}
+
+router.get("/api/commercial/funds/:fundId/knowledge", async (req: Request, res: Response) => {
+  try {
+    const fundId = safeParseId(req.params.fundId);
+    if (!fundId) return res.status(400).json({ error: "Invalid fund ID" });
+    if (!(await verifyFundTenant(req, fundId))) return res.status(403).json({ error: "Access denied" });
+    const entries = await db.select().from(fundKnowledgeEntries)
+      .where(eq(fundKnowledgeEntries.fundId, fundId))
+      .orderBy(desc(fundKnowledgeEntries.createdAt));
+    res.json(entries);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/commercial/funds/:fundId/knowledge", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const fundId = safeParseId(req.params.fundId);
+    if (!fundId) return res.status(400).json({ error: "Invalid fund ID" });
+    if (!(await verifyFundTenant(req, fundId))) return res.status(403).json({ error: "Access denied" });
+    const { content, category } = req.body;
+    if (!content) return res.status(400).json({ error: "Content is required" });
+    const [entry] = await db.insert(fundKnowledgeEntries).values({
+      fundId,
+      sourceType: "manual",
+      content,
+      category: category || "general",
+    }).returning();
+    res.status(201).json(entry);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch("/api/commercial/funds/knowledge/:id", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = safeParseId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid ID" });
+    const [updated] = await db.update(fundKnowledgeEntries)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(fundKnowledgeEntries.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Entry not found" });
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete("/api/commercial/funds/knowledge/:id", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = safeParseId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid ID" });
+    const result = await db.delete(fundKnowledgeEntries).where(eq(fundKnowledgeEntries.id, id)).returning();
+    if (!result.length) return res.status(404).json({ error: "Entry not found" });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/api/commercial/funds/:fundId/documents", async (req: Request, res: Response) => {
+  try {
+    const fundId = safeParseId(req.params.fundId);
+    if (!fundId) return res.status(400).json({ error: "Invalid fund ID" });
+    if (!(await verifyFundTenant(req, fundId))) return res.status(403).json({ error: "Access denied" });
+    const docs = await db.select().from(fundDocuments)
+      .where(eq(fundDocuments.fundId, fundId))
+      .orderBy(desc(fundDocuments.uploadedAt));
+    res.json(docs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const fundDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+router.post("/api/commercial/funds/:fundId/documents", fundDocUpload.single("file"), async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const fundId = safeParseId(req.params.fundId);
+    if (!fundId) return res.status(400).json({ error: "Invalid fund ID" });
+    if (!(await verifyFundTenant(req, fundId))) return res.status(403).json({ error: "Access denied" });
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const filePath = `fund-documents/${fundId}/${Date.now()}-${file.originalname}`;
+    await objectStorageService.uploadFile(file.buffer, filePath, file.mimetype);
+
+    const [doc] = await db.insert(fundDocuments).values({
+      fundId,
+      fileName: file.originalname,
+      filePath,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      extractionStatus: "pending",
+    }).returning();
+
+    (async () => {
+      try {
+        await db.update(fundDocuments).set({ extractionStatus: "processing" }).where(eq(fundDocuments.id, doc.id));
+
+        const isPdf = (file.mimetype || "").includes("pdf") || file.originalname.toLowerCase().endsWith(".pdf");
+        let textContent = "";
+
+        if (isPdf) {
+          const { extractTextFromPdf } = await import("../agents/documentExtractor");
+          const result = await extractTextFromPdf(file.buffer);
+          textContent = result.text;
+        } else {
+          textContent = file.buffer.toString("utf-8").substring(0, 50000);
+        }
+
+        if (textContent.length > 100 && openai) {
+          const chunks = [];
+          const chunkSize = 6000;
+          for (let i = 0; i < textContent.length; i += chunkSize) {
+            chunks.push(textContent.substring(i, i + chunkSize));
+          }
+
+          for (const chunk of chunks) {
+            try {
+              const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                temperature: 0.2,
+                messages: [
+                  {
+                    role: "system",
+                    content: `You are an expert at extracting knowledge from commercial real estate fund documents. Extract key facts and criteria from the text as a JSON array of objects, each with "content" (a clear factual statement) and "category" (one of: general, rates, terms, eligibility, guidelines). Extract 3-8 entries per chunk. Return only valid JSON array.`
+                  },
+                  { role: "user", content: chunk }
+                ],
+              });
+
+              const raw = response.choices[0]?.message?.content || "[]";
+              const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+              let extracted: any[] = [];
+              try { extracted = JSON.parse(cleaned); } catch {}
+
+              if (Array.isArray(extracted)) {
+                for (const entry of extracted) {
+                  if (entry.content && typeof entry.content === "string") {
+                    await db.insert(fundKnowledgeEntries).values({
+                      fundId,
+                      sourceType: "document_extraction",
+                      sourceDocumentName: file.originalname,
+                      content: entry.content.substring(0, 5000),
+                      category: ["general", "rates", "terms", "eligibility", "guidelines"].includes(entry.category) ? entry.category : "general",
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              console.error("Knowledge extraction chunk error:", e);
+            }
+          }
+        }
+
+        await db.update(fundDocuments).set({ extractionStatus: "completed" }).where(eq(fundDocuments.id, doc.id));
+        console.log(`✅ Fund doc extraction complete for ${file.originalname}`);
+      } catch (e) {
+        console.error("Fund doc extraction failed:", e);
+        await db.update(fundDocuments).set({ extractionStatus: "failed" }).where(eq(fundDocuments.id, doc.id));
+      }
+    })();
+
+    res.status(201).json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete("/api/commercial/funds/documents/:id", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = safeParseId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid ID" });
+    const [doc] = await db.select().from(fundDocuments).where(eq(fundDocuments.id, id));
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    await db.delete(fundKnowledgeEntries).where(
+      and(
+        eq(fundKnowledgeEntries.fundId, doc.fundId),
+        eq(fundKnowledgeEntries.sourceType, "document_extraction"),
+        eq(fundKnowledgeEntries.sourceDocumentName, doc.fileName),
+      )
+    );
+    await db.delete(fundDocuments).where(eq(fundDocuments.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

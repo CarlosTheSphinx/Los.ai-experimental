@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { funds, intakeDeals, intakeAiAnalysis, intakeDealStatusHistory, intakeDealDocuments, agentConfigurations } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { funds, intakeDeals, intakeAiAnalysis, intakeDealStatusHistory, intakeDealDocuments, agentConfigurations, fundKnowledgeEntries } from "@shared/schema";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { OrchestrationTracer } from "../services/orchestrationTracing";
 import OpenAI from "openai";
 import { INTAKE_AGENT_PROMPTS } from "./intakePrompts";
@@ -194,13 +194,53 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
   const model = config?.modelName || "gpt-4o-mini";
   const temperature = config?.temperature ?? 0.3;
 
+  const metrics = structuredDeal.structured_deal?.metrics || structuredDeal.metrics || {};
+  const basicInfo = structuredDeal.structured_deal?.basic_info || structuredDeal.basic_info || {};
+  const dealLtv = metrics.ltv_pct || 0;
+  const dealAmount = basicInfo.loan_amount || 0;
+  const dealState = basicInfo.property_state || "";
+  const dealAsset = basicInfo.asset_type || "";
+
+  const candidateFunds = activeFunds.filter(f => {
+    if (f.ltvMax && dealLtv > f.ltvMax * 1.2) return false;
+    if (f.loanAmountMin && dealAmount < f.loanAmountMin * 0.5) return false;
+    if (f.loanAmountMax && dealAmount > f.loanAmountMax * 2) return false;
+    return true;
+  });
+
+  const fundsToUse = candidateFunds.length > 0 ? candidateFunds : activeFunds;
+
+  let knowledgeByFund: Record<number, string[]> = {};
+  if (fundsToUse.length > 0) {
+    try {
+      const fundIds = fundsToUse.map(f => f.id);
+      const knowledgeRows = await db.select({
+        fundId: fundKnowledgeEntries.fundId,
+        content: fundKnowledgeEntries.content,
+        category: fundKnowledgeEntries.category,
+      }).from(fundKnowledgeEntries)
+        .where(inArray(fundKnowledgeEntries.fundId, fundIds));
+
+      for (const row of knowledgeRows) {
+        if (!knowledgeByFund[row.fundId]) knowledgeByFund[row.fundId] = [];
+        knowledgeByFund[row.fundId].push(`[${row.category}] ${row.content}`);
+      }
+    } catch (e) {
+      console.error("Knowledge retrieval error:", e);
+    }
+  }
+
   const userMessage = JSON.stringify({
     deal: structuredDeal,
-    funds: activeFunds.map(f => ({
+    funds: fundsToUse.map(f => ({
       fund_id: f.id, fund_name: f.fundName,
       ltv_min: f.ltvMin, ltv_max: f.ltvMax, ltc_min: f.ltcMin, ltc_max: f.ltcMax,
       loan_amount_min: f.loanAmountMin, loan_amount_max: f.loanAmountMax,
+      interest_rate_min: f.interestRateMin, interest_rate_max: f.interestRateMax,
+      min_dscr: f.minDscr, min_credit_score: f.minCreditScore,
+      recourse_type: f.recourseType,
       allowed_states: f.allowedStates, allowed_asset_types: f.allowedAssetTypes,
+      knowledge: knowledgeByFund[f.id]?.slice(0, 10) || [],
     })),
   });
 
@@ -242,7 +282,7 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
   };
 
   if (sessionId && OrchestrationTracer.hasSubscribers()) {
-    return OrchestrationTracer.traceAgent("intake_fund_matcher", 1, { funds_count: activeFunds.length }, agentFn, systemPrompt, sessionId);
+    return OrchestrationTracer.traceAgent("intake_fund_matcher", 1, { funds_count: fundsToUse.length, total_funds: activeFunds.length, knowledge_funds: Object.keys(knowledgeByFund).length }, agentFn, systemPrompt, sessionId);
   }
   return agentFn();
 }

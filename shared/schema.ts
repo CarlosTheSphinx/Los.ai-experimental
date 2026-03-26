@@ -4059,6 +4059,17 @@ export const funds = pgTable("funds", {
   ltcMax: real("ltc_max"),
   loanAmountMin: integer("loan_amount_min"),
   loanAmountMax: integer("loan_amount_max"),
+  interestRateMin: real("interest_rate_min"),
+  interestRateMax: real("interest_rate_max"),
+  termMin: integer("term_min"),
+  termMax: integer("term_max"),
+  recourseType: varchar("recourse_type", { length: 50 }),
+  minDscr: real("min_dscr"),
+  minCreditScore: integer("min_credit_score"),
+  prepaymentTerms: varchar("prepayment_terms", { length: 255 }),
+  closingTimeline: varchar("closing_timeline", { length: 100 }),
+  originationFeeMin: real("origination_fee_min"),
+  originationFeeMax: real("origination_fee_max"),
   allowedStates: jsonb("allowed_states").$type<string[]>(),
   allowedAssetTypes: jsonb("allowed_asset_types").$type<string[]>(),
   fundDescription: text("fund_description"),
@@ -4070,6 +4081,36 @@ export const funds = pgTable("funds", {
 export const insertFundSchema = createInsertSchema(funds).omit({ id: true, createdAt: true, updatedAt: true });
 export type Fund = typeof funds.$inferSelect;
 export type InsertFund = z.infer<typeof insertFundSchema>;
+
+export const fundDocuments = pgTable("fund_documents", {
+  id: serial("id").primaryKey(),
+  fundId: integer("fund_id").references(() => funds.id, { onDelete: "cascade" }).notNull(),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  filePath: varchar("file_path", { length: 1000 }).notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  extractionStatus: varchar("extraction_status", { length: 20 }).default("pending").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertFundDocumentSchema = createInsertSchema(fundDocuments).omit({ id: true, uploadedAt: true });
+export type FundDocument = typeof fundDocuments.$inferSelect;
+export type InsertFundDocument = z.infer<typeof insertFundDocumentSchema>;
+
+export const fundKnowledgeEntries = pgTable("fund_knowledge_entries", {
+  id: serial("id").primaryKey(),
+  fundId: integer("fund_id").references(() => funds.id, { onDelete: "cascade" }).notNull(),
+  sourceType: varchar("source_type", { length: 30 }).notNull().default("manual"),
+  sourceDocumentName: varchar("source_document_name", { length: 500 }),
+  content: text("content").notNull(),
+  category: varchar("category", { length: 50 }).default("general").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFundKnowledgeEntrySchema = createInsertSchema(fundKnowledgeEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export type FundKnowledgeEntry = typeof fundKnowledgeEntries.$inferSelect;
+export type InsertFundKnowledgeEntry = z.infer<typeof insertFundKnowledgeEntrySchema>;
 
 export const intakeDeals = pgTable("intake_deals", {
   id: serial("id").primaryKey(),
