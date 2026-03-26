@@ -1138,7 +1138,7 @@ router.get("/api/commercial/portfolio-summary", async (req: Request, res: Respon
 const DEFAULT_FORM_FIELDS = [
   { fieldKey: "dealName", fieldLabel: "Deal Name", section: "Deal Basics", fieldType: "text", isRequired: true, sortOrder: 1 },
   { fieldKey: "loanAmount", fieldLabel: "Loan Amount ($)", section: "Deal Basics", fieldType: "number", isRequired: true, sortOrder: 2 },
-  { fieldKey: "assetType", fieldLabel: "Asset Type", section: "Deal Basics", fieldType: "select", isRequired: true, sortOrder: 3, options: { choices: ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"] } },
+  { fieldKey: "assetType", fieldLabel: "Asset Type", section: "Deal Basics", fieldType: "select", isRequired: true, sortOrder: 3, options: { choices: ["Multifamily","Residential","Office","Commercial","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing","Bridge"] } },
   { fieldKey: "propertyAddress", fieldLabel: "Property Address", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 4 },
   { fieldKey: "propertyCity", fieldLabel: "City", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 5 },
   { fieldKey: "propertyState", fieldLabel: "State", section: "Deal Basics", fieldType: "select", isRequired: false, sortOrder: 6, options: { choices: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"] } },
@@ -1362,16 +1362,22 @@ const fundFileUpload = multer({
 const ALL_US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
 const PROPERTY_TYPE_MAP: Record<string, string> = {
-  "resi": "Multifamily", "residential": "Multifamily", "sfr": "Multifamily",
+  "resi": "Residential", "residential": "Residential", "sfr": "Residential",
   "mfr": "Multifamily", "multifamily": "Multifamily", "multi family": "Multifamily",
+  "multi-family": "Multifamily", "apartment": "Multifamily", "apartments": "Multifamily",
   "office": "Office", "retail": "Retail", "industrial": "Industrial",
+  "warehouse": "Industrial", "flex": "Industrial",
   "hotel": "Hotel", "hospitality": "Hotel", "land": "Land",
   "land development": "Development", "development": "Development",
+  "construction": "Development", "ground up": "Development",
   "mixed use": "Mixed Use", "mixed-use": "Mixed Use",
   "self storage": "Self Storage", "storage": "Self Storage",
   "mobile home park": "Mobile Home Park", "mhp": "Mobile Home Park",
+  "manufactured housing": "Mobile Home Park",
   "healthcare": "Healthcare", "medical": "Healthcare",
-  "student housing": "Student Housing", "commercial": "Office",
+  "student housing": "Student Housing",
+  "commercial": "Commercial", "small commercial": "Commercial",
+  "bridge": "Bridge", "a&d": "Development", "acquisition": "Bridge",
 };
 
 const COLUMN_ALIASES: Record<string, string[]> = {

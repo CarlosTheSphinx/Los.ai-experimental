@@ -103,9 +103,11 @@ function normalizeAgent1Result(result: any): any {
 
 function normalizeAgent2Result(result: any): any {
   if (!result || typeof result !== "object") return result;
+  const matches = result.eligible_funds || result.eligibleFunds || result.matched_funds || result.matchedFunds || result.fund_matches || [];
   return {
     ...result,
-    eligible_funds: result.eligible_funds || result.eligibleFunds || result.matched_funds || result.matchedFunds || [],
+    eligible_funds: matches,
+    fund_matches: matches,
     total_funds_checked: result.total_funds_checked || result.totalFundsChecked || 0,
     deal_health: result.deal_health || result.dealHealth || result.risk_assessment || result.riskAssessment || {
       borrower_risk_score: 50, borrower_risk_detail: "Not assessed",
@@ -203,13 +205,19 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
   const dealAsset = basicInfo.asset_type || "";
 
   const candidateFunds = activeFunds.filter(f => {
-    if (f.ltvMax && dealLtv > f.ltvMax * 1.2) return false;
-    if (f.loanAmountMin && dealAmount < f.loanAmountMin * 0.5) return false;
-    if (f.loanAmountMax && dealAmount > f.loanAmountMax * 2) return false;
+    const hasAnyCriteria = f.ltvMax || f.loanAmountMin || f.loanAmountMax || 
+      (f.allowedAssetTypes && f.allowedAssetTypes.length > 0) || 
+      (f.allowedStates && f.allowedStates.length > 0);
+    if (!hasAnyCriteria) return true;
+
+    if (f.ltvMax && dealLtv > 0 && dealLtv > f.ltvMax * 1.5) return false;
+    if (f.loanAmountMin && dealAmount > 0 && dealAmount < f.loanAmountMin * 0.3) return false;
+    if (f.loanAmountMax && dealAmount > 0 && dealAmount > f.loanAmountMax * 3) return false;
     return true;
   });
 
-  const fundsToUse = candidateFunds.length > 0 ? candidateFunds : activeFunds;
+  const fundsToUse = candidateFunds.length >= 3 ? candidateFunds : activeFunds;
+  console.log(`[Intake AI] Fund pre-filter: ${candidateFunds.length}/${activeFunds.length} passed (using ${fundsToUse.length})`);
 
   let knowledgeByFund: Record<number, string[]> = {};
   let fundSimilarityScores: Record<number, number> = {};
@@ -325,16 +333,20 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
         const amount = basicInfo.loan_amount || 0;
         const state = basicInfo.property_state || "";
         const asset = basicInfo.asset_type || "";
-        if (f.ltvMin && ltv < f.ltvMin) return false;
-        if (f.ltvMax && ltv > f.ltvMax) return false;
-        if (f.loanAmountMin && amount < f.loanAmountMin) return false;
-        if (f.loanAmountMax && amount > f.loanAmountMax) return false;
-        if (f.allowedStates?.length && !f.allowedStates.includes(state)) return false;
-        if (f.allowedAssetTypes?.length && !f.allowedAssetTypes.includes(asset)) return false;
+        const hasAnyCriteria = f.ltvMax || f.ltvMin || f.loanAmountMin || f.loanAmountMax ||
+          (f.allowedStates && f.allowedStates.length > 0) ||
+          (f.allowedAssetTypes && f.allowedAssetTypes.length > 0);
+        if (!hasAnyCriteria) return true;
+        if (f.ltvMin && ltv > 0 && ltv < f.ltvMin) return false;
+        if (f.ltvMax && ltv > 0 && ltv > f.ltvMax) return false;
+        if (f.loanAmountMin && amount > 0 && amount < f.loanAmountMin) return false;
+        if (f.loanAmountMax && amount > 0 && amount > f.loanAmountMax) return false;
+        if (f.allowedStates?.length && state && !f.allowedStates.includes(state)) return false;
+        if (f.allowedAssetTypes?.length && asset && !assetTypeMatches(f.allowedAssetTypes, asset)) return false;
         return true;
       }).map(f => ({ fund_id: f.id, fund_name: f.fundName, match_score: 75, match_reason: "Meets basic criteria" }));
       const creditScore = borrowerInfo.credit_score || 0;
-      return {
+      return normalizeAgent2Result({
         eligible_funds: eligibleFunds, total_funds_checked: activeFunds.length,
         deal_health: {
           borrower_risk_score: creditScore >= 720 ? 15 : creditScore >= 680 ? 30 : 50,
@@ -346,7 +358,7 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
           documentation_risk_score: 25,
           documentation_risk_detail: "Documentation assessment based on submitted documents.",
         },
-      };
+      });
     }
     return normalizeAgent2Result(result);
   };
@@ -393,18 +405,51 @@ async function agent3GenerateFeedback(matchingReport: any, structuredDeal: any, 
   return agentFn();
 }
 
+function assetTypeMatches(fundTypes: string[], dealType: string): boolean {
+  if (!fundTypes || fundTypes.length === 0) return true;
+  if (!dealType) return true;
+  const dealLower = dealType.toLowerCase();
+  const related: Record<string, string[]> = {
+    "multifamily": ["residential", "multifamily", "mfr", "apartment"],
+    "residential": ["multifamily", "residential", "sfr"],
+    "office": ["office", "commercial"],
+    "commercial": ["office", "retail", "industrial", "mixed use"],
+    "retail": ["retail", "commercial"],
+    "industrial": ["industrial", "commercial", "warehouse"],
+    "land": ["land", "land development"],
+    "development": ["development", "land development", "construction"],
+    "mixed use": ["mixed use", "commercial"],
+    "hotel": ["hotel", "hospitality"],
+    "self storage": ["self storage", "storage"],
+  };
+  for (const ft of fundTypes) {
+    const ftLower = ft.toLowerCase();
+    if (ftLower === dealLower) return true;
+    const relatedTypes = related[dealLower] || [];
+    if (relatedTypes.includes(ftLower)) return true;
+    const fundRelated = related[ftLower] || [];
+    if (fundRelated.includes(dealLower)) return true;
+  }
+  return false;
+}
+
 function ruleBasedFallback(deal: any, activeFunds: any[]) {
   const ltv = deal.ltvPct || 0;
   const dscr = deal.dscr || 0;
   const loanAmt = deal.loanAmount || 0;
 
   const eligibleFunds = activeFunds.filter(f => {
-    if (f.ltvMax && ltv > f.ltvMax) return false;
-    if (f.ltvMin && ltv < f.ltvMin) return false;
-    if (f.loanAmountMin && loanAmt < f.loanAmountMin) return false;
-    if (f.loanAmountMax && loanAmt > f.loanAmountMax) return false;
+    const hasAnyCriteria = f.ltvMax || f.ltvMin || f.loanAmountMin || f.loanAmountMax ||
+      (f.allowedStates && f.allowedStates.length > 0) ||
+      (f.allowedAssetTypes && f.allowedAssetTypes.length > 0);
+    if (!hasAnyCriteria) return true;
+
+    if (f.ltvMax && ltv > 0 && ltv > f.ltvMax) return false;
+    if (f.ltvMin && ltv > 0 && ltv < f.ltvMin) return false;
+    if (f.loanAmountMin && loanAmt > 0 && loanAmt < f.loanAmountMin) return false;
+    if (f.loanAmountMax && loanAmt > 0 && loanAmt > f.loanAmountMax) return false;
     if (f.allowedStates?.length > 0 && deal.propertyState && !f.allowedStates.includes(deal.propertyState)) return false;
-    if (f.allowedAssetTypes?.length > 0 && deal.assetType && !f.allowedAssetTypes.includes(deal.assetType)) return false;
+    if (f.allowedAssetTypes?.length > 0 && deal.assetType && !assetTypeMatches(f.allowedAssetTypes, deal.assetType)) return false;
     return true;
   });
 
@@ -424,7 +469,7 @@ function ruleBasedFallback(deal: any, activeFunds: any[]) {
 
   return {
     agent1: { validation_status: "valid", validation_errors: [], completeness_score: deal.borrowerName && deal.loanAmount && deal.assetType ? 85 : 60 },
-    agent2: { eligible_funds: eligibleFunds.map(f => ({ fund_id: f.id, fund_name: f.fundName, match_score: 65, match_reasons: ["Rule-based match"] })), ineligible_funds: [] },
+    agent2: { eligible_funds: eligibleFunds.map(f => ({ fund_id: f.id, fund_name: f.fundName, match_score: 65, match_reasons: ["Rule-based match"] })), fund_matches: eligibleFunds.map(f => ({ fund_id: f.id, fund_name: f.fundName, match_score: 65, match_reasons: ["Rule-based match"] })), ineligible_funds: [] },
     agent3: {
       overall_verdict: verdict, confidence_score: confidence, confidence_breakdown: { fund_fit: eligibleFunds.length > 0 ? 70 : 30, deal_health: flaws.length === 0 ? 80 : 50 },
       key_flaws: flaws, strengths,
