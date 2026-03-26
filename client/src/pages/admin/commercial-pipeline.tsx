@@ -6,9 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
 import {
-  Search, Building2, DollarSign, MapPin, TrendingUp, Eye, AlertTriangle,
-  CheckCircle2, XCircle, Clock, ArrowRight, Landmark, ChevronRight,
-  ArrowUpDown, List, LayoutGrid, FolderOpen,
+  Search, Building2, Eye, CheckCircle2, Clock, ArrowRight, Landmark,
+  ChevronRight, ArrowUpDown, FolderOpen,
 } from "lucide-react";
 import { SummaryCard, SummaryStrip } from "@/components/ui/phase1/summary-card";
 import { StatusBadge } from "@/components/ui/phase1/status-badge";
@@ -313,7 +312,7 @@ export default function CommercialPipelinePage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
-                className="flex items-center gap-1.5 h-9 px-3 text-[16px] font-medium border rounded-md bg-white hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 h-9 px-3 text-[16px] font-medium border rounded-md bg-card hover:bg-muted/50 transition-colors"
                 data-testid="button-sort-order"
               >
                 <ArrowUpDown className="h-3.5 w-3.5" />
@@ -322,7 +321,7 @@ export default function CommercialPipelinePage() {
 
               <button
                 onClick={handleShowFunds}
-                className="flex items-center gap-2 h-9 px-3 text-[16px] font-medium border rounded-md bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer"
+                className="flex items-center gap-2 h-9 px-3 text-[16px] font-medium border rounded-md bg-card hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer"
                 data-testid="funds-card"
               >
                 <Landmark className="h-3.5 w-3.5 text-blue-600" />
@@ -352,7 +351,7 @@ export default function CommercialPipelinePage() {
                 <div>
                   <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Asset Type</label>
                   <select
-                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-card text-foreground"
                     value={assetTypeFilter}
                     onChange={(e) => setAssetTypeFilter(e.target.value)}
                     data-testid="select-asset-type-filter"
@@ -366,7 +365,7 @@ export default function CommercialPipelinePage() {
                 <div>
                   <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">State</label>
                   <select
-                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-card text-foreground"
                     value={stateFilter}
                     onChange={(e) => setStateFilter(e.target.value)}
                     data-testid="select-state-filter"
@@ -380,7 +379,7 @@ export default function CommercialPipelinePage() {
                 <div>
                   <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Status</label>
                   <select
-                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-card text-foreground"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     data-testid="select-status-filter"
@@ -420,7 +419,7 @@ export default function CommercialPipelinePage() {
                 <div>
                   <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Broker</label>
                   <select
-                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-white text-foreground"
+                    className="w-full h-9 px-3 text-[16px] border rounded-md bg-card text-foreground"
                     value={brokerFilter}
                     onChange={(e) => setBrokerFilter(e.target.value)}
                     data-testid="select-broker-filter"
