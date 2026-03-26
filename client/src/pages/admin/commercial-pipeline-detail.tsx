@@ -905,7 +905,7 @@ export default function CommercialPipelineDetailPage() {
         <CardContent className="space-y-3">
           {(() => {
             const latestAnalysis = Array.isArray(deal.analysis) ? deal.analysis[0] : deal.analysis;
-            const eligibleFunds: any[] = latestAnalysis?.agent2Matching?.eligible_funds || [];
+            const eligibleFunds: any[] = latestAnalysis?.agent2Matching?.fund_matches || latestAnalysis?.agent2Matching?.eligible_funds || [];
             const fundRecommendations: any[] = latestAnalysis?.agent3Feedback?.fund_recommendations || [];
 
             if (!latestAnalysis) {
