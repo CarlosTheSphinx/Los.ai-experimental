@@ -595,6 +595,12 @@ router.post("/api/commercial/deals/:id/notes", async (req: Request, res: Respons
 router.get("/api/commercial/deals/:id/tasks", async (req: Request, res: Response) => {
   try {
     const dealId = parseInt(req.params.id);
+    const role = getUserRole(req);
+
+    if (!["super_admin", "lender", "processor"].includes(role || "")) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
     const tasks = await db.select().from(intakeDealTasks)
       .where(eq(intakeDealTasks.dealId, dealId))
       .orderBy(desc(intakeDealTasks.createdAt));

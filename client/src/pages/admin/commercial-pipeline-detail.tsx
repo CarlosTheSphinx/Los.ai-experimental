@@ -115,6 +115,8 @@ export default function CommercialPipelineDetailPage() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("medium");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
 
   const dealId = params.id;
 
@@ -195,13 +197,15 @@ export default function CommercialPipelineDetailPage() {
   });
 
   const addTaskMut = useMutation({
-    mutationFn: async (data: { taskTitle: string; priority: string }) => {
+    mutationFn: async (data: { taskTitle: string; priority: string; dueDate?: string; assignedTo?: string }) => {
       return apiRequest("POST", `/api/commercial/deals/${dealId}/tasks`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commercial/deals", dealId] });
       setNewTaskTitle("");
       setNewTaskPriority("medium");
+      setNewTaskDueDate("");
+      setNewTaskAssignee("");
       setShowAddTask(false);
       toast({ title: "Task added" });
     },
@@ -655,39 +659,68 @@ export default function CommercialPipelineDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {showAddTask && (
-            <div className="flex gap-2 items-end" data-testid="add-task-form">
-              <div className="flex-1">
-                <Input
-                  placeholder="Task title..."
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  data-testid="input-task-title"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newTaskTitle.trim()) {
-                      addTaskMut.mutate({ taskTitle: newTaskTitle, priority: newTaskPriority });
-                    }
-                  }}
-                />
+            <div className="space-y-2" data-testid="add-task-form">
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Task title..."
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    data-testid="input-task-title"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTaskTitle.trim()) {
+                        addTaskMut.mutate({
+                          taskTitle: newTaskTitle, priority: newTaskPriority,
+                          dueDate: newTaskDueDate || undefined,
+                          assignedTo: newTaskAssignee || undefined,
+                        });
+                      }
+                    }}
+                  />
+                </div>
+                <Select value={newTaskPriority} onValueChange={setNewTaskPriority}>
+                  <SelectTrigger className="w-28" data-testid="select-task-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={newTaskPriority} onValueChange={setNewTaskPriority}>
-                <SelectTrigger className="w-28" data-testid="select-task-priority">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                onClick={() => addTaskMut.mutate({ taskTitle: newTaskTitle, priority: newTaskPriority })}
-                disabled={!newTaskTitle.trim() || addTaskMut.isPending}
-                data-testid="button-submit-task"
-              >
-                {addTaskMut.isPending ? <Loader2 size={14} className="animate-spin" /> : "Add"}
-              </Button>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Input
+                    type="date"
+                    placeholder="Due date"
+                    value={newTaskDueDate}
+                    onChange={(e) => setNewTaskDueDate(e.target.value)}
+                    data-testid="input-task-due-date"
+                  />
+                </div>
+                <div className="flex-1">
+                  <Input
+                    placeholder="Assignee name..."
+                    value={newTaskAssignee}
+                    onChange={(e) => setNewTaskAssignee(e.target.value)}
+                    data-testid="input-task-assignee"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => addTaskMut.mutate({
+                    taskTitle: newTaskTitle, priority: newTaskPriority,
+                    dueDate: newTaskDueDate || undefined,
+                    assignedTo: newTaskAssignee || undefined,
+                  })}
+                  disabled={!newTaskTitle.trim() || addTaskMut.isPending}
+                  data-testid="button-submit-task"
+                >
+                  {addTaskMut.isPending ? <Loader2 size={14} className="animate-spin" /> : "Add"}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -719,9 +752,18 @@ export default function CommercialPipelineDetailPage() {
                 <p className={`text-sm font-medium ${task.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
                   {task.taskTitle}
                 </p>
-                {task.taskDescription && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{task.taskDescription}</p>
-                )}
+                <div className="flex items-center gap-3 mt-0.5">
+                  {task.assignedTo && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <User size={10} /> {task.assignedTo}
+                    </span>
+                  )}
+                  {task.dueDate && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock size={10} /> {new Date(task.dueDate).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
               </div>
               <Badge variant={
                 task.priority === "critical" ? "destructive" :
