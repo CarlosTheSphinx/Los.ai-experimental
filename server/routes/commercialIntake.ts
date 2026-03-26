@@ -2134,10 +2134,51 @@ router.post("/api/commercial/funds/backfill-strategy", async (req: Request, res:
 
     let updated = 0;
 
+    const VALID_LOAN_TYPES = ["Bridge", "Construction", "DSCR", "A&D", "Fix & Flip", "Long-Term Financing", "Land Development"];
+
     for (const fund of allFunds) {
       const updateData: any = {};
 
-      if (fund.loanStrategy && (!fund.loanTypes || (fund.loanTypes as string[]).length === 0)) {
+      const rawLoanTypes = fund.loanTypes as any;
+      if (typeof rawLoanTypes === "string") {
+        const parts = rawLoanTypes.split(/[;,|]+/).map((s: string) => s.trim()).filter(Boolean);
+        const normalized = new Set<string>();
+        for (const part of parts) {
+          const mapped = LOAN_TYPE_NORMALIZATION_MAP[part];
+          if (mapped) {
+            for (const lt of mapped) normalized.add(lt);
+          } else if (VALID_LOAN_TYPES.includes(part)) {
+            normalized.add(part);
+          } else {
+            const lower = part.toLowerCase();
+            for (const [key, vals] of Object.entries(LOAN_TYPE_NORMALIZATION_MAP)) {
+              if (lower === key.toLowerCase()) {
+                for (const v of vals) normalized.add(v);
+                break;
+              }
+            }
+          }
+        }
+        if (normalized.size > 0) {
+          updateData.loanTypes = Array.from(normalized);
+        }
+      } else if (Array.isArray(rawLoanTypes) && rawLoanTypes.length > 0) {
+        const allValid = rawLoanTypes.every((lt: string) => VALID_LOAN_TYPES.includes(lt));
+        if (!allValid) {
+          const normalized = new Set<string>();
+          for (const lt of rawLoanTypes) {
+            const mapped = LOAN_TYPE_NORMALIZATION_MAP[lt];
+            if (mapped) {
+              for (const v of mapped) normalized.add(v);
+            } else if (VALID_LOAN_TYPES.includes(lt)) {
+              normalized.add(lt);
+            }
+          }
+          if (normalized.size > 0) {
+            updateData.loanTypes = Array.from(normalized);
+          }
+        }
+      } else if (fund.loanStrategy && (!rawLoanTypes || (Array.isArray(rawLoanTypes) && rawLoanTypes.length === 0))) {
         const mapped = LOAN_TYPE_NORMALIZATION_MAP[fund.loanStrategy];
         if (mapped) {
           updateData.loanTypes = mapped;
