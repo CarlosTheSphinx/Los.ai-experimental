@@ -63,6 +63,8 @@ export const users = pgTable("users", {
   ),
   brokerMagicLink: varchar("broker_magic_link", { length: 255 }).unique(),
   brokerMagicLinkEnabled: boolean("broker_magic_link_enabled").default(false),
+  magicLinkToken: varchar("magic_link_token", { length: 255 }),
+  magicLinkExpires: timestamp("magic_link_expires"),
   failedLoginAttempts: integer("failed_login_attempts").default(0),
   accountLockedUntil: timestamp("account_locked_until"),
   passwordExpiresAt: timestamp("password_expires_at"),

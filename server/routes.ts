@@ -14,7 +14,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { sendCompletedDocument, sendVoidNotification, sendPasswordResetEmail, sendTeamInviteEmail } from './email';
+import { sendCompletedDocument, sendVoidNotification, sendPasswordResetEmail, sendTeamInviteEmail, sendMagicLinkEmail } from './email';
 import { sendCommercialNotification, checkExpiredSubmissions } from './services/commercialNotifications';
 import { 
   hashPassword, 
@@ -6186,6 +6186,101 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error('Admin reset password error:', error);
       res.status(500).json({ error: error.message || 'Failed to send password reset email' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/magic-link', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      if (!['borrower', 'broker'].includes(user.role)) {
+        return res.status(400).json({ error: 'Magic links are only available for borrowers and brokers' });
+      }
+
+      const magicToken = generateRandomToken();
+      const magicExpires = new Date(Date.now() + 30 * 60 * 1000);
+      const crypto = await import('crypto');
+      const tokenHash = crypto.createHash('sha256').update(magicToken).digest('hex');
+
+      await db.update(users).set({
+        magicLinkToken: tokenHash,
+        magicLinkExpires: magicExpires,
+      }).where(eq(users.id, userId));
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const magicUrl = `${baseUrl}/auth/magic/${magicToken}`;
+
+      const emailResult = await sendMagicLinkEmail(user.email, user.fullName || 'User', magicUrl);
+      if (!emailResult.success) {
+        console.error('Magic link email failed:', emailResult.error);
+        return res.status(500).json({ error: emailResult.error || 'Failed to send magic link email' });
+      }
+
+      try {
+        await storage.createAdminActivity({
+          userId: req.user!.id,
+          actionType: 'magic_link_sent',
+          actionDescription: `Admin sent magic login link to ${user.email}`,
+          metadata: { targetUserId: userId },
+          projectId: 0
+        });
+      } catch (activityErr) {
+        console.warn('Failed to log magic link activity:', activityErr);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Magic link error:', error);
+      res.status(500).json({ error: error.message || 'Failed to send magic link' });
+    }
+  });
+
+  app.post('/api/auth/magic/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const crypto = await import('crypto');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const [user] = await db.select().from(users).where(eq(users.magicLinkToken, tokenHash));
+
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired magic link' });
+      }
+
+      if (!user.magicLinkExpires || user.magicLinkExpires < new Date()) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(400).json({ error: 'This magic link has expired. Please request a new one.' });
+      }
+
+      if (!user.isActive) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(403).json({ error: 'This account has been deactivated.' });
+      }
+
+      if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(403).json({ error: 'This account is temporarily locked. Please try again later.' });
+      }
+
+      await db.update(users).set({
+        magicLinkToken: null,
+        magicLinkExpires: null,
+        lastLoginAt: new Date(),
+        emailVerified: true,
+      }).where(eq(users.id, user.id));
+
+      const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
+      setAuthCookie(res, authToken);
+
+      let redirectTo = '/';
+      if (user.role === 'broker') redirectTo = '/commercial-deals';
+      else if (['admin', 'lender', 'super_admin', 'processor'].includes(user.role)) redirectTo = '/admin/dashboard';
+
+      res.json({ success: true, redirectTo, role: user.role });
+    } catch (error: any) {
+      console.error('Magic link verification error:', error);
+      res.status(500).json({ error: 'Failed to verify magic link' });
     }
   });
 

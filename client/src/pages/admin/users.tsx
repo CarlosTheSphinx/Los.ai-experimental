@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, MoreHorizontal, UserCog, Shield, User as UserIcon, Plus, Users, Briefcase, Pencil, Mail, CheckCircle, Clock, Link2, Send, Phone, Copy, ChevronDown, ChevronRight, ExternalLink, MessageSquare, Check, X, KeyRound, Trash2 } from "lucide-react";
+import { Search, MoreHorizontal, UserCog, Shield, User as UserIcon, Plus, Users, Briefcase, Pencil, Mail, CheckCircle, Clock, Link2, Send, Phone, Copy, ChevronDown, ChevronRight, ExternalLink, MessageSquare, Check, X, KeyRound, Trash2, Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
@@ -187,6 +187,18 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     },
     onError: (err: any) => {
       toast({ title: err?.message || "Failed to send password reset email", variant: "destructive" });
+    },
+  });
+
+  const magicLinkMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/admin/users/${userId}/magic-link`, {});
+    },
+    onSuccess: () => {
+      toast({ title: "Magic login link sent" });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Failed to send magic link", variant: "destructive" });
     },
   });
 
@@ -627,6 +639,29 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
           {resetPasswordMutation.isPending ? "Sending..." : "Send Password Reset"}
         </Button>
       </div>
+
+      {(user.role === "borrower" || user.role === "broker") && (
+        <div className="border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold flex items-center gap-1.5">
+              <Wand2 className="h-4 w-4" /> Magic Link Login
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Send a one-click login link via email. The link expires in 30 minutes and can only be used once.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => magicLinkMutation.mutate()}
+            disabled={magicLinkMutation.isPending}
+            data-testid="button-send-magic-link"
+          >
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            {magicLinkMutation.isPending ? "Sending..." : "Send Magic Link"}
+          </Button>
+        </div>
+      )}
 
       {user.role === "broker" && (
         <Collapsible open={brokerPermsOpen} onOpenChange={setBrokerPermsOpen}>

@@ -399,3 +399,53 @@ export async function sendPasswordResetEmail(
     return { success: false, error: error.message };
   }
 }
+
+export async function sendMagicLinkEmail(
+  recipientEmail: string,
+  recipientName: string,
+  magicLink: string
+) {
+  try {
+    const { client, fromEmail } = await getResendClient();
+
+    const result = await client.emails.send({
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+      to: recipientEmail,
+      subject: 'Your Login Link - Lendry.AI',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          </style>
+        </head>
+        <body>
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: white; font-size: 24px;">One-Click Login</h1>
+            </div>
+            <div style="background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px;">
+              <p>Hello ${recipientName},</p>
+              <p>Click the button below to log in instantly — no password needed.</p>
+              <div style="text-align: center;">
+                <a href="${magicLink}" style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; font-size: 16px;">Log In Now</a>
+              </div>
+              <p style="color: #64748b; font-size: 14px;">This link will expire in 30 minutes and can only be used once.</p>
+              <p style="color: #64748b; font-size: 14px;">If you didn't request this link, you can safely ignore this email.</p>
+            </div>
+            <div style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
+              <p>Powered by Lendry.AI</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Failed to send magic link email:', error);
+    return { success: false, error: error.message };
+  }
+}

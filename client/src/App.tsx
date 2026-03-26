@@ -81,6 +81,7 @@ import BorrowerDocumentsPage from "@/pages/borrower-documents";
 import BrokerDocumentsPage from "@/pages/broker-documents";
 import QuoteDocuments from "@/pages/quote-documents";
 import BorrowerPreview from "@/pages/borrower-preview";
+import AuthMagicPage from "@/pages/auth-magic";
 
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
@@ -363,11 +364,15 @@ function LandingModeContent() {
   const [isJoinPersonalPage] = useRoute("/join/personal/:token");
   const [isApplyPage] = useRoute("/apply");
   const [isApplyProgramPage] = useRoute("/apply/:programId");
+  const [isMagicLinkPage] = useRoute("/auth/magic/:token");
 
   const { isAuthenticated, isLoading } = useAuth();
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
 
+  if (isMagicLinkPage) {
+    return <Switch><Route path="/auth/magic/:token" component={AuthMagicPage} /></Switch>;
+  }
   if (isResetPasswordPage) {
     return <Switch><Route path="/reset-password/:token" component={ResetPasswordPage} /></Switch>;
   }
@@ -450,6 +455,7 @@ function FullAppContent() {
   const [isForgotPasswordPage] = useRoute("/forgot-password");
   const [isResetPasswordPage] = useRoute("/reset-password/:token");
   const [isAcceptInvitePage] = useRoute("/accept-invite/:token");
+  const [isMagicLinkPage] = useRoute("/auth/magic/:token");
   const [isOnboardingPage] = useRoute("/onboarding");
   const [isSelectRolePage] = useRoute("/select-role");
   const [isPublicPricingPage] = useRoute("/pricing");
@@ -465,6 +471,10 @@ function FullAppContent() {
   // Only show public marketing pages for NON-authenticated users
   // The "/" route must fall through to MainRoutes for authenticated users (their dashboard)
   const isPublicMarketingPage = !isLoading && !isAuthenticated && (isHomePage || isPublicPricingPage || isPublicUseCasesPage || isPublicContactPage);
+
+  if (isMagicLinkPage) {
+    return <Switch><Route path="/auth/magic/:token" component={AuthMagicPage} /></Switch>;
+  }
 
   if (isResetPasswordPage) {
     return (
