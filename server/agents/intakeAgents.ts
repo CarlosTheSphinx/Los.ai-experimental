@@ -212,14 +212,27 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
   const fundsToUse = candidateFunds.length > 0 ? candidateFunds : activeFunds;
 
   let knowledgeByFund: Record<number, string[]> = {};
+  let fundSimilarityScores: Record<number, number> = {};
+  const dealSummary = `${dealAsset} property in ${dealState}, loan amount $${dealAmount}, LTV ${dealLtv}%, borrower: ${structuredDeal.structured_deal?.borrower_info?.name || "unknown"}, DSCR ${metrics.dscr || "N/A"}`;
+
   if (fundsToUse.length > 0) {
     try {
       const fundIds = fundsToUse.map(f => f.id);
-      const dealSummary = `${dealAsset} property in ${dealState}, loan amount $${dealAmount}, LTV ${dealLtv}%, borrower: ${structuredDeal.structured_deal?.borrower_info?.name || "unknown"}, DSCR ${metrics.dscr || "N/A"}`;
       const dealEmbedding = await generateEmbedding(dealSummary);
 
       if (dealEmbedding) {
         const embeddingStr = `[${dealEmbedding.join(",")}]`;
+
+        const descScores = await db.execute(
+          sql`SELECT id, 1 - (description_embedding <=> ${embeddingStr}::vector) AS similarity
+              FROM funds
+              WHERE id = ANY(${fundIds})
+                AND description_embedding IS NOT NULL`
+        );
+        for (const row of descScores.rows as any[]) {
+          fundSimilarityScores[row.id] = parseFloat(row.similarity) || 0;
+        }
+
         const similarRows = await db.execute(
           sql`SELECT id, fund_id, content, category,
                      embedding <=> ${embeddingStr}::vector AS distance
@@ -275,9 +288,15 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
     }
   }
 
+  const rankedFunds = [...fundsToUse].sort((a, b) => {
+    const scoreA = fundSimilarityScores[a.id] || 0;
+    const scoreB = fundSimilarityScores[b.id] || 0;
+    return scoreB - scoreA;
+  });
+
   const userMessage = JSON.stringify({
     deal: structuredDeal,
-    funds: fundsToUse.map(f => ({
+    funds: rankedFunds.map(f => ({
       fund_id: f.id, fund_name: f.fundName,
       ltv_min: f.ltvMin, ltv_max: f.ltvMax, ltc_min: f.ltcMin, ltc_max: f.ltcMax,
       loan_amount_min: f.loanAmountMin, loan_amount_max: f.loanAmountMax,
@@ -286,6 +305,8 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
       recourse_type: f.recourseType,
       allowed_states: f.allowedStates, allowed_asset_types: f.allowedAssetTypes,
       description: f.fundDescription || null,
+      description_similarity: fundSimilarityScores[f.id] !== undefined
+        ? Math.round(fundSimilarityScores[f.id] * 100) / 100 : null,
       knowledge: knowledgeByFund[f.id]?.slice(0, 8) || [],
     })),
   });

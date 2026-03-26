@@ -139,8 +139,12 @@ router.patch("/api/commercial/funds/:id", async (req: Request, res: Response) =>
       .where(and(eq(funds.id, id), tenantId ? eq(funds.tenantId, tenantId) : undefined))
       .returning();
     if (!updated) return res.status(404).json({ error: "Fund not found" });
-    if (req.body.fundDescription !== undefined && updated.fundDescription) {
-      embedFundDescription(updated.id, updated.fundDescription).catch(() => {});
+    if (req.body.fundDescription !== undefined) {
+      if (updated.fundDescription) {
+        embedFundDescription(updated.id, updated.fundDescription).catch(() => {});
+      } else {
+        db.update(funds).set({ descriptionEmbedding: null }).where(eq(funds.id, updated.id)).catch(() => {});
+      }
     }
     res.json(updated);
   } catch (error: any) {
