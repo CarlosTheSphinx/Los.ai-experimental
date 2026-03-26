@@ -575,6 +575,16 @@ export async function runIntakeAiPipeline(dealId: number): Promise<void> {
     }
 
     console.log(`[Intake AI] Agent 2: Matching funds (${activeFunds.length} funds)...`);
+    if (deal.loanType && !agent1Result.structured_deal?.basic_info?.loan_type) {
+      if (!agent1Result.structured_deal) agent1Result.structured_deal = {};
+      if (!agent1Result.structured_deal.basic_info) agent1Result.structured_deal.basic_info = {};
+      agent1Result.structured_deal.basic_info.loan_type = deal.loanType;
+    }
+    if (deal.propertyType && !agent1Result.structured_deal?.basic_info?.asset_type) {
+      if (!agent1Result.structured_deal) agent1Result.structured_deal = {};
+      if (!agent1Result.structured_deal.basic_info) agent1Result.structured_deal.basic_info = {};
+      agent1Result.structured_deal.basic_info.asset_type = deal.propertyType;
+    }
     const agent2Result = await agent2MatchFunds(agent1Result, activeFunds, tracingSessionId);
     console.log(`[Intake AI] Agent 2 complete: ${agent2Result.eligible_funds?.length || 0} matches`);
 
