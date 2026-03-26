@@ -867,7 +867,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
       });
 
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+      const resetUrl = `${baseUrl}/reset-password/${resetToken}`;
 
       await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
 
