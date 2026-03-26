@@ -144,16 +144,16 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
   return (
     <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
       <div>
-        <Label className="text-xs text-slate-400">Rule Name *</Label>
-        <Input value={ruleName} onChange={e => setRuleName(e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="rule-name-input" />
+        <Label className="text-xs text-muted-foreground">Rule Name *</Label>
+        <Input value={ruleName} onChange={e => setRuleName(e.target.value)} className="bg-muted/50 border text-foreground text-sm" data-testid="rule-name-input" />
       </div>
 
       <div>
-        <Label className="text-xs text-slate-400 mb-2 block">Conditions (IF)</Label>
+        <Label className="text-xs text-muted-foreground mb-2 block">Conditions (IF)</Label>
         {conditions.map((cond, i) => (
           <div key={i} className="flex items-center gap-2 mb-2">
             <Select value={cond.field} onValueChange={v => { const c = [...conditions]; c[i].field = v; if (v === "loan_amount" && c[i].operator === "equals") c[i].operator = "greater_than"; else if (v !== "loan_amount" && c[i].operator !== "equals") c[i].operator = "equals"; setConditions(c); }}>
-              <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm w-36" data-testid={`condition-field-${i}`}>
+              <SelectTrigger className="bg-muted/50 border text-foreground text-sm w-36" data-testid={`condition-field-${i}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -163,7 +163,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
               </SelectContent>
             </Select>
             <Select value={cond.operator} onValueChange={v => { const c = [...conditions]; c[i].operator = v; setConditions(c); }}>
-              <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm w-32" data-testid={`condition-op-${i}`}>
+              <SelectTrigger className="bg-muted/50 border text-foreground text-sm w-32" data-testid={`condition-op-${i}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -174,17 +174,17 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
             </Select>
             {cond.field === "asset_type" ? (
               <div className="flex-1 relative">
-                <div className="flex flex-wrap gap-1 min-h-[36px] p-1.5 rounded-md bg-[#0f1629] border border-slate-700 text-sm">
+                <div className="flex flex-wrap gap-1 min-h-[36px] p-1.5 rounded-md bg-muted/50 border text-sm">
                   {cond.value ? cond.value.split(",").map(v => v.trim()).filter(Boolean).map(v => (
-                    <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs border border-blue-500/30">
+                    <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs border-blue-500/30">
                       {v}
-                      <button type="button" onClick={() => { const c = [...conditions]; const vals = c[i].value.split(",").map(s => s.trim()).filter(s => s !== v); c[i].value = vals.join(", "); setConditions(c); }} className="hover:text-white"><X size={10} /></button>
+                      <button type="button" onClick={() => { const c = [...conditions]; const vals = c[i].value.split(",").map(s => s.trim()).filter(s => s !== v); c[i].value = vals.join(", "); setConditions(c); }} className="hover:text-foreground"><X size={10} /></button>
                     </span>
-                  )) : <span className="text-slate-500 text-xs py-0.5">Select asset types...</span>}
+                  )) : <span className="text-muted-foreground text-xs py-0.5">Select asset types...</span>}
                 </div>
                 <div className="mt-1 grid grid-cols-2 gap-1 max-h-32 overflow-y-auto">
                   {ASSET_TYPES.filter(at => !cond.value.split(",").map(s => s.trim()).includes(at)).map(at => (
-                    <button key={at} type="button" onClick={() => { const c = [...conditions]; const existing = c[i].value ? c[i].value.split(",").map(s => s.trim()).filter(Boolean) : []; c[i].value = [...existing, at].join(", "); setConditions(c); }} className="text-left px-2 py-1 text-xs rounded bg-[#0f1629] text-slate-400 border border-slate-700 hover:border-slate-500 hover:text-white transition-colors" data-testid={`asset-option-${i}-${at}`}>{at}</button>
+                    <button key={at} type="button" onClick={() => { const c = [...conditions]; const existing = c[i].value ? c[i].value.split(",").map(s => s.trim()).filter(Boolean) : []; c[i].value = [...existing, at].join(", "); setConditions(c); }} className="text-left px-2 py-1 text-xs rounded bg-muted/50 text-muted-foreground border hover:border-foreground/30 hover:text-foreground transition-colors" data-testid={`asset-option-${i}-${at}`}>{at}</button>
                   ))}
                 </div>
               </div>
@@ -193,12 +193,12 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
                 value={cond.value}
                 onChange={e => { const c = [...conditions]; c[i].value = e.target.value; setConditions(c); }}
                 placeholder={cond.field === "loan_amount" ? "5000000" : "CA, NY"}
-                className="bg-[#0f1629] border-slate-700 text-white text-sm flex-1"
+                className="bg-muted/50 border text-foreground text-sm flex-1"
                 data-testid={`condition-value-${i}`}
               />
             )}
             {conditions.length > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => removeCondition(i)} className="text-slate-400 h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" onClick={() => removeCondition(i)} className="text-muted-foreground h-8 w-8 p-0">
                 <X size={14} />
               </Button>
             )}
@@ -208,7 +208,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
       </div>
 
       <div>
-        <Label className="text-xs text-slate-400 mb-2 block">Required Documents (THEN)</Label>
+        <Label className="text-xs text-muted-foreground mb-2 block">Required Documents (THEN)</Label>
         <div className="grid grid-cols-2 gap-2">
           {[...DOCUMENT_TYPES, ...customDocs].map(doc => (
             <div key={doc} className="flex flex-col gap-1">
@@ -218,7 +218,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
                 className={`text-left px-3 py-2 rounded text-xs border transition-colors ${
                   selectedDocs.includes(doc)
                     ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                    : "bg-[#0f1629] text-slate-500 border-slate-700 hover:border-slate-500"
+                    : "bg-muted/50 text-muted-foreground border hover:border-foreground/30"
                 }`}
                 data-testid={`doc-${doc.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
               >{doc}</button>
@@ -228,10 +228,10 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
                     <>
                       <FileText size={10} className="text-emerald-400" />
                       <span className="text-[10px] text-emerald-400 truncate flex-1">{docTemplates[doc].fileName}</span>
-                      <button type="button" onClick={() => handleTemplateRemove(doc)} className="text-slate-500 hover:text-red-400" data-testid={`remove-template-${doc.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}><X size={10} /></button>
+                      <button type="button" onClick={() => handleTemplateRemove(doc)} className="text-muted-foreground hover:text-red-400" data-testid={`remove-template-${doc.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}><X size={10} /></button>
                     </>
                   ) : (
-                    <label className="cursor-pointer flex items-center gap-1 text-[10px] text-slate-500 hover:text-blue-400 transition-colors">
+                    <label className="cursor-pointer flex items-center gap-1 text-[10px] text-muted-foreground hover:text-blue-400 transition-colors">
                       <input type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) handleTemplateSelect(doc, f); e.target.value = ""; }} />
                       <Upload size={10} />
                       <span>Attach template</span>
@@ -247,7 +247,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
             value={customDocName}
             onChange={e => setCustomDocName(e.target.value)}
             placeholder="Add custom document type..."
-            className="bg-[#0f1629] border-slate-700 text-white text-sm flex-1"
+            className="bg-muted/50 border text-foreground text-sm flex-1"
             data-testid="custom-doc-input"
             onKeyDown={e => {
               if (e.key === "Enter" && customDocName.trim()) {
@@ -283,7 +283,7 @@ function RuleForm({ rule, onSave, onCancel, onRefresh }: { rule?: any; onSave: (
 
       <div className="flex items-center gap-2">
         <Switch checked={isActive} onCheckedChange={setIsActive} data-testid="rule-active-switch" />
-        <Label className="text-xs text-slate-400">Active</Label>
+        <Label className="text-xs text-muted-foreground">Active</Label>
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -355,16 +355,16 @@ function DocumentRulesSection() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileCheck size={16} className="text-amber-400" />
-          <h2 className="text-sm font-medium text-white">Conditional Document Requirements</h2>
+          <h2 className="text-sm font-medium text-foreground">Conditional Document Requirements</h2>
           <Badge className="text-[10px] bg-amber-500/20 text-amber-400">{activeRules.length} active rule{activeRules.length !== 1 ? "s" : ""}</Badge>
         </div>
         <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) setEditingRule(null); }}>
           <DialogTrigger asChild>
-            <Button size="sm" variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-700/50 text-xs" data-testid="add-rule-button">
+            <Button size="sm" variant="outline" className="border text-foreground hover:bg-muted/50 text-xs" data-testid="add-rule-button">
               <Plus size={14} className="mr-1" /> Add Rule
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-[#1a2038] border-slate-700 text-white max-w-2xl">
+          <DialogContent className="bg-card border text-foreground max-w-2xl">
             <DialogHeader><DialogTitle>{editingRule ? "Edit Rule" : "Create New Rule"}</DialogTitle></DialogHeader>
             <RuleForm
               rule={editingRule}
@@ -379,18 +379,18 @@ function DocumentRulesSection() {
         </Dialog>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         Define conditional rules: IF certain deal criteria match, THEN specific documents are required from the borrower.
       </p>
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><RefreshCw size={16} className="animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-8"><RefreshCw size={16} className="animate-spin text-muted-foreground" /></div>
       ) : rules.length === 0 ? (
-        <Card className="bg-[#0f1629] border-slate-700/30">
+        <Card className="bg-muted/50 border">
           <CardContent className="p-8 text-center">
-            <FileCheck size={32} className="mx-auto text-slate-600 mb-2" />
-            <p className="text-sm text-slate-500">No document rules configured yet.</p>
-            <p className="text-xs text-slate-600 mt-1">Add rules to specify what documents are required based on deal criteria.</p>
+            <FileCheck size={32} className="mx-auto text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground">No document rules configured yet.</p>
+            <p className="text-xs text-muted-foreground/50 mt-1">Add rules to specify what documents are required based on deal criteria.</p>
           </CardContent>
         </Card>
       ) : (
@@ -398,31 +398,31 @@ function DocumentRulesSection() {
           {rules.map((rule: any) => (
             <div
               key={rule.id}
-              className={`p-3 rounded-lg border ${rule.isActive ? "bg-[#0f1629] border-slate-700/30" : "bg-[#0f1629]/50 border-slate-800/30 opacity-60"}`}
+              className={`p-3 rounded-lg border ${rule.isActive ? "bg-muted/50 border" : "bg-muted/30 border opacity-60"}`}
               data-testid={`rule-card-${rule.id}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-white truncate">{rule.ruleName}</span>
-                    <Badge className={`text-[9px] shrink-0 ${rule.isActive ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-500/20 text-slate-500"}`}>
+                    <span className="text-sm font-medium text-foreground truncate">{rule.ruleName}</span>
+                    <Badge className={`text-[9px] shrink-0 ${rule.isActive ? "bg-emerald-500/20 text-emerald-400" : "bg-muted text-muted-foreground"}`}>
                       {rule.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-1 text-xs mt-1">
                     <span className="text-blue-400 font-medium">IF</span>
-                    <span className="text-slate-400">{formatConditions(rule.conditions)}</span>
+                    <span className="text-muted-foreground">{formatConditions(rule.conditions)}</span>
                   </div>
                   <div className="flex items-start gap-1 text-xs mt-1">
                     <span className="text-amber-400 font-medium shrink-0">THEN</span>
-                    <span className="text-slate-400">{(rule.requiredDocuments as string[]).join(", ")}</span>
+                    <span className="text-muted-foreground">{(rule.requiredDocuments as string[]).join(", ")}</span>
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={() => { setEditingRule(rule); setDialogOpen(true); }} className="text-slate-400 hover:text-white h-7 w-7 p-0" data-testid={`edit-rule-${rule.id}`}>
+                  <Button variant="ghost" size="sm" onClick={() => { setEditingRule(rule); setDialogOpen(true); }} className="text-muted-foreground hover:text-foreground h-7 w-7 p-0" data-testid={`edit-rule-${rule.id}`}>
                     <Pencil size={13} />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => { if (confirm("Delete this rule?")) deleteMut.mutate(rule.id); }} className="text-slate-400 hover:text-red-400 h-7 w-7 p-0" data-testid={`delete-rule-${rule.id}`}>
+                  <Button variant="ghost" size="sm" onClick={() => { if (confirm("Delete this rule?")) deleteMut.mutate(rule.id); }} className="text-muted-foreground hover:text-red-400 h-7 w-7 p-0" data-testid={`delete-rule-${rule.id}`}>
                     <Trash2 size={13} />
                   </Button>
                 </div>
@@ -527,16 +527,16 @@ function AIConfigSection() {
     <div className="space-y-4" data-testid="ai-config-section">
       <div className="flex items-center gap-2">
         <Bot size={16} className="text-violet-400" />
-        <h2 className="text-sm font-medium text-white">AI Analysis Pipeline</h2>
+        <h2 className="text-sm font-medium text-foreground">AI Analysis Pipeline</h2>
         <Badge className="text-[10px] bg-violet-500/20 text-violet-400">{configuredCount}/{INTAKE_AGENTS.length} configured</Badge>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         Configure the AI agents that analyze incoming commercial deals. Each agent runs in sequence: validation → fund matching → feedback generation.
       </p>
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><RefreshCw size={16} className="animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-8"><RefreshCw size={16} className="animate-spin text-muted-foreground" /></div>
       ) : (
         <div className="space-y-3">
           {INTAKE_AGENTS.map(agent => {
@@ -553,9 +553,9 @@ function AIConfigSection() {
             }[agent.color];
 
             return (
-              <div key={agent.agentType} className="rounded-lg border border-slate-700/30 bg-[#0f1629] overflow-hidden" data-testid={`agent-card-${agent.agentType}`}>
+              <div key={agent.agentType} className="rounded-lg border bg-muted/50 overflow-hidden" data-testid={`agent-card-${agent.agentType}`}>
                 <button
-                  className="w-full flex items-center justify-between p-3 hover:bg-slate-800/30 transition-colors"
+                  className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                   onClick={() => setExpandedAgent(isExpanded ? null : agent.agentType)}
                   data-testid={`agent-toggle-${agent.agentType}`}
                 >
@@ -565,43 +565,43 @@ function AIConfigSection() {
                     </div>
                     <div className="text-left">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{agent.name}</span>
+                        <span className="text-sm font-medium text-foreground">{agent.name}</span>
                         {config ? (
                           <Badge className={`text-[9px] ${colorClasses.badge}`}>{config.modelName}</Badge>
                         ) : (
-                          <Badge className="text-[9px] bg-slate-700/50 text-slate-500">Using defaults</Badge>
+                          <Badge className="text-[9px] bg-muted/50 text-muted-foreground">Using defaults</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500">{agent.description}</p>
+                      <p className="text-xs text-muted-foreground">{agent.description}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {changed && <Badge className="text-[9px] bg-blue-500/20 text-blue-400">Unsaved</Badge>}
-                    {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                    {isExpanded ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-700/30 p-4 space-y-4">
+                  <div className="border-t border p-4 space-y-4">
                     <div>
-                      <Label className="text-xs text-slate-400 mb-1 block">System Prompt</Label>
+                      <Label className="text-xs text-muted-foreground mb-1 block">System Prompt</Label>
                       <Textarea
                         value={state.systemPrompt}
                         onChange={e => updateEditState(agent.agentType, { systemPrompt: e.target.value })}
                         placeholder={`Enter the system prompt for the ${agent.name}. This defines what the AI looks for and how it analyzes deals.`}
-                        className="bg-[#1a2038] border-slate-700 text-white text-sm min-h-[120px] font-mono text-xs"
+                        className="bg-card border text-foreground text-sm min-h-[120px] font-mono text-xs"
                         data-testid={`agent-prompt-${agent.agentType}`}
                       />
                       {!config && state.systemPrompt === "" && (
-                        <p className="text-[10px] text-slate-600 mt-1">No custom prompt set. The agent will use its built-in default prompt.</p>
+                        <p className="text-[10px] text-muted-foreground/50 mt-1">No custom prompt set. The agent will use its built-in default prompt.</p>
                       )}
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <Label className="text-xs text-slate-400 mb-1 block">Model</Label>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Model</Label>
                         <Select value={state.modelName} onValueChange={v => updateEditState(agent.agentType, { modelName: v })}>
-                          <SelectTrigger className="bg-[#1a2038] border-slate-700 text-white text-sm" data-testid={`agent-model-${agent.agentType}`}>
+                          <SelectTrigger className="bg-card border text-foreground text-sm" data-testid={`agent-model-${agent.agentType}`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -613,7 +613,7 @@ function AIConfigSection() {
                       </div>
 
                       <div>
-                        <Label className="text-xs text-slate-400 mb-1 block">
+                        <Label className="text-xs text-muted-foreground mb-1 block">
                           Temperature: {state.temperature.toFixed(1)}
                         </Label>
                         <Slider
@@ -628,19 +628,19 @@ function AIConfigSection() {
                       </div>
 
                       <div>
-                        <Label className="text-xs text-slate-400 mb-1 block">Max Tokens</Label>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Max Tokens</Label>
                         <Input
                           type="number"
                           value={state.maxTokens}
                           onChange={e => updateEditState(agent.agentType, { maxTokens: parseInt(e.target.value) || 4096 })}
-                          className="bg-[#1a2038] border-slate-700 text-white text-sm"
+                          className="bg-card border text-foreground text-sm"
                           data-testid={`agent-tokens-${agent.agentType}`}
                         />
                       </div>
                     </div>
 
                     {config?.updatedAt && (
-                      <p className="text-[10px] text-slate-600">
+                      <p className="text-[10px] text-muted-foreground/50">
                         Last updated: {new Date(config.updatedAt).toLocaleString()}
                       </p>
                     )}
@@ -801,18 +801,18 @@ export default function CommercialFormConfigPage() {
     <div className="p-6 space-y-6 max-w-4xl" data-testid="form-config-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white flex items-center gap-2" data-testid="page-title">
+          <h1 className="text-[30px] font-display font-bold flex items-center gap-2" data-testid="page-title">
             <Settings size={20} className="text-blue-400" />
             Commercial Intake Configuration
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Configure form fields, document requirements, and AI analysis for commercial deal submissions
           </p>
         </div>
         {activeTab === "fields" && (
           <div className="flex items-center gap-2">
             {hasChanges && (
-              <Button variant="ghost" size="sm" onClick={handleReset} className="text-slate-400" data-testid="reset-button">
+              <Button variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground" data-testid="reset-button">
                 <RotateCcw size={14} className="mr-1" /> Reset
               </Button>
             )}
@@ -831,42 +831,42 @@ export default function CommercialFormConfigPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
               <FileText size={16} className="text-blue-400" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-white" data-testid="total-fields">{visibleCount}<span className="text-sm text-slate-500">/{totalFields}</span></p>
-              <p className="text-xs text-slate-400">Form Fields</p>
+              <p className="text-lg font-semibold text-foreground" data-testid="total-fields">{visibleCount}<span className="text-sm text-muted-foreground">/{totalFields}</span></p>
+              <p className="text-xs text-muted-foreground">Form Fields</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
               <FileCheck size={16} className="text-amber-400" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-white" data-testid="doc-rules-count">{activeRulesCount}</p>
-              <p className="text-xs text-slate-400">Document Rules</p>
+              <p className="text-lg font-semibold text-foreground" data-testid="doc-rules-count">{activeRulesCount}</p>
+              <p className="text-xs text-muted-foreground">Document Rules</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
               <Bot size={16} className="text-violet-400" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-white" data-testid="ai-agents-count">{configuredAgents}<span className="text-sm text-slate-500">/3</span></p>
-              <p className="text-xs text-slate-400">AI Agents</p>
+              <p className="text-lg font-semibold text-foreground" data-testid="ai-agents-count">{configuredAgents}<span className="text-sm text-muted-foreground">/3</span></p>
+              <p className="text-xs text-muted-foreground">AI Agents</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="flex gap-1 bg-[#0f1629] rounded-lg p-1 border border-slate-700/30" data-testid="config-tabs">
+      <div className="flex gap-1 bg-muted/50 rounded-lg p-1 border" data-testid="config-tabs">
         {tabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -876,14 +876,14 @@ export default function CommercialFormConfigPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-[#1a2038] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid={`tab-${tab.id}`}
             >
               <Icon size={14} />
               {tab.label}
-              <Badge className={`text-[9px] ${isActive ? "bg-blue-500/20 text-blue-400" : "bg-slate-700/50 text-slate-500"}`}>
+              <Badge className={`text-[9px] ${isActive ? "bg-blue-500/20 text-blue-400" : "bg-muted/50 text-muted-foreground"}`}>
                 {tab.count}
               </Badge>
             </button>
@@ -905,7 +905,7 @@ export default function CommercialFormConfigPage() {
                 const sectionVisibleCount = sectionFields.filter(f => f.isVisible).length;
 
                 return (
-                  <Card key={sectionName} className="bg-[#1a2038] border-slate-700/50">
+                  <Card key={sectionName} className="bg-card border">
                     <CardHeader className="pb-2">
                       <button
                         onClick={() => setExpandedSections(prev => ({ ...prev, [sectionName]: !isExpanded }))}
@@ -913,9 +913,9 @@ export default function CommercialFormConfigPage() {
                         data-testid={`section-toggle-${sectionName.toLowerCase().replace(/\s/g, "-")}`}
                       >
                         <div className="flex items-center gap-2">
-                          {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-                          <CardTitle className="text-sm text-slate-300">{sectionName}</CardTitle>
-                          <Badge className="text-[10px] bg-slate-700/50 text-slate-400">
+                          {isExpanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
+                          <CardTitle className="text-sm text-foreground">{sectionName}</CardTitle>
+                          <Badge className="text-[10px] bg-muted/50 text-muted-foreground">
                             {sectionVisibleCount}/{sectionFields.length} visible
                           </Badge>
                         </div>
@@ -923,7 +923,7 @@ export default function CommercialFormConfigPage() {
                     </CardHeader>
                     {isExpanded && (
                       <CardContent className="space-y-2 pt-0">
-                        <div className="grid grid-cols-[auto_1fr_80px_80px_100px_90px_30px] gap-x-3 gap-y-0 items-center px-2 text-[10px] text-slate-500 uppercase tracking-wider font-medium pb-1 border-b border-slate-700/30">
+                        <div className="grid grid-cols-[auto_1fr_80px_80px_100px_90px_30px] gap-x-3 gap-y-0 items-center px-2 text-[10px] text-muted-foreground uppercase tracking-wider font-medium pb-1 border-b border">
                           <span></span>
                           <span>Label</span>
                           <span className="text-center">Visible</span>
@@ -939,19 +939,19 @@ export default function CommercialFormConfigPage() {
                             <div
                               key={field.id}
                               className={`grid grid-cols-[auto_1fr_80px_80px_100px_90px_30px] gap-x-3 items-center px-2 py-2 rounded ${
-                                hasEdits ? "bg-blue-500/10 border border-blue-500/20" : "bg-[#0f1629] border border-slate-700/30"
+                                hasEdits ? "bg-blue-500/10 border-blue-500/20" : "bg-muted/50 border"
                               } ${!f.isVisible ? "opacity-50" : ""}`}
                               data-testid={`field-row-${field.fieldKey}`}
                             >
-                              <GripVertical size={14} className="text-slate-600 cursor-grab" />
+                              <GripVertical size={14} className="text-muted-foreground/50 cursor-grab" />
                               <div className="flex items-center gap-2">
                                 <Input
                                   value={f.fieldLabel}
                                   onChange={e => updateField(field.id, { fieldLabel: e.target.value })}
-                                  className="bg-transparent border-none text-sm text-white p-0 h-auto focus-visible:ring-0"
+                                  className="bg-transparent border-none text-sm text-foreground p-0 h-auto focus-visible:ring-0"
                                   data-testid={`field-label-${field.fieldKey}`}
                                 />
-                                <span className="text-[10px] text-slate-600 font-mono whitespace-nowrap">{field.fieldKey}</span>
+                                <span className="text-[10px] text-muted-foreground/50 font-mono whitespace-nowrap">{field.fieldKey}</span>
                               </div>
                               <div className="flex justify-center">
                                 <Switch
@@ -970,7 +970,7 @@ export default function CommercialFormConfigPage() {
                               </div>
                               <div className="flex justify-center">
                                 <Select value={f.fieldType} onValueChange={v => updateField(field.id, { fieldType: v })}>
-                                  <SelectTrigger className="h-7 text-[10px] bg-slate-800/50 border-slate-700/50 text-slate-300 px-2 w-[90px]" data-testid={`field-type-${field.fieldKey}`}>
+                                  <SelectTrigger className="h-7 text-[10px] bg-muted/50 border text-foreground px-2 w-[90px]" data-testid={`field-type-${field.fieldKey}`}>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -982,7 +982,7 @@ export default function CommercialFormConfigPage() {
                               </div>
                               <div className="flex justify-center">
                                 <Select value={f.displayFormat || "plain"} onValueChange={v => updateField(field.id, { displayFormat: v })}>
-                                  <SelectTrigger className="h-7 text-[10px] bg-slate-800/50 border-slate-700/50 text-slate-300 px-2 w-[85px]" data-testid={`field-format-${field.fieldKey}`}>
+                                  <SelectTrigger className="h-7 text-[10px] bg-muted/50 border text-foreground px-2 w-[85px]" data-testid={`field-format-${field.fieldKey}`}>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -997,7 +997,7 @@ export default function CommercialFormConfigPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 w-6 p-0 text-slate-500 hover:text-red-400"
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
                                     onClick={() => { if (confirm("Remove this custom field?")) deleteFieldMut.mutate(field.id); }}
                                     data-testid={`field-delete-${field.fieldKey}`}
                                   >
@@ -1011,7 +1011,7 @@ export default function CommercialFormConfigPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="w-full mt-2 border border-dashed border-slate-700/50 text-slate-400 hover:text-white hover:border-blue-500/50 hover:bg-blue-500/10"
+                          className="w-full mt-2 border-dashed border text-muted-foreground hover:text-foreground hover:border-blue-500/50 hover:bg-blue-500/10"
                           onClick={() => { setAddFieldSection(sectionName); setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsText: "" }); }}
                           data-testid={`add-field-${sectionName.toLowerCase().replace(/\s/g, "-")}`}
                         >
@@ -1024,22 +1024,22 @@ export default function CommercialFormConfigPage() {
                 );
               })}
 
-              <Card className="bg-[#1a2038] border-amber-500/30" data-testid="deal-story-config-card">
+              <Card className="bg-card border-amber-500/30" data-testid="deal-story-config-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <Volume2 size={16} className="text-amber-400" />
-                    <CardTitle className="text-sm text-slate-300">Deal Story</CardTitle>
+                    <CardTitle className="text-sm text-foreground">Deal Story</CardTitle>
                     <Badge className="text-[9px] bg-amber-500/20 text-amber-400">Built-in</Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-start gap-3 p-3 rounded bg-[#0f1629] border border-slate-700/30">
+                  <div className="flex items-start gap-3 p-3 rounded bg-muted/50 border">
                     <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0 mt-0.5">
                       <Mic size={16} className="text-amber-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-slate-300">Voice-recorded deal narrative</p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-sm text-foreground">Voice-recorded deal narrative</p>
+                      <p className="text-xs text-muted-foreground mt-1">
                         Brokers and borrowers can record an audio story about their deal using the microphone. The recording is automatically transcribed and submitted with the deal for your review.
                       </p>
                     </div>
@@ -1047,12 +1047,12 @@ export default function CommercialFormConfigPage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-[#1a2038] border-dashed border-slate-700/50">
+              <Card className="bg-card border-dashed border">
                 <CardContent className="p-4">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-slate-400 hover:text-white hover:bg-blue-500/10"
+                    className="w-full text-muted-foreground hover:text-foreground hover:bg-blue-500/10"
                     onClick={() => {
                       const name = prompt("Enter new section name:");
                       if (name?.trim()) {
@@ -1070,38 +1070,38 @@ export default function CommercialFormConfigPage() {
             </div>
 
             <Dialog open={!!addFieldSection} onOpenChange={open => { if (!open) setAddFieldSection(null); }}>
-              <DialogContent className="bg-[#1a2038] border-slate-700/50 text-white max-w-md">
+              <DialogContent className="bg-card border text-foreground max-w-md">
                 <DialogHeader>
-                  <DialogTitle className="text-white text-base">
+                  <DialogTitle className="text-foreground text-base">
                     Add Field to "{addFieldSection}"
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
-                    <Label className="text-xs text-slate-400 mb-1 block">Field Label</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Field Label</Label>
                     <Input
                       value={newField.fieldLabel}
                       onChange={e => setNewField(prev => ({ ...prev, fieldLabel: e.target.value }))}
                       placeholder="e.g. Renovation Budget"
-                      className="bg-[#0f1629] border-slate-700 text-white"
+                      className="bg-muted/50 border text-foreground"
                       data-testid="new-field-label"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-slate-400 mb-1 block">Field Key (optional — auto-generated from label)</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Field Key (optional — auto-generated from label)</Label>
                     <Input
                       value={newField.fieldKey}
                       onChange={e => setNewField(prev => ({ ...prev, fieldKey: e.target.value }))}
                       placeholder="e.g. renovationBudget"
-                      className="bg-[#0f1629] border-slate-700 text-white font-mono text-sm"
+                      className="bg-muted/50 border text-foreground font-mono text-sm"
                       data-testid="new-field-key"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs text-slate-400 mb-1 block">Field Type</Label>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Field Type</Label>
                       <Select value={newField.fieldType} onValueChange={v => setNewField(prev => ({ ...prev, fieldType: v }))}>
-                        <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white" data-testid="new-field-type">
+                        <SelectTrigger className="bg-muted/50 border text-foreground" data-testid="new-field-type">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1112,9 +1112,9 @@ export default function CommercialFormConfigPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-xs text-slate-400 mb-1 block">Display Format</Label>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Display Format</Label>
                       <Select value={newField.displayFormat} onValueChange={v => setNewField(prev => ({ ...prev, displayFormat: v }))}>
-                        <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white" data-testid="new-field-format">
+                        <SelectTrigger className="bg-muted/50 border text-foreground" data-testid="new-field-format">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1127,18 +1127,18 @@ export default function CommercialFormConfigPage() {
                   </div>
                   {(newField.fieldType === "select" || newField.fieldType === "radio") && (
                     <div>
-                      <Label className="text-xs text-slate-400 mb-1 block">Options (comma-separated)</Label>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Options (comma-separated)</Label>
                       <Input
                         value={newField.optionsText}
                         onChange={e => setNewField(prev => ({ ...prev, optionsText: e.target.value }))}
                         placeholder="e.g. Option A, Option B, Option C"
-                        className="bg-[#0f1629] border-slate-700 text-white"
+                        className="bg-muted/50 border text-foreground"
                         data-testid="new-field-options"
                       />
                     </div>
                   )}
                   <div className="flex justify-end gap-2 pt-2">
-                    <Button variant="ghost" size="sm" onClick={() => setAddFieldSection(null)} className="text-slate-400" data-testid="cancel-add-field">
+                    <Button variant="ghost" size="sm" onClick={() => setAddFieldSection(null)} className="text-muted-foreground" data-testid="cancel-add-field">
                       Cancel
                     </Button>
                     <Button

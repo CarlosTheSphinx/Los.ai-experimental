@@ -48,7 +48,7 @@ const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","
 
 function statusBadge(status: string) {
   const config: Record<string, { color: string; label: string }> = {
-    draft: { color: "bg-slate-500/20 text-slate-400 border-slate-500/30", label: "Draft" },
+    draft: { color: "bg-muted text-muted-foreground border", label: "Draft" },
     submitted: { color: "bg-blue-500/20 text-blue-400 border-blue-500/30", label: "Submitted" },
     analyzed: { color: "bg-purple-500/20 text-purple-400 border-purple-500/30", label: "Under Review" },
     under_review: { color: "bg-amber-500/20 text-amber-400 border-amber-500/30", label: "Under Review" },
@@ -58,7 +58,7 @@ function statusBadge(status: string) {
     transferred: { color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30", label: "In Progress" },
     no_match: { color: "bg-red-500/20 text-red-400 border-red-500/30", label: "No Match" },
   };
-  const c = config[status] || { color: "bg-slate-500/20 text-slate-400", label: status };
+  const c = config[status] || { color: "bg-muted text-muted-foreground", label: status };
   return <Badge className={`text-xs ${c.color}`}>{c.label}</Badge>;
 }
 
@@ -73,8 +73,8 @@ function DealsList() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6" data-testid="broker-commercial-deals">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-white" data-testid="page-title">Commercial Deals</h1>
-          <p className="text-sm text-slate-400 mt-1">Submit and track your commercial real estate deals</p>
+          <h1 className="text-[30px] font-display font-bold" data-testid="page-title">Commercial Deals</h1>
+          <p className="text-[16px] text-muted-foreground mt-0.5">Submit and track your commercial real estate deals</p>
         </div>
         <Button
           size="sm"
@@ -87,12 +87,12 @@ function DealsList() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-muted-foreground" /></div>
       ) : deals.length === 0 ? (
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border">
           <CardContent className="p-12 text-center">
-            <Building2 size={40} className="mx-auto text-slate-500 mb-3" />
-            <p className="text-slate-400 mb-4">No deals yet. Submit your first commercial deal.</p>
+            <Building2 size={40} className="mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground mb-4">No deals yet. Submit your first commercial deal.</p>
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => navigate("/commercial-deals/new")} data-testid="empty-new-deal">
               <Plus size={14} className="mr-1" /> Submit New Deal
             </Button>
@@ -103,7 +103,7 @@ function DealsList() {
           {deals.map((deal: any) => (
             <Card
               key={deal.id}
-              className="bg-[#1a2038] border-slate-700/50 hover:border-slate-600 transition-colors cursor-pointer"
+              className="bg-card border hover:border transition-colors cursor-pointer"
               onClick={() => navigate(deal.status === "draft" ? `/commercial-deals/${deal.id}/edit` : `/commercial-deals/${deal.id}`)}
               data-testid={`deal-card-${deal.id}`}
             >
@@ -111,19 +111,19 @@ function DealsList() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-sm font-medium text-white">{deal.dealName || `Deal #${deal.id}`}</h3>
+                      <h3 className="text-sm font-medium text-foreground">{deal.dealName || `Deal #${deal.id}`}</h3>
                       {statusBadge(deal.status)}
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-2">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
                       {deal.loanAmount && <span className="flex items-center gap-1"><DollarSign size={12} />${(deal.loanAmount / 1000000).toFixed(1)}M</span>}
                       {deal.assetType && <span className="flex items-center gap-1"><Building2 size={12} />{deal.assetType}</span>}
                       {deal.propertyState && <span className="flex items-center gap-1"><MapPin size={12} />{deal.propertyState}</span>}
                     </div>
-                    <p className="text-xs text-slate-500 mt-2" data-testid={`deal-date-${deal.id}`}>
+                    <p className="text-xs text-muted-foreground mt-2" data-testid={`deal-date-${deal.id}`}>
                       {deal.status === "draft" ? "Last saved" : "Submitted"}: {formatDealDate(deal)}
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" className="text-slate-400" data-testid={`view-deal-${deal.id}`}>
+                  <Button variant="ghost" size="sm" className="text-muted-foreground" data-testid={`view-deal-${deal.id}`}>
                     <Eye size={14} />
                   </Button>
                 </div>
@@ -150,12 +150,12 @@ interface FormFieldConfig {
 
 function DynamicField({ field, value, onChange, onAddressSelect }: { field: FormFieldConfig; value: any; onChange: (v: any) => void; onAddressSelect?: (data: { formatted: string; city?: string; state?: string; zip?: string }) => void }) {
   const label = `${field.fieldLabel}${field.isRequired ? " *" : ""}`;
-  const inputClass = "bg-[#0f1629] border-slate-700 text-white text-sm";
+  const inputClass = "bg-muted/50 border text-foreground text-sm";
 
   if (field.fieldType === "select" && field.options?.choices) {
     return (
       <div>
-        <Label className="text-xs text-slate-400">{label}</Label>
+        <Label className="text-xs text-muted-foreground">{label}</Label>
         <Select value={value || ""} onValueChange={onChange}>
           <SelectTrigger className={inputClass} data-testid={field.fieldKey}>
             <SelectValue placeholder="Select..." />
@@ -173,12 +173,12 @@ function DynamicField({ field, value, onChange, onAddressSelect }: { field: Form
   if (field.fieldType === "radio" && field.options?.choices) {
     return (
       <div>
-        <Label className="text-xs text-slate-400 mb-2 block">{label}</Label>
+        <Label className="text-xs text-muted-foreground mb-2 block">{label}</Label>
         <RadioGroup value={value ? "yes" : "no"} onValueChange={v => onChange(v === "yes")} className="flex gap-4">
           {field.options.choices.map((c: string) => (
             <div key={c} className="flex items-center gap-1.5">
               <RadioGroupItem value={c.toLowerCase()} id={`${field.fieldKey}-${c}`} />
-              <Label htmlFor={`${field.fieldKey}-${c}`} className="text-xs text-slate-400">{c}</Label>
+              <Label htmlFor={`${field.fieldKey}-${c}`} className="text-xs text-muted-foreground">{c}</Label>
             </div>
           ))}
         </RadioGroup>
@@ -189,7 +189,7 @@ function DynamicField({ field, value, onChange, onAddressSelect }: { field: Form
   if (field.fieldKey === "propertyAddress") {
     return (
       <div>
-        <Label className="text-xs text-slate-400">{label}</Label>
+        <Label className="text-xs text-muted-foreground">{label}</Label>
         <AddressAutocomplete
           value={value || ""}
           onChange={(v) => {
@@ -216,7 +216,7 @@ function DynamicField({ field, value, onChange, onAddressSelect }: { field: Form
   const isCurrency = CURRENCY_FIELDS.has(field.fieldKey);
   return (
     <div>
-      <Label className="text-xs text-slate-400">{label}</Label>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
       <Input
         type={isCurrency ? "text" : (field.fieldType === "number" ? "number" : "text")}
         inputMode={isCurrency ? "numeric" : undefined}
@@ -424,28 +424,28 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
   const canAdvance = !!form.dealName && !!form.loanAmount && !!form.assetType;
 
   if (isEditing && loadingDeal) {
-    return <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-slate-400" /></div>;
+    return <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-muted-foreground" /></div>;
   }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-3xl" data-testid="deal-form-page">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => step === 2 ? setStep(1) : navigate("/commercial-deals")} className="text-slate-400" data-testid="back-button">
+        <Button variant="ghost" size="sm" onClick={() => step === 2 ? setStep(1) : navigate("/commercial-deals")} className="text-muted-foreground" data-testid="back-button">
           <ArrowLeft size={16} className="mr-1" /> {step === 2 ? "Back to Deal Info" : "Back"}
         </Button>
-        <h1 className="text-xl font-semibold text-white">{isEditing ? "Edit Draft Deal" : "Submit New Deal"}</h1>
-        {isEditing && <Badge className="text-xs bg-slate-500/20 text-slate-400 border-slate-500/30">Draft</Badge>}
+        <h1 className="text-xl font-semibold text-foreground">{isEditing ? "Edit Draft Deal" : "Submit New Deal"}</h1>
+        {isEditing && <Badge className="text-xs bg-muted text-muted-foreground border">Draft</Badge>}
       </div>
 
       {/* Step Indicator */}
       <div className="flex items-center gap-3" data-testid="step-indicator">
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 1 ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>
-          {step > 1 ? <CheckCircle2 size={14} /> : <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold">1</span>}
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 1 ? "bg-blue-500/20 text-blue-400 border-blue-500/40" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"}`}>
+          {step > 1 ? <CheckCircle2 size={14} /> : <span className="w-5 h-5 rounded-full bg-blue-500 text-foreground flex items-center justify-center text-[10px] font-bold">1</span>}
           Deal Info
         </div>
-        <div className="w-8 h-px bg-slate-700" />
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 2 ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-slate-500/10 text-slate-500 border border-slate-700/50"}`}>
-          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? "bg-blue-500 text-white" : "bg-slate-700 text-slate-400"}`}>2</span>
+        <div className="w-8 h-px bg-muted" />
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${step === 2 ? "bg-blue-500/20 text-blue-400 border-blue-500/40" : "bg-muted/50 text-muted-foreground border"}`}>
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? "bg-blue-500 text-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
           Documents
         </div>
       </div>
@@ -464,22 +464,22 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
 
             if (Object.keys(sections).length === 0) {
               return (
-                <Card className="bg-[#1a2038] border-slate-700/50">
-                  <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">Deal Basics</CardTitle></CardHeader>
+                <Card className="bg-card border">
+                  <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground">Deal Basics</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
                     <div>
-                      <Label className="text-xs text-slate-400">Deal Name *</Label>
-                      <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="deal-name" />
+                      <Label className="text-xs text-muted-foreground">Deal Name *</Label>
+                      <Input value={form.dealName} onChange={e => update("dealName", e.target.value)} className="bg-muted/50 border text-foreground text-sm" data-testid="deal-name" />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
-                        <Input type="text" inputMode="numeric" value={formatCurrency(form.loanAmount)} onChange={e => update("loanAmount", parseCurrency(e.target.value))} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
+                        <Label className="text-xs text-muted-foreground">Loan Amount ($) *</Label>
+                        <Input type="text" inputMode="numeric" value={formatCurrency(form.loanAmount)} onChange={e => update("loanAmount", parseCurrency(e.target.value))} className="bg-muted/50 border text-foreground text-sm" data-testid="loan-amount" />
                       </div>
                       <div>
-                        <Label className="text-xs text-slate-400">Asset Type *</Label>
+                        <Label className="text-xs text-muted-foreground">Asset Type *</Label>
                         <Select value={form.assetType} onValueChange={v => update("assetType", v)}>
-                          <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
+                          <SelectTrigger className="bg-muted/50 border text-foreground text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
                           <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                         </Select>
                       </div>
@@ -490,8 +490,8 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
             }
 
             return Object.entries(sections).map(([sectionName, sectionFields]) => (
-              <Card key={sectionName} className="bg-[#1a2038] border-slate-700/50">
-                <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300">{sectionName}</CardTitle></CardHeader>
+              <Card key={sectionName} className="bg-card border">
+                <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground">{sectionName}</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {sectionFields.map(field => (
@@ -509,14 +509,14 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
                     ))}
                   </div>
                   {sectionName === "Property Metrics" && (
-                    <div className="flex gap-6 p-3 rounded bg-[#0f1629] border border-slate-700/50">
+                    <div className="flex gap-6 p-3 rounded bg-muted/50 border">
                       <div>
-                        <p className="text-xs text-slate-500">LTV (auto-calculated)</p>
-                        <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-white"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
+                        <p className="text-xs text-muted-foreground">LTV (auto-calculated)</p>
+                        <p className={`text-sm font-medium ${ltv !== "—" && parseFloat(ltv) > 80 ? "text-red-400" : "text-foreground"}`} data-testid="ltv-display">{ltv}{ltv !== "—" ? "%" : ""}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-500">DSCR (auto-calculated)</p>
-                        <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-white"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
+                        <p className="text-xs text-muted-foreground">DSCR (auto-calculated)</p>
+                        <p className={`text-sm font-medium ${dscr !== "—" && parseFloat(dscr) < 1.25 ? "text-amber-400" : "text-foreground"}`} data-testid="dscr-display">{dscr}{dscr !== "—" ? "x" : ""}</p>
                       </div>
                     </div>
                   )}
@@ -537,7 +537,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
               variant="outline"
               onClick={() => saveMut.mutate(false)}
               disabled={saveMut.isPending}
-              className="border-slate-700 text-slate-300"
+              className="border text-foreground"
               data-testid="save-draft-button"
             >
               <Save size={14} className="mr-1" /> {isEditing ? "Update Draft" : "Save as Draft"}
@@ -546,7 +546,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
             <Button
               variant="outline"
               onClick={() => navigate("/commercial-deals")}
-              className="border-slate-700 text-slate-300"
+              className="border text-foreground"
             >
               Cancel
             </Button>
@@ -565,15 +565,15 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
       {/* STEP 2: Document Upload */}
       {step === 2 && (
         <>
-          <Card className="bg-[#1a2038] border-slate-700/50">
+          <Card className="bg-card border">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm text-slate-300">Required Documents</CardTitle>
-                <Badge className={`text-xs ${allDocsUploaded ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-slate-500/20 text-slate-400 border-slate-500/30"}`} data-testid="doc-progress-badge">
+                <CardTitle className="text-sm text-foreground">Required Documents</CardTitle>
+                <Badge className={`text-xs ${allDocsUploaded ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-muted text-muted-foreground border"}`} data-testid="doc-progress-badge">
                   {docsUploaded} of {totalRequired} uploaded
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Based on your deal ({form.assetType || "—"}, ${loanAmt ? `${(loanAmt / 1000000).toFixed(1)}M` : "—"}, {form.propertyState || "—"})
               </p>
             </CardHeader>
@@ -584,17 +584,17 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
                 const existingFiles = existingDocsByType[docType] || [];
                 const hasFiles = newFiles.length > 0 || existingFiles.length > 0;
                 return (
-                  <div key={docType} className={`p-3 rounded border ${hasFiles ? "bg-emerald-500/5 border-emerald-500/20" : "bg-[#0f1629] border-slate-700/50"}`} data-testid={`doc-req-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+                  <div key={docType} className={`p-3 rounded border ${hasFiles ? "bg-emerald-500/5 border-emerald-500/20" : "bg-muted/50 border"}`} data-testid={`doc-req-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
                     <div className="flex items-center gap-3">
                       {hasFiles ? (
                         <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
                       ) : (
-                        <FileText size={16} className="text-slate-500 shrink-0" />
+                        <FileText size={16} className="text-muted-foreground shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white">{docType}</p>
+                        <p className="text-sm text-foreground">{docType}</p>
                         {hasFiles && (
-                          <p className="text-[10px] text-slate-500">{existingFiles.length + newFiles.length} file{(existingFiles.length + newFiles.length) !== 1 ? "s" : ""}</p>
+                          <p className="text-[10px] text-muted-foreground">{existingFiles.length + newFiles.length} file{(existingFiles.length + newFiles.length) !== 1 ? "s" : ""}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
@@ -627,17 +627,17 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
                     {(existingFiles.length > 0 || newFiles.length > 0) && (
                       <div className="mt-2 ml-7 space-y-1">
                         {existingFiles.map((doc: any) => (
-                          <div key={doc.id} className="flex items-center gap-2 text-xs text-slate-400 py-0.5">
+                          <div key={doc.id} className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
                             <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />
                             <span className="truncate flex-1">{doc.fileName}</span>
-                            <span className="text-slate-600 shrink-0">v{doc.version}</span>
+                            <span className="text-muted-foreground/50 shrink-0">v{doc.version}</span>
                           </div>
                         ))}
                         {newFiles.map((f, i) => (
                           <div key={`new-${i}`} className="flex items-center gap-2 text-xs text-blue-400 py-0.5">
                             <Plus size={10} className="text-blue-400 shrink-0" />
                             <span className="truncate flex-1">{f.name}</span>
-                            <button type="button" onClick={() => removeUploadedFile(docType, i)} className="text-slate-500 hover:text-red-400 shrink-0" data-testid={`remove-file-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${i}`}>
+                            <button type="button" onClick={() => removeUploadedFile(docType, i)} className="text-muted-foreground hover:text-red-400 shrink-0" data-testid={`remove-file-${docType.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${i}`}>
                               <X size={12} />
                             </button>
                           </div>
@@ -654,7 +654,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
             <Button
               variant="outline"
               onClick={() => setStep(1)}
-              className="border-slate-700 text-slate-300"
+              className="border text-foreground"
               data-testid="back-to-step1-button"
             >
               <ArrowLeft size={14} className="mr-1" /> Back to Deal Info
@@ -663,7 +663,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
               variant="outline"
               onClick={() => saveMut.mutate(false)}
               disabled={saveMut.isPending}
-              className="border-slate-700 text-slate-300"
+              className="border text-foreground"
               data-testid="save-draft-button-step2"
             >
               <Save size={14} className="mr-1" /> Save as Draft
@@ -795,8 +795,8 @@ function DealDetail() {
     }
   };
 
-  if (isLoading) return <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-slate-400" /></div>;
-  if (!deal) return <div className="p-6"><p className="text-slate-400">Deal not found</p></div>;
+  if (isLoading) return <div className="flex justify-center py-12"><RefreshCw size={20} className="animate-spin text-muted-foreground" /></div>;
+  if (!deal) return <div className="p-6"><p className="text-muted-foreground">Deal not found</p></div>;
 
   const currentDocs = deal.documents?.filter((d: any) => d.isCurrent) || [];
   const brokerNotes = (deal.brokerNotes || []) as Array<{ content: string; createdAt: string; authorName: string }>;
@@ -804,10 +804,10 @@ function DealDetail() {
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6" data-testid="broker-deal-detail">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/commercial-deals")} className="text-slate-400" data-testid="back-button">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/commercial-deals")} className="text-muted-foreground" data-testid="back-button">
           <ArrowLeft size={16} className="mr-1" /> Back
         </Button>
-        <h1 className="text-xl font-semibold text-white">{deal.dealName || `Deal #${deal.id}`}</h1>
+        <h1 className="text-xl font-semibold text-foreground">{deal.dealName || `Deal #${deal.id}`}</h1>
         {statusBadge(deal.status)}
         <Button size="sm" className="bg-blue-600 hover:bg-blue-700 ml-auto" onClick={() => navigate(`/commercial-deals/${deal.id}/edit`)} data-testid="edit-deal-button">
           <Pencil size={14} className="mr-1" /> Edit Deal
@@ -815,12 +815,12 @@ function DealDetail() {
       </div>
 
       {deal.linkedProjectId && (
-        <Card className="bg-[#1a2038] border-cyan-500/30">
+        <Card className="bg-card border-cyan-500/30">
           <CardContent className="p-4 flex items-center gap-3">
             <ArrowRight size={16} className="text-cyan-400" />
             <div>
-              <p className="text-sm text-white">This deal has been transferred to the origination pipeline</p>
-              <p className="text-xs text-slate-400">Project #{deal.linkedProjectId}</p>
+              <p className="text-sm text-foreground">This deal has been transferred to the origination pipeline</p>
+              <p className="text-xs text-muted-foreground">Project #{deal.linkedProjectId}</p>
             </div>
           </CardContent>
         </Card>
@@ -830,16 +830,16 @@ function DealDetail() {
         {/* LEFT COLUMN */}
         <div className="space-y-4 sm:space-y-6">
           {/* Deal Summary - Editable */}
-          <Card className="bg-[#1a2038] border-slate-700/50">
+          <Card className="bg-card border">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-slate-300 flex items-center gap-2"><Building2 size={16} /> Deal Summary</CardTitle>
+              <CardTitle className="text-sm text-foreground flex items-center gap-2"><Building2 size={16} /> Deal Summary</CardTitle>
               {!isEditing ? (
-                <Button variant="ghost" size="sm" onClick={startEdit} className="text-slate-400 hover:text-white h-7 px-2" data-testid="edit-summary-button">
+                <Button variant="ghost" size="sm" onClick={startEdit} className="text-muted-foreground hover:text-foreground h-7 px-2" data-testid="edit-summary-button">
                   <Pencil size={12} className="mr-1" /> Edit
                 </Button>
               ) : (
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="text-slate-400 h-7 px-2" data-testid="cancel-edit-button">
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="text-muted-foreground h-7 px-2" data-testid="cancel-edit-button">
                     <X size={12} className="mr-1" /> Cancel
                   </Button>
                   <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending} className="bg-[#C9A84C] hover:bg-[#b8973b] h-7 px-2" data-testid="save-edit-button">
@@ -852,17 +852,17 @@ function DealDetail() {
               {isEditing ? (
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="col-span-2">
-                    <Label className="text-slate-500 text-xs">Deal Name</Label>
-                    <Input value={editData.dealName} onChange={e => setEditData({ ...editData, dealName: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-deal-name" />
+                    <Label className="text-muted-foreground text-xs">Deal Name</Label>
+                    <Input value={editData.dealName} onChange={e => setEditData({ ...editData, dealName: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-deal-name" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Loan Amount ($)</Label>
-                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
+                    <Label className="text-muted-foreground text-xs">Loan Amount ($)</Label>
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-loan-amount" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Asset Type</Label>
+                    <Label className="text-muted-foreground text-xs">Asset Type</Label>
                     <Select value={editData.assetType} onValueChange={v => setEditData({ ...editData, assetType: v })}>
-                      <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-asset-type">
+                      <SelectTrigger className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-asset-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -871,17 +871,17 @@ function DealDetail() {
                     </Select>
                   </div>
                   <div className="col-span-2">
-                    <Label className="text-slate-500 text-xs">Property Address</Label>
-                    <Input value={editData.propertyAddress} onChange={e => setEditData({ ...editData, propertyAddress: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-address" />
+                    <Label className="text-muted-foreground text-xs">Property Address</Label>
+                    <Input value={editData.propertyAddress} onChange={e => setEditData({ ...editData, propertyAddress: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-property-address" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">City</Label>
-                    <Input value={editData.propertyCity} onChange={e => setEditData({ ...editData, propertyCity: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-city" />
+                    <Label className="text-muted-foreground text-xs">City</Label>
+                    <Input value={editData.propertyCity} onChange={e => setEditData({ ...editData, propertyCity: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-city" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">State</Label>
+                    <Label className="text-muted-foreground text-xs">State</Label>
                     <Select value={editData.propertyState} onValueChange={v => setEditData({ ...editData, propertyState: v })}>
-                      <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-state">
+                      <SelectTrigger className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-state">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -890,25 +890,25 @@ function DealDetail() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Property Value ($)</Label>
-                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
+                    <Label className="text-muted-foreground text-xs">Property Value ($)</Label>
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-property-value" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">NOI Annual ($)</Label>
-                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
+                    <Label className="text-muted-foreground text-xs">NOI Annual ($)</Label>
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-noi" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Occupancy %</Label>
-                    <Input type="number" value={editData.occupancyPct} onChange={e => setEditData({ ...editData, occupancyPct: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-occupancy" />
+                    <Label className="text-muted-foreground text-xs">Occupancy %</Label>
+                    <Input type="number" value={editData.occupancyPct} onChange={e => setEditData({ ...editData, occupancyPct: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-occupancy" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Borrower Name</Label>
-                    <Input value={editData.borrowerName} onChange={e => setEditData({ ...editData, borrowerName: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-borrower-name" />
+                    <Label className="text-muted-foreground text-xs">Borrower Name</Label>
+                    <Input value={editData.borrowerName} onChange={e => setEditData({ ...editData, borrowerName: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-borrower-name" />
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Entity Type</Label>
+                    <Label className="text-muted-foreground text-xs">Entity Type</Label>
                     <Select value={editData.borrowerEntityType} onValueChange={v => setEditData({ ...editData, borrowerEntityType: v })}>
-                      <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-entity-type">
+                      <SelectTrigger className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-entity-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -917,21 +917,21 @@ function DealDetail() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-slate-500 text-xs">Credit Score</Label>
-                    <Input type="number" value={editData.borrowerCreditScore} onChange={e => setEditData({ ...editData, borrowerCreditScore: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-credit-score" />
+                    <Label className="text-muted-foreground text-xs">Credit Score</Label>
+                    <Input type="number" value={editData.borrowerCreditScore} onChange={e => setEditData({ ...editData, borrowerCreditScore: e.target.value })} className="bg-muted/50 border text-foreground text-sm h-8 mt-1" data-testid="edit-credit-score" />
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                  <div><p className="text-slate-500 text-xs">Loan Amount</p><p className="text-white">${deal.loanAmount ? deal.loanAmount.toLocaleString() : "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">Asset Type</p><p className="text-white">{deal.assetType || "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">Property</p><p className="text-white truncate">{deal.propertyAddress || "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">LTV</p><p className="text-white">{deal.ltvPct != null ? `${deal.ltvPct}%` : "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">DSCR</p><p className="text-white">{deal.dscr != null ? `${deal.dscr}x` : "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">Borrower</p><p className="text-white">{deal.borrowerName || "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">Property Value</p><p className="text-white">{deal.propertyValue ? `$${deal.propertyValue.toLocaleString()}` : "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">NOI</p><p className="text-white">{deal.noiAnnual ? `$${deal.noiAnnual.toLocaleString()}` : "N/A"}</p></div>
-                  <div><p className="text-slate-500 text-xs">Occupancy</p><p className="text-white">{deal.occupancyPct != null ? `${deal.occupancyPct}%` : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Loan Amount</p><p className="text-foreground">${deal.loanAmount ? deal.loanAmount.toLocaleString() : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Asset Type</p><p className="text-foreground">{deal.assetType || "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Property</p><p className="text-foreground truncate">{deal.propertyAddress || "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">LTV</p><p className="text-foreground">{deal.ltvPct != null ? `${deal.ltvPct}%` : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">DSCR</p><p className="text-foreground">{deal.dscr != null ? `${deal.dscr}x` : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Borrower</p><p className="text-foreground">{deal.borrowerName || "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Property Value</p><p className="text-foreground">{deal.propertyValue ? `$${deal.propertyValue.toLocaleString()}` : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">NOI</p><p className="text-foreground">{deal.noiAnnual ? `$${deal.noiAnnual.toLocaleString()}` : "N/A"}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Occupancy</p><p className="text-foreground">{deal.occupancyPct != null ? `${deal.occupancyPct}%` : "N/A"}</p></div>
                 </div>
               )}
             </CardContent>
@@ -939,20 +939,20 @@ function DealDetail() {
 
           {/* Status Timeline */}
           {deal.statusHistory?.length > 0 && (
-            <Card className="bg-[#1a2038] border-slate-700/50">
-              <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300 flex items-center gap-2"><Clock size={16} /> Status Timeline</CardTitle></CardHeader>
+            <Card className="bg-card border">
+              <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground flex items-center gap-2"><Clock size={16} /> Status Timeline</CardTitle></CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {deal.statusHistory.map((sh: any, i: number) => (
                     <div key={sh.id} className="flex items-start gap-3" data-testid={`timeline-${i}`}>
                       <div className="flex flex-col items-center">
-                        <div className={`w-3 h-3 rounded-full ${i === 0 ? "bg-blue-500" : "bg-slate-600"}`} />
-                        {i < deal.statusHistory.length - 1 && <div className="w-px h-6 bg-slate-700" />}
+                        <div className={`w-3 h-3 rounded-full ${i === 0 ? "bg-blue-500" : "bg-muted"}`} />
+                        {i < deal.statusHistory.length - 1 && <div className="w-px h-6 bg-muted" />}
                       </div>
                       <div>
-                        <p className="text-sm text-white">{sh.toStatus.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</p>
-                        <p className="text-xs text-slate-500">{new Date(sh.createdAt).toLocaleString()}</p>
-                        {sh.notes && <p className="text-xs text-slate-400 mt-0.5">{sh.notes}</p>}
+                        <p className="text-sm text-foreground">{sh.toStatus.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(sh.createdAt).toLocaleString()}</p>
+                        {sh.notes && <p className="text-xs text-muted-foreground mt-0.5">{sh.notes}</p>}
                       </div>
                     </div>
                   ))}
@@ -962,15 +962,15 @@ function DealDetail() {
           )}
 
           {/* Notes Section */}
-          <Card className="bg-[#1a2038] border-slate-700/50">
-            <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300 flex items-center gap-2"><StickyNote size={16} /> Notes</CardTitle></CardHeader>
+          <Card className="bg-card border">
+            <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground flex items-center gap-2"><StickyNote size={16} /> Notes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <Textarea
                   placeholder="Add a note about this deal..."
                   value={noteContent}
                   onChange={e => setNoteContent(e.target.value)}
-                  className="bg-[#0f1629] border-slate-700 text-white text-sm min-h-[60px] resize-none flex-1"
+                  className="bg-muted/50 border text-foreground text-sm min-h-[60px] resize-none flex-1"
                   data-testid="note-input"
                 />
               </div>
@@ -986,14 +986,14 @@ function DealDetail() {
               </Button>
 
               {brokerNotes.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-slate-700/50">
+                <div className="space-y-2 pt-2 border-t border">
                   {brokerNotes.map((note, i) => (
-                    <div key={i} className="p-2.5 rounded bg-[#0f1629] border border-slate-700/50" data-testid={`note-${i}`}>
-                      <p className="text-sm text-white whitespace-pre-wrap">{note.content}</p>
+                    <div key={i} className="p-2.5 rounded bg-muted/50 border" data-testid={`note-${i}`}>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <p className="text-xs text-slate-500">{note.authorName}</p>
-                        <span className="text-xs text-slate-700">·</span>
-                        <p className="text-xs text-slate-500">{new Date(note.createdAt).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">{note.authorName}</p>
+                        <span className="text-xs text-muted-foreground/50">·</span>
+                        <p className="text-xs text-muted-foreground">{new Date(note.createdAt).toLocaleString()}</p>
                       </div>
                     </div>
                   ))}
@@ -1006,18 +1006,18 @@ function DealDetail() {
         {/* RIGHT COLUMN */}
         <div className="space-y-4 sm:space-y-6">
           {/* Document Collection */}
-          <Card className="bg-[#1a2038] border-slate-700/50">
-            <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300 flex items-center gap-2"><FileText size={16} /> Documents</CardTitle></CardHeader>
+          <Card className="bg-card border">
+            <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground flex items-center gap-2"><FileText size={16} /> Documents</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {/* Upload Section */}
-              <div className="p-3 rounded border border-dashed border-slate-600 bg-[#0f1629]/50">
+              <div className="p-3 rounded border-dashed border bg-muted/30">
                 <div className="flex items-center gap-2 mb-2">
-                  <Upload size={14} className="text-slate-400" />
-                  <p className="text-xs text-slate-400">Upload a document</p>
+                  <Upload size={14} className="text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">Upload a document</p>
                 </div>
                 <div className="space-y-2">
                   <Select value={uploadDocType} onValueChange={setUploadDocType}>
-                    <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-xs h-8" data-testid="select-doc-type">
+                    <SelectTrigger className="bg-muted/50 border text-foreground text-xs h-8" data-testid="select-doc-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1037,7 +1037,7 @@ function DealDetail() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700 text-xs flex-1"
+                      className="border text-foreground hover:bg-muted text-xs flex-1"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadMutation.isPending}
                       data-testid="upload-button"
@@ -1053,19 +1053,19 @@ function DealDetail() {
               {currentDocs.length > 0 ? (
                 <div className="space-y-2">
                   {currentDocs.map((doc: any) => (
-                    <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded bg-[#0f1629] border border-slate-700/50" data-testid={`doc-${doc.id}`}>
+                    <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded bg-muted/50 border" data-testid={`doc-${doc.id}`}>
                       <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white truncate">{doc.documentType}</p>
-                        <p className="text-xs text-slate-500 truncate">{doc.fileName} · v{doc.version} · {new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                        <p className="text-sm text-foreground truncate">{doc.documentType}</p>
+                        <p className="text-xs text-muted-foreground truncate">{doc.fileName} · v{doc.version} · {new Date(doc.uploadedAt).toLocaleDateString()}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-4">
-                  <FileText size={24} className="mx-auto text-slate-600 mb-2" />
-                  <p className="text-xs text-slate-500">No documents uploaded yet</p>
+                  <FileText size={24} className="mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-xs text-muted-foreground">No documents uploaded yet</p>
                 </div>
               )}
             </CardContent>
@@ -1073,10 +1073,10 @@ function DealDetail() {
 
           {/* Deal Story */}
           {deal.dealStoryTranscript && (
-            <Card className="bg-[#1a2038] border-slate-700/50">
-              <CardHeader className="pb-3"><CardTitle className="text-sm text-slate-300 flex items-center gap-2"><MessageSquare size={16} /> Deal Story</CardTitle></CardHeader>
+            <Card className="bg-card border">
+              <CardHeader className="pb-3"><CardTitle className="text-sm text-foreground flex items-center gap-2"><MessageSquare size={16} /> Deal Story</CardTitle></CardHeader>
               <CardContent>
-                <p className="text-sm text-slate-300 whitespace-pre-wrap">{deal.dealStoryTranscript}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{deal.dealStoryTranscript}</p>
               </CardContent>
             </Card>
           )}
