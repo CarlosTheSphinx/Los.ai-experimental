@@ -6195,10 +6195,6 @@ export async function registerRoutes(
       const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      if (!['borrower', 'broker'].includes(user.role)) {
-        return res.status(400).json({ error: 'Magic links are only available for borrowers and brokers' });
-      }
-
       const magicToken = generateRandomToken();
       const magicExpires = new Date(Date.now() + 30 * 60 * 1000);
       const crypto = await import('crypto');

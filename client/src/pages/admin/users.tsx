@@ -640,28 +640,26 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
         </Button>
       </div>
 
-      {(user.role === "borrower" || user.role === "broker") && (
-        <div className="border rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold flex items-center gap-1.5">
-              <Wand2 className="h-4 w-4" /> Magic Link Login
-            </h4>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Send a one-click login link via email. The link expires in 30 minutes and can only be used once.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => magicLinkMutation.mutate()}
-            disabled={magicLinkMutation.isPending}
-            data-testid="button-send-magic-link"
-          >
-            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-            {magicLinkMutation.isPending ? "Sending..." : "Send Magic Link"}
-          </Button>
+      <div className="border rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold flex items-center gap-1.5">
+            <Wand2 className="h-4 w-4" /> Magic Link Login
+          </h4>
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          Send a one-click login link via email. The link expires in 30 minutes and can only be used once.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => magicLinkMutation.mutate()}
+          disabled={magicLinkMutation.isPending}
+          data-testid="button-send-magic-link"
+        >
+          <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+          {magicLinkMutation.isPending ? "Sending..." : "Send Magic Link"}
+        </Button>
+      </div>
 
       {user.role === "broker" && (
         <Collapsible open={brokerPermsOpen} onOpenChange={setBrokerPermsOpen}>
