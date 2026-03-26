@@ -56,7 +56,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       const isSuperAdmin = user?.role === 'super_admin';
       const userTenantId = isSuperAdmin ? null : await resolveUserTenantId(req.user!.id);
       const programs = await db.select().from(loanPrograms)
-        .where(isSuperAdmin ? undefined : (userTenantId != null ? eq(loanPrograms.tenantId, String(userTenantId)) : eq(loanPrograms.createdBy, req.user!.id)))
+        .where(isSuperAdmin ? undefined : (userTenantId != null ? eq(loanPrograms.tenantId, userTenantId) : eq(loanPrograms.createdBy, req.user!.id)))
         .orderBy(loanPrograms.sortOrder);
 
       const programsWithCounts = await Promise.all(programs.map(async (program) => {
@@ -176,7 +176,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
           createdBy: req.user!.id,
-          tenantId: String(await resolveUserTenantId(req.user!.id) ?? ''),
+          tenantId: await resolveUserTenantId(req.user!.id),
           pricingMode: pricingMode || 'none',
           externalPricingConfig: externalPricingConfig || null,
         }).returning();
@@ -657,7 +657,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           isActive: false,
           creditPolicyId: sourceProgram.creditPolicyId,
           createdBy: req.user!.id,
-          tenantId: String(await resolveUserTenantId(req.user!.id) ?? ''),
+          tenantId: await resolveUserTenantId(req.user!.id),
           reviewGuidelines: sourceProgram.reviewGuidelines,
         }).returning();
 

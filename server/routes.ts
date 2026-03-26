@@ -11537,7 +11537,7 @@ export async function registerRoutes(
         const userTenantId = getTenantId(req.user!);
         if (userTenantId) {
           scopeFilter = or(
-            eq(loanPrograms.tenantId, String(userTenantId)),
+            eq(loanPrograms.tenantId, userTenantId),
             eq(loanPrograms.createdBy, req.user!.id)
           );
         } else {
@@ -14169,7 +14169,7 @@ If the user provides specific criteria, extract as many rules as you can from th
       } else if (tenantIds.length > 0 || createdByIds.length > 0) {
         const conditions = [];
         if (tenantIds.length > 0) {
-          conditions.push(inArray(loanPrograms.tenantId, tenantIds.map(String)));
+          conditions.push(inArray(loanPrograms.tenantId, tenantIds));
         }
         if (createdByIds.length > 0) {
           conditions.push(and(isNull(loanPrograms.tenantId), inArray(loanPrograms.createdBy, createdByIds)));
