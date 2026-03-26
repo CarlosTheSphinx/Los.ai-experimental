@@ -19,6 +19,18 @@ import {
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import DealStoryRecorder from "@/components/DealStoryRecorder";
 
+const CURRENCY_FIELDS = new Set(["loanAmount", "propertyValue", "noiAnnual"]);
+
+function formatCurrency(val: string): string {
+  const num = val.replace(/[^0-9]/g, "");
+  if (!num) return "";
+  return parseInt(num).toLocaleString("en-US");
+}
+
+function parseCurrency(val: string): string {
+  return val.replace(/[^0-9]/g, "");
+}
+
 function tryParseDate(value: unknown): Date | null {
   if (value == null) return null;
   const d = new Date(value as string | number);
@@ -201,13 +213,15 @@ function DynamicField({ field, value, onChange, onAddressSelect }: { field: Form
     );
   }
 
+  const isCurrency = CURRENCY_FIELDS.has(field.fieldKey);
   return (
     <div>
       <Label className="text-xs text-slate-400">{label}</Label>
       <Input
-        type={field.fieldType === "number" ? "number" : "text"}
-        value={value || ""}
-        onChange={e => onChange(e.target.value)}
+        type={isCurrency ? "text" : (field.fieldType === "number" ? "number" : "text")}
+        inputMode={isCurrency ? "numeric" : undefined}
+        value={isCurrency ? formatCurrency(value || "") : (value || "")}
+        onChange={e => onChange(isCurrency ? parseCurrency(e.target.value) : e.target.value)}
         className={inputClass}
         data-testid={field.fieldKey}
       />
@@ -460,7 +474,7 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs text-slate-400">Loan Amount ($) *</Label>
-                        <Input type="number" value={form.loanAmount} onChange={e => update("loanAmount", e.target.value)} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
+                        <Input type="text" inputMode="numeric" value={formatCurrency(form.loanAmount)} onChange={e => update("loanAmount", parseCurrency(e.target.value))} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="loan-amount" />
                       </div>
                       <div>
                         <Label className="text-xs text-slate-400">Asset Type *</Label>
@@ -843,7 +857,7 @@ function DealDetail() {
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs">Loan Amount ($)</Label>
-                    <Input type="number" value={editData.loanAmount} onChange={e => setEditData({ ...editData, loanAmount: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs">Asset Type</Label>
@@ -877,11 +891,11 @@ function DealDetail() {
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs">Property Value ($)</Label>
-                    <Input type="number" value={editData.propertyValue} onChange={e => setEditData({ ...editData, propertyValue: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs">NOI Annual ($)</Label>
-                    <Input type="number" value={editData.noiAnnual} onChange={e => setEditData({ ...editData, noiAnnual: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
+                    <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs">Occupancy %</Label>

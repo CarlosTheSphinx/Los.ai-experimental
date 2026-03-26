@@ -21,6 +21,15 @@ const ASSET_TYPES = ["Multifamily","Office","Retail","Industrial","Hotel","Land"
 const ENTITY_TYPES = ["Individual","LLC","Corporation","Partnership","Trust"];
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
+function formatCurrency(val: string): string {
+  const num = val.replace(/[^0-9]/g, "");
+  if (!num) return "";
+  return parseInt(num).toLocaleString("en-US");
+}
+function parseCurrency(val: string): string {
+  return val.replace(/[^0-9]/g, "");
+}
+
 function VerdictDisplay({ verdict, confidence, breakdown }: { verdict: string; confidence: number; breakdown?: { fund_fit: number; deal_health: number } }) {
   const colors: Record<string, { bg: string; text: string; icon: any }> = {
     pass: { bg: "bg-emerald-500/10 border-emerald-500/30", text: "text-emerald-400", icon: CheckCircle2 },
@@ -265,7 +274,7 @@ export default function CommercialPipelineDetailPage() {
               </div>
               <div>
                 <Label className="text-slate-500 text-xs">Loan Amount ($)</Label>
-                <Input type="number" value={editData.loanAmount} onChange={e => setEditData({ ...editData, loanAmount: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
               </div>
               <div>
                 <Label className="text-slate-500 text-xs">Asset Type</Label>
@@ -276,7 +285,7 @@ export default function CommercialPipelineDetailPage() {
               </div>
               <div>
                 <Label className="text-slate-500 text-xs">Property Value ($)</Label>
-                <Input type="number" value={editData.propertyValue} onChange={e => setEditData({ ...editData, propertyValue: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
               </div>
               <div className="col-span-2">
                 <Label className="text-slate-500 text-xs">Property Address</Label>
@@ -291,7 +300,7 @@ export default function CommercialPipelineDetailPage() {
               </div>
               <div>
                 <Label className="text-slate-500 text-xs">NOI Annual ($)</Label>
-                <Input type="number" value={editData.noiAnnual} onChange={e => setEditData({ ...editData, noiAnnual: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
               </div>
               <div>
                 <Label className="text-slate-500 text-xs">Occupancy %</Label>
