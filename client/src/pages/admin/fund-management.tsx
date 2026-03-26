@@ -276,7 +276,10 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   const [previewData, setPreviewData] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [selectedSheet, setSelectedSheet] = useState<string>("");
+  const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+  const [currentPreviewSheet, setCurrentPreviewSheet] = useState<string>("");
+  const [allSheetsPreview, setAllSheetsPreview] = useState<Record<string, any>>({});
+  const [loadingSheets, setLoadingSheets] = useState(false);
   const [duplicateAction, setDuplicateAction] = useState("skip");
   const [importResult, setImportResult] = useState<any>(null);
 
@@ -297,8 +300,11 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       setPreviewData(data);
       if (data.sheetNames?.length > 1 && step === "upload") {
         setSheetNames(data.sheetNames);
-        setSelectedSheet(data.selectedSheet || data.sheetNames[0]);
+        setSelectedSheets([data.selectedSheet || data.sheetNames[0]]);
         setStep("sheet-select");
+      } else if (step === "sheet-select") {
+        setAllSheetsPreview(prev => ({ ...prev, [data.selectedSheet]: data }));
+        setStep("preview");
       } else {
         setStep("preview");
       }
@@ -309,17 +315,28 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   const importMut = useMutation({
     mutationFn: async () => {
       if (!selectedFile) throw new Error("No file");
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("duplicateAction", duplicateAction);
-      if (selectedSheet) formData.append("sheetName", selectedSheet);
-      const resp = await fetch("/api/commercial/funds/bulk-import", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!resp.ok) throw new Error((await resp.json()).error || "Import failed");
-      return resp.json();
+      const sheetsToImport = selectedSheets.length > 0 ? selectedSheets : [currentPreviewSheet || ""];
+      const aggregated = { created: 0, updated: 0, skipped: 0, failed: 0, knowledgeCreated: 0, sheetResults: [] as any[] };
+      for (const sheet of sheetsToImport) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("duplicateAction", duplicateAction);
+        if (sheet) formData.append("sheetName", sheet);
+        const resp = await fetch("/api/commercial/funds/bulk-import", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (!resp.ok) throw new Error((await resp.json()).error || `Import failed for sheet "${sheet}"`);
+        const result = await resp.json();
+        aggregated.created += result.created || 0;
+        aggregated.updated += result.updated || 0;
+        aggregated.skipped += result.skipped || 0;
+        aggregated.failed += result.failed || 0;
+        aggregated.knowledgeCreated += result.knowledgeCreated || 0;
+        aggregated.sheetResults.push({ sheet, ...result });
+      }
+      return aggregated;
     },
     onSuccess: (data) => {
       setImportResult(data);
@@ -334,7 +351,10 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     setPreviewData(null);
     setSelectedFile(null);
     setSheetNames([]);
-    setSelectedSheet("");
+    setSelectedSheets([]);
+    setCurrentPreviewSheet("");
+    setAllSheetsPreview({});
+    setLoadingSheets(false);
     setImportResult(null);
   };
 
@@ -345,11 +365,30 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     previewMut.mutate({ file });
   };
 
-  const handleSheetConfirm = () => {
-    if (selectedFile && selectedSheet) {
-      previewMut.mutate({ file: selectedFile, sheetName: selectedSheet });
-      setStep("preview");
+  const handleSheetConfirm = async () => {
+    if (!selectedFile || selectedSheets.length === 0) return;
+    setLoadingSheets(true);
+    setCurrentPreviewSheet(selectedSheets[0]);
+    const previews: Record<string, any> = {};
+    for (const sheet of selectedSheets) {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("sheetName", sheet);
+      try {
+        const resp = await fetch("/api/commercial/funds/bulk-preview", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (resp.ok) {
+          previews[sheet] = await resp.json();
+        }
+      } catch {}
     }
+    setAllSheetsPreview(previews);
+    setPreviewData(previews[selectedSheets[0]] || null);
+    setLoadingSheets(false);
+    setStep("preview");
   };
 
   const formatMoney = (val: number | null) => {
@@ -387,35 +426,71 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
         {step === "sheet-select" && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-300">This file has multiple sheets. Select which one to import:</p>
+            <p className="text-sm text-slate-300">This file has multiple sheets. Select which sheets to import:</p>
             <div className="space-y-2">
-              {sheetNames.map(name => (
-                <button
-                  key={name}
-                  onClick={() => setSelectedSheet(name)}
-                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-                    selectedSheet === name
-                      ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
-                      : "bg-[#0f1629] border-slate-700 text-slate-300 hover:border-slate-500"
-                  }`}
-                  data-testid={`sheet-option-${name.replace(/\s/g, "-").toLowerCase()}`}
-                >
-                  <span className="font-medium">{name}</span>
-                </button>
-              ))}
+              {sheetNames.map(name => {
+                const isSelected = selectedSheets.includes(name);
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setSelectedSheets(prev => isSelected ? prev.filter(s => s !== name) : [...prev, name])}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors flex items-center gap-3 ${
+                      isSelected
+                        ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                        : "bg-[#0f1629] border-slate-700 text-slate-300 hover:border-slate-500"
+                    }`}
+                    data-testid={`sheet-option-${name.replace(/\s/g, "-").toLowerCase()}`}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isSelected ? "bg-blue-500 border-blue-500" : "border-slate-500"
+                    }`}>
+                      {isSelected && <Check size={14} className="text-white" />}
+                    </div>
+                    <span className="font-medium">{name}</span>
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
-              <Button size="sm" onClick={handleSheetConfirm} disabled={!selectedSheet || previewMut.isPending} data-testid="sheet-confirm-button">
-                {previewMut.isPending ? <><RefreshCw size={14} className="animate-spin mr-1" /> Loading...</> : "Continue"}
-              </Button>
+            <div className="flex justify-between items-center pt-2">
+              <button
+                onClick={() => setSelectedSheets(selectedSheets.length === sheetNames.length ? [] : [...sheetNames])}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                data-testid="select-all-sheets"
+              >
+                {selectedSheets.length === sheetNames.length ? "Deselect All" : "Select All"}
+              </button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
+                <Button size="sm" onClick={handleSheetConfirm} disabled={selectedSheets.length === 0 || loadingSheets} data-testid="sheet-confirm-button">
+                  {loadingSheets ? <><RefreshCw size={14} className="animate-spin mr-1" /> Loading...</> : `Continue (${selectedSheets.length} sheet${selectedSheets.length !== 1 ? "s" : ""})`}
+                </Button>
+              </div>
             </div>
           </div>
         )}
 
         {step === "preview" && previewData && (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-            {previewData.sheetNames?.length > 1 && (
+            {selectedSheets.length > 1 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedSheets.map(sheet => (
+                  <button
+                    key={sheet}
+                    onClick={() => { setCurrentPreviewSheet(sheet); setPreviewData(allSheetsPreview[sheet]); }}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      currentPreviewSheet === sheet
+                        ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                        : "bg-[#0f1629] border-slate-700 text-slate-400 hover:text-slate-300"
+                    }`}
+                    data-testid={`preview-sheet-tab-${sheet.replace(/\s/g, "-").toLowerCase()}`}
+                  >
+                    {sheet}
+                    {allSheetsPreview[sheet] && <span className="ml-1 text-slate-500">({allSheetsPreview[sheet].validRows})</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedSheets.length === 1 && previewData.sheetNames?.length > 1 && (
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <FileText size={12} />
                 Sheet: <span className="text-blue-400 font-medium">{previewData.selectedSheet}</span>
@@ -523,11 +598,16 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
                 {previewData.sheetNames?.length > 1 && (
-                  <Button variant="outline" size="sm" onClick={() => setStep("sheet-select")} data-testid="change-sheet-button">Change Sheet</Button>
+                  <Button variant="outline" size="sm" onClick={() => setStep("sheet-select")} data-testid="change-sheet-button">Change Sheets</Button>
                 )}
               </div>
               <Button size="sm" onClick={() => { setStep("importing"); importMut.mutate(); }} disabled={importMut.isPending} data-testid="bulk-confirm-button">
-                {importMut.isPending ? <><RefreshCw size={14} className="animate-spin mr-1" /> Importing...</> : `Import ${previewData.validRows} Funds`}
+                {importMut.isPending ? <><RefreshCw size={14} className="animate-spin mr-1" /> Importing...</> : (() => {
+                  const totalValid = selectedSheets.length > 1
+                    ? selectedSheets.reduce((sum, s) => sum + (allSheetsPreview[s]?.validRows || 0), 0)
+                    : previewData.validRows;
+                  return `Import ${totalValid} Funds${selectedSheets.length > 1 ? ` (${selectedSheets.length} sheets)` : ""}`;
+                })()}
               </Button>
             </div>
           </div>
@@ -568,6 +648,22 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                 <p className="text-xs text-slate-400">Knowledge</p>
               </div>
             </div>
+            {importResult.sheetResults?.length > 1 && (
+              <div className="space-y-1">
+                <p className="text-xs text-slate-400 font-medium">Per-sheet breakdown:</p>
+                {importResult.sheetResults.map((sr: any) => (
+                  <div key={sr.sheet} className="flex items-center justify-between text-xs bg-[#0f1629] rounded px-3 py-2">
+                    <span className="text-slate-300 font-medium">{sr.sheet}</span>
+                    <span className="text-slate-400">
+                      {sr.created > 0 && <span className="text-emerald-400 mr-2">{sr.created} created</span>}
+                      {sr.updated > 0 && <span className="text-blue-400 mr-2">{sr.updated} updated</span>}
+                      {sr.skipped > 0 && <span className="text-slate-400 mr-2">{sr.skipped} skipped</span>}
+                      {sr.failed > 0 && <span className="text-red-400 mr-2">{sr.failed} failed</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex justify-end">
               <Button size="sm" onClick={() => onOpenChange(false)} data-testid="bulk-done-button">Done</Button>
             </div>
