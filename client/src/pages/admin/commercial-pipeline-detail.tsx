@@ -14,8 +14,9 @@ import {
   ArrowLeft, Building2, DollarSign, MapPin, TrendingUp, User, FileText,
   AlertTriangle, CheckCircle2, XCircle, Clock, Send, RefreshCw,
   ChevronDown, ChevronUp, ArrowRight, Shield, BarChart3, Volume2,
-  Pencil, X, Save,
+  Pencil, X, Save, MessageSquare, Sparkles, Loader2,
 } from "lucide-react";
+import { StatusBadge } from "@/components/ui/phase1/status-badge";
 
 const ASSET_TYPES = ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"];
 const ENTITY_TYPES = ["Individual","LLC","Corporation","Partnership","Trust"];
@@ -30,11 +31,45 @@ function parseCurrency(val: string): string {
   return val.replace(/[^0-9]/g, "");
 }
 
+function getStatusVariant(status?: string): "active" | "pending" | "closed" | "inactive" | "error" | "info" {
+  switch (status?.toLowerCase()) {
+    case "approved":
+    case "transferred":
+      return "active";
+    case "submitted":
+    case "under_review":
+    case "conditional":
+      return "pending";
+    case "analyzed":
+      return "info";
+    case "rejected":
+    case "no_match":
+      return "error";
+    default:
+      return "inactive";
+  }
+}
+
+function getStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    draft: "Draft",
+    submitted: "Submitted",
+    analyzed: "Analyzed",
+    under_review: "Under Review",
+    approved: "Approved",
+    conditional: "Conditional",
+    rejected: "Rejected",
+    transferred: "Transferred",
+    no_match: "No Match",
+  };
+  return labels[status] || status;
+}
+
 function VerdictDisplay({ verdict, confidence, breakdown }: { verdict: string; confidence: number; breakdown?: { fund_fit: number; deal_health: number } }) {
   const colors: Record<string, { bg: string; text: string; icon: any }> = {
-    pass: { bg: "bg-emerald-500/10 border-emerald-500/30", text: "text-emerald-400", icon: CheckCircle2 },
-    conditional: { bg: "bg-amber-500/10 border-amber-500/30", text: "text-amber-400", icon: AlertTriangle },
-    fail: { bg: "bg-red-500/10 border-red-500/30", text: "text-red-400", icon: XCircle },
+    pass: { bg: "bg-emerald-500/10 border-emerald-500/30", text: "text-emerald-500", icon: CheckCircle2 },
+    conditional: { bg: "bg-amber-500/10 border-amber-500/30", text: "text-amber-500", icon: AlertTriangle },
+    fail: { bg: "bg-red-500/10 border-red-500/30", text: "text-red-500", icon: XCircle },
   };
   const c = colors[verdict] || colors.conditional;
   const Icon = c.icon;
@@ -47,15 +82,15 @@ function VerdictDisplay({ verdict, confidence, breakdown }: { verdict: string; c
           <p className={`text-lg font-semibold ${c.text}`}>
             {verdict.charAt(0).toUpperCase() + verdict.slice(1)}
           </p>
-          <p className="text-xs text-slate-400">AI Verdict</p>
+          <p className="text-xs text-muted-foreground">AI Verdict</p>
         </div>
         <div className="ml-auto text-right">
           <p className={`text-2xl font-bold ${c.text}`} data-testid="confidence-score">{confidence}%</p>
-          <p className="text-xs text-slate-400">Confidence</p>
+          <p className="text-xs text-muted-foreground">Confidence</p>
         </div>
       </div>
       {breakdown && (
-        <div className="flex gap-4 text-xs text-slate-400">
+        <div className="flex gap-4 text-xs text-muted-foreground">
           <span>Fund Fit: {breakdown.fund_fit}%</span>
           <span>Deal Health: {breakdown.deal_health}%</span>
         </div>
@@ -75,6 +110,7 @@ export default function CommercialPipelineDetailPage() {
   const [showStrengths, setShowStrengths] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
+  const [noteContent, setNoteContent] = useState("");
 
   const dealId = params.id;
 
@@ -133,10 +169,24 @@ export default function CommercialPipelineDetailPage() {
       return apiRequest("POST", `/api/commercial/deals/${dealId}/reanalyze`);
     },
     onSuccess: () => {
-      toast({ title: "AI re-analysis started" });
+      toast({ title: "AI analysis started", description: "This may take a moment. The page will refresh automatically." });
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/commercial/deals", dealId] });
-      }, 5000);
+      }, 8000);
+    },
+  });
+
+  const addNoteMut = useMutation({
+    mutationFn: async (content: string) => {
+      return apiRequest("POST", `/api/commercial/deals/${dealId}/notes`, { content });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commercial/deals", dealId] });
+      setNoteContent("");
+      toast({ title: "Note added" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add note", variant: "destructive" });
     },
   });
 
@@ -188,7 +238,7 @@ export default function CommercialPipelineDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <RefreshCw size={24} className="animate-spin text-slate-400" />
+        <RefreshCw size={24} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -196,7 +246,7 @@ export default function CommercialPipelineDetailPage() {
   if (!deal) {
     return (
       <div className="p-6">
-        <p className="text-slate-400">Deal not found</p>
+        <p className="text-muted-foreground">Deal not found</p>
       </div>
     );
   }
@@ -219,47 +269,55 @@ export default function CommercialPipelineDetailPage() {
     fund_recommendations: rawFeedback.fund_recommendations || rawFeedback.fundRecommendations || rawFeedback.recommendations || [],
     next_steps: rawFeedback.next_steps || rawFeedback.nextSteps || rawFeedback.action_items || [],
   } : null;
-  const matching = analysis?.agent2Matching as any;
+
+  const notes = (deal.brokerNotes || []) as Array<{ content: string; createdAt: string; authorName: string }>;
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl" data-testid="deal-detail-page">
-      <div className="flex items-center gap-3">
+    <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto" data-testid="deal-detail-page">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/admin/commercial-pipeline")}
+            className="text-muted-foreground hover:text-foreground"
+            data-testid="back-button"
+          >
+            <ArrowLeft size={16} className="mr-1" /> Back
+          </Button>
+          <h1 className="text-xl font-display font-bold" data-testid="deal-title">
+            {deal.dealName || `Deal #${deal.id}`}
+          </h1>
+          <StatusBadge variant={getStatusVariant(deal.status)} label={getStatusLabel(deal.status)} />
+        </div>
         <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/admin/commercial-pipeline")}
-          className="text-slate-400 hover:text-white"
-          data-testid="back-button"
+          onClick={() => reanalyzeMut.mutate()}
+          disabled={reanalyzeMut.isPending}
+          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          data-testid="run-ai-analysis-header-button"
         >
-          <ArrowLeft size={16} className="mr-1" /> Back
+          {reanalyzeMut.isPending ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Sparkles size={16} />
+          )}
+          {reanalyzeMut.isPending ? "Analyzing..." : (analysis ? "Re-run AI Analysis" : "Run AI Analysis")}
         </Button>
-        <h1 className="text-xl font-semibold text-white" data-testid="deal-title">
-          {deal.dealName || `Deal #${deal.id}`}
-        </h1>
-        <Badge className={`text-xs ${
-          deal.status === "approved" ? "bg-emerald-500/20 text-emerald-400" :
-          deal.status === "rejected" ? "bg-red-500/20 text-red-400" :
-          deal.status === "transferred" ? "bg-cyan-500/20 text-cyan-400" :
-          "bg-slate-500/20 text-slate-400"
-        }`}>
-          {deal.status}
-        </Badge>
       </div>
 
-      {/* Deal Summary */}
-      <Card className="bg-[#1a2038] border-slate-700/50">
+      <Card className="bg-card border shadow-sm">
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm text-slate-300 flex items-center gap-2"><Building2 size={16} /> Deal Summary</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground flex items-center gap-2"><Building2 size={16} /> Deal Summary</CardTitle>
           {!isEditing ? (
-            <Button variant="ghost" size="sm" onClick={startEdit} className="text-slate-400 hover:text-white h-7 px-2" data-testid="edit-summary-button">
+            <Button variant="ghost" size="sm" onClick={startEdit} className="text-muted-foreground hover:text-foreground h-7 px-2" data-testid="edit-summary-button">
               <Pencil size={12} className="mr-1" /> Edit
             </Button>
           ) : (
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="text-slate-400 h-7 px-2" data-testid="cancel-edit-button">
+              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="text-muted-foreground h-7 px-2" data-testid="cancel-edit-button">
                 <X size={12} className="mr-1" /> Cancel
               </Button>
-              <Button size="sm" onClick={handleSaveEdit} disabled={updateDealMut.isPending} className="bg-[#C9A84C] hover:bg-[#b8973b] h-7 px-2" data-testid="save-edit-button">
+              <Button size="sm" onClick={handleSaveEdit} disabled={updateDealMut.isPending} className="h-7 px-2" data-testid="save-edit-button">
                 <Save size={12} className="mr-1" /> {updateDealMut.isPending ? "Saving..." : "Save"}
               </Button>
             </div>
@@ -269,98 +327,98 @@ export default function CommercialPipelineDetailPage() {
           {isEditing ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
               <div className="col-span-2 sm:col-span-3">
-                <Label className="text-slate-500 text-xs">Deal Name</Label>
-                <Input value={editData.dealName} onChange={e => setEditData({ ...editData, dealName: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-deal-name" />
+                <Label className="text-muted-foreground text-xs">Deal Name</Label>
+                <Input value={editData.dealName} onChange={e => setEditData({ ...editData, dealName: e.target.value })} className="text-sm h-8 mt-1" data-testid="edit-deal-name" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Loan Amount ($)</Label>
-                <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-loan-amount" />
+                <Label className="text-muted-foreground text-xs">Loan Amount ($)</Label>
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.loanAmount)} onChange={e => setEditData({ ...editData, loanAmount: parseCurrency(e.target.value) })} className="text-sm h-8 mt-1" data-testid="edit-loan-amount" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Asset Type</Label>
+                <Label className="text-muted-foreground text-xs">Asset Type</Label>
                 <Select value={editData.assetType} onValueChange={v => setEditData({ ...editData, assetType: v })}>
-                  <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-asset-type"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm h-8 mt-1" data-testid="edit-asset-type"><SelectValue /></SelectTrigger>
                   <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Property Value ($)</Label>
-                <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-property-value" />
+                <Label className="text-muted-foreground text-xs">Property Value ($)</Label>
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.propertyValue)} onChange={e => setEditData({ ...editData, propertyValue: parseCurrency(e.target.value) })} className="text-sm h-8 mt-1" data-testid="edit-property-value" />
               </div>
               <div className="col-span-2">
-                <Label className="text-slate-500 text-xs">Property Address</Label>
-                <Input value={editData.propertyAddress} onChange={e => setEditData({ ...editData, propertyAddress: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-address" />
+                <Label className="text-muted-foreground text-xs">Property Address</Label>
+                <Input value={editData.propertyAddress} onChange={e => setEditData({ ...editData, propertyAddress: e.target.value })} className="text-sm h-8 mt-1" data-testid="edit-address" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">State</Label>
+                <Label className="text-muted-foreground text-xs">State</Label>
                 <Select value={editData.propertyState} onValueChange={v => setEditData({ ...editData, propertyState: v })}>
-                  <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-state"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm h-8 mt-1" data-testid="edit-state"><SelectValue /></SelectTrigger>
                   <SelectContent>{US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">NOI Annual ($)</Label>
-                <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-noi" />
+                <Label className="text-muted-foreground text-xs">NOI Annual ($)</Label>
+                <Input type="text" inputMode="numeric" value={formatCurrency(editData.noiAnnual)} onChange={e => setEditData({ ...editData, noiAnnual: parseCurrency(e.target.value) })} className="text-sm h-8 mt-1" data-testid="edit-noi" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Occupancy %</Label>
-                <Input type="number" value={editData.occupancyPct} onChange={e => setEditData({ ...editData, occupancyPct: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-occupancy" />
+                <Label className="text-muted-foreground text-xs">Occupancy %</Label>
+                <Input type="number" value={editData.occupancyPct} onChange={e => setEditData({ ...editData, occupancyPct: e.target.value })} className="text-sm h-8 mt-1" data-testid="edit-occupancy" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Borrower Name</Label>
-                <Input value={editData.borrowerName} onChange={e => setEditData({ ...editData, borrowerName: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-borrower" />
+                <Label className="text-muted-foreground text-xs">Borrower Name</Label>
+                <Input value={editData.borrowerName} onChange={e => setEditData({ ...editData, borrowerName: e.target.value })} className="text-sm h-8 mt-1" data-testid="edit-borrower" />
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Entity Type</Label>
+                <Label className="text-muted-foreground text-xs">Entity Type</Label>
                 <Select value={editData.borrowerEntityType} onValueChange={v => setEditData({ ...editData, borrowerEntityType: v })}>
-                  <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-entity-type"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm h-8 mt-1" data-testid="edit-entity-type"><SelectValue /></SelectTrigger>
                   <SelectContent>{ENTITY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-slate-500 text-xs">Credit Score</Label>
-                <Input type="number" value={editData.borrowerCreditScore} onChange={e => setEditData({ ...editData, borrowerCreditScore: e.target.value })} className="bg-[#0f1629] border-slate-700 text-white text-sm h-8 mt-1" data-testid="edit-credit-score" />
+                <Label className="text-muted-foreground text-xs">Credit Score</Label>
+                <Input type="number" value={editData.borrowerCreditScore} onChange={e => setEditData({ ...editData, borrowerCreditScore: e.target.value })} className="text-sm h-8 mt-1" data-testid="edit-credit-score" />
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="text-slate-500 text-xs mb-1">Loan Amount</p>
-                <p className="text-white font-medium" data-testid="loan-amount">
+                <p className="text-muted-foreground text-xs mb-1">Loan Amount</p>
+                <p className="text-foreground font-medium" data-testid="loan-amount">
                   ${deal.loanAmount ? (deal.loanAmount).toLocaleString() : "N/A"}
                 </p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Asset Type</p>
-                <p className="text-white" data-testid="asset-type">{deal.assetType || "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">Asset Type</p>
+                <p className="text-foreground" data-testid="asset-type">{deal.assetType || "N/A"}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Property</p>
-                <p className="text-white">{deal.propertyAddress || "N/A"}{deal.propertyState ? `, ${deal.propertyState}` : ""}</p>
+                <p className="text-muted-foreground text-xs mb-1">Property</p>
+                <p className="text-foreground">{deal.propertyAddress || "N/A"}{deal.propertyState ? `, ${deal.propertyState}` : ""}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">LTV</p>
-                <p className="text-white">{deal.ltvPct != null ? `${deal.ltvPct}%` : "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">LTV</p>
+                <p className="text-foreground">{deal.ltvPct != null ? `${deal.ltvPct}%` : "N/A"}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">DSCR</p>
-                <p className="text-white">{deal.dscr != null ? `${deal.dscr}x` : "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">DSCR</p>
+                <p className="text-foreground">{deal.dscr != null ? `${deal.dscr}x` : "N/A"}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Property Value</p>
-                <p className="text-white">${deal.propertyValue ? (deal.propertyValue).toLocaleString() : "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">Property Value</p>
+                <p className="text-foreground">${deal.propertyValue ? (deal.propertyValue).toLocaleString() : "N/A"}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Borrower</p>
-                <p className="text-white">{deal.borrowerName || "N/A"} {deal.borrowerEntityType ? `(${deal.borrowerEntityType})` : ""}</p>
+                <p className="text-muted-foreground text-xs mb-1">Borrower</p>
+                <p className="text-foreground">{deal.borrowerName || "N/A"} {deal.borrowerEntityType ? `(${deal.borrowerEntityType})` : ""}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Credit Score</p>
-                <p className="text-white">{deal.borrowerCreditScore || "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">Credit Score</p>
+                <p className="text-foreground">{deal.borrowerCreditScore || "N/A"}</p>
               </div>
               <div>
-                <p className="text-slate-500 text-xs mb-1">Broker</p>
-                <p className="text-white">{deal.brokerName || deal.brokerEmail || "N/A"}</p>
+                <p className="text-muted-foreground text-xs mb-1">Broker</p>
+                <p className="text-foreground">{deal.brokerName || deal.brokerEmail || "N/A"}</p>
               </div>
             </div>
           )}
@@ -368,15 +426,15 @@ export default function CommercialPipelineDetailPage() {
       </Card>
 
       {deal.dealStoryTranscript && (
-        <Card className="bg-[#1a2038] border-slate-700/50" data-testid="deal-story-section">
+        <Card className="bg-card border shadow-sm" data-testid="deal-story-section">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-              <Volume2 size={16} className="text-amber-400" /> Deal Story
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <Volume2 size={16} className="text-amber-500" /> Deal Story
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="p-3 rounded bg-[#0f1629] border border-slate-700/30">
-              <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap" data-testid="deal-story-text">
+            <div className="p-3 rounded bg-muted/50 border">
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap" data-testid="deal-story-text">
                 {deal.dealStoryTranscript}
               </p>
             </div>
@@ -384,22 +442,10 @@ export default function CommercialPipelineDetailPage() {
         </Card>
       )}
 
-      {/* AI Analysis */}
-      <Card className="bg-[#1a2038] border-slate-700/50">
+      <Card className="bg-card border shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
             <BarChart3 size={16} /> AI Analysis
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => reanalyzeMut.mutate()}
-              disabled={reanalyzeMut.isPending}
-              className="ml-auto text-xs text-slate-400"
-              data-testid="reanalyze-button"
-            >
-              <RefreshCw size={12} className={`mr-1 ${reanalyzeMut.isPending ? "animate-spin" : ""}`} />
-              {analysis ? "Re-analyze" : "Run AI Analysis"}
-            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -411,17 +457,16 @@ export default function CommercialPipelineDetailPage() {
                 breakdown={feedback.confidence_breakdown}
               />
 
-              {/* Key Flaws */}
               {Array.isArray(feedback.key_flaws) && feedback.key_flaws.length > 0 && (
                 <div>
                   <button
                     onClick={() => setShowFlaws(!showFlaws)}
-                    className="flex items-center gap-2 text-sm font-medium text-slate-300 mb-2 w-full"
+                    className="flex items-center gap-2 text-sm font-medium text-foreground mb-2 w-full"
                     data-testid="toggle-flaws"
                   >
-                    <AlertTriangle size={14} className="text-amber-400" />
+                    <AlertTriangle size={14} className="text-amber-500" />
                     Key Flaws ({feedback.key_flaws.length})
-                    {showFlaws ? <ChevronUp size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
+                    {showFlaws ? <ChevronUp size={14} className="ml-auto text-muted-foreground" /> : <ChevronDown size={14} className="ml-auto text-muted-foreground" />}
                   </button>
                   {showFlaws && (
                     <div className="space-y-2">
@@ -432,18 +477,18 @@ export default function CommercialPipelineDetailPage() {
                         const detail = String(flawObj.detail || flawObj.description || flawObj.message || "");
                         const remediation = flawObj.remediation || flawObj.fix || flawObj.suggestion;
                         return (
-                          <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50" data-testid={`flaw-${i}`}>
+                          <div key={i} className="rounded-lg bg-muted/50 p-3 border" data-testid={`flaw-${i}`}>
                             <div className="flex items-center gap-2 mb-1">
                               <Badge className={`text-[10px] ${
-                                severity === "critical" ? "bg-red-500/20 text-red-400" :
-                                severity === "high" ? "bg-amber-500/20 text-amber-400" :
-                                "bg-slate-500/20 text-slate-400"
+                                severity === "critical" ? "bg-red-500/20 text-red-500" :
+                                severity === "high" ? "bg-amber-500/20 text-amber-500" :
+                                "bg-muted text-muted-foreground"
                               }`}>{severity}</Badge>
-                              <span className="text-sm font-medium text-white">{title}</span>
+                              <span className="text-sm font-medium text-foreground">{title}</span>
                             </div>
-                            {detail && detail !== title && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
+                            {detail && detail !== title && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
                             {remediation && (
-                              <p className="text-xs text-blue-400 mt-1">→ {String(remediation)}</p>
+                              <p className="text-xs text-blue-500 mt-1">&rarr; {String(remediation)}</p>
                             )}
                           </div>
                         );
@@ -453,17 +498,16 @@ export default function CommercialPipelineDetailPage() {
                 </div>
               )}
 
-              {/* Strengths */}
               {Array.isArray(feedback.strengths) && feedback.strengths.length > 0 && (
                 <div>
                   <button
                     onClick={() => setShowStrengths(!showStrengths)}
-                    className="flex items-center gap-2 text-sm font-medium text-slate-300 mb-2 w-full"
+                    className="flex items-center gap-2 text-sm font-medium text-foreground mb-2 w-full"
                     data-testid="toggle-strengths"
                   >
-                    <CheckCircle2 size={14} className="text-emerald-400" />
+                    <CheckCircle2 size={14} className="text-emerald-500" />
                     Strengths ({feedback.strengths.length})
-                    {showStrengths ? <ChevronUp size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
+                    {showStrengths ? <ChevronUp size={14} className="ml-auto text-muted-foreground" /> : <ChevronDown size={14} className="ml-auto text-muted-foreground" />}
                   </button>
                   {showStrengths && (
                     <div className="space-y-2">
@@ -472,9 +516,9 @@ export default function CommercialPipelineDetailPage() {
                         const title = String(sObj.strength || sObj.title || sObj.name || sObj.positive || "Strength");
                         const detail = String(sObj.detail || sObj.description || sObj.explanation || "");
                         return (
-                          <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-emerald-500/20" data-testid={`strength-${i}`}>
-                            <span className="text-sm text-emerald-400">{title}</span>
-                            {detail && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
+                          <div key={i} className="rounded-lg bg-muted/50 p-3 border border-emerald-500/20" data-testid={`strength-${i}`}>
+                            <span className="text-sm text-emerald-500">{title}</span>
+                            {detail && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
                           </div>
                         );
                       })}
@@ -483,23 +527,22 @@ export default function CommercialPipelineDetailPage() {
                 </div>
               )}
 
-              {/* Fund Recommendations */}
               {Array.isArray(feedback.fund_recommendations) && feedback.fund_recommendations.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
                     <Building2 size={14} /> Fund Recommendations
                   </p>
                   <div className="space-y-2">
                     {feedback.fund_recommendations.map((fr: any, i: number) => {
                       const frObj = typeof fr === "string" ? { fund_name: fr, recommendation: "", match_score: 0 } : fr;
                       return (
-                        <div key={i} className="rounded-lg bg-[#0f1629] p-3 border border-slate-700/50 flex items-center gap-3" data-testid={`fund-rec-${i}`}>
+                        <div key={i} className="rounded-lg bg-muted/50 p-3 border flex items-center gap-3" data-testid={`fund-rec-${i}`}>
                           <div className="flex-1">
-                            <p className="text-sm text-white">{String(frObj.fund_name || frObj.fundName || frObj.name || "Fund")}</p>
-                            <p className="text-xs text-slate-400 mt-1">{String(frObj.recommendation || frObj.reason || frObj.notes || "")}</p>
+                            <p className="text-sm text-foreground">{String(frObj.fund_name || frObj.fundName || frObj.name || "Fund")}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{String(frObj.recommendation || frObj.reason || frObj.notes || "")}</p>
                           </div>
                           {(frObj.match_score || frObj.matchScore) != null && (
-                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                            <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/30">
                               {frObj.match_score || frObj.matchScore}% match
                             </Badge>
                           )}
@@ -510,16 +553,15 @@ export default function CommercialPipelineDetailPage() {
                 </div>
               )}
 
-              {/* Next Steps */}
               {Array.isArray(feedback.next_steps) && feedback.next_steps.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-slate-300 mb-2">Next Steps</p>
+                  <p className="text-sm font-medium text-foreground mb-2">Next Steps</p>
                   <ul className="space-y-1">
                     {feedback.next_steps.map((step: any, i: number) => {
                       const text = typeof step === "string" ? step : String(step.step || step.action || step.description || step.text || JSON.stringify(step));
                       return (
-                        <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
-                          <span className="text-blue-400 mt-0.5">•</span> {text}
+                        <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                          <span className="text-blue-500 mt-0.5">&bull;</span> {text}
                         </li>
                       );
                     })}
@@ -531,16 +573,16 @@ export default function CommercialPipelineDetailPage() {
 
           {!feedback && !reanalyzeMut.isPending && (
             <div className="text-center py-6">
-              <BarChart3 size={32} className="mx-auto text-slate-600 mb-3" />
-              <p className="text-sm text-slate-400 mb-3">No AI analysis available yet for this deal.</p>
+              <BarChart3 size={32} className="mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-sm text-muted-foreground mb-3">No AI analysis available yet for this deal.</p>
               <Button
                 onClick={() => reanalyzeMut.mutate()}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
                 data-testid="run-ai-analysis-button"
               >
-                <Shield size={14} className="mr-2" /> Run AI Analysis
+                <Sparkles size={14} className="mr-2" /> Run AI Analysis
               </Button>
-              <p className="text-xs text-slate-500 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 The 3-agent pipeline will validate the deal, match it against funds, and generate a recommendation.
               </p>
             </div>
@@ -548,32 +590,77 @@ export default function CommercialPipelineDetailPage() {
 
           {!feedback && reanalyzeMut.isPending && (
             <div className="text-center py-6">
-              <RefreshCw size={24} className="mx-auto text-blue-400 animate-spin mb-3" />
-              <p className="text-sm text-slate-400">AI analysis is running...</p>
-              <p className="text-xs text-slate-500 mt-1">This may take a moment. The page will refresh automatically.</p>
+              <Loader2 size={24} className="mx-auto text-blue-500 animate-spin mb-3" />
+              <p className="text-sm text-muted-foreground">AI analysis is running...</p>
+              <p className="text-xs text-muted-foreground mt-1">This may take a moment. The page will refresh automatically.</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Documents */}
+      <Card className="bg-card border shadow-sm" data-testid="notes-section">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+            <MessageSquare size={16} /> Notes & Activity ({notes.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Textarea
+              value={noteContent}
+              onChange={e => setNoteContent(e.target.value)}
+              placeholder="Add a note about this deal..."
+              className="min-h-[60px] text-sm flex-1"
+              data-testid="note-input"
+            />
+            <Button
+              size="sm"
+              onClick={() => noteContent.trim() && addNoteMut.mutate(noteContent.trim())}
+              disabled={!noteContent.trim() || addNoteMut.isPending}
+              className="self-end"
+              data-testid="add-note-button"
+            >
+              {addNoteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </Button>
+          </div>
+
+          {notes.length > 0 ? (
+            <div className="space-y-3 max-h-[300px] overflow-y-auto">
+              {notes.map((note, i) => (
+                <div key={i} className="p-3 rounded-lg bg-muted/50 border" data-testid={`note-${i}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-foreground">{note.authorName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">No notes yet. Add a note to start a conversation about this deal.</p>
+          )}
+        </CardContent>
+      </Card>
+
       {deal.documents?.length > 0 && (
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
               <FileText size={16} /> Documents ({deal.documents.filter((d: any) => d.isCurrent).length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {deal.documents.filter((d: any) => d.isCurrent).map((doc: any) => (
-                <div key={doc.id} className="flex items-center gap-3 p-2 rounded bg-[#0f1629] border border-slate-700/50" data-testid={`document-${doc.id}`}>
-                  <FileText size={14} className="text-slate-400 shrink-0" />
+                <div key={doc.id} className="flex items-center gap-3 p-2 rounded bg-muted/50 border" data-testid={`document-${doc.id}`}>
+                  <FileText size={14} className="text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{doc.documentType}</p>
-                    <p className="text-xs text-slate-500">{doc.fileName} · v{doc.version} · {new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                    <p className="text-sm text-foreground truncate">{doc.documentType}</p>
+                    <p className="text-xs text-muted-foreground">{doc.fileName} &middot; v{doc.version} &middot; {new Date(doc.uploadedAt).toLocaleDateString()}</p>
                   </div>
-                  <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30">Uploaded</Badge>
+                  <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">Uploaded</Badge>
                 </div>
               ))}
             </div>
@@ -581,11 +668,10 @@ export default function CommercialPipelineDetailPage() {
         </Card>
       )}
 
-      {/* Status History */}
       {deal.statusHistory?.length > 0 && (
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
               <Clock size={16} /> Status History
             </CardTitle>
           </CardHeader>
@@ -593,11 +679,11 @@ export default function CommercialPipelineDetailPage() {
             <div className="space-y-2">
               {deal.statusHistory.map((sh: any) => (
                 <div key={sh.id} className="flex items-center gap-3 text-xs" data-testid={`status-${sh.id}`}>
-                  <span className="text-slate-500 w-28 shrink-0">{new Date(sh.createdAt).toLocaleString()}</span>
+                  <span className="text-muted-foreground w-28 shrink-0">{new Date(sh.createdAt).toLocaleString()}</span>
                   {sh.fromStatus && <Badge variant="outline" className="text-[10px]">{sh.fromStatus}</Badge>}
-                  {sh.fromStatus && <ArrowRight size={10} className="text-slate-500" />}
+                  {sh.fromStatus && <ArrowRight size={10} className="text-muted-foreground" />}
                   <Badge variant="outline" className="text-[10px]">{sh.toStatus}</Badge>
-                  {sh.notes && <span className="text-slate-400 truncate">— {sh.notes}</span>}
+                  {sh.notes && <span className="text-muted-foreground truncate">&mdash; {sh.notes}</span>}
                 </div>
               ))}
             </div>
@@ -605,20 +691,18 @@ export default function CommercialPipelineDetailPage() {
         </Card>
       )}
 
-      {/* Actions */}
       {!["transferred", "rejected"].includes(deal.status) && (
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-slate-300">Actions</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Send to Fund */}
             {allFunds.length > 0 && (
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="text-xs text-slate-400 mb-1 block">Send to Fund</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Send to Fund</label>
                   <Select value={selectedFundId} onValueChange={setSelectedFundId}>
-                    <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="select-fund">
+                    <SelectTrigger className="text-sm" data-testid="select-fund">
                       <SelectValue placeholder="Select fund..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -632,7 +716,7 @@ export default function CommercialPipelineDetailPage() {
                   size="sm"
                   disabled={!selectedFundId || sendToFundMut.isPending}
                   onClick={() => sendToFundMut.mutate({ fundId: parseInt(selectedFundId), notes: "" })}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
                   data-testid="send-to-fund-button"
                 >
                   <Send size={14} className="mr-1" /> Send
@@ -640,12 +724,11 @@ export default function CommercialPipelineDetailPage() {
               </div>
             )}
 
-            {/* Update Status */}
             <div className="flex items-end gap-3">
               <div className="flex-1">
-                <label className="text-xs text-slate-400 mb-1 block">Update Status</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Update Status</label>
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="select-status">
+                  <SelectTrigger className="text-sm" data-testid="select-status">
                     <SelectValue placeholder="Select status..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -657,11 +740,11 @@ export default function CommercialPipelineDetailPage() {
                 </Select>
               </div>
               <div className="flex-1">
-                <label className="text-xs text-slate-400 mb-1 block">Notes</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
                 <Textarea
                   value={statusNotes}
                   onChange={e => setStatusNotes(e.target.value)}
-                  className="bg-[#0f1629] border-slate-700 text-white text-sm min-h-[38px] h-[38px]"
+                  className="text-sm min-h-[38px] h-[38px]"
                   placeholder="Optional notes..."
                   data-testid="status-notes"
                 />
@@ -676,19 +759,18 @@ export default function CommercialPipelineDetailPage() {
               </Button>
             </div>
 
-            {/* Transfer to Origination */}
             {["approved", "conditional", "under_review"].includes(deal.status) && (
-              <div className="pt-3 border-t border-slate-700/50">
+              <div className="pt-3 border-t">
                 <Button
                   onClick={() => transferMut.mutate()}
                   disabled={transferMut.isPending}
-                  className="bg-cyan-600 hover:bg-cyan-700 w-full"
+                  className="bg-cyan-600 hover:bg-cyan-700 text-white w-full"
                   data-testid="transfer-button"
                 >
                   <ArrowRight size={14} className="mr-2" />
                   Transfer to Origination Pipeline
                 </Button>
-                <p className="text-xs text-slate-500 mt-1 text-center">
+                <p className="text-xs text-muted-foreground mt-1 text-center">
                   Creates a new project in the origination system with all deal data
                 </p>
               </div>
@@ -697,25 +779,24 @@ export default function CommercialPipelineDetailPage() {
         </Card>
       )}
 
-      {/* Fund Submissions */}
       {deal.fundSubmissions?.length > 0 && (
-        <Card className="bg-[#1a2038] border-slate-700/50">
+        <Card className="bg-card border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-slate-300">Fund Submissions</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Fund Submissions</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {deal.fundSubmissions.map((fs: any) => (
-                <div key={fs.id} className="flex items-center gap-3 p-2 rounded bg-[#0f1629] border border-slate-700/50" data-testid={`fund-submission-${fs.id}`}>
-                  <Building2 size={14} className="text-slate-400" />
+                <div key={fs.id} className="flex items-center gap-3 p-2 rounded bg-muted/50 border" data-testid={`fund-submission-${fs.id}`}>
+                  <Building2 size={14} className="text-muted-foreground" />
                   <div className="flex-1">
-                    <p className="text-sm text-white">{fs.fundName || `Fund #${fs.fundId}`}</p>
-                    <p className="text-xs text-slate-500">Submitted {new Date(fs.submittedAt).toLocaleDateString()}</p>
+                    <p className="text-sm text-foreground">{fs.fundName || `Fund #${fs.fundId}`}</p>
+                    <p className="text-xs text-muted-foreground">Submitted {new Date(fs.submittedAt).toLocaleDateString()}</p>
                   </div>
                   <Badge className={`text-[10px] ${
-                    fs.fundResponseStatus === "approved" ? "bg-emerald-500/20 text-emerald-400" :
-                    fs.fundResponseStatus === "rejected" ? "bg-red-500/20 text-red-400" :
-                    "bg-amber-500/20 text-amber-400"
+                    fs.fundResponseStatus === "approved" ? "bg-emerald-500/20 text-emerald-500" :
+                    fs.fundResponseStatus === "rejected" ? "bg-red-500/20 text-red-500" :
+                    "bg-amber-500/20 text-amber-500"
                   }`}>{fs.fundResponseStatus}</Badge>
                 </div>
               ))}

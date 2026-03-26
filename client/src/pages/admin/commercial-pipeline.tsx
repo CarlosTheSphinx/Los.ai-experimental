@@ -1,13 +1,18 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Search, Building2, Eye, CheckCircle2, Clock, ArrowRight, Landmark,
-  ChevronRight, ArrowUpDown, FolderOpen,
+  ChevronRight, ArrowUpDown, FolderOpen, Plus, Loader2,
 } from "lucide-react";
 import { SummaryCard, SummaryStrip } from "@/components/ui/phase1/summary-card";
 import { StatusBadge } from "@/components/ui/phase1/status-badge";
@@ -110,6 +115,7 @@ const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","
 
 export default function CommercialPipelinePage() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -121,6 +127,24 @@ export default function CommercialPipelinePage() {
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [brokerFilter, setBrokerFilter] = useState("");
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [newDeal, setNewDeal] = useState({ dealName: "", loanAmount: "", assetType: "", propertyAddress: "", propertyState: "", borrowerName: "" });
+
+  const createDealMut = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/commercial/deals", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commercial/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commercial/portfolio-summary"] });
+      setShowAddDeal(false);
+      setNewDeal({ dealName: "", loanAmount: "", assetType: "", propertyAddress: "", propertyState: "", borrowerName: "" });
+      toast({ title: "Deal created" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create deal", variant: "destructive" });
+    },
+  });
 
   const urlParams = new URLSearchParams(window.location.search);
   const initialShowFunds = urlParams.get("tab") === "funds";
@@ -248,6 +272,9 @@ export default function CommercialPipelinePage() {
           <h1 className="text-[30px] font-display font-bold" data-testid="page-title">Commercial Pipeline</h1>
           <p className="text-[16px] text-muted-foreground mt-0.5">Review and manage incoming commercial deal submissions</p>
         </div>
+        <Button onClick={() => setShowAddDeal(true)} className="gap-2" data-testid="button-add-deal">
+          <Plus size={16} /> Add Deal
+        </Button>
       </div>
 
       <SummaryStrip>
@@ -640,6 +667,98 @@ export default function CommercialPipelinePage() {
           </>
         )}
       </div>
+
+      <Dialog open={showAddDeal} onOpenChange={setShowAddDeal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Deal</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Deal Name</Label>
+              <Input
+                value={newDeal.dealName}
+                onChange={e => setNewDeal({ ...newDeal, dealName: e.target.value })}
+                placeholder="e.g. 123 Main St Multifamily"
+                className="mt-1"
+                data-testid="input-new-deal-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Loan Amount ($)</Label>
+                <Input
+                  type="number"
+                  value={newDeal.loanAmount}
+                  onChange={e => setNewDeal({ ...newDeal, loanAmount: e.target.value })}
+                  placeholder="5000000"
+                  className="mt-1"
+                  data-testid="input-new-loan-amount"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Asset Type</Label>
+                <Select value={newDeal.assetType} onValueChange={v => setNewDeal({ ...newDeal, assetType: v })}>
+                  <SelectTrigger className="mt-1" data-testid="select-new-asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Property Address</Label>
+              <Input
+                value={newDeal.propertyAddress}
+                onChange={e => setNewDeal({ ...newDeal, propertyAddress: e.target.value })}
+                placeholder="123 Main Street"
+                className="mt-1"
+                data-testid="input-new-address"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">State</Label>
+                <Select value={newDeal.propertyState} onValueChange={v => setNewDeal({ ...newDeal, propertyState: v })}>
+                  <SelectTrigger className="mt-1" data-testid="select-new-state"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Borrower Name</Label>
+                <Input
+                  value={newDeal.borrowerName}
+                  onChange={e => setNewDeal({ ...newDeal, borrowerName: e.target.value })}
+                  placeholder="John Doe"
+                  className="mt-1"
+                  data-testid="input-new-borrower"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDeal(false)} data-testid="button-cancel-add-deal">Cancel</Button>
+            <Button
+              disabled={!newDeal.dealName.trim() || createDealMut.isPending}
+              onClick={() => {
+                const payload: any = { dealName: newDeal.dealName.trim(), status: "draft" };
+                if (newDeal.loanAmount) payload.loanAmount = parseInt(newDeal.loanAmount);
+                if (newDeal.assetType) payload.assetType = newDeal.assetType;
+                if (newDeal.propertyAddress) payload.propertyAddress = newDeal.propertyAddress;
+                if (newDeal.propertyState) payload.propertyState = newDeal.propertyState;
+                if (newDeal.borrowerName) payload.borrowerName = newDeal.borrowerName;
+                createDealMut.mutate(payload);
+              }}
+              data-testid="button-submit-new-deal"
+            >
+              {createDealMut.isPending ? <Loader2 size={14} className="animate-spin mr-1" /> : <Plus size={14} className="mr-1" />}
+              Create Deal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
