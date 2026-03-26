@@ -1684,7 +1684,7 @@ export class DatabaseStorage implements IStorage {
   async getQuotePdfTemplates(tenantId?: number): Promise<QuotePdfTemplate[]> {
     if (tenantId) {
       return await db.select().from(quotePdfTemplates)
-        .where(or(eq(quotePdfTemplates.tenantId, tenantId), isNull(quotePdfTemplates.tenantId)))
+        .where(or(eq(quotePdfTemplates.tenantId, String(tenantId)), isNull(quotePdfTemplates.tenantId)))
         .orderBy(desc(quotePdfTemplates.createdAt));
     }
     return await db.select().from(quotePdfTemplates).orderBy(desc(quotePdfTemplates.createdAt));
@@ -1698,7 +1698,7 @@ export class DatabaseStorage implements IStorage {
   async getDefaultQuotePdfTemplate(tenantId?: number): Promise<QuotePdfTemplate | undefined> {
     const conditions = [eq(quotePdfTemplates.isDefault, true)];
     if (tenantId) {
-      conditions.push(eq(quotePdfTemplates.tenantId, tenantId));
+      conditions.push(eq(quotePdfTemplates.tenantId, String(tenantId)));
     }
     const [template] = await db.select().from(quotePdfTemplates).where(and(...conditions));
     return template;

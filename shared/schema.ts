@@ -1060,7 +1060,7 @@ export const loanPrograms = pgTable("loan_programs", {
   createdBy: integer("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
-  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  tenantId: varchar("tenant_id", { length: 50 }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -4057,7 +4057,7 @@ export interface QuotePdfTemplateConfig {
 
 export const quotePdfTemplates = pgTable("quote_pdf_templates", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  tenantId: varchar("tenant_id", { length: 50 }),
   name: varchar("name", { length: 255 }).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   config: jsonb("config").notNull().$type<QuotePdfTemplateConfig>(),
