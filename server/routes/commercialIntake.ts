@@ -1152,15 +1152,34 @@ const fundFileUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
+const ALL_US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+
+const PROPERTY_TYPE_MAP: Record<string, string> = {
+  "resi": "Multifamily", "residential": "Multifamily", "sfr": "Multifamily",
+  "mfr": "Multifamily", "multifamily": "Multifamily", "multi family": "Multifamily",
+  "office": "Office", "retail": "Retail", "industrial": "Industrial",
+  "hotel": "Hotel", "hospitality": "Hotel", "land": "Land",
+  "land development": "Development", "development": "Development",
+  "mixed use": "Mixed Use", "mixed-use": "Mixed Use",
+  "self storage": "Self Storage", "storage": "Self Storage",
+  "mobile home park": "Mobile Home Park", "mhp": "Mobile Home Park",
+  "healthcare": "Healthcare", "medical": "Healthcare",
+  "student housing": "Student Housing", "commercial": "Office",
+};
+
 const COLUMN_ALIASES: Record<string, string[]> = {
   fundName: ["fund name", "fund_name", "fundname", "name", "lender", "lender name", "lender_name"],
   providerName: ["provider", "provider name", "provider_name", "company"],
+  website: ["website", "web", "url", "site", "web site"],
+  contactName: ["contact", "contact name", "contact_name", "contact person", "rep", "representative"],
   contactEmail: ["email", "contact email", "contact_email", "e-mail"],
   contactPhone: ["phone", "contact phone", "contact_phone", "telephone"],
+  guidelineUrl: ["link to guidelines", "guidelines", "guideline url", "guideline_url", "guidelines link", "guideline link", "guidelines url"],
   ltvMin: ["ltv min", "ltv_min", "min ltv", "min_ltv", "ltv minimum"],
   ltvMax: ["ltv max", "ltv_max", "max ltv", "max_ltv", "ltv maximum"],
   ltcMin: ["ltc min", "ltc_min", "min ltc", "min_ltc"],
   ltcMax: ["ltc max", "ltc_max", "max ltc", "max_ltc"],
+  _loanAmountRange: ["loan amounts", "loan amount", "loan range", "loan size"],
   loanAmountMin: ["loan min", "loan_min", "min loan", "min_loan", "loan amount min", "loan_amount_min", "min loan amount"],
   loanAmountMax: ["loan max", "loan_max", "max loan", "max_loan", "loan amount max", "loan_amount_max", "max loan amount"],
   interestRateMin: ["rate min", "rate_min", "min rate", "interest rate min", "interest_rate_min"],
@@ -1174,9 +1193,10 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   closingTimeline: ["closing", "closing timeline", "closing_timeline", "close timeline"],
   originationFeeMin: ["origination fee min", "origination_fee_min", "fee min"],
   originationFeeMax: ["origination fee max", "origination_fee_max", "fee max"],
-  allowedStates: ["states", "allowed states", "allowed_states", "state"],
+  allowedStates: ["states", "allowed states", "allowed_states", "state", "region"],
   allowedAssetTypes: ["asset types", "allowed asset types", "allowed_asset_types", "asset type", "property type", "property types"],
-  fundDescription: ["description", "notes", "fund description", "fund_description"],
+  fundDescription: ["description", "notes", "fund description", "fund_description", "terms"],
+  _specialty: ["bread & butter", "bread and butter", "specialty", "specialties", "bread butter", "focus"],
   isActive: ["active", "is active", "is_active", "status"],
 };
 
@@ -1190,6 +1210,74 @@ function mapColumnName(header: string): string | null {
   return null;
 }
 
+function parseMoneyValue(str: string): number | null {
+  const cleaned = str.toLowerCase().replace(/[\s$]/g, "").replace(/,/g, "");
+  const match = cleaned.match(/^([0-9.]+)\s*(mm|m|k|b|million|billion|thousand)?$/);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  if (isNaN(num)) return null;
+  const suffix = match[2] || "";
+  if (suffix === "b" || suffix === "billion") return Math.round(num * 1_000_000_000);
+  if (suffix === "mm" || suffix === "m" || suffix === "million") return Math.round(num * 1_000_000);
+  if (suffix === "k" || suffix === "thousand") return Math.round(num * 1_000);
+  return Math.round(num);
+}
+
+function parseLoanAmountRange(value: string): { loanAmountMin: number | null; loanAmountMax: number | null } {
+  const str = String(value).trim();
+  const rangeMatch = str.match(/^([<>]?)[\s]*\$?([0-9.,]+\s*(?:MM|M|K|B|million|billion|thousand)?)\s*[-–—to]+\s*\$?([0-9.,]+\s*(?:MM|M|K|B|million|billion|thousand)?)\s*$/i);
+  if (rangeMatch) {
+    let minStr = rangeMatch[2].trim();
+    const maxStr = rangeMatch[3].trim();
+    const minHasSuffix = /[a-zA-Z]/.test(minStr);
+    if (!minHasSuffix) {
+      const maxSuffix = maxStr.match(/[a-zA-Z]+$/);
+      if (maxSuffix) minStr = minStr + maxSuffix[0];
+    }
+    return { loanAmountMin: parseMoneyValue(minStr), loanAmountMax: parseMoneyValue(maxStr) };
+  }
+  const ltMatch = str.match(/^[<≤]\s*\$?([0-9.,]+\s*(?:MM|M|K|B|million|billion|thousand)?)$/i);
+  if (ltMatch) {
+    return { loanAmountMin: null, loanAmountMax: parseMoneyValue(ltMatch[1]) };
+  }
+  const gtMatch = str.match(/^[>≥]\s*\$?([0-9.,]+\s*(?:MM|M|K|B|million|billion|thousand)?)$/i);
+  if (gtMatch) {
+    return { loanAmountMin: parseMoneyValue(gtMatch[1]), loanAmountMax: null };
+  }
+  const singleMatch = str.match(/^\$?([0-9.,]+\s*(?:MM|M|K|B|million|billion|thousand)?)\s*\+?\s*$/i);
+  if (singleMatch) {
+    const val = parseMoneyValue(singleMatch[1]);
+    if (str.includes("+")) {
+      return { loanAmountMin: val, loanAmountMax: null };
+    }
+    return { loanAmountMin: val, loanAmountMax: val };
+  }
+  return { loanAmountMin: null, loanAmountMax: null };
+}
+
+function normalizePropertyTypes(value: string): string[] {
+  const parts = String(value).split(/[,;|&+]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  const result = new Set<string>();
+  for (const part of parts) {
+    const mapped = PROPERTY_TYPE_MAP[part];
+    if (mapped) result.add(mapped);
+    else {
+      for (const [key, val] of Object.entries(PROPERTY_TYPE_MAP)) {
+        if (part.includes(key)) { result.add(val); break; }
+      }
+    }
+  }
+  return result.size > 0 ? Array.from(result) : parts.map(p => p.charAt(0).toUpperCase() + p.slice(1));
+}
+
+function normalizeRegion(value: string): string[] {
+  const lower = String(value).toLowerCase().trim();
+  if (lower === "nationwide" || lower === "all states" || lower === "national" || lower === "all") {
+    return [...ALL_US_STATES];
+  }
+  return String(value).split(/[,;|]+/).map(s => s.trim().toUpperCase()).filter(s => s.length === 2 && ALL_US_STATES.includes(s));
+}
+
 function parseRowValue(field: string, value: any): any {
   if (value === null || value === undefined || value === "") return null;
   const str = String(value).trim();
@@ -1201,15 +1289,42 @@ function parseRowValue(field: string, value: any): any {
 
   if (floatFields.includes(field)) return parseFloat(str) || null;
   if (intFields.includes(field)) return parseInt(str) || null;
-  if (arrayFields.includes(field)) {
+  if (field === "allowedAssetTypes") {
     if (Array.isArray(value)) return value;
-    return str.split(/[,;|]+/).map((s: string) => s.trim()).filter(Boolean);
+    return normalizePropertyTypes(str);
+  }
+  if (field === "allowedStates") {
+    if (Array.isArray(value)) return value;
+    return normalizeRegion(str);
   }
   if (field === "isActive") {
     const lower = str.toLowerCase();
     return lower === "false" || lower === "no" || lower === "0" || lower === "inactive" ? false : true;
   }
   return str;
+}
+
+function processVirtualColumns(parsed: Record<string, any>): { knowledgeEntries: { content: string; category: string }[] } {
+  const knowledgeEntries: { content: string; category: string }[] = [];
+
+  if (parsed._loanAmountRange) {
+    const range = parseLoanAmountRange(parsed._loanAmountRange);
+    if (range.loanAmountMin && !parsed.loanAmountMin) parsed.loanAmountMin = range.loanAmountMin;
+    if (range.loanAmountMax && !parsed.loanAmountMax) parsed.loanAmountMax = range.loanAmountMax;
+    parsed._parsedRange = { raw: parsed._loanAmountRange, min: range.loanAmountMin, max: range.loanAmountMax };
+    delete parsed._loanAmountRange;
+  }
+
+  if (parsed._specialty) {
+    knowledgeEntries.push({ content: `Specialty / Focus: ${parsed._specialty}`, category: "specialty" });
+    delete parsed._specialty;
+  }
+
+  if (parsed.fundDescription) {
+    knowledgeEntries.push({ content: parsed.fundDescription, category: "general" });
+  }
+
+  return { knowledgeEntries };
 }
 
 router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"), async (req: Request, res: Response) => {
@@ -1220,8 +1335,11 @@ router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"),
 
     const XLSX = await import("xlsx");
     const workbook = XLSX.read(file.buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+    const sheetNames = workbook.SheetNames;
+
+    const selectedSheet = req.body?.sheetName || req.query?.sheet as string || sheetNames[0];
+    const sheet = workbook.Sheets[selectedSheet];
+    if (!sheet) return res.status(400).json({ error: `Sheet "${selectedSheet}" not found` });
     const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     if (rawData.length < 2) return res.status(400).json({ error: "File must have a header row and at least one data row" });
@@ -1238,6 +1356,7 @@ router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"),
 
     const rows: any[] = [];
     const errors: { row: number; message: string }[] = [];
+    let totalKnowledgeEntries = 0;
 
     for (let r = 1; r < rawData.length; r++) {
       const rowData = rawData[r] as any[];
@@ -1248,12 +1367,15 @@ router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"),
         parsed[field] = parseRowValue(field, rowData[parseInt(colIdx)]);
       }
 
+      const { knowledgeEntries } = processVirtualColumns(parsed);
+      totalKnowledgeEntries += knowledgeEntries.length;
+
       if (!parsed.fundName) {
         errors.push({ row: r + 1, message: "Missing fund name" });
         continue;
       }
 
-      rows.push({ rowNumber: r + 1, data: parsed });
+      rows.push({ rowNumber: r + 1, data: parsed, knowledgeCount: knowledgeEntries.length });
     }
 
     const tenantId = await getTenantId(req);
@@ -1266,14 +1388,24 @@ router.post("/api/commercial/funds/bulk-preview", fundFileUpload.single("file"),
 
     const duplicates = rows.filter(r => existingNames.has(r.data.fundName.toLowerCase()));
 
+    const displayMapping = Object.entries(columnMapping).map(([colIdx, field]) => {
+      let displayField = field;
+      if (field === "_loanAmountRange") displayField = "loanAmountMin + loanAmountMax (parsed from range)";
+      if (field === "_specialty") displayField = "Knowledge Entry (specialty)";
+      return { column: headers[parseInt(colIdx)], mappedTo: displayField };
+    });
+
     res.json({
       totalRows: rows.length,
       validRows: rows.length - errors.length,
       errors,
       duplicates: duplicates.map(d => ({ rowNumber: d.rowNumber, fundName: d.data.fundName })),
-      columnMapping: Object.entries(columnMapping).map(([colIdx, field]) => ({ column: headers[parseInt(colIdx)], mappedTo: field })),
+      columnMapping: displayMapping,
       unmappedColumns,
       preview: rows.slice(0, 10),
+      sheetNames,
+      selectedSheet,
+      totalKnowledgeEntries,
     });
   } catch (error: any) {
     console.error("Bulk preview error:", error);
@@ -1290,8 +1422,9 @@ router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), 
 
     const XLSX = await import("xlsx");
     const workbook = XLSX.read(file.buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+    const selectedSheet = req.body?.sheetName || req.query?.sheet as string || workbook.SheetNames[0];
+    const sheet = workbook.Sheets[selectedSheet];
+    if (!sheet) return res.status(400).json({ error: `Sheet "${selectedSheet}" not found` });
     const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     if (rawData.length < 2) return res.status(400).json({ error: "File must have data rows" });
@@ -1312,6 +1445,7 @@ router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), 
     const existingMap = new Map(existingFunds.map(f => [f.fundName.toLowerCase(), f.id]));
 
     let created = 0, updated = 0, skipped = 0, failed = 0;
+    let knowledgeCreated = 0;
 
     for (let r = 1; r < rawData.length; r++) {
       const rowData = rawData[r] as any[];
@@ -1322,20 +1456,46 @@ router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), 
         parsed[field] = parseRowValue(field, rowData[parseInt(colIdx)]);
       }
 
-      if (!parsed.fundName) { failed++; continue; }
+      const { knowledgeEntries } = processVirtualColumns(parsed);
+
+      const cleanParsed = { ...parsed };
+      delete cleanParsed._parsedRange;
+
+      if (!cleanParsed.fundName) { failed++; continue; }
 
       try {
-        const existingId = existingMap.get(parsed.fundName.toLowerCase());
+        let fundId: number;
+        const existingId = existingMap.get(cleanParsed.fundName.toLowerCase());
         if (existingId) {
           if (duplicateAction === "update") {
-            await db.update(funds).set({ ...parsed, updatedAt: new Date() }).where(eq(funds.id, existingId));
+            await db.update(funds).set({ ...cleanParsed, updatedAt: new Date() }).where(eq(funds.id, existingId));
             updated++;
+            fundId = existingId;
           } else {
             skipped++;
+            continue;
           }
         } else {
-          await db.insert(funds).values({ ...parsed, tenantId });
+          const [inserted] = await db.insert(funds).values({ ...cleanParsed, tenantId }).returning({ id: funds.id });
           created++;
+          fundId = inserted.id;
+          existingMap.set(cleanParsed.fundName.toLowerCase(), fundId);
+        }
+
+        for (const entry of knowledgeEntries) {
+          try {
+            const [ke] = await db.insert(fundKnowledgeEntries).values({
+              fundId, content: entry.content, category: entry.category, sourceType: "bulk_import",
+            }).returning({ id: fundKnowledgeEntries.id });
+            knowledgeCreated++;
+            embedKnowledgeEntry(ke.id, entry.content).catch(() => {});
+          } catch (keErr: any) {
+            console.error(`Knowledge entry creation failed for fund ${fundId}:`, keErr.message);
+          }
+        }
+
+        if (cleanParsed.fundDescription) {
+          embedFundDescription(fundId, cleanParsed.fundDescription).catch(() => {});
         }
       } catch (e: any) {
         console.error(`Row ${r + 1} import error:`, e.message);
@@ -1343,7 +1503,7 @@ router.post("/api/commercial/funds/bulk-import", fundFileUpload.single("file"), 
       }
     }
 
-    res.json({ created, updated, skipped, failed, total: created + updated + skipped + failed });
+    res.json({ created, updated, skipped, failed, knowledgeCreated, total: created + updated + skipped + failed });
   } catch (error: any) {
     console.error("Bulk import error:", error);
     res.status(500).json({ error: error.message });

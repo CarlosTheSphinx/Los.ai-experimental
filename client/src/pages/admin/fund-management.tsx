@@ -21,14 +21,17 @@ import {
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 const ASSET_TYPES = ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"];
-const KNOWLEDGE_CATEGORIES = ["general", "rates", "terms", "eligibility", "guidelines"];
+const KNOWLEDGE_CATEGORIES = ["general", "rates", "terms", "eligibility", "guidelines", "specialty"];
 
 function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) => void; onCancel: () => void }) {
   const [form, setForm] = useState({
     fundName: fund?.fundName || "",
     providerName: fund?.providerName || "",
+    website: fund?.website || "",
+    contactName: fund?.contactName || "",
     contactEmail: fund?.contactEmail || "",
     contactPhone: fund?.contactPhone || "",
+    guidelineUrl: fund?.guidelineUrl || "",
     ltvMin: fund?.ltvMin ?? "",
     ltvMax: fund?.ltvMax ?? "",
     ltcMin: fund?.ltcMin ?? "",
@@ -84,6 +87,16 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
+          <Label className="text-xs text-slate-400">Website</Label>
+          <Input value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} className="bg-[#0f1629] border-slate-700 text-white text-sm" placeholder="https://..." data-testid="website-input" />
+        </div>
+        <div>
+          <Label className="text-xs text-slate-400">Contact Name</Label>
+          <Input value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="contact-name-input" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
           <Label className="text-xs text-slate-400">Contact Email</Label>
           <Input value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="contact-email-input" />
         </div>
@@ -91,6 +104,10 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
           <Label className="text-xs text-slate-400">Contact Phone</Label>
           <Input value={form.contactPhone} onChange={e => setForm(f => ({ ...f, contactPhone: e.target.value }))} className="bg-[#0f1629] border-slate-700 text-white text-sm" data-testid="contact-phone-input" />
         </div>
+      </div>
+      <div>
+        <Label className="text-xs text-slate-400">Guideline URL</Label>
+        <Input value={form.guidelineUrl} onChange={e => setForm(f => ({ ...f, guidelineUrl: e.target.value }))} className="bg-[#0f1629] border-slate-700 text-white text-sm" placeholder="Link to guidelines document..." data-testid="guideline-url-input" />
       </div>
       <div className="grid grid-cols-4 gap-3">
         <div>
@@ -240,6 +257,9 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
             if (!data.recourseType) data.recourseType = null;
             if (!data.prepaymentTerms) data.prepaymentTerms = null;
             if (!data.closingTimeline) data.closingTimeline = null;
+            if (!data.website) data.website = null;
+            if (!data.contactName) data.contactName = null;
+            if (!data.guidelineUrl) data.guidelineUrl = null;
             onSave(data);
           }}
           data-testid="save-fund-button"
@@ -252,16 +272,19 @@ function FundForm({ fund, onSave, onCancel }: { fund?: any; onSave: (data: any) 
 function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<"upload" | "preview" | "importing" | "done">("upload");
+  const [step, setStep] = useState<"upload" | "sheet-select" | "preview" | "importing" | "done">("upload");
   const [previewData, setPreviewData] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string>("");
   const [duplicateAction, setDuplicateAction] = useState("skip");
   const [importResult, setImportResult] = useState<any>(null);
 
   const previewMut = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, sheetName }: { file: File; sheetName?: string }) => {
       const formData = new FormData();
       formData.append("file", file);
+      if (sheetName) formData.append("sheetName", sheetName);
       const resp = await fetch("/api/commercial/funds/bulk-preview", {
         method: "POST",
         body: formData,
@@ -272,7 +295,13 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     },
     onSuccess: (data) => {
       setPreviewData(data);
-      setStep("preview");
+      if (data.sheetNames?.length > 1 && step === "upload") {
+        setSheetNames(data.sheetNames);
+        setSelectedSheet(data.selectedSheet || data.sheetNames[0]);
+        setStep("sheet-select");
+      } else {
+        setStep("preview");
+      }
     },
     onError: (err: any) => toast({ title: "Failed to parse file", description: err.message, variant: "destructive" }),
   });
@@ -283,6 +312,7 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("duplicateAction", duplicateAction);
+      if (selectedSheet) formData.append("sheetName", selectedSheet);
       const resp = await fetch("/api/commercial/funds/bulk-import", {
         method: "POST",
         body: formData,
@@ -303,6 +333,8 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     setStep("upload");
     setPreviewData(null);
     setSelectedFile(null);
+    setSheetNames([]);
+    setSelectedSheet("");
     setImportResult(null);
   };
 
@@ -310,7 +342,21 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     const file = e.target.files?.[0];
     if (!file) return;
     setSelectedFile(file);
-    previewMut.mutate(file);
+    previewMut.mutate({ file });
+  };
+
+  const handleSheetConfirm = () => {
+    if (selectedFile && selectedSheet) {
+      previewMut.mutate({ file: selectedFile, sheetName: selectedSheet });
+      setStep("preview");
+    }
+  };
+
+  const formatMoney = (val: number | null) => {
+    if (!val) return "—";
+    if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(val % 1_000_000 === 0 ? 0 : 1)}M`;
+    if (val >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
+    return `$${val}`;
   };
 
   return (
@@ -332,27 +378,66 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
             >
               <FileUp size={40} className="mx-auto text-slate-500 mb-3" />
               <p className="text-sm text-slate-400">Click to select an Excel (.xlsx, .xls) or CSV file</p>
-              <p className="text-xs text-slate-500 mt-1">Supports up to 900+ rows</p>
+              <p className="text-xs text-slate-500 mt-1">Supports loan amount ranges (e.g. "1-10MM"), property types, and auto-creates knowledge entries</p>
               {previewMut.isPending && <RefreshCw size={16} className="animate-spin mx-auto mt-3 text-blue-400" />}
             </div>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileSelect} data-testid="bulk-file-input" />
           </div>
         )}
 
+        {step === "sheet-select" && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-300">This file has multiple sheets. Select which one to import:</p>
+            <div className="space-y-2">
+              {sheetNames.map(name => (
+                <button
+                  key={name}
+                  onClick={() => setSelectedSheet(name)}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                    selectedSheet === name
+                      ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                      : "bg-[#0f1629] border-slate-700 text-slate-300 hover:border-slate-500"
+                  }`}
+                  data-testid={`sheet-option-${name.replace(/\s/g, "-").toLowerCase()}`}
+                >
+                  <span className="font-medium">{name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
+              <Button size="sm" onClick={handleSheetConfirm} disabled={!selectedSheet || previewMut.isPending} data-testid="sheet-confirm-button">
+                {previewMut.isPending ? <><RefreshCw size={14} className="animate-spin mr-1" /> Loading...</> : "Continue"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {step === "preview" && previewData && (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-            <div className="grid grid-cols-3 gap-3">
+            {previewData.sheetNames?.length > 1 && (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <FileText size={12} />
+                Sheet: <span className="text-blue-400 font-medium">{previewData.selectedSheet}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-4 gap-3">
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-2xl font-semibold text-white">{previewData.totalRows}</p>
+                <p className="text-2xl font-semibold text-white" data-testid="stat-total">{previewData.totalRows}</p>
                 <p className="text-xs text-slate-400">Total Rows</p>
               </div>
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-2xl font-semibold text-emerald-400">{previewData.validRows}</p>
+                <p className="text-2xl font-semibold text-emerald-400" data-testid="stat-valid">{previewData.validRows}</p>
                 <p className="text-xs text-slate-400">Valid</p>
               </div>
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-2xl font-semibold text-amber-400">{previewData.duplicates?.length || 0}</p>
+                <p className="text-2xl font-semibold text-amber-400" data-testid="stat-duplicates">{previewData.duplicates?.length || 0}</p>
                 <p className="text-xs text-slate-400">Duplicates</p>
+              </div>
+              <div className="bg-[#0f1629] rounded p-3 text-center">
+                <p className="text-2xl font-semibold text-purple-400" data-testid="stat-knowledge">{previewData.totalKnowledgeEntries || 0}</p>
+                <p className="text-xs text-slate-400">Knowledge Entries</p>
               </div>
             </div>
 
@@ -407,20 +492,40 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
             {previewData.preview?.length > 0 && (
               <div>
                 <p className="text-xs text-slate-400 mb-1">Preview (first {Math.min(previewData.preview.length, 10)} rows)</p>
-                <div className="bg-[#0f1629] rounded p-2 space-y-1 max-h-40 overflow-y-auto">
-                  {previewData.preview.slice(0, 5).map((r: any, i: number) => (
-                    <div key={i} className="text-xs text-slate-300 flex gap-2">
-                      <span className="text-slate-500">#{r.rowNumber}</span>
-                      <span className="font-medium">{r.data.fundName}</span>
-                      {r.data.providerName && <span className="text-slate-500">— {r.data.providerName}</span>}
+                <div className="bg-[#0f1629] rounded p-2 space-y-1.5 max-h-48 overflow-y-auto">
+                  {previewData.preview.slice(0, 10).map((r: any, i: number) => (
+                    <div key={i} className="text-xs text-slate-300 flex flex-wrap gap-x-2 gap-y-0.5 items-center border-b border-slate-800 pb-1.5 last:border-0">
+                      <span className="text-slate-500 w-6">#{r.rowNumber}</span>
+                      <span className="font-medium text-white">{r.data.fundName}</span>
+                      {r.data.website && <span className="text-blue-400 truncate max-w-[150px]">{r.data.website}</span>}
+                      {r.data.contactName && <span className="text-slate-400">{r.data.contactName}</span>}
+                      {r.data._parsedRange && (
+                        <Badge className="bg-emerald-500/15 text-emerald-400 text-[10px]">
+                          {formatMoney(r.data._parsedRange.min)} – {formatMoney(r.data._parsedRange.max)}
+                        </Badge>
+                      )}
+                      {r.data.allowedStates?.length === 50 && (
+                        <Badge className="bg-violet-500/15 text-violet-400 text-[10px]">Nationwide</Badge>
+                      )}
+                      {r.data.allowedAssetTypes?.length > 0 && (
+                        <Badge className="bg-orange-500/15 text-orange-400 text-[10px]">{r.data.allowedAssetTypes.join(", ")}</Badge>
+                      )}
+                      {r.knowledgeCount > 0 && (
+                        <Badge className="bg-purple-500/15 text-purple-400 text-[10px]">{r.knowledgeCount} knowledge</Badge>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
+            <div className="flex justify-between items-center pt-2">
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={reset} data-testid="bulk-back-button">Back</Button>
+                {previewData.sheetNames?.length > 1 && (
+                  <Button variant="outline" size="sm" onClick={() => setStep("sheet-select")} data-testid="change-sheet-button">Change Sheet</Button>
+                )}
+              </div>
               <Button size="sm" onClick={() => { setStep("importing"); importMut.mutate(); }} disabled={importMut.isPending} data-testid="bulk-confirm-button">
                 {importMut.isPending ? <><RefreshCw size={14} className="animate-spin mr-1" /> Importing...</> : `Import ${previewData.validRows} Funds`}
               </Button>
@@ -431,7 +536,7 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         {step === "importing" && (
           <div className="py-12 text-center">
             <RefreshCw size={32} className="animate-spin mx-auto text-blue-400 mb-4" />
-            <p className="text-sm text-slate-400">Importing funds...</p>
+            <p className="text-sm text-slate-400">Importing funds and creating knowledge entries...</p>
           </div>
         )}
 
@@ -441,22 +546,26 @@ function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               <Check size={40} className="mx-auto text-emerald-400 mb-3" />
               <p className="text-lg font-medium text-white">Import Complete</p>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-2">
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-xl font-semibold text-emerald-400">{importResult.created}</p>
+                <p className="text-xl font-semibold text-emerald-400" data-testid="result-created">{importResult.created}</p>
                 <p className="text-xs text-slate-400">Created</p>
               </div>
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-xl font-semibold text-blue-400">{importResult.updated}</p>
+                <p className="text-xl font-semibold text-blue-400" data-testid="result-updated">{importResult.updated}</p>
                 <p className="text-xs text-slate-400">Updated</p>
               </div>
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-xl font-semibold text-slate-400">{importResult.skipped}</p>
+                <p className="text-xl font-semibold text-slate-400" data-testid="result-skipped">{importResult.skipped}</p>
                 <p className="text-xs text-slate-400">Skipped</p>
               </div>
               <div className="bg-[#0f1629] rounded p-3 text-center">
-                <p className="text-xl font-semibold text-red-400">{importResult.failed}</p>
+                <p className="text-xl font-semibold text-red-400" data-testid="result-failed">{importResult.failed}</p>
                 <p className="text-xs text-slate-400">Failed</p>
+              </div>
+              <div className="bg-[#0f1629] rounded p-3 text-center">
+                <p className="text-xl font-semibold text-purple-400" data-testid="result-knowledge">{importResult.knowledgeCreated || 0}</p>
+                <p className="text-xs text-slate-400">Knowledge</p>
               </div>
             </div>
             <div className="flex justify-end">
