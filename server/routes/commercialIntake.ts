@@ -1564,7 +1564,10 @@ router.delete("/api/commercial/funds/documents/:id", async (req: Request, res: R
 
 router.post("/api/commercial/embeddings/backfill", async (req: Request, res: Response) => {
   try {
-    if (!requireAdmin(req, res)) return;
+    const user = (req as any).user;
+    if (!user || user.role !== "super_admin") {
+      return res.status(403).json({ error: "Super admin access required" });
+    }
     const result = await backfillEmbeddings();
     res.json({ success: true, ...result });
   } catch (error: any) {

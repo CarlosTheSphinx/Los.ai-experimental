@@ -234,20 +234,18 @@ async function agent2MatchFunds(structuredDeal: any, activeFunds: any[], session
         }
 
         const similarRows = await db.execute(
-          sql`SELECT id, fund_id, content, category,
-                     embedding <=> ${embeddingStr}::vector AS distance
-              FROM fund_knowledge_entries
-              WHERE fund_id = ANY(${fundIds})
-                AND embedding IS NOT NULL
-              ORDER BY embedding <=> ${embeddingStr}::vector
-              LIMIT ${fundsToUse.length * 8}`
+          sql`SELECT fund_id, content, category FROM (
+                SELECT fund_id, content, category,
+                       ROW_NUMBER() OVER (PARTITION BY fund_id ORDER BY embedding <=> ${embeddingStr}::vector) AS rn
+                FROM fund_knowledge_entries
+                WHERE fund_id = ANY(${fundIds})
+                  AND embedding IS NOT NULL
+              ) ranked WHERE rn <= 8`
         );
         for (const row of similarRows.rows as any[]) {
           const fid = row.fund_id;
           if (!knowledgeByFund[fid]) knowledgeByFund[fid] = [];
-          if (knowledgeByFund[fid].length < 8) {
-            knowledgeByFund[fid].push(`[${row.category}] ${row.content}`);
-          }
+          knowledgeByFund[fid].push(`[${row.category}] ${row.content}`);
         }
       }
 
