@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Pencil, Trash2, Building2, RefreshCw, Upload, FileText,
   Search, ArrowLeft, BookOpen, FileUp, ChevronRight, Check, X, Download,
-  CheckCircle2, XCircle, Sparkles, Brain
+  CheckCircle2, XCircle
 } from "lucide-react";
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
