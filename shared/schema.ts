@@ -4153,6 +4153,8 @@ export const intakeDeals = pgTable("intake_deals", {
   dealName: varchar("deal_name", { length: 255 }),
   loanAmount: integer("loan_amount"),
   assetType: varchar("asset_type", { length: 100 }),
+  loanType: varchar("loan_type", { length: 100 }),
+  numberOfUnits: integer("number_of_units"),
   propertyAddress: varchar("property_address", { length: 500 }),
   propertyCity: varchar("property_city", { length: 100 }),
   propertyState: varchar("property_state", { length: 100 }),

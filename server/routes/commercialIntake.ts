@@ -536,11 +536,11 @@ router.post("/api/commercial/deals", async (req: Request, res: Response) => {
     const role = getUserRole(req);
 
     let dealTenantId = tenantId;
-    if (role === "broker") {
-      const adminUser = await db.select({ id: users.id }).from(users)
+    if (role === "broker" && !dealTenantId) {
+      const adminUser = await db.select({ tenantId: users.tenantId }).from(users)
         .where(inArray(users.role, ["super_admin", "lender"]))
         .limit(1);
-      dealTenantId = adminUser.length > 0 ? adminUser[0].id : tenantId;
+      dealTenantId = adminUser.length > 0 ? adminUser[0].tenantId : 1;
     }
 
     const data: any = {
@@ -1168,10 +1168,12 @@ const DEFAULT_FORM_FIELDS = [
   { fieldKey: "dealName", fieldLabel: "Deal Name", section: "Deal Basics", fieldType: "text", isRequired: true, sortOrder: 1 },
   { fieldKey: "loanAmount", fieldLabel: "Loan Amount ($)", section: "Deal Basics", fieldType: "number", isRequired: true, sortOrder: 2 },
   { fieldKey: "assetType", fieldLabel: "Asset Type", section: "Deal Basics", fieldType: "select", isRequired: true, sortOrder: 3, options: { choices: ["Multifamily","Residential","Office","Commercial","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing","Bridge"] } },
-  { fieldKey: "propertyAddress", fieldLabel: "Property Address", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 4 },
-  { fieldKey: "propertyCity", fieldLabel: "City", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 5 },
-  { fieldKey: "propertyState", fieldLabel: "State", section: "Deal Basics", fieldType: "select", isRequired: false, sortOrder: 6, options: { choices: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"] } },
-  { fieldKey: "propertyZip", fieldLabel: "ZIP Code", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 7 },
+  { fieldKey: "loanType", fieldLabel: "Loan Type", section: "Deal Basics", fieldType: "select", isRequired: false, sortOrder: 4, options: { choices: ["Bridge","Construction","DSCR","A&D","Fix & Flip","Long-Term Financing","Land Development"] } },
+  { fieldKey: "numberOfUnits", fieldLabel: "Number of Units", section: "Deal Basics", fieldType: "number", isRequired: false, sortOrder: 5 },
+  { fieldKey: "propertyAddress", fieldLabel: "Property Address", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 6 },
+  { fieldKey: "propertyCity", fieldLabel: "City", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 7 },
+  { fieldKey: "propertyState", fieldLabel: "State", section: "Deal Basics", fieldType: "select", isRequired: false, sortOrder: 8, options: { choices: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"] } },
+  { fieldKey: "propertyZip", fieldLabel: "ZIP Code", section: "Deal Basics", fieldType: "text", isRequired: false, sortOrder: 9 },
   { fieldKey: "borrowerName", fieldLabel: "Borrower / Entity Name", section: "Borrower Information", fieldType: "text", isRequired: false, sortOrder: 10 },
   { fieldKey: "borrowerEntityType", fieldLabel: "Entity Type", section: "Borrower Information", fieldType: "select", isRequired: false, sortOrder: 11, options: { choices: ["Individual","LLC","Corporation","Partnership","Trust"] } },
   { fieldKey: "borrowerCreditScore", fieldLabel: "Credit Score", section: "Borrower Information", fieldType: "number", isRequired: false, sortOrder: 12 },
@@ -1204,6 +1206,22 @@ router.get("/api/commercial/form-config", async (req: Request, res: Response) =>
         inserted.push(row);
       }
       fields = inserted;
+    } else {
+      const existingKeys = new Set(fields.map(f => f.fieldKey));
+      const missingFields = DEFAULT_FORM_FIELDS.filter(f => !existingKeys.has(f.fieldKey));
+      if (missingFields.length > 0) {
+        for (const field of missingFields) {
+          const [row] = await db.insert(commercialFormConfig).values({
+            ...field,
+            tenantId,
+            isVisible: true,
+            isRequired: field.isRequired,
+            options: field.options || null,
+          } as any).returning();
+          fields.push(row);
+        }
+        fields.sort((a, b) => a.sortOrder - b.sortOrder);
+      }
     }
 
     res.json(fields);

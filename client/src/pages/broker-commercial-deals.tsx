@@ -43,6 +43,7 @@ function formatDealDate(deal: { submittedAt?: unknown; updatedAt?: unknown; crea
 }
 
 const ASSET_TYPES = ["Multifamily","Office","Retail","Industrial","Hotel","Land","Development","Mixed Use","Self Storage","Mobile Home Park","Healthcare","Student Housing"];
+const LOAN_TYPES = ["Bridge","Construction","DSCR","A&D","Fix & Flip","Long-Term Financing","Land Development"];
 const ENTITY_TYPES = ["Individual","LLC","Corporation","Partnership","Trust"];
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
@@ -255,6 +256,8 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
     dealName: "",
     loanAmount: "",
     assetType: "",
+    loanType: "",
+    numberOfUnits: "",
     propertyAddress: "",
     propertyCity: "",
     propertyState: "",
@@ -278,6 +281,8 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
       dealName: existingDeal.dealName || "",
       loanAmount: existingDeal.loanAmount?.toString() || "",
       assetType: existingDeal.assetType || "",
+      loanType: existingDeal.loanType || "",
+      numberOfUnits: existingDeal.numberOfUnits?.toString() || "",
       propertyAddress: existingDeal.propertyAddress || "",
       propertyCity: existingDeal.propertyCity || "",
       propertyState: existingDeal.propertyState || "",
@@ -346,6 +351,8 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
         dealName: form.dealName,
         loanAmount: loanAmt || null,
         assetType: form.assetType || null,
+        loanType: form.loanType || null,
+        numberOfUnits: form.numberOfUnits ? parseInt(form.numberOfUnits) : null,
         propertyAddress: form.propertyAddress || null,
         propertyCity: form.propertyCity || null,
         propertyState: form.propertyState || null,
@@ -482,6 +489,19 @@ function DealForm({ editDealId }: { editDealId?: number } = {}) {
                           <SelectTrigger className="bg-muted/50 border text-foreground text-sm" data-testid="asset-type"><SelectValue placeholder="Select..." /></SelectTrigger>
                           <SelectContent>{ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                         </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Loan Type</Label>
+                        <Select value={form.loanType} onValueChange={v => update("loanType", v)}>
+                          <SelectTrigger className="bg-muted/50 border text-foreground text-sm" data-testid="loan-type"><SelectValue placeholder="Select..." /></SelectTrigger>
+                          <SelectContent>{LOAN_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Number of Units</Label>
+                        <Input type="text" inputMode="numeric" value={form.numberOfUnits} onChange={e => update("numberOfUnits", e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 24" className="bg-muted/50 border text-foreground text-sm" data-testid="number-of-units" />
                       </div>
                     </div>
                   </CardContent>

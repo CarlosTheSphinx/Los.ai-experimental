@@ -576,7 +576,7 @@ export async function runIntakeAiPipeline(dealId: number): Promise<void> {
 
     console.log(`[Intake AI] Agent 2: Matching funds (${activeFunds.length} funds)...`);
     const dealFormData = (deal.dealFormJson as Record<string, any>) || {};
-    const dealLoanType = dealFormData.loanType || "";
+    const dealLoanType = deal.loanType || dealFormData.loanType || "";
     const dealAssetType = deal.assetType || dealFormData.propertyType || "";
     if (dealLoanType && !agent1Result.structured_deal?.basic_info?.loan_type) {
       if (!agent1Result.structured_deal) agent1Result.structured_deal = {};
