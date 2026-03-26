@@ -10,6 +10,7 @@ import {
   programReviewRules,
   creditPolicies,
   loanPrograms,
+  intakeDealTasks, intakeDeals,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -622,8 +623,73 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(projects, eq(projectTasks.projectId, projects.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(dueDateSort, asc(projectTasks.dueDate), priorityOrder);
-    
-    return tasks;
+
+    const intakeConditions = [];
+    if (filters.status === 'completed') {
+      intakeConditions.push(eq(intakeDealTasks.status, 'completed'));
+    } else {
+      intakeConditions.push(sql`${intakeDealTasks.status} != 'completed'`);
+    }
+    if (filters.date) {
+      const dateStart = new Date(filters.date);
+      dateStart.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(filters.date);
+      dateEnd.setHours(23, 59, 59, 999);
+      intakeConditions.push(
+        and(
+          sql`${intakeDealTasks.dueDate} >= ${dateStart}`,
+          sql`${intakeDealTasks.dueDate} <= ${dateEnd}`
+        )!
+      );
+    }
+    if (filters.userId !== undefined) {
+      intakeConditions.push(eq(intakeDealTasks.assignedTo, String(filters.userId)));
+    }
+
+    const commercialTasks = await db
+      .select({
+        id: intakeDealTasks.id,
+        dealId: intakeDealTasks.dealId,
+        taskTitle: intakeDealTasks.taskTitle,
+        taskDescription: intakeDealTasks.taskDescription,
+        status: intakeDealTasks.status,
+        priority: intakeDealTasks.priority,
+        assignedTo: intakeDealTasks.assignedTo,
+        dueDate: intakeDealTasks.dueDate,
+        completedAt: intakeDealTasks.completedAt,
+        completedBy: intakeDealTasks.completedBy,
+        createdAt: intakeDealTasks.createdAt,
+        dealName: intakeDeals.dealName,
+        borrowerName: intakeDeals.borrowerName,
+        propertyAddress: intakeDeals.propertyAddress,
+      })
+      .from(intakeDealTasks)
+      .innerJoin(intakeDeals, eq(intakeDealTasks.dealId, intakeDeals.id))
+      .where(intakeConditions.length > 0 ? and(...intakeConditions) : undefined);
+
+    const mappedCommercialTasks = commercialTasks.map(t => ({
+      ...t,
+      source: 'commercial' as const,
+      projectName: t.dealName,
+      projectId: null,
+      stageId: null,
+      taskType: null,
+      requiresDocument: false,
+      projectNumber: null,
+      loanNumber: null,
+    }));
+
+    const allTasks = [...tasks.map(t => ({ ...t, source: 'origination' as const })), ...mappedCommercialTasks];
+    allTasks.sort((a, b) => {
+      const aHasDue = a.dueDate ? 0 : 1;
+      const bHasDue = b.dueDate ? 0 : 1;
+      if (aHasDue !== bHasDue) return aHasDue - bHasDue;
+      if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      const priorityMap: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      return (priorityMap[a.priority || 'medium'] ?? 4) - (priorityMap[b.priority || 'medium'] ?? 4);
+    });
+
+    return allTasks;
   }
 
   async getPendingProjectTasksCount(userId?: number): Promise<number> {
@@ -637,7 +703,18 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.select({
       count: count()
     }).from(projectTasks).where(and(...conditions));
-    return result?.count ?? 0;
+
+    const intakeConditions = [
+      sql`${intakeDealTasks.status} != 'completed'`
+    ];
+    if (userId !== undefined) {
+      intakeConditions.push(sql`${intakeDealTasks.assignedTo} = ${String(userId)}`);
+    }
+    const [intakeResult] = await db.select({
+      count: count()
+    }).from(intakeDealTasks).where(and(...intakeConditions));
+
+    return (result?.count ?? 0) + (intakeResult?.count ?? 0);
   }
 
   async getTaskBoardDateCounts(startDate: string, endDate: string, userId?: number): Promise<Record<string, number>> {
@@ -664,10 +741,30 @@ export class DatabaseStorage implements IStorage {
       .from(projectTasks)
       .where(and(...conditions))
       .groupBy(sql`DATE(${projectTasks.dueDate})`);
+
+    const intakeConditions = [
+      sql`${intakeDealTasks.dueDate} >= ${start}`,
+      sql`${intakeDealTasks.dueDate} <= ${end}`,
+      sql`${intakeDealTasks.status} != 'completed'`
+    ];
+    if (userId !== undefined) {
+      intakeConditions.push(sql`${intakeDealTasks.assignedTo} = ${String(userId)}`);
+    }
+    const intakeResults = await db
+      .select({
+        date: sql<string>`DATE(${intakeDealTasks.dueDate})`,
+        count: count(),
+      })
+      .from(intakeDealTasks)
+      .where(and(...intakeConditions))
+      .groupBy(sql`DATE(${intakeDealTasks.dueDate})`);
     
     const dateCounts: Record<string, number> = {};
     for (const r of results) {
       if (r.date) dateCounts[r.date] = r.count;
+    }
+    for (const r of intakeResults) {
+      if (r.date) dateCounts[r.date] = (dateCounts[r.date] || 0) + r.count;
     }
     return dateCounts;
   }

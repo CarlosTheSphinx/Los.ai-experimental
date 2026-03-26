@@ -638,6 +638,7 @@ router.post("/api/commercial/deals/:id/tasks", async (req: Request, res: Respons
 
 router.patch("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request, res: Response) => {
   try {
+    const dealId = parseInt(req.params.dealId);
     const taskId = parseInt(req.params.taskId);
     const userId = getUserId(req);
     const role = getUserRole(req);
@@ -645,6 +646,10 @@ router.patch("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request,
     if (!["super_admin", "lender", "processor"].includes(role || "")) {
       return res.status(403).json({ error: "Admin access required" });
     }
+
+    const [existingTask] = await db.select().from(intakeDealTasks)
+      .where(and(eq(intakeDealTasks.id, taskId), eq(intakeDealTasks.dealId, dealId)));
+    if (!existingTask) return res.status(404).json({ error: "Task not found for this deal" });
 
     const updates: any = {};
     if (req.body.taskTitle !== undefined) updates.taskTitle = req.body.taskTitle;
@@ -668,10 +673,9 @@ router.patch("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request,
 
     const [updated] = await db.update(intakeDealTasks)
       .set(updates)
-      .where(eq(intakeDealTasks.id, taskId))
+      .where(and(eq(intakeDealTasks.id, taskId), eq(intakeDealTasks.dealId, dealId)))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Task not found" });
     res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -680,6 +684,7 @@ router.patch("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request,
 
 router.delete("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request, res: Response) => {
   try {
+    const dealId = parseInt(req.params.dealId);
     const taskId = parseInt(req.params.taskId);
     const role = getUserRole(req);
 
@@ -688,10 +693,10 @@ router.delete("/api/commercial/deals/:dealId/tasks/:taskId", async (req: Request
     }
 
     const [deleted] = await db.delete(intakeDealTasks)
-      .where(eq(intakeDealTasks.id, taskId))
+      .where(and(eq(intakeDealTasks.id, taskId), eq(intakeDealTasks.dealId, dealId)))
       .returning();
 
-    if (!deleted) return res.status(404).json({ error: "Task not found" });
+    if (!deleted) return res.status(404).json({ error: "Task not found for this deal" });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
