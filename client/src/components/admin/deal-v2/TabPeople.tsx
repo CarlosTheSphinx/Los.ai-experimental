@@ -478,6 +478,30 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
                       </Button>
                     </div>
                   )}
+                  {deal.brokerProfile && (
+                    <div className="mt-3 pt-3 border-t space-y-1.5" data-testid="broker-profile-section">
+                      {deal.brokerProfile.brokerLicenseNumber && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-license">
+                          License: {deal.brokerProfile.brokerLicenseNumber}
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerYearsExperience && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-experience">
+                          Experience: {deal.brokerProfile.brokerYearsExperience}+ years
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerOperatingStates && deal.brokerProfile.brokerOperatingStates.length > 0 && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-states">
+                          States: {deal.brokerProfile.brokerOperatingStates.join(", ")}
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerPreferredLoanTypes && deal.brokerProfile.brokerPreferredLoanTypes.length > 0 && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-loan-types">
+                          Preferred: {deal.brokerProfile.brokerPreferredLoanTypes.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

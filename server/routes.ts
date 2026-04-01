@@ -8887,7 +8887,22 @@ export async function registerRoutes(
         googleDriveFolderId: project.googleDriveFolderId,
         googleDriveFolderUrl: project.googleDriveFolderUrl,
         appraisalStatus: project.appraisalStatus,
+        brokerProfile: null as any,
       };
+
+      const brokerLookupEmail = project.brokerEmail || project.userEmail;
+      if (brokerLookupEmail) {
+        const [brokerUser] = await db.select({
+          brokerCompanyName: users.brokerCompanyName,
+          brokerLicenseNumber: users.brokerLicenseNumber,
+          brokerOperatingStates: users.brokerOperatingStates,
+          brokerYearsExperience: users.brokerYearsExperience,
+          brokerPreferredLoanTypes: users.brokerPreferredLoanTypes,
+        }).from(users).where(eq(users.email, brokerLookupEmail)).limit(1);
+        if (brokerUser && (brokerUser.brokerCompanyName || brokerUser.brokerLicenseNumber || brokerUser.brokerOperatingStates || brokerUser.brokerYearsExperience || brokerUser.brokerPreferredLoanTypes)) {
+          deal.brokerProfile = brokerUser;
+        }
+      }
       
       const docs = await db.select()
         .from(dealDocuments)
