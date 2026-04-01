@@ -8887,7 +8887,7 @@ export async function registerRoutes(
         googleDriveFolderId: project.googleDriveFolderId,
         googleDriveFolderUrl: project.googleDriveFolderUrl,
         appraisalStatus: project.appraisalStatus,
-        brokerProfile: null as any,
+        brokerProfile: null as { brokerCompanyName: string | null; brokerLicenseNumber: string | null; brokerOperatingStates: string[] | null; brokerYearsExperience: number | null; brokerPreferredLoanTypes: string[] | null } | null,
       };
 
       const brokerLookupEmail = project.brokerEmail || project.userEmail;
@@ -14678,18 +14678,22 @@ If the user provides specific criteria, extract as many rules as you can from th
     }
   });
 
+  const ALLOWED_ONBOARDING_STEPS = ['welcome', 'account', 'profile', 'agreement', 'tour', 'start'];
+
   app.post('/api/onboarding/track-step', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.user!.id;
       const { stepName, portalType: pType } = req.body;
-      if (!stepName) {
-        return res.status(400).json({ error: 'stepName is required' });
+      if (!stepName || !ALLOWED_ONBOARDING_STEPS.includes(stepName)) {
+        return res.status(400).json({ error: 'Invalid stepName' });
       }
+      const userType = pType === 'borrower' ? 'borrower' : 'broker';
 
       const existingDoc = await db.select().from(onboardingDocuments)
         .where(and(
           eq(onboardingDocuments.title, `onboarding_step_${stepName}`),
           eq(onboardingDocuments.type, 'onboarding_step'),
+          eq(onboardingDocuments.targetUserType, userType),
         ))
         .limit(1);
 
@@ -14700,7 +14704,7 @@ If the user provides specific criteria, extract as many rules as you can from th
         const [newDoc] = await db.insert(onboardingDocuments).values({
           title: `onboarding_step_${stepName}`,
           type: 'onboarding_step',
-          targetUserType: pType || 'broker',
+          targetUserType: userType,
           isRequired: false,
           isActive: true,
           sortOrder: 0,

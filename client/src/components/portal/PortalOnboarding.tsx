@@ -762,7 +762,11 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
                     variant="outline"
                     className="gap-2"
                     onClick={() => {
+                      trackStepCompletion(currentStep.name);
                       localStorage.setItem(`portal_onboarding_${portalType}_${token}`, "completed");
+                      if (user) {
+                        apiRequest("POST", "/api/auth/complete-onboarding", {}).catch(() => {});
+                      }
                       window.location.href = "/commercial-deals/new";
                     }}
                     data-testid="button-submit-first-deal"
