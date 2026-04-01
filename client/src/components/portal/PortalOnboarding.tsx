@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,7 +9,7 @@ import { SiGoogle } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Select,
   SelectContent,
@@ -574,10 +574,36 @@ function ProfileStep({ onSaved }: { onSaved: () => void }) {
 
 export function PortalOnboarding({ config, portalType, token, onComplete, magicLinkMode, lenderCompanyName, returnPath }: PortalOnboardingProps) {
   const { user } = useAuth();
+
+  const { data: tourConfigData } = useQuery<{ settings: Array<{ settingKey: string; settingValue: string }> }>({
+    queryKey: ['/api/onboarding/tour-config'],
+    enabled: portalType === "broker",
+  });
+
   const defaultSteps = portalType === "broker" ? BROKER_DEFAULT_STEPS : BORROWER_DEFAULT_STEPS;
-  const steps = (config?.steps || defaultSteps)
-    .filter(s => s.enabled)
-    .sort((a, b) => a.order - b.order);
+
+  const steps = (() => {
+    let baseSteps = config?.steps || defaultSteps;
+
+    if (portalType === "broker" && tourConfigData?.settings) {
+      const tourSetting = tourConfigData.settings.find(s => s.settingKey === 'broker_onboarding_tour_cards');
+      if (tourSetting?.settingValue) {
+        try {
+          const customCards = JSON.parse(tourSetting.settingValue);
+          if (Array.isArray(customCards) && customCards.length > 0) {
+            baseSteps = baseSteps.map(step => {
+              if (step.name === "tour") {
+                return { ...step, content: { ...step.content, cards: customCards } };
+              }
+              return step;
+            });
+          }
+        } catch {}
+      }
+    }
+
+    return baseSteps.filter(s => s.enabled).sort((a, b) => a.order - b.order);
+  })();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -590,9 +616,19 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
   const isFirstStep = currentStepIndex === 0;
   const StepIcon = STEP_ICONS[currentStep.name] || CheckCircle2;
 
+  const trackStepCompletion = (stepName: string) => {
+    if (user) {
+      apiRequest("POST", "/api/onboarding/track-step", { stepName, portalType }).catch(() => {});
+    }
+  };
+
   const handleNext = () => {
+    trackStepCompletion(currentStep.name);
     if (isLastStep) {
       localStorage.setItem(`portal_onboarding_${portalType}_${token}`, "completed");
+      if (user) {
+        apiRequest("POST", "/api/auth/complete-onboarding", {}).catch(() => {});
+      }
       onComplete();
     } else {
       setCurrentStepIndex(prev => prev + 1);

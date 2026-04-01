@@ -14652,6 +14652,70 @@ If the user provides specific criteria, extract as many rules as you can from th
 
   // ==================== ONBOARDING SYSTEM ====================
 
+  app.get('/api/onboarding/tour-config', async (_req: Request, res: Response) => {
+    try {
+      const settings = await db.select().from(systemSettings)
+        .where(eq(systemSettings.settingKey, 'broker_onboarding_tour_cards'));
+      res.json({ settings });
+    } catch (error) {
+      console.error('Get tour config error:', error);
+      res.json({ settings: [] });
+    }
+  });
+
+  app.post('/api/onboarding/track-step', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { stepName, portalType: pType } = req.body;
+      if (!stepName) {
+        return res.status(400).json({ error: 'stepName is required' });
+      }
+
+      const existingDoc = await db.select().from(onboardingDocuments)
+        .where(and(
+          eq(onboardingDocuments.title, `onboarding_step_${stepName}`),
+          eq(onboardingDocuments.type, 'onboarding_step'),
+        ))
+        .limit(1);
+
+      let docId: number;
+      if (existingDoc.length > 0) {
+        docId = existingDoc[0].id;
+      } else {
+        const [newDoc] = await db.insert(onboardingDocuments).values({
+          title: `onboarding_step_${stepName}`,
+          type: 'onboarding_step',
+          targetUserType: pType || 'broker',
+          isRequired: false,
+          isActive: true,
+          sortOrder: 0,
+        }).returning();
+        docId = newDoc.id;
+      }
+
+      const existing = await db.select().from(userOnboardingProgress)
+        .where(and(
+          eq(userOnboardingProgress.userId, userId),
+          eq(userOnboardingProgress.documentId, docId),
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(userOnboardingProgress).values({
+          userId,
+          documentId: docId,
+          status: 'completed',
+          completedAt: new Date(),
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Track onboarding step error:', error);
+      res.status(500).json({ error: 'Failed to track step' });
+    }
+  });
+
   // Get user's onboarding status and documents
   app.get('/api/onboarding/status', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
