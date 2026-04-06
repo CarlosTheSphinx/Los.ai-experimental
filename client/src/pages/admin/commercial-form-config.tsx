@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { DropdownOptionsEditor } from "@/components/admin/config/DropdownOptionsEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -678,7 +679,7 @@ export default function CommercialFormConfigPage() {
     "Property Metrics": true,
   });
   const [addFieldSection, setAddFieldSection] = useState<string | null>(null);
-  const [newField, setNewField] = useState({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsText: "" });
+  const [newField, setNewField] = useState({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsList: [] as string[] });
 
   const { data: fields = [], isLoading } = useQuery<FormField[]>({
     queryKey: ["/api/commercial/form-config"],
@@ -710,7 +711,7 @@ export default function CommercialFormConfigPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commercial/form-config"] });
       setAddFieldSection(null);
-      setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsText: "" });
+      setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsList: [] });
       toast({ title: "Field added" });
     },
     onError: (err: any) => {
@@ -768,8 +769,8 @@ export default function CommercialFormConfigPage() {
       displayFormat: newField.displayFormat,
       sortOrder: maxSort + 1,
     };
-    if ((newField.fieldType === "select" || newField.fieldType === "radio") && newField.optionsText.trim()) {
-      payload.options = { choices: newField.optionsText.split(",").map(s => s.trim()).filter(Boolean) };
+    if ((newField.fieldType === "select" || newField.fieldType === "radio") && newField.optionsList.length > 0) {
+      payload.options = { choices: newField.optionsList };
     }
     addFieldMut.mutate(payload);
   };
@@ -1012,7 +1013,7 @@ export default function CommercialFormConfigPage() {
                           variant="ghost"
                           size="sm"
                           className="w-full mt-2 border-dashed border text-muted-foreground hover:text-foreground hover:border-blue-500/50 hover:bg-blue-500/10"
-                          onClick={() => { setAddFieldSection(sectionName); setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsText: "" }); }}
+                          onClick={() => { setAddFieldSection(sectionName); setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsList: [] }); }}
                           data-testid={`add-field-${sectionName.toLowerCase().replace(/\s/g, "-")}`}
                         >
                           <Plus size={14} className="mr-1" />
@@ -1057,7 +1058,7 @@ export default function CommercialFormConfigPage() {
                       const name = prompt("Enter new section name:");
                       if (name?.trim()) {
                         setAddFieldSection(name.trim());
-                        setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsText: "" });
+                        setNewField({ fieldLabel: "", fieldKey: "", fieldType: "text", displayFormat: "plain", optionsList: [] });
                       }
                     }}
                     data-testid="add-section-button"
@@ -1126,16 +1127,11 @@ export default function CommercialFormConfigPage() {
                     </div>
                   </div>
                   {(newField.fieldType === "select" || newField.fieldType === "radio") && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1 block">Options (comma-separated)</Label>
-                      <Input
-                        value={newField.optionsText}
-                        onChange={e => setNewField(prev => ({ ...prev, optionsText: e.target.value }))}
-                        placeholder="e.g. Option A, Option B, Option C"
-                        className="bg-muted/50 border text-foreground"
-                        data-testid="new-field-options"
-                      />
-                    </div>
+                    <DropdownOptionsEditor
+                      options={newField.optionsList}
+                      onChange={(opts) => setNewField(prev => ({ ...prev, optionsList: opts }))}
+                      testIdPrefix="new-field-options"
+                    />
                   )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="ghost" size="sm" onClick={() => setAddFieldSection(null)} className="text-muted-foreground" data-testid="cancel-add-field">

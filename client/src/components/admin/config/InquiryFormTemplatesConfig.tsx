@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { DropdownOptionsEditor } from "@/components/admin/config/DropdownOptionsEditor";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -336,17 +337,11 @@ function TemplateFormDialog({
                 </div>
 
                 {field.fieldType === "select" && (
-                  <div className="space-y-1">
-                    <Label className="text-xs">Options (comma-separated)</Label>
-                    <Input
-                      value={(field.options || []).join(", ")}
-                      onChange={(e) => updateField(index, {
-                        options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                      })}
-                      placeholder="Option 1, Option 2, Option 3"
-                      data-testid={`input-field-options-${index}`}
-                    />
-                  </div>
+                  <DropdownOptionsEditor
+                    options={field.options || []}
+                    onChange={(opts) => updateField(index, { options: opts })}
+                    testIdPrefix={`field-options-${index}`}
+                  />
                 )}
               </div>
             ))}
