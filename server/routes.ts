@@ -19986,6 +19986,17 @@ Return JSON only:
         return res.status(404).json({ error: 'Invalid or disabled magic link' });
       }
 
+      const { programId } = req.body;
+      if (programId) {
+        const rtlProgramFilter = linkData.tenantId
+          ? and(eq(loanPrograms.id, programId), eq(loanPrograms.tenantId, linkData.tenantId))
+          : and(eq(loanPrograms.id, programId), eq(loanPrograms.createdBy, linkData.lenderId));
+        const [rtlProgram] = await db.select().from(loanPrograms).where(rtlProgramFilter);
+        if (!rtlProgram) {
+          return res.status(404).json({ error: 'Program not found' });
+        }
+      }
+
       const { rtlPricingFormSchema } = await import('@shared/schema');
       const parseResult = rtlPricingFormSchema.safeParse(req.body);
       if (!parseResult.success) {
