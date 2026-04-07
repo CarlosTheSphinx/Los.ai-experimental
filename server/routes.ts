@@ -111,8 +111,9 @@ export async function registerRoutes(
     const doc = await storage.getDocumentById(documentId, isAdminRole(user.role) ? undefined : user.id);
     if (!doc) return null;
     if (isAdminRole(user.role)) {
-      const tenantId = user.tenantId ?? getTenantId(user as any);
-      if (tenantId && doc.userId && !await verifyTenantOwnership(doc.userId, tenantId)) {
+      const tenantId = user.tenantId != null ? user.tenantId : undefined;
+      if (!tenantId) return null;
+      if (doc.userId && !await verifyTenantOwnership(doc.userId, tenantId)) {
         return null;
       }
     }
@@ -1323,8 +1324,8 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
-      if (isAdminRole(req.user!.role) && tenantId && quote.userId) {
-        if (!await verifyTenantOwnership(quote.userId, tenantId)) {
+      if (isAdminRole(req.user!.role)) {
+        if (!tenantId || (quote.userId && !await verifyTenantOwnership(quote.userId, tenantId))) {
           res.status(404).json({ success: false, error: 'Quote not found' });
           return;
         }
@@ -1342,7 +1343,7 @@ export async function registerRoutes(
       if (isAdminRole(req.user!.role)) {
         const tenantId = getTenantId(req.user!);
         const quote = await storage.getQuoteByIdInternal(id);
-        if (!quote || (tenantId && quote.userId && !await verifyTenantOwnership(quote.userId, tenantId))) {
+        if (!quote || !tenantId || (quote.userId && !await verifyTenantOwnership(quote.userId, tenantId))) {
           return res.status(404).json({ success: false, error: 'Quote not found' });
         }
         await storage.deleteQuoteInternal(id);
@@ -1382,7 +1383,7 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Quote not found' });
       }
-      if (admin && tenantId && existing.userId && !await verifyTenantOwnership(existing.userId, tenantId)) {
+      if (admin && (!tenantId || (existing.userId && !await verifyTenantOwnership(existing.userId, tenantId)))) {
         return res.status(404).json({ success: false, error: 'Quote not found' });
       }
 
@@ -1414,7 +1415,7 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
-      if (isAdminRole(req.user!.role) && tenantId && quote.userId && !await verifyTenantOwnership(quote.userId, tenantId)) {
+      if (isAdminRole(req.user!.role) && (!tenantId || (quote.userId && !await verifyTenantOwnership(quote.userId, tenantId)))) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -1479,7 +1480,7 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
-      if (isAdminRole(req.user!.role) && tenantId && quote.userId && !await verifyTenantOwnership(quote.userId, tenantId)) {
+      if (isAdminRole(req.user!.role) && (!tenantId || (quote.userId && !await verifyTenantOwnership(quote.userId, tenantId)))) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -1806,7 +1807,7 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
-      if (isAdminRole(req.user!.role) && adminTenantId && quote.userId && !await verifyTenantOwnership(quote.userId, adminTenantId)) {
+      if (isAdminRole(req.user!.role) && (!adminTenantId || (quote.userId && !await verifyTenantOwnership(quote.userId, adminTenantId)))) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -2051,6 +2052,16 @@ export async function registerRoutes(
   app.get('/api/quotes/:quoteId/documents', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const quoteId = parseInt(req.params.quoteId);
+      if (isAdminRole(req.user!.role)) {
+        const tenantId = getTenantId(req.user!);
+        if (!tenantId) {
+          return res.status(403).json({ success: false, error: 'Tenant not found' });
+        }
+        const quote = await storage.getQuoteByIdInternal(quoteId);
+        if (!quote || (quote.userId && !await verifyTenantOwnership(quote.userId, tenantId))) {
+          return res.status(404).json({ success: false, error: 'Quote not found' });
+        }
+      }
       const docs = await storage.getDocumentsByQuoteId(quoteId, isAdminRole(req.user!.role) ? undefined : req.user!.id);
       
       // Fetch signers for each document
