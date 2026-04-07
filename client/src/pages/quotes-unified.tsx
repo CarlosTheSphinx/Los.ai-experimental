@@ -424,6 +424,7 @@ export default function QuotesUnified() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const isBorrower = user?.role === 'borrower';
+  const isAdminRole = ['super_admin', 'lender', 'processor'].includes(user?.role || '');
 
   const [loanProductType, setLoanProductType] = useState<"dscr" | "rtl">("dscr");
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
@@ -1334,7 +1335,7 @@ export default function QuotesUnified() {
                   programId={selectedProgramId}
                 />
               )}
-              {scraperDebug && !isBorrower && (
+              {scraperDebug && isAdminRole && (
                 <div className="border rounded-[10px] overflow-hidden bg-card" data-testid="scraper-debug-panel">
                   <button
                     onClick={() => setShowScraperDebug(!showScraperDebug)}
