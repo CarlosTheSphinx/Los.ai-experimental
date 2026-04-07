@@ -1562,9 +1562,7 @@ export async function registerRoutes(
 
       await storage.updateDocument(document.id, { sentAt: new Date(), status: 'sent' });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : 'http://localhost:5000');
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const signingLink = `${baseUrl}/sign/${token}`;
 
       const { sendSigningInvitation } = await import('./email');
