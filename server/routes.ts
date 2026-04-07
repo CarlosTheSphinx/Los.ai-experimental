@@ -1424,6 +1424,7 @@ export async function registerRoutes(
       let document: any;
       let pageCount: number;
       let signingFields: { fieldType: string; pageNumber: number; x: number; y: number; width: number; height: number }[] = [];
+      let docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
 
       if (resend && existingDocumentId) {
         const existingDoc = await storage.getDocumentById(existingDocumentId);
@@ -1432,8 +1433,10 @@ export async function registerRoutes(
           return;
         }
 
+        docName = existingDoc.name || docName;
+
         document = await storage.createDocument({
-          name: existingDoc.name,
+          name: docName,
           fileName: existingDoc.fileName,
           fileData: existingDoc.fileData,
           pageCount: existingDoc.pageCount,
@@ -1497,7 +1500,6 @@ export async function registerRoutes(
         }
 
         const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
-        const docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
 
         const pdfDoc = await (await import('pdf-lib')).PDFDocument.load(pdfBytes);
         pageCount = pdfDoc.getPageCount();
