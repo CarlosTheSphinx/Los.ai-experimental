@@ -482,7 +482,37 @@ export async function registerRoutes(
         loanDataNormalized[normalizeKey(k)] = v;
       }
 
-      const resolveFieldValue = (fieldKey: string, sourceType?: string, defaultValue?: string, formula?: string, options?: string[]) => {
+      const matchConditionalRules = (numResult: number, conditionalRules: any[], fallbackOption?: string): string | null => {
+        for (const rule of conditionalRules) {
+          const v1 = parseFloat(rule.value);
+          if (isNaN(v1)) continue;
+          switch (rule.operator) {
+            case '<=':
+              if (numResult <= v1) return rule.option;
+              break;
+            case '<':
+              if (numResult < v1) return rule.option;
+              break;
+            case '>=':
+              if (numResult >= v1) return rule.option;
+              break;
+            case '>':
+              if (numResult > v1) return rule.option;
+              break;
+            case '==':
+              if (numResult === v1) return rule.option;
+              break;
+            case 'between': {
+              const v2 = parseFloat(rule.value2);
+              if (!isNaN(v2) && numResult >= v1 && numResult <= v2) return rule.option;
+              break;
+            }
+          }
+        }
+        return fallbackOption || null;
+      };
+
+      const resolveFieldValue = (fieldKey: string, sourceType?: string, defaultValue?: string, formula?: string, options?: string[], conditionalRules?: any[], fallbackOption?: string) => {
         if (sourceType === 'default' && defaultValue) return defaultValue;
 
         const exactVal = (loanData as any)[fieldKey];
@@ -497,6 +527,11 @@ export async function registerRoutes(
             const pv = Number(loanDataNormalized['estvaluepurchaseprice'] || loanDataNormalized['propertyvalue'] || loanDataNormalized['asIsvalue'] || loanDataNormalized['purchaseprice'] || 0);
             if (la > 0 && pv > 0) {
               const ltvVal = (la / pv) * 100;
+              const ltvRatio = la / pv;
+              if (conditionalRules && conditionalRules.length > 0) {
+                const matched = matchConditionalRules(ltvRatio, conditionalRules, fallbackOption);
+                if (matched) return matched;
+              }
               if (options && options.length > 0) {
                 for (const opt of options) {
                   const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
@@ -521,8 +556,12 @@ export async function registerRoutes(
               return String(Number(v) || 0);
             });
             const result = Function('"use strict"; return (' + evaluated + ')')();
+            const numResult = Number(result);
+            if (conditionalRules && conditionalRules.length > 0) {
+              const matched = matchConditionalRules(numResult, conditionalRules, fallbackOption);
+              if (matched) return matched;
+            }
             if (options && options.length > 0) {
-              const numResult = Number(result);
               for (const opt of options) {
                 const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
                 if (rangeMatch) {
@@ -562,7 +601,7 @@ export async function registerRoutes(
       const dynamicDropdowns = configDropdowns.map((dd: any) => ({
         label: dd.label,
         fieldKey: dd.fieldKey,
-        value: resolveFieldValue(dd.fieldKey, dd.sourceType, dd.defaultValue, dd.formula, dd.options),
+        value: resolveFieldValue(dd.fieldKey, dd.sourceType, dd.defaultValue, dd.formula, dd.options, dd.conditionalRules, dd.fallbackOption),
       }));
 
       const resolvedDropdownValues: Record<string, string> = {};
