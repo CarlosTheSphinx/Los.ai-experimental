@@ -501,6 +501,7 @@ export function ProgramCreationWizard({
   const [reviewRules, setReviewRules] = useState<RuleEntry[]>([...dscrDefaultRules]);
 
   const [activationMode, setActivationMode] = useState<'draft' | 'active'>('draft');
+  const [activationModeChanged, setActivationModeChanged] = useState(false);
   const pricingConfigRef = useRef<PricingConfigState | null>(null);
 
   const { data: editProgramData } = useQuery<{
@@ -696,7 +697,9 @@ export function ProgramCreationWizard({
       eligiblePropertyTypes,
       quoteFormFields,
       creditPolicyId: selectedCreditPolicyId,
-      isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
+      ...(isEditMode && !activationModeChanged && forceActive === undefined
+        ? {}
+        : { isActive: forceActive !== undefined ? forceActive : activationMode === 'active' }),
       ...(pricing ? {
         pricingMode: pricing.pricingMode,
         externalPricingConfig: pricing.externalPricingConfig,
@@ -753,7 +756,7 @@ export function ProgramCreationWizard({
       return;
     }
 
-    createProgramMutation.mutate(buildProgramPayload(false));
+    createProgramMutation.mutate(buildProgramPayload(isEditMode ? undefined : false));
   };
 
   const handleTemplateSelect = (templateId: string) => {
@@ -911,7 +914,7 @@ export function ProgramCreationWizard({
           minDscr={minDscr}
           minFico={minFico}
           activationMode={activationMode}
-          setActivationMode={setActivationMode}
+          setActivationMode={(mode) => { setActivationMode(mode); setActivationModeChanged(true); }}
           onEditStep={setWizardStep}
         />
       )}
