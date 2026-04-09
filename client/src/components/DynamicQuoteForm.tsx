@@ -213,7 +213,7 @@ function buildValidationSchema(fields: QuoteFormField[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   fields.forEach(f => {
-    if (!f.visible) return;
+    if (f.visible === false) return;
 
     let fieldSchema: z.ZodTypeAny;
 
@@ -254,7 +254,7 @@ function buildValidationSchema(fields: QuoteFormField[]) {
 }
 
 export function DynamicQuoteForm({ fields, onSubmit, isLoading, defaultData, programName }: DynamicQuoteFormProps) {
-  const visibleFields = useMemo(() => fields.filter(f => f.visible), [fields]);
+  const visibleFields = useMemo(() => fields.filter(f => f.visible !== false), [fields]);
 
   const schema = useMemo(() => buildValidationSchema(fields), [fields]);
 

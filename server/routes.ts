@@ -14529,7 +14529,17 @@ If the user provides specific criteria, extract as many rules as you can from th
         };
       }));
       
-      res.json({ programs: programsWithStatus });
+      const normalizedPrograms = programsWithStatus.map(p => {
+        let qff = p.quoteFormFields;
+        if (typeof qff === 'string') {
+          try {
+            qff = JSON.parse(qff);
+            if (typeof qff === 'string') qff = JSON.parse(qff);
+          } catch {}
+        }
+        return { ...p, quoteFormFields: qff };
+      });
+      res.json({ programs: normalizedPrograms });
     } catch (error) {
       console.error('Get programs with pricing error:', error);
       res.status(500).json({ error: 'Failed to get programs' });

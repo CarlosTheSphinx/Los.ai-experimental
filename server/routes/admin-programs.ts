@@ -172,7 +172,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           maxUnits: maxUnits ? parseInt(maxUnits) : null,
           termOptions,
           eligiblePropertyTypes: eligiblePropertyTypes || [],
-          quoteFormFields: quoteFormFields ? JSON.stringify(quoteFormFields) : null,
+          quoteFormFields: quoteFormFields || null,
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
           createdBy: req.user!.id,
@@ -351,7 +351,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         if (maxUnits !== undefined) updateData.maxUnits = maxUnits ? parseInt(maxUnits) : null;
         if (termOptions !== undefined) updateData.termOptions = termOptions;
         if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
-        if (quoteFormFields !== undefined) updateData.quoteFormFields = quoteFormFields ? JSON.stringify(quoteFormFields) : null;
+        if (quoteFormFields !== undefined) updateData.quoteFormFields = quoteFormFields || null;
         if (isActive !== undefined) updateData.isActive = isActive;
         if (reviewGuidelines !== undefined) updateData.reviewGuidelines = reviewGuidelines;
         if (creditPolicyId !== undefined) updateData.creditPolicyId = creditPolicyId ? parseInt(creditPolicyId) : null;

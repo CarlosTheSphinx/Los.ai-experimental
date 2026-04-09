@@ -102,6 +102,21 @@ interface ProgramWithPricing {
   } | null;
 }
 
+function safeParseQuoteFields(fields: any): any[] | undefined {
+  if (Array.isArray(fields)) return fields;
+  if (typeof fields === 'string') {
+    try {
+      const parsed = JSON.parse(fields);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'string') {
+        const doubleParsed = JSON.parse(parsed);
+        if (Array.isArray(doubleParsed)) return doubleParsed;
+      }
+    } catch {}
+  }
+  return undefined;
+}
+
 function normalizeFieldKey(key: string): string {
   return key.replace(/[-_]/g, '').toLowerCase();
 }
@@ -120,8 +135,11 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
   const keyAliases: Record<string, string> = {};
 
   const baseKeysByNormalized: Record<string, string> = {};
+  const baseVisibilityByNormalized: Record<string, boolean> = {};
   (baseQuoteFields || []).forEach((f: any) => {
-    baseKeysByNormalized[normalizeFieldKey(f.fieldKey)] = f.fieldKey;
+    const nk = normalizeFieldKey(f.fieldKey);
+    baseKeysByNormalized[nk] = f.fieldKey;
+    baseVisibilityByNormalized[nk] = f.visible !== false;
   });
 
   (cfg.textInputs || []).forEach(ti => {
@@ -130,12 +148,13 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
     const normalized = normalizeFieldKey(formKey);
     if (pricingNormalizedKeys.has(normalized)) return;
     const isCurrency = /amount|value|price|budget/i.test(ti.label);
+    const isVisible = baseVisibilityByNormalized[normalized] !== false;
     pricingFields.push({
       fieldKey: formKey,
       label: ti.label,
       fieldType: isCurrency ? 'currency' : 'text',
       required: false,
-      visible: true,
+      visible: isVisible,
       displayGroup: 'pricing_questions',
     });
     pricingNormalizedKeys.add(normalized);
@@ -150,13 +169,14 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
     const formKey = dd.fieldKey;
     const normalized = normalizeFieldKey(formKey);
     if (pricingNormalizedKeys.has(normalized)) return;
+    const isVisible = baseVisibilityByNormalized[normalized] !== false;
     pricingFields.push({
       fieldKey: formKey,
       label: dd.label,
       fieldType: 'select',
       options: dd.options.filter(o => o),
       required: false,
-      visible: true,
+      visible: isVisible,
       displayGroup: 'pricing_questions',
     });
     pricingNormalizedKeys.add(normalized);
@@ -582,7 +602,7 @@ export default function QuotesUnified() {
 
   const generateTestData = () => {
     const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
-    const quoteFields = selectedProgram?.quoteFormFields;
+    const quoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
     const testValues: Record<string, any> = {};
 
     const fieldDefaults: Record<string, any> = {
@@ -605,7 +625,7 @@ export default function QuotesUnified() {
 
     if (Array.isArray(quoteFields) && quoteFields.length > 0) {
       quoteFields.forEach((f: any) => {
-        if (!f.visible) return;
+        if (f.visible === false) return;
         if (fieldDefaults[f.fieldKey] !== undefined) {
           testValues[f.fieldKey] = fieldDefaults[f.fieldKey];
         } else if (f.fieldType === 'select' && f.options?.length > 0) {
@@ -1244,16 +1264,19 @@ export default function QuotesUnified() {
 
               {selectedProgramId && (() => {
                 const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
-                const baseQuoteFields = selectedProgram?.quoteFormFields;
+                const baseQuoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
                 const { pricingFields, pricingNormalizedKeys, keyAliases } = selectedProgram
-                  ? buildPricingFields(selectedProgram, Array.isArray(baseQuoteFields) ? baseQuoteFields : undefined)
+                  ? buildPricingFields(selectedProgram, baseQuoteFields)
                   : { pricingFields: [], pricingNormalizedKeys: new Set<string>(), keyAliases: {} as Record<string, string> };
                 const filteredBaseFields = Array.isArray(baseQuoteFields) && pricingNormalizedKeys.size > 0
                   ? baseQuoteFields.filter((f: any) => !pricingNormalizedKeys.has(normalizeFieldKey(f.fieldKey)))
                   : baseQuoteFields;
-                const quoteFields = Array.isArray(filteredBaseFields) && filteredBaseFields.length > 0
+                const mergedFields = Array.isArray(filteredBaseFields) && filteredBaseFields.length > 0
                   ? [...filteredBaseFields, ...pricingFields]
                   : pricingFields.length > 0 ? pricingFields : filteredBaseFields;
+                const quoteFields = Array.isArray(mergedFields)
+                  ? mergedFields.filter((f: any) => f.visible !== false)
+                  : mergedFields;
                 const hasDynamicFields = Array.isArray(quoteFields) && quoteFields.length > 0;
 
                 return (
