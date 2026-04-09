@@ -227,26 +227,36 @@ export class DatabaseStorage implements IStorage {
     return log;
   }
 
-  async generateQuoteLoanNumber(): Promise<string> {
-    const START_NUMBER = 1124;
+  private extractStreetPrefix(propertyAddress?: string): string {
+    if (!propertyAddress) return 'LNX';
+    const streetMatch = propertyAddress.match(/^\d+\s+(.+?)(?:,|\s+(?:apt|suite|unit|#))/i)
+      || propertyAddress.match(/^\d+\s+(\S+)/i)
+      || propertyAddress.match(/^(\S+)/i);
+    const streetWord = streetMatch ? streetMatch[1].replace(/[^a-zA-Z]/g, '') : 'LN';
+    return streetWord.substring(0, 3).toUpperCase().padEnd(3, 'X');
+  }
+
+  async generateQuoteLoanNumber(propertyAddress?: string): Promise<string> {
+    const prefix = this.extractStreetPrefix(propertyAddress);
+
     const result = await db.select({ loanNumber: savedQuotes.loanNumber })
       .from(savedQuotes)
-      .where(sql`${savedQuotes.loanNumber} IS NOT NULL AND ${savedQuotes.loanNumber} LIKE 'SPX-%'`)
+      .where(sql`${savedQuotes.loanNumber} IS NOT NULL`)
       .orderBy(desc(savedQuotes.id))
       .limit(100);
 
-    let maxNum = START_NUMBER - 1;
+    let maxSeq = 149;
     for (const row of result) {
       if (row.loanNumber) {
-        const num = parseInt(row.loanNumber.replace('SPX-', ''), 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
+        const numPart = parseInt(row.loanNumber.slice(-3));
+        if (!isNaN(numPart) && numPart > maxSeq) maxSeq = numPart;
       }
     }
-    return `SPX-${maxNum + 1}`;
+    return `${prefix}${maxSeq + 1}`;
   }
 
   async saveQuote(quote: InsertSavedQuote, userId: number): Promise<SavedQuote> {
-    const loanNumber = await this.generateQuoteLoanNumber();
+    const loanNumber = await this.generateQuoteLoanNumber(quote.propertyAddress);
     const [saved] = await db.insert(savedQuotes).values({ ...quote, userId, loanNumber }).returning();
     return saved;
   }
@@ -483,11 +493,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async generateLoanNumber(propertyAddress: string): Promise<string> {
-    const streetMatch = propertyAddress.match(/^\d+\s+(.+?)(?:,|\s+(?:apt|suite|unit|#))/i)
-      || propertyAddress.match(/^\d+\s+(\S+)/i)
-      || propertyAddress.match(/^(\S+)/i);
-    const streetWord = streetMatch ? streetMatch[1].replace(/[^a-zA-Z]/g, '') : 'LN';
-    const prefix = streetWord.substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const prefix = this.extractStreetPrefix(propertyAddress);
 
     const lastLoan = await db.select({ loanNumber: projects.loanNumber })
       .from(projects)
