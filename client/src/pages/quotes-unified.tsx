@@ -135,11 +135,9 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
   const keyAliases: Record<string, string> = {};
 
   const baseKeysByNormalized: Record<string, string> = {};
-  const baseVisibilityByNormalized: Record<string, boolean> = {};
   (baseQuoteFields || []).forEach((f: any) => {
     const nk = normalizeFieldKey(f.fieldKey);
     baseKeysByNormalized[nk] = f.fieldKey;
-    baseVisibilityByNormalized[nk] = f.visible !== false;
   });
 
   (cfg.textInputs || []).forEach(ti => {
@@ -148,13 +146,12 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
     const normalized = normalizeFieldKey(formKey);
     if (pricingNormalizedKeys.has(normalized)) return;
     const isCurrency = /amount|value|price|budget/i.test(ti.label);
-    const isVisible = baseVisibilityByNormalized[normalized] !== false;
     pricingFields.push({
       fieldKey: formKey,
       label: ti.label,
       fieldType: isCurrency ? 'currency' : 'text',
       required: false,
-      visible: isVisible,
+      visible: true,
       displayGroup: 'pricing_questions',
     });
     pricingNormalizedKeys.add(normalized);
@@ -169,14 +166,13 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
     const formKey = dd.fieldKey;
     const normalized = normalizeFieldKey(formKey);
     if (pricingNormalizedKeys.has(normalized)) return;
-    const isVisible = baseVisibilityByNormalized[normalized] !== false;
     pricingFields.push({
       fieldKey: formKey,
       label: dd.label,
       fieldType: 'select',
       options: dd.options.filter(o => o),
       required: false,
-      visible: isVisible,
+      visible: true,
       displayGroup: 'pricing_questions',
     });
     pricingNormalizedKeys.add(normalized);
