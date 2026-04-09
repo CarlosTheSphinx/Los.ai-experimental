@@ -1296,12 +1296,8 @@ export default function QuotesUnified() {
               })()}
 
               {!selectedProgramId && programsFetched && allActivePrograms.length === 0 && (
-                <div className="max-w-4xl mx-auto">
-                  {loanProductType === "dscr" ? (
-                    <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
-                  ) : (
-                    <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
-                  )}
+                <div className="max-w-4xl mx-auto text-center py-8">
+                  <p className="text-muted-foreground" data-testid="text-no-programs">No loan programs are currently available. Please configure a program first.</p>
                 </div>
               )}
 

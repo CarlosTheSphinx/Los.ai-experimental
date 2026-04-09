@@ -224,34 +224,20 @@ export default function BorrowerQuote() {
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Select
-                    value={loanProductType}
-                    onValueChange={(v: "dscr" | "rtl") => {
-                      setLoanProductType(v);
-                      setSelectedProgramId(null);
-                      setDscrResult(null);
-                      setRtlResult(null);
-                    }}
-                  >
-                    <SelectTrigger className="w-full md:w-80" data-testid="select-loan-product-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dscr">DSCR</SelectItem>
-                      <SelectItem value="rtl">Fix and Flip/Ground Up Construction</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-muted-foreground" data-testid="text-no-programs">No loan programs are currently available.</p>
                 )}
               </CardContent>
             </Card>
 
-            <div className="max-w-4xl mx-auto">
-              {loanProductType === "dscr" ? (
-                <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
-              ) : (
-                <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
-              )}
-            </div>
+            {selectedProgramId && (
+              <div className="max-w-4xl mx-auto">
+                {loanProductType === "dscr" ? (
+                  <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
+                ) : (
+                  <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
+                )}
+              </div>
+            )}
           </>
         )}
 

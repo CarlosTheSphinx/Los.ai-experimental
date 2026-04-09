@@ -303,23 +303,7 @@ export default function Home() {
                 </SelectContent>
               </Select>
             ) : (
-              <Select
-                value={loanProductType}
-                onValueChange={(v: "dscr" | "rtl") => {
-                  setLoanProductType(v);
-                  setSelectedQuoteProgramId(null);
-                  setResult(null);
-                  setRtlResult(null);
-                }}
-              >
-                <SelectTrigger className="w-full md:w-80" data-testid="select-loan-product-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dscr">DSCR</SelectItem>
-                  <SelectItem value="rtl">Fix and Flip/Ground Up Construction</SelectItem>
-                </SelectContent>
-              </Select>
+              <p className="text-muted-foreground" data-testid="text-no-programs">No loan programs are currently available. Please contact your administrator.</p>
             )}
           </CardContent>
         </Card>
