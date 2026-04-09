@@ -602,7 +602,13 @@ export default function QuotesUnified() {
 
   const generateTestData = () => {
     const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
-    const quoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
+    const baseQuoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
+    const { pricingFields: testPricingFields } = selectedProgram
+      ? buildPricingFields(selectedProgram, Array.isArray(baseQuoteFields) ? baseQuoteFields : undefined)
+      : { pricingFields: [] };
+    const allFields = Array.isArray(baseQuoteFields) && baseQuoteFields.length > 0
+      ? [...baseQuoteFields, ...testPricingFields]
+      : testPricingFields.length > 0 ? testPricingFields : baseQuoteFields;
     const testValues: Record<string, any> = {};
 
     const fieldDefaults: Record<string, any> = {
@@ -623,8 +629,8 @@ export default function QuotesUnified() {
       member1IsGuarantor: 'Yes', propertyUnits: '1',
     };
 
-    if (Array.isArray(quoteFields) && quoteFields.length > 0) {
-      quoteFields.forEach((f: any) => {
+    if (Array.isArray(allFields) && allFields.length > 0) {
+      allFields.forEach((f: any) => {
         if (f.visible === false) return;
         if (fieldDefaults[f.fieldKey] !== undefined) {
           testValues[f.fieldKey] = fieldDefaults[f.fieldKey];
@@ -1266,15 +1272,12 @@ export default function QuotesUnified() {
                 const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
                 const baseQuoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
                 const hasConfiguredFields = Array.isArray(baseQuoteFields) && baseQuoteFields.length > 0;
-                const { pricingFields, pricingNormalizedKeys, keyAliases } = selectedProgram
-                  ? buildPricingFields(selectedProgram, baseQuoteFields)
-                  : { pricingFields: [], pricingNormalizedKeys: new Set<string>(), keyAliases: {} as Record<string, string> };
-                const filteredBaseFields = Array.isArray(baseQuoteFields) && pricingNormalizedKeys.size > 0
-                  ? baseQuoteFields.filter((f: any) => !pricingNormalizedKeys.has(normalizeFieldKey(f.fieldKey)))
-                  : baseQuoteFields;
-                const mergedFields = Array.isArray(filteredBaseFields) && filteredBaseFields.length > 0
-                  ? [...filteredBaseFields, ...pricingFields]
-                  : pricingFields.length > 0 ? pricingFields : filteredBaseFields;
+                const { pricingFields, keyAliases } = selectedProgram
+                  ? buildPricingFields(selectedProgram, Array.isArray(baseQuoteFields) ? baseQuoteFields : undefined)
+                  : { pricingFields: [], keyAliases: {} as Record<string, string> };
+                const mergedFields = Array.isArray(baseQuoteFields) && baseQuoteFields.length > 0
+                  ? [...baseQuoteFields, ...pricingFields]
+                  : pricingFields.length > 0 ? pricingFields : baseQuoteFields;
                 const quoteFields = Array.isArray(mergedFields)
                   ? mergedFields.filter((f: any) => f.visible !== false)
                   : mergedFields;
