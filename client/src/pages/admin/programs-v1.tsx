@@ -527,12 +527,14 @@ export default function AdminPrograms() {
 
   const toggleProgram = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("PATCH", `/api/admin/programs/${id}/toggle`);
+      const res = await apiRequest("PATCH", `/api/admin/programs/${id}/toggle`);
+      return await res.json() as { program: { id: number; isActive: boolean } };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
-      toast({ title: "Program status updated" });
+      const isActive = data?.program?.isActive;
+      toast({ title: isActive ? "Program activated" : "Program deactivated" });
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });

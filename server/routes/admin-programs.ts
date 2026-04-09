@@ -559,11 +559,13 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         return res.status(403).json({ error: 'Not authorized to modify this program' });
       }
 
+      const newIsActive = !program.isActive;
       const [updated] = await db.update(loanPrograms)
-        .set({ isActive: !program.isActive, updatedAt: new Date() })
+        .set({ isActive: newIsActive, updatedAt: new Date() })
         .where(eq(loanPrograms.id, parseInt(id)))
         .returning();
 
+      console.log(`Program ${id} toggled: isActive=${updated.isActive} by user ${req.user!.id}`);
       res.json({ program: updated });
     } catch (error) {
       console.error('Toggle program error:', error);
