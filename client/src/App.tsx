@@ -366,7 +366,7 @@ function LandingModeContent() {
   const [isApplyProgramPage] = useRoute("/apply/:programId");
   const [isMagicLinkPage] = useRoute("/auth/magic/:token");
 
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isFetching } = useAuth();
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
 
@@ -419,7 +419,7 @@ function LandingModeContent() {
     return <MainRoutes />;
   }
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -465,12 +465,10 @@ function FullAppContent() {
   const [isPublicApplyProgramPage] = useRoute("/apply/:programId");
   const [isHomePage] = useRoute("/");
 
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isFetching } = useAuth();
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
-  // Only show public marketing pages for NON-authenticated users
-  // The "/" route must fall through to MainRoutes for authenticated users (their dashboard)
-  const isPublicMarketingPage = !isLoading && !isAuthenticated && (isHomePage || isPublicPricingPage || isPublicUseCasesPage || isPublicContactPage);
+  const isPublicMarketingPage = !isLoading && !isFetching && !isAuthenticated && (isHomePage || isPublicPricingPage || isPublicUseCasesPage || isPublicContactPage);
 
   if (isMagicLinkPage) {
     return <Switch><Route path="/auth/magic/:token" component={AuthMagicPage} /></Switch>;
