@@ -1402,6 +1402,7 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
           emailVerified: true,
           inviteToken,
           inviteStatus: 'none',
+          tenantId: project.tenantId || 1,
         } as any);
         return res.json({ redirectTo: `/join/personal/${inviteToken}` });
       }

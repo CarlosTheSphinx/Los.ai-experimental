@@ -4580,6 +4580,7 @@ export async function registerRoutes(
           emailVerified: true,
           inviteToken,
           inviteStatus: 'none',
+          tenantId: project.tenantId || req.user!.tenantId || 1,
         } as any);
       } else {
         await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
@@ -6265,6 +6266,8 @@ export async function registerRoutes(
 
       const inviteToken = generateRandomToken();
       
+      const adminTenantId = req.user!.tenantId || 1;
+
       const newUser = await storage.createUser({
         email,
         passwordHash: null,
@@ -6280,6 +6283,8 @@ export async function registerRoutes(
         inviteToken,
         inviteStatus: 'sent',
         inviteTokenSentAt: new Date(),
+        tenantId: adminTenantId,
+        invitedBy: req.user!.id,
       });
 
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -6718,8 +6723,7 @@ export async function registerRoutes(
       const primaryRole = getPrimaryRole(userRoles);
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
       
-      const invitingAdmin = await storage.getUserById(req.user!.id);
-      const adminTenantId = invitingAdmin?.tenantId || null;
+      const adminTenantId = req.user!.tenantId || 1;
 
       const newUser = await storage.createUser({
         email: email.toLowerCase().trim(),
@@ -6737,7 +6741,7 @@ export async function registerRoutes(
         inviteTokenExpires: inviteExpires,
         invitedBy: req.user!.id,
         inviteStatus: 'pending',
-        ...(adminTenantId ? { tenantId: adminTenantId } : {}),
+        tenantId: adminTenantId,
       });
       
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -7752,7 +7756,7 @@ export async function registerRoutes(
               emailVerified: false,
               inviteToken,
               inviteStatus: 'none',
-              tenantId: existingProject?.tenantId || null,
+              tenantId: existingProject?.tenantId || req.user!.tenantId || 1,
             });
           }
           updateData.userId = brokerUser.id;
@@ -20193,6 +20197,7 @@ Return JSON only:
           phone: phone || null,
           userType: 'borrower',
           role: 'borrower',
+          tenantId: program.tenantId || 1,
         });
       }
 
@@ -20206,7 +20211,7 @@ Return JSON only:
         currentStage: 1,
         programId: program.id,
         propertyAddress,
-        tenantId: program.createdBy,
+        tenantId: program.tenantId || 1,
       }).returning();
 
       await db.insert(activities).values({
@@ -20810,6 +20815,7 @@ Return JSON only:
           emailVerified: true,
           inviteToken,
           inviteStatus: 'none',
+          tenantId: project.tenantId || req.user!.tenantId || 1,
         } as any);
       } else {
         await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
@@ -21878,6 +21884,7 @@ Return JSON only:
             emailVerified: true,
             inviteToken,
             inviteStatus: 'none',
+            tenantId: project.tenantId || req.user!.tenantId || 1,
           } as any);
         } else {
           await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));

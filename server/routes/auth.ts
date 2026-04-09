@@ -260,7 +260,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         userType: userRole,
         onboardingCompleted,
         passwordExpiresAt: calculatePasswordExpiry(),
-        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+        tenantId: resolvedTenantId || 1,
         ...(resolvedInvitedBy ? { invitedBy: resolvedInvitedBy } : {}),
       });
 
@@ -791,7 +791,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           passwordResetToken: null,
           passwordResetExpires: null,
           role: assignedRole || 'broker',
-          ...(oauthTenantId ? { tenantId: oauthTenantId } : {}),
+          tenantId: oauthTenantId || 1,
           ...(oauthInvitedById ? { invitedBy: oauthInvitedById } : {}),
         });
 
