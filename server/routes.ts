@@ -672,12 +672,12 @@ export async function registerRoutes(
           try {
             log.info('Page loaded, waiting for React to render form...');
             // Wait for the form to render by checking for enough interactive elements (inputs, dropdowns, comboboxes)
-            const expectedFieldCount = ${Math.max(2, (configTextInputs.length || 0) + (configDropdowns.length || 0))};
+            const expectedFieldCount = ${Math.max(2, Math.ceil(((configTextInputs.length || 0) + (configDropdowns.length || 0)) * 0.8))};
             await page.waitForFunction((minFields) => {
               const inputs = document.querySelectorAll('input[type="text"], input:not([type]), [role="combobox"], [role="listbox"], .MuiAutocomplete-root, .MuiSelect-select, select');
-              return inputs.length >= Math.min(minFields, 2);
+              return inputs.length >= minFields;
             }, { timeout: 20000 }, expectedFieldCount);
-            log.info('✅ Form loaded and ready! Found enough interactive fields.');
+            log.info('✅ Form loaded and ready! Found ' + expectedFieldCount + '+ interactive fields.');
             
             // STEP 1: Fill text inputs using page.type() for proper React event handling
             log.info('Step 1: Filling text inputs...');

@@ -490,7 +490,7 @@ export function PricingConfiguration({
       brokerPointsEnabled: pointsBrokerAdjustable,
       brokerPointsStep: parseFloat(pointsStep) || 0.25,
     });
-  }, [pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
+  }, [onChange, pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
 
   const hasExistingRuleset = (existingRuleset?.rulesets?.length || 0) > 0;
 
