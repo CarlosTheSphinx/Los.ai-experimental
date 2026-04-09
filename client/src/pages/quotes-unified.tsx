@@ -1277,7 +1277,7 @@ export default function QuotesUnified() {
                   programId={selectedProgramId}
                 />
               )}
-              {scraperDebug && isAdminRole && (
+              {scraperDebug && (
                 <div className="border rounded-[10px] overflow-hidden bg-card" data-testid="scraper-debug-panel">
                   <button
                     onClick={() => setShowScraperDebug(!showScraperDebug)}
