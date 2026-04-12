@@ -596,20 +596,19 @@ export default function TabOverview({
 
     const calculatedLtv = (loanAmount && propertyValue && Number(propertyValue) > 0)
       ? ((Number(loanAmount) / Number(propertyValue)) * 100).toFixed(1) : null;
-    if (calculatedLtv) fields.push({ key: 'ltv', label: "LTV", value: `${calculatedLtv}%` });
+    fields.push({ key: 'ltv', label: "LTV", value: calculatedLtv ? `${calculatedLtv}%` : "—" });
 
-    if (calculatedDscr) fields.push({ key: 'dscr', label: "DSCR", value: `${calculatedDscr}x`, tooltip: "Auto-calculated: NOI ÷ Annual Debt Service (30yr amortization)" });
+    fields.push({ key: 'dscr', label: "DSCR", value: calculatedDscr ? `${calculatedDscr}x` : "—", tooltip: "Auto-calculated: NOI ÷ Annual Debt Service (30yr amortization)" });
 
     const noi = (totalMonthlyRent * 12) - totalAnnualTaxes - totalAnnualInsurance - totalAnnualHOA;
-    if (noi > 0) fields.push({ key: 'noi', label: "NOI", value: fmt(noi), tooltip: "Net Operating Income" });
+    fields.push({ key: 'noi', label: "NOI", value: noi > 0 ? fmt(noi) : "—", tooltip: "Net Operating Income" });
 
-    if (lenderPts != null || brokerPts != null) {
-      const total = ((Number(lenderPts) || 0) + (Number(brokerPts) || 0)).toFixed(2);
-      fields.push({ key: 'totalPoints', label: "Total Origination Points", value: `${total}%` });
-    }
+    const totalPts = (lenderPts != null || brokerPts != null)
+      ? ((Number(lenderPts) || 0) + (Number(brokerPts) || 0)).toFixed(2) : null;
+    fields.push({ key: 'totalPoints', label: "Total Origination Points", value: totalPts ? `${totalPts}%` : "—" });
 
     const primaryDscr = primaryProp ? calcPropertyDscr(primaryProp) : null;
-    if (primaryDscr) fields.push({ key: 'propertyDscr', label: "Property DSCR", value: `${primaryDscr}x`, tooltip: "DSCR based on this property's proportional loan share" });
+    fields.push({ key: 'propertyDscr', label: "Property DSCR", value: primaryDscr ? `${primaryDscr}x` : "—", tooltip: "DSCR based on this property's proportional loan share" });
 
     const additionalProps = allProps.filter((p: any) => p.id !== primaryProp?.id);
     additionalProps.forEach((prop: any) => {
@@ -1182,24 +1181,22 @@ export default function TabOverview({
           </CardContent>
         </Card>
 
-        {calculatedFields.length > 0 && (
-          <Card data-testid="card-calculated-fields">
-            <CardHeader className="pb-0">
-              <CardTitle className="text-[22px] flex items-center gap-2">
-                <Calculator className="h-5 w-5 text-muted-foreground" />
-                Calculated Fields
-              </CardTitle>
-            </CardHeader>
-            <div className="mx-6 mt-2 mb-3 border-b border-muted" />
-            <CardContent>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
-                {calculatedFields.map(f => (
-                  <Field key={f.key} label={f.label} value={f.value} tooltip={f.tooltip} />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <Card data-testid="card-calculated-fields">
+          <CardHeader className="pb-0">
+            <CardTitle className="text-[22px] flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-muted-foreground" />
+              Calculated Fields
+            </CardTitle>
+          </CardHeader>
+          <div className="mx-6 mt-2 mb-3 border-b border-muted" />
+          <CardContent>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+              {calculatedFields.map(f => (
+                <Field key={f.key} label={f.label} value={f.value} tooltip={f.tooltip} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-0">
