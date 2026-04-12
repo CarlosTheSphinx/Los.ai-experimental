@@ -5160,8 +5160,12 @@ export async function registerRoutes(
       }
 
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
-      console.error('Borrower document download error:', error);
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Document file not found in storage: docId=${req.params.docId}, projectId=${req.params.id}`);
+        return res.status(404).json({ error: 'Document file not found in storage. The file may not have been uploaded successfully.' });
+      }
+      console.error('Document download error:', error);
       res.status(500).json({ error: 'Failed to download document' });
     }
   });
@@ -10747,7 +10751,11 @@ export async function registerRoutes(
       }
       
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Admin document file not found in storage: docId=${req.params.docId}`);
+        return res.status(404).json({ error: 'Document file not found in storage. The file may not have been uploaded successfully.' });
+      }
       console.error('Admin document download error:', error);
       res.status(500).json({ error: 'Failed to download document' });
     }
@@ -10774,7 +10782,11 @@ export async function registerRoutes(
         res.set('Content-Type', file.mimeType);
       }
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Admin file not found in storage: fileId=${req.params.fileId}`);
+        return res.status(404).json({ error: 'File not found in storage. The file may not have been uploaded successfully.' });
+      }
       console.error('Admin file download error:', error);
       res.status(500).json({ error: 'Failed to download file' });
     }

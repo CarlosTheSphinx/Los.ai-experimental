@@ -727,7 +727,24 @@ export default function BorrowerDealDetail() {
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs gap-1.5"
-                                    onClick={() => window.open(`/api/projects/${dealId}/deal-documents/${doc.id}/download`, '_blank', 'noopener,noreferrer')}
+                                    onClick={async () => {
+                                      const w = window.open('', '_blank');
+                                      try {
+                                        const resp = await fetch(`/api/projects/${dealId}/deal-documents/${doc.id}/download`);
+                                        if (!resp.ok) {
+                                          w?.close();
+                                          const data = await resp.json().catch(() => null);
+                                          toast({ title: "Download failed", description: data?.error || "Unable to download this file. It may not have been uploaded successfully.", variant: "destructive" });
+                                          return;
+                                        }
+                                        const blob = await resp.blob();
+                                        const url = URL.createObjectURL(blob);
+                                        if (w) { w.location.href = url; } else { window.open(url, '_blank'); }
+                                      } catch {
+                                        w?.close();
+                                        toast({ title: "Download failed", description: "Unable to download this file.", variant: "destructive" });
+                                      }
+                                    }}
                                     data-testid={`button-preview-${doc.id}`}
                                   >
                                     <Eye className="h-3 w-3" />

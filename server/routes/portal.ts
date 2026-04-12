@@ -531,7 +531,11 @@ export function registerPortalRoutes(app: Express, deps: RouteDeps) {
         res.set('Content-Type', file.mimeType);
       }
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Portal file not found in storage: fileId=${req.params.fileId}`);
+        return res.status(404).json({ error: 'File not found in storage. The file may not have been uploaded successfully.' });
+      }
       console.error('Portal file download error:', error);
       res.status(500).json({ error: 'Failed to download file' });
     }
