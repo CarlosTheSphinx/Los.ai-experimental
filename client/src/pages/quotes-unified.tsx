@@ -101,6 +101,137 @@ interface ProgramWithPricing {
     textInputs?: Array<{ id: string; fieldKey: string; label: string; sourceType?: string }>;
     dropdowns?: Array<{ label: string; fieldKey: string; options: string[]; sourceType?: string }>;
   } | null;
+  minLoanAmount?: number | null;
+  maxLoanAmount?: number | null;
+  minLtv?: number | null;
+  maxLtv?: number | null;
+  minInterestRate?: number | null;
+  maxInterestRate?: number | null;
+  minDscr?: number | null;
+  minFico?: number | null;
+  minUnits?: number | null;
+  maxUnits?: number | null;
+  termOptions?: string | null;
+  eligiblePropertyTypes?: string[] | null;
+}
+
+function formatCurrency(val: number): string {
+  if (val >= 1_000_000) {
+    const m = val / 1_000_000;
+    return `$${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
+  if (val >= 1_000) {
+    const k = val / 1_000;
+    return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+  }
+  return `$${val.toLocaleString()}`;
+}
+
+function formatPropertyType(pt: string): string {
+  return pt.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function ProgramSummaryCard({
+  program,
+  isSelected,
+  onSelect,
+}: {
+  program: ProgramWithPricing;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const loanRange =
+    program.minLoanAmount != null && program.maxLoanAmount != null
+      ? `${formatCurrency(program.minLoanAmount)} – ${formatCurrency(program.maxLoanAmount)}`
+      : program.minLoanAmount != null
+        ? `Min ${formatCurrency(program.minLoanAmount)}`
+        : program.maxLoanAmount != null
+          ? `Max ${formatCurrency(program.maxLoanAmount)}`
+          : null;
+
+  const ltvRange =
+    program.maxLtv != null ? `Up to ${program.maxLtv}%` : null;
+
+  const rateRange =
+    program.minInterestRate != null && program.maxInterestRate != null
+      ? `${program.minInterestRate}% – ${program.maxInterestRate}%`
+      : program.minInterestRate != null
+        ? `From ${program.minInterestRate}%`
+        : program.maxInterestRate != null
+          ? `Up to ${program.maxInterestRate}%`
+          : null;
+
+  const unitRange =
+    program.minUnits != null && program.maxUnits != null
+      ? `${program.minUnits} – ${program.maxUnits}`
+      : program.minUnits != null
+        ? `Min ${program.minUnits}`
+        : program.maxUnits != null
+          ? `Max ${program.maxUnits}`
+          : null;
+
+  const terms = program.termOptions
+    ? program.termOptions.split(",").map(t => t.trim()).filter(Boolean).map(t => `${t} mo`).join(", ")
+    : null;
+
+  const propertyTypes =
+    program.eligiblePropertyTypes && program.eligiblePropertyTypes.length > 0
+      ? program.eligiblePropertyTypes.map(formatPropertyType).join(", ")
+      : null;
+
+  const details: { label: string; value: string }[] = [];
+  if (loanRange) details.push({ label: "Loan Amount", value: loanRange });
+  if (ltvRange) details.push({ label: "Max LTV", value: ltvRange });
+  if (rateRange) details.push({ label: "Rate Range", value: rateRange });
+  if (program.minFico != null) details.push({ label: "Min FICO", value: program.minFico.toString() });
+  if (program.loanType?.toLowerCase() === "dscr" && program.minDscr != null) details.push({ label: "Min DSCR", value: program.minDscr.toFixed(2) });
+  if (unitRange) details.push({ label: "Units", value: unitRange });
+  if (terms) details.push({ label: "Terms", value: terms });
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      data-testid={`card-program-${program.id}`}
+      className={`w-full text-left bg-card border rounded-[10px] shadow-sm p-4 transition-all cursor-pointer hover:shadow-md ${
+        isSelected
+          ? "ring-2 ring-primary border-primary"
+          : "hover:border-muted-foreground/40"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${
+            program.loanType?.toLowerCase() === "dscr"
+              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          }`}
+          data-testid={`badge-loan-type-${program.id}`}
+        >
+          {program.loanType?.toLowerCase() === "dscr" ? "DSCR" : "RTL"}
+        </span>
+        <span className="text-[14px] font-semibold truncate" data-testid={`text-program-name-${program.id}`}>
+          {program.name}
+        </span>
+      </div>
+      {details.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          {details.map(d => (
+            <div key={d.label} className="min-w-0">
+              <div className="text-[11px] text-muted-foreground leading-tight">{d.label}</div>
+              <div className="text-[13px] font-medium truncate" data-testid={`text-${d.label.toLowerCase().replace(/\s+/g, "-")}-${program.id}`}>{d.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {propertyTypes && (
+        <div className="mt-2 pt-2 border-t">
+          <div className="text-[11px] text-muted-foreground leading-tight">Property Types</div>
+          <div className="text-[12px] font-medium text-muted-foreground mt-0.5" data-testid={`text-property-types-${program.id}`}>{propertyTypes}</div>
+        </div>
+      )}
+    </button>
+  );
 }
 
 function safeParseQuoteFields(fields: any): any[] | undefined {
@@ -1140,50 +1271,75 @@ export default function QuotesUnified() {
         <div className="space-y-5">
           {!hasResult ? (
             <>
-              <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4">
-                <h3 className="text-[16px] font-semibold mb-1">Loan Program</h3>
-                <p className="text-[13px] text-muted-foreground mb-3">Select the loan program to price</p>
-                <div>
-                  {programsLoading ? (
-                    <SelectTrigger className="w-full md:w-96" data-testid="select-loan-program-loading" disabled>
-                      <SelectValue placeholder="Loading programs..." />
-                    </SelectTrigger>
-                  ) : allActivePrograms.length > 0 ? (
-                    <Select
-                      value={selectedProgramId?.toString() || ""}
-                      onValueChange={(v) => {
-                        const prog = allActivePrograms.find(p => p.id === parseInt(v));
-                        if (prog) {
-                          setSelectedProgramId(prog.id);
-                          const derivedType = (prog.loanType === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
-                          setLoanProductType(derivedType);
-                          setDscrResult(null);
-                          setRtlResult(null);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full md:w-96" data-testid="select-loan-program">
-                        <SelectValue placeholder="Select a loan program" />
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-5">
+                <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4">
+                  <h3 className="text-[16px] font-semibold mb-1">Loan Program</h3>
+                  <p className="text-[13px] text-muted-foreground mb-3">Select the loan program to price</p>
+                  <div>
+                    {programsLoading ? (
+                      <SelectTrigger className="w-full" data-testid="select-loan-program-loading" disabled>
+                        <SelectValue placeholder="Loading programs..." />
                       </SelectTrigger>
-                      <SelectContent>
-                        {allActivePrograms.map((program) => (
-                          <SelectItem key={program.id} value={program.id.toString()}>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11.5px] font-medium bg-gray-100 text-gray-600">
-                                {program.loanType.toUpperCase()}
-                              </span>
-                              <span className="text-[16px]">{program.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-muted-foreground/30 text-sm text-muted-foreground" data-testid="text-no-programs">
-                      No loan programs available — contact your lender to set up programs.
-                    </div>
-                  )}
+                    ) : allActivePrograms.length > 0 ? (
+                      <Select
+                        value={selectedProgramId?.toString() || ""}
+                        onValueChange={(v) => {
+                          const prog = allActivePrograms.find(p => p.id === parseInt(v));
+                          if (prog) {
+                            setSelectedProgramId(prog.id);
+                            const derivedType = (prog.loanType?.toLowerCase() === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
+                            setLoanProductType(derivedType);
+                            setDscrResult(null);
+                            setRtlResult(null);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full" data-testid="select-loan-program">
+                          <SelectValue placeholder="Select a loan program" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allActivePrograms.map((program) => (
+                            <SelectItem key={program.id} value={program.id.toString()}>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11.5px] font-medium bg-gray-100 text-gray-600">
+                                  {program.loanType.toUpperCase()}
+                                </span>
+                                <span className="text-[16px]">{program.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-muted-foreground/30 text-sm text-muted-foreground" data-testid="text-no-programs">
+                        No loan programs available — contact your lender to set up programs.
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {!programsLoading && allActivePrograms.length > 0 && (
+                  <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4 order-first lg:order-last">
+                    <h3 className="text-[16px] font-semibold mb-1">Available Programs</h3>
+                    <p className="text-[13px] text-muted-foreground mb-3">Click a card to select a program</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3" data-testid="grid-available-programs">
+                      {allActivePrograms.map((program) => (
+                        <ProgramSummaryCard
+                          key={program.id}
+                          program={program}
+                          isSelected={selectedProgramId === program.id}
+                          onSelect={() => {
+                            setSelectedProgramId(program.id);
+                            const derivedType = (program.loanType?.toLowerCase() === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
+                            setLoanProductType(derivedType);
+                            setDscrResult(null);
+                            setRtlResult(null);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
 
