@@ -570,20 +570,26 @@ export default function BorrowerDealDetail() {
                     {loanFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                   </div>
                 </div>
-                {calculatedFields.length > 0 && (
-                  <div className="border-t pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Calculator className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground" data-testid="header-calculated-fields">Calculated Fields</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                      {calculatedFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
-                    </div>
-                  </div>
-                )}
               </div>
             </CardContent>
         </Card>
+
+        {calculatedFields.length > 0 && (
+          <Card className="overflow-hidden" data-testid="card-calculated-fields">
+            <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3">
+              <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
+                <Calculator className="h-4 w-4 text-muted-foreground" />
+                Calculated Fields
+              </CardTitle>
+            </div>
+            <CardContent className="pt-0 pb-4 sm:pb-5 px-3 sm:px-6">
+              <div className="border-t mb-4" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                {calculatedFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="overflow-hidden" data-testid="card-borrower-checklist">
           <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3" data-testid="header-checklist">

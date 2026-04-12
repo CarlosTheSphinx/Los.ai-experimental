@@ -499,13 +499,15 @@ export default function TabOverview({
 
   const buildPropertyFields = (): { label: string; value: string; key: string; tooltip?: string }[] => {
     const propAddr = [primaryProp?.address, primaryProp?.city, primaryProp?.state, primaryProp?.zip].filter(Boolean).join(", ") || deal.propertyAddress || "—";
+    const propType = (() => { const raw = primaryProp?.propertyType || deal.propertyType; return PROPERTY_TYPE_OPTIONS.find(o => o.value === raw)?.label || raw || "—"; })();
     const baseFields: { label: string; value: string; key: string; tooltip?: string }[] = [
       { key: 'address', label: "Property Address", value: propAddr },
+      { key: 'propertyType', label: "Property Type", value: propType },
     ];
 
     if (hasProgram) {
       const programPropertyFields = getFieldsByGroup('property_details');
-      const excludePropertyKeys = new Set(['dscr']);
+      const excludePropertyKeys = new Set(['dscr', 'propertyType']);
       programPropertyFields
         .filter(f => !excludePropertyKeys.has(f.fieldKey))
         .forEach(f => {
@@ -525,7 +527,6 @@ export default function TabOverview({
     } else {
       const meta = primaryProp?.metadata || {};
       baseFields.push(
-        { key: 'propertyType', label: "Property Type", value: (() => { const raw = primaryProp?.propertyType || deal.propertyType; return PROPERTY_TYPE_OPTIONS.find(o => o.value === raw)?.label || raw || "—"; })() },
         { key: 'units', label: "Number of Units", value: primaryProp?.units ? String(primaryProp.units) : "—" },
         { key: 'originalPurchaseDate', label: "Original Purchase Date", value: fmtDate(meta.originalPurchaseDate) },
         { key: 'originalPurchasePrice', label: "Original Purchase Price", value: fmt(meta.originalPurchasePrice) },
