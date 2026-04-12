@@ -615,8 +615,6 @@ export default function QuotesUnified() {
       setDscrResult(null);
     }
 
-    setGeneratedTestData(null);
-    setTestDataKey(prev => prev + 1);
     setActiveView("create");
 
     toast({
