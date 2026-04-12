@@ -7,13 +7,9 @@ npm install
 # that require confirmation should be applied manually
 npx drizzle-kit push < /dev/null 2>&1 || echo "drizzle-kit push requires manual intervention, skipping"
 
-# Run SQL migration files that drizzle-kit push may have missed
-# These are idempotent (use IF NOT EXISTS / ON CONFLICT DO NOTHING)
-if [ -d "migrations" ]; then
-  for f in migrations/*.sql; do
-    if [ -f "$f" ]; then
-      echo "Running migration: $f"
-      psql "$DATABASE_URL" -f "$f" 2>&1 || echo "Migration $f failed (may already be applied), continuing"
-    fi
-  done
+# Run specific idempotent migration for message_thread_participants table
+# Uses IF NOT EXISTS / ON CONFLICT DO NOTHING so safe to re-run
+if [ -f "migrations/0004_add_message_thread_participants.sql" ]; then
+  echo "Running migration: 0004_add_message_thread_participants.sql"
+  psql "$DATABASE_URL" -f "migrations/0004_add_message_thread_participants.sql" 2>&1 || echo "Migration 0004 failed (may already be applied), continuing"
 fi
