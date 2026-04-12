@@ -315,6 +315,8 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         });
       }
 
+      await storage.updateUser(user.id, { lastLoginAt: new Date() });
+
       const token = generateToken(user.id, user.email, user.tokenVersion ?? 0);
       setAuthCookie(res, token);
 
@@ -829,6 +831,8 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           tenantId: oauthTenantId || 1,
           ...(oauthInvitedById ? { invitedBy: oauthInvitedById } : {}),
         });
+
+        await storage.updateUser(user.id, { lastLoginAt: new Date() });
 
         notifyLenderStaffOfNewUser(db, assignedRole || 'broker', user).catch(() => {});
 

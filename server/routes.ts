@@ -6750,7 +6750,7 @@ export async function registerRoutes(
       }
 
       const newToken = generateRandomToken();
-      await db.update(users).set({ inviteToken: newToken }).where(eq(users.id, user.id));
+      await db.update(users).set({ inviteToken: newToken, lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
       const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
       setAuthCookie(res, authToken);
@@ -6789,6 +6789,7 @@ export async function registerRoutes(
         inviteStatus: 'joined',
         emailVerified: true,
         onboardingCompleted: true,
+        lastLoginAt: new Date(),
       }).where(eq(users.id, user.id));
 
       const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
@@ -6923,6 +6924,7 @@ export async function registerRoutes(
         inviteStatus: 'accepted',
         emailVerified: true,
         onboardingCompleted: true,
+        lastLoginAt: new Date(),
       });
 
       if (user.role === 'broker') {
