@@ -413,10 +413,10 @@ export default function BrokerDealDetail() {
     }
 
     if (brokerPts != null && loan > 0) {
-      fields.push({ key: 'brokerFee', label: "Broker Fee", value: fmt(Number(brokerPts) / 100 * loan) });
+      fields.push({ key: 'brokerFee', label: "Broker Fee ($)", value: fmt(Number(brokerPts) / 100 * loan) });
     }
     if (ysp != null && loan > 0) {
-      fields.push({ key: 'yspFee', label: "YSP Amount", value: fmt(Number(ysp) / 100 * loan) });
+      fields.push({ key: 'yspFee', label: "YSP Fee ($)", value: fmt(Number(ysp) / 100 * loan) });
     }
 
     return fields;
