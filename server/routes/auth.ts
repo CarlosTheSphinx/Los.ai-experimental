@@ -758,6 +758,10 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           ...tokenUpdates,
         });
         user = await storage.getUserById(invitedUser.id);
+        // Notify lender staff that an invited broker or borrower has accepted and joined
+        if (user) {
+          notifyLenderStaffOfNewUser(db, user.role, user).catch(() => {});
+        }
         const jwtToken = generateToken(user!.id, user!.email, user!.tokenVersion ?? 0);
         setAuthCookie(res, jwtToken);
         if (user!.role === 'broker') {
