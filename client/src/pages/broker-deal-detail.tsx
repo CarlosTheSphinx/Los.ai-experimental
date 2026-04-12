@@ -476,10 +476,20 @@ export default function BrokerDealDetail() {
             </Badge>
           </div>
           <h1 className="text-lg sm:text-xl font-bold truncate" data-testid="text-deal-title">
-            {deal.projectName || deal.propertyAddress || `Loan #${deal.id}`}
+            {[
+              (() => {
+                const name = deal.projectName || `Loan #${deal.id}`;
+                if (deal.loanNumber) {
+                  const suffixPattern = new RegExp(`\\s*-\\s*${deal.loanNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*-.*$`);
+                  return name.replace(suffixPattern, '').trim();
+                }
+                return name;
+              })(),
+              deal.propertyAddress?.replace(/,?\s*United States of America$/i, '')
+            ].filter(Boolean).join(" · ")}
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground truncate" data-testid="text-deal-subtitle">
-            {[deal.programName, deal.loanType, deal.propertyAddress?.replace(/,?\s*United States of America$/i, '')].filter(Boolean).join(" · ")}
+            {[deal.programName, deal.loanType].filter(Boolean).join(" · ")}
           </p>
         </div>
       </div>
