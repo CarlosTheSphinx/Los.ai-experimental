@@ -31,6 +31,13 @@ export function getAttachmentDownloadUrl(objectPath: string): string {
   return `/objects/uploads/${id}`;
 }
 
+export interface ThreadParticipant {
+  userId: number;
+  fullName: string | null;
+  email: string | null;
+  role: string | null;
+}
+
 export interface MessageThread {
   id: number;
   dealId: number | null;
@@ -41,6 +48,7 @@ export interface MessageThread {
   lastMessageAt: string;
   createdAt: string;
   userName?: string;
+  participants?: ThreadParticipant[];
 }
 
 export interface Message {
@@ -73,9 +81,9 @@ export async function getThread(id: number): Promise<{ thread: MessageThread; me
   return res.json();
 }
 
-export async function createThread(userId: number, dealId?: number, subject?: string): Promise<{ thread: MessageThread }> {
+export async function createThread(userIds: number[], dealId?: number, subject?: string): Promise<{ thread: MessageThread }> {
   const res = await apiRequest("POST", "/api/messages/threads", { 
-    userId, 
+    userIds, 
     dealId: dealId || null, 
     subject: subject || null 
   });

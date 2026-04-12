@@ -1375,9 +1375,21 @@ export async function registerRoutes(
   app.get(api.quotes.list.path, authenticateUser, async (req: AuthRequest, res) => {
     try {
       const tenantId = getTenantId(req.user!);
-      const quotes = isAdminRole(req.user!.role) && tenantId
-        ? await storage.getQuotesByTenant(tenantId)
-        : await storage.getQuotes(req.user!.id);
+      const filterUserId = req.query.userId ? parseInt(req.query.userId as string) : null;
+      let quotes;
+      if (isAdminRole(req.user!.role) && filterUserId) {
+        if (tenantId) {
+          const targetUser = await storage.getUserById(filterUserId);
+          if (!targetUser || targetUser.tenantId !== tenantId) {
+            return res.json({ success: true, quotes: [] });
+          }
+        }
+        quotes = await storage.getQuotes(filterUserId);
+      } else if (isAdminRole(req.user!.role) && tenantId) {
+        quotes = await storage.getQuotesByTenant(tenantId);
+      } else {
+        quotes = await storage.getQuotes(req.user!.id);
+      }
       res.json({ success: true, quotes });
     } catch (error) {
       console.error('Error fetching quotes:', error);
@@ -3922,12 +3934,26 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const { status, archived } = req.query;
+      const filterUserId = req.query.userId ? parseInt(req.query.userId as string) : null;
       
       const currentUser = await storage.getUserById(userId);
       const isAdminRole = currentUser && ['super_admin', 'lender', 'admin', 'processor'].includes(currentUser.role);
 
       let projectsList: any[];
-      if (isAdminRole) {
+      if (isAdminRole && filterUserId) {
+        const tenantId = getTenantId(req.user!);
+        if (tenantId) {
+          const targetUser = await storage.getUserById(filterUserId);
+          if (!targetUser || targetUser.tenantId !== tenantId) {
+            return res.json({ success: true, projects: [] });
+          }
+        }
+        projectsList = await storage.getProjects(
+          filterUserId,
+          status as string | undefined,
+          archived !== undefined ? archived === 'true' : undefined
+        );
+      } else if (isAdminRole) {
         const tenantId = getTenantId(req.user!);
         projectsList = await storage.getAllProjects({
           status: status as string | undefined,

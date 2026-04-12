@@ -9,6 +9,7 @@ import {
   real,
   varchar,
   index,
+  uniqueIndex,
   uuid,
   smallint,
   customType,
@@ -1514,6 +1515,26 @@ export const insertMessageReadSchema = createInsertSchema(messageReads).omit({
 });
 export type MessageRead = typeof messageReads.$inferSelect;
 export type InsertMessageRead = z.infer<typeof insertMessageReadSchema>;
+
+export const messageThreadParticipants = pgTable("message_thread_participants", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id")
+    .references(() => messageThreads.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("mtp_thread_user_unique").on(table.threadId, table.userId),
+]);
+
+export const insertMessageThreadParticipantSchema = createInsertSchema(messageThreadParticipants).omit({
+  id: true,
+  joinedAt: true,
+});
+export type MessageThreadParticipant = typeof messageThreadParticipants.$inferSelect;
+export type InsertMessageThreadParticipant = z.infer<typeof insertMessageThreadParticipantSchema>;
 
 // ==================== ONBOARDING SYSTEM ====================
 
