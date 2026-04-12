@@ -241,6 +241,18 @@ app.use((req, res, next) => {
     // Table may already exist
   }
 
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS document_download_tokens (
+      id SERIAL PRIMARY KEY,
+      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (e) {
+    // Table may already exist
+  }
+
   const { backfillTenantIds } = await import('./utils/backfill-tenants');
   await backfillTenantIds();
 

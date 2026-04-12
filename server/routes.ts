@@ -3048,13 +3048,18 @@ export async function registerRoutes(
         });
 
         const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        const downloadLink = `${baseUrl}/api/documents/${doc.id}/download`;
         
         const signerNames = allSigners.map(s => s.name);
         const allEmails = allSigners.map(s => s.email);
         
-        // Send completion email to all signers
+        // Send completion email to all signers with unique download tokens
+        const cryptoMod = await import('crypto');
         for (const s of allSigners) {
+          const downloadToken = cryptoMod.randomBytes(32).toString('hex');
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+          await storage.createDocumentDownloadToken(doc.id, downloadToken, expiresAt);
+          const downloadLink = `${baseUrl}/api/documents/download/${downloadToken}`;
+
           await sendCompletedDocument(
             s.email,
             s.name,
@@ -3395,6 +3400,79 @@ export async function registerRoutes(
       res.send(Buffer.from(signedPdfBytes));
     } catch (error) {
       console.error('Error downloading document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.get('/api/documents/download/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const result = await storage.getDocumentByDownloadToken(token);
+      if (!result) {
+        res.status(404).json({ success: false, error: 'Download link is invalid or has expired' });
+        return;
+      }
+
+      const doc = await storage.getDocumentById(result.documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      if (doc.status !== 'completed') {
+        res.status(403).json({ success: false, error: 'Document is not yet fully signed' });
+        return;
+      }
+
+      const fields = await storage.getFieldsByDocumentId(doc.id);
+
+      const pdfBytes = Buffer.from(doc.fileData.split(',')[1] || doc.fileData, 'base64');
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const pages = pdfDoc.getPages();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      for (const field of fields) {
+        if (!field.value) continue;
+
+        const pageIndex = field.pageNumber - 1;
+        if (pageIndex >= pages.length) continue;
+
+        const page = pages[pageIndex];
+        const { height: pageHeight } = page.getSize();
+
+        if (field.fieldType === 'signature' || field.fieldType === 'initial') {
+          try {
+            const imgData = field.value.split(',')[1] || field.value;
+            const imgBytes = Buffer.from(imgData, 'base64');
+            const img = await pdfDoc.embedPng(imgBytes);
+
+            page.drawImage(img, {
+              x: field.x,
+              y: pageHeight - field.y - field.height,
+              width: field.width,
+              height: field.height
+            });
+          } catch (imgError) {
+            console.error('Error embedding signature image:', imgError);
+          }
+        } else if (field.fieldType === 'text' || field.fieldType === 'date') {
+          page.drawText(field.value, {
+            x: field.x + 5,
+            y: pageHeight - field.y - field.height + 10,
+            size: 12,
+            font,
+            color: rgb(0, 0, 0)
+          });
+        }
+      }
+
+      const signedPdfBytes = await pdfDoc.save();
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.name}-signed.pdf"`);
+      res.send(Buffer.from(signedPdfBytes));
+    } catch (error) {
+      console.error('Error downloading document via token:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });

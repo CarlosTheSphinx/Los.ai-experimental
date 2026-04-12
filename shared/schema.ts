@@ -480,6 +480,21 @@ export const insertDocumentAuditLogSchema = createInsertSchema(
   documentAuditLog,
 ).omit({ id: true, createdAt: true });
 
+export const documentDownloadTokens = pgTable("document_download_tokens", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id")
+    .references(() => documents.id, { onDelete: "cascade" })
+    .notNull(),
+  token: varchar("token", { length: 255 }).unique().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDocumentDownloadTokenSchema = createInsertSchema(documentDownloadTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
@@ -491,6 +506,8 @@ export type DocumentAuditLog = typeof documentAuditLog.$inferSelect;
 export type InsertDocumentAuditLog = z.infer<
   typeof insertDocumentAuditLogSchema
 >;
+export type DocumentDownloadToken = typeof documentDownloadTokens.$inferSelect;
+export type InsertDocumentDownloadToken = z.infer<typeof insertDocumentDownloadTokenSchema>;
 
 // Projects table for loan closing progress tracking
 export const projects = pgTable("projects", {

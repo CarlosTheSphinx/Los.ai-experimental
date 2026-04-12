@@ -23,6 +23,8 @@ import {
   type AdminActivity, type InsertAdminActivity,
   type DealStage, type InsertDealStage,
   type TeamPermission, PERMISSION_KEYS,
+  documentDownloadTokens,
+  type DocumentDownloadToken, type InsertDocumentDownloadToken,
   type CommercialSubmission, type InsertCommercialSubmission,
   type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
   type DocumentReviewResult, type InsertDocumentReviewResult,
@@ -95,6 +97,10 @@ export interface IStorage {
   // Audit log methods
   createAuditLog(log: InsertDocumentAuditLog): Promise<DocumentAuditLog>;
   getAuditLogsByDocumentId(documentId: number): Promise<DocumentAuditLog[]>;
+
+  // Document download token methods
+  createDocumentDownloadToken(documentId: number, token: string, expiresAt: Date): Promise<DocumentDownloadToken>;
+  getDocumentByDownloadToken(token: string): Promise<{ documentId: number } | undefined>;
 
   // Commercial submission methods
   createCommercialSubmission(data: InsertCommercialSubmission): Promise<CommercialSubmission>;
@@ -446,6 +452,21 @@ export class DatabaseStorage implements IStorage {
 
   async getAuditLogsByDocumentId(documentId: number): Promise<DocumentAuditLog[]> {
     return await db.select().from(documentAuditLog).where(eq(documentAuditLog.documentId, documentId)).orderBy(desc(documentAuditLog.createdAt));
+  }
+
+  async createDocumentDownloadToken(documentId: number, token: string, expiresAt: Date): Promise<DocumentDownloadToken> {
+    const [created] = await db.insert(documentDownloadTokens).values({ documentId, token, expiresAt }).returning();
+    return created;
+  }
+
+  async getDocumentByDownloadToken(token: string): Promise<{ documentId: number } | undefined> {
+    const [row] = await db.select().from(documentDownloadTokens).where(
+      and(
+        eq(documentDownloadTokens.token, token),
+        gt(documentDownloadTokens.expiresAt, new Date())
+      )
+    );
+    return row ? { documentId: row.documentId } : undefined;
   }
 
   // Project methods
