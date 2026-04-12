@@ -362,7 +362,7 @@ export default function BorrowerDealDetail() {
     ];
 
     if (hasProgram) {
-      const lockedKeys = new Set(['ltv', 'dscr', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term', 'targetCloseDate', 'originationPoints']);
+      const lockedKeys = new Set(['ltv', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term', 'targetCloseDate', 'originationPoints']);
       const contactKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address']);
       getFieldsByGroup('loan_details')
         .filter((f: any) => !lockedKeys.has(f.fieldKey) && !contactKeys.has(f.fieldKey) && f.fieldKey !== 'loanAmount')
@@ -393,11 +393,8 @@ export default function BorrowerDealDetail() {
     const hoa = Number(deal?.loanData?.annualHOA || appData.annualHOA || 0);
     const noi = (rent * 12) - taxes - insurance - hoa;
 
-    if (noi > 0) {
-      fields.push({ key: 'noi', label: "NOI", value: fmt(noi) });
-    }
-
     if (noi > 0 && loan > 0) {
+      fields.push({ key: 'noi', label: "NOI", value: fmt(noi) });
       const rateStr = String(interestRate || "").replace("%", "");
       const annualRate = Number(rateStr) || 0;
       if (annualRate > 0) {
