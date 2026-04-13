@@ -10,6 +10,7 @@ import {
   programReviewRules,
   creditPolicies,
   loanPrograms,
+  intakeDealTasks, intakeDeals,
   type InsertPricingRequest, type PricingRequest, type InsertSavedQuote, type SavedQuote,
   type Document, type InsertDocument, type Signer, type InsertSigner,
   type DocumentField, type InsertDocumentField, type DocumentAuditLog, type InsertDocumentAuditLog,
@@ -22,6 +23,8 @@ import {
   type AdminActivity, type InsertAdminActivity,
   type DealStage, type InsertDealStage,
   type TeamPermission, PERMISSION_KEYS,
+  documentDownloadTokens,
+  type DocumentDownloadToken, type InsertDocumentDownloadToken,
   type CommercialSubmission, type InsertCommercialSubmission,
   type CommercialSubmissionDocument, type InsertCommercialSubmissionDocument,
   type DocumentReviewResult, type InsertDocumentReviewResult,
@@ -56,15 +59,20 @@ export interface IStorage {
   logPricingRequest(request: InsertPricingRequest): Promise<PricingRequest>;
   saveQuote(quote: InsertSavedQuote, userId: number): Promise<SavedQuote>;
   getQuotes(userId: number): Promise<SavedQuote[]>;
+  getQuotesByTenant(tenantId: number): Promise<SavedQuote[]>;
   getQuoteById(id: number, userId: number): Promise<SavedQuote | undefined>;
+  getQuoteByIdInternal(id: number): Promise<SavedQuote | undefined>;
   updateQuote(id: number, userId: number, updates: Partial<SavedQuote>): Promise<SavedQuote | undefined>;
+  updateQuoteInternal(id: number, updates: Partial<SavedQuote>): Promise<SavedQuote | undefined>;
   deleteQuote(id: number, userId: number): Promise<void>;
+  deleteQuoteInternal(id: number): Promise<void>;
   
   // Document methods
   createDocument(doc: InsertDocument, userId: number): Promise<Document>;
   getDocuments(userId: number): Promise<Document[]>;
+  getDocumentsByTenant(tenantId: number): Promise<Document[]>;
   getDocumentById(id: number, userId?: number): Promise<Document | undefined>;
-  getDocumentsByQuoteId(quoteId: number, userId: number): Promise<Document[]>;
+  getDocumentsByQuoteId(quoteId: number, userId?: number): Promise<Document[]>;
   updateDocumentStatus(id: number, status: string, completedAt?: Date): Promise<Document | undefined>;
   updateDocument(id: number, updates: Partial<Document>, userId?: number): Promise<Document | undefined>;
   deleteDocument(id: number, userId: number): Promise<void>;
@@ -89,6 +97,10 @@ export interface IStorage {
   // Audit log methods
   createAuditLog(log: InsertDocumentAuditLog): Promise<DocumentAuditLog>;
   getAuditLogsByDocumentId(documentId: number): Promise<DocumentAuditLog[]>;
+
+  // Document download token methods
+  createDocumentDownloadToken(documentId: number, token: string, expiresAt: Date): Promise<DocumentDownloadToken>;
+  getDocumentByDownloadToken(token: string): Promise<{ documentId: number } | undefined>;
 
   // Commercial submission methods
   createCommercialSubmission(data: InsertCommercialSubmission): Promise<CommercialSubmission>;
@@ -176,9 +188,9 @@ export interface IStorage {
   deleteMessageTemplate(id: number, userId: number): Promise<boolean>;
 
   // Quote PDF Templates
-  getQuotePdfTemplates(tenantId?: string): Promise<QuotePdfTemplate[]>;
+  getQuotePdfTemplates(tenantId?: number): Promise<QuotePdfTemplate[]>;
   getQuotePdfTemplateById(id: number): Promise<QuotePdfTemplate | undefined>;
-  getDefaultQuotePdfTemplate(tenantId?: string): Promise<QuotePdfTemplate | undefined>;
+  getDefaultQuotePdfTemplate(tenantId?: number): Promise<QuotePdfTemplate | undefined>;
   createQuotePdfTemplate(data: InsertQuotePdfTemplate): Promise<QuotePdfTemplate>;
   updateQuotePdfTemplate(id: number, data: Partial<InsertQuotePdfTemplate>): Promise<QuotePdfTemplate | undefined>;
   deleteQuotePdfTemplate(id: number): Promise<boolean>;
@@ -221,26 +233,36 @@ export class DatabaseStorage implements IStorage {
     return log;
   }
 
-  async generateQuoteLoanNumber(): Promise<string> {
-    const START_NUMBER = 1124;
+  private extractStreetPrefix(propertyAddress?: string): string {
+    if (!propertyAddress) return 'LNX';
+    const streetMatch = propertyAddress.match(/^\d+\s+(.+?)(?:,|\s+(?:apt|suite|unit|#))/i)
+      || propertyAddress.match(/^\d+\s+(\S+)/i)
+      || propertyAddress.match(/^(\S+)/i);
+    const streetWord = streetMatch ? streetMatch[1].replace(/[^a-zA-Z]/g, '') : 'LN';
+    return streetWord.substring(0, 3).toUpperCase().padEnd(3, 'X');
+  }
+
+  async generateQuoteLoanNumber(propertyAddress?: string): Promise<string> {
+    const prefix = this.extractStreetPrefix(propertyAddress);
+
     const result = await db.select({ loanNumber: savedQuotes.loanNumber })
       .from(savedQuotes)
-      .where(sql`${savedQuotes.loanNumber} IS NOT NULL AND ${savedQuotes.loanNumber} LIKE 'SPX-%'`)
+      .where(sql`${savedQuotes.loanNumber} IS NOT NULL`)
       .orderBy(desc(savedQuotes.id))
       .limit(100);
 
-    let maxNum = START_NUMBER - 1;
+    let maxSeq = 149;
     for (const row of result) {
       if (row.loanNumber) {
-        const num = parseInt(row.loanNumber.replace('SPX-', ''), 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
+        const numPart = parseInt(row.loanNumber.slice(-3));
+        if (!isNaN(numPart) && numPart > maxSeq) maxSeq = numPart;
       }
     }
-    return `SPX-${maxNum + 1}`;
+    return `${prefix}${maxSeq + 1}`;
   }
 
   async saveQuote(quote: InsertSavedQuote, userId: number): Promise<SavedQuote> {
-    const loanNumber = await this.generateQuoteLoanNumber();
+    const loanNumber = await this.generateQuoteLoanNumber(quote.propertyAddress);
     const [saved] = await db.insert(savedQuotes).values({ ...quote, userId, loanNumber }).returning();
     return saved;
   }
@@ -249,10 +271,22 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(savedQuotes).where(eq(savedQuotes.userId, userId)).orderBy(desc(savedQuotes.createdAt));
   }
 
+  async getQuotesByTenant(tenantId: number): Promise<SavedQuote[]> {
+    const tenantUserIds = await db.select({ id: users.id }).from(users).where(eq(users.tenantId, tenantId));
+    const ids = tenantUserIds.map(u => u.id);
+    if (ids.length === 0) return [];
+    return await db.select().from(savedQuotes).where(inArray(savedQuotes.userId, ids)).orderBy(desc(savedQuotes.createdAt));
+  }
+
   async getQuoteById(id: number, userId: number): Promise<SavedQuote | undefined> {
     const [quote] = await db.select().from(savedQuotes).where(
       and(eq(savedQuotes.id, id), eq(savedQuotes.userId, userId))
     );
+    return quote;
+  }
+
+  async getQuoteByIdInternal(id: number): Promise<SavedQuote | undefined> {
+    const [quote] = await db.select().from(savedQuotes).where(eq(savedQuotes.id, id));
     return quote;
   }
 
@@ -264,10 +298,22 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateQuoteInternal(id: number, updates: Partial<SavedQuote>): Promise<SavedQuote | undefined> {
+    const [updated] = await db.update(savedQuotes)
+      .set(updates)
+      .where(eq(savedQuotes.id, id))
+      .returning();
+    return updated;
+  }
+
   async deleteQuote(id: number, userId: number): Promise<void> {
     await db.delete(savedQuotes).where(
       and(eq(savedQuotes.id, id), eq(savedQuotes.userId, userId))
     );
+  }
+
+  async deleteQuoteInternal(id: number): Promise<void> {
+    await db.delete(savedQuotes).where(eq(savedQuotes.id, id));
   }
 
   // Document methods
@@ -278,6 +324,13 @@ export class DatabaseStorage implements IStorage {
 
   async getDocuments(userId: number): Promise<Document[]> {
     return await db.select().from(documents).where(eq(documents.userId, userId)).orderBy(desc(documents.createdAt));
+  }
+
+  async getDocumentsByTenant(tenantId: number): Promise<Document[]> {
+    const tenantUserIds = await db.select({ id: users.id }).from(users).where(eq(users.tenantId, tenantId));
+    const ids = tenantUserIds.map(u => u.id);
+    if (ids.length === 0) return [];
+    return await db.select().from(documents).where(inArray(documents.userId, ids)).orderBy(desc(documents.createdAt));
   }
 
   async getDocumentById(id: number, userId?: number): Promise<Document | undefined> {
@@ -291,10 +344,10 @@ export class DatabaseStorage implements IStorage {
     return doc;
   }
 
-  async getDocumentsByQuoteId(quoteId: number, userId: number): Promise<Document[]> {
-    return await db.select().from(documents).where(
-      and(eq(documents.quoteId, quoteId), eq(documents.userId, userId))
-    ).orderBy(desc(documents.createdAt));
+  async getDocumentsByQuoteId(quoteId: number, userId?: number): Promise<Document[]> {
+    const conditions = [eq(documents.quoteId, quoteId)];
+    if (userId !== undefined) conditions.push(eq(documents.userId, userId));
+    return await db.select().from(documents).where(and(...conditions)).orderBy(desc(documents.createdAt));
   }
 
   async updateDocumentStatus(id: number, status: string, completedAt?: Date): Promise<Document | undefined> {
@@ -401,6 +454,21 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(documentAuditLog).where(eq(documentAuditLog.documentId, documentId)).orderBy(desc(documentAuditLog.createdAt));
   }
 
+  async createDocumentDownloadToken(documentId: number, token: string, expiresAt: Date): Promise<DocumentDownloadToken> {
+    const [created] = await db.insert(documentDownloadTokens).values({ documentId, token, expiresAt }).returning();
+    return created;
+  }
+
+  async getDocumentByDownloadToken(token: string): Promise<{ documentId: number } | undefined> {
+    const [row] = await db.select().from(documentDownloadTokens).where(
+      and(
+        eq(documentDownloadTokens.token, token),
+        gt(documentDownloadTokens.expiresAt, new Date())
+      )
+    );
+    return row ? { documentId: row.documentId } : undefined;
+  }
+
   // Project methods
   async generateProjectNumber(): Promise<string> {
     const year = new Date().getFullYear();
@@ -427,21 +495,26 @@ export class DatabaseStorage implements IStorage {
       project.loanNumber = await this.generateLoanNumber(project.propertyAddress || '');
     }
     if (!project.tenantId && project.programId) {
-      const [program] = await db.select({ createdBy: loanPrograms.createdBy }).from(loanPrograms).where(eq(loanPrograms.id, project.programId)).limit(1);
-      if (program?.createdBy) {
-        project.tenantId = program.createdBy;
+      const [program] = await db.select({ tenantId: loanPrograms.tenantId }).from(loanPrograms).where(eq(loanPrograms.id, project.programId)).limit(1);
+      if (program?.tenantId) {
+        project.tenantId = program.tenantId;
       }
+    }
+    if (!project.tenantId && project.userId) {
+      const [owner] = await db.select({ tenantId: users.tenantId }).from(users).where(eq(users.id, project.userId)).limit(1);
+      if (owner?.tenantId) {
+        project.tenantId = owner.tenantId;
+      }
+    }
+    if (!project.tenantId) {
+      project.tenantId = 1;
     }
     const [created] = await db.insert(projects).values(project).returning();
     return created;
   }
 
   private async generateLoanNumber(propertyAddress: string): Promise<string> {
-    const streetMatch = propertyAddress.match(/^\d+\s+(.+?)(?:,|\s+(?:apt|suite|unit|#))/i)
-      || propertyAddress.match(/^\d+\s+(\S+)/i)
-      || propertyAddress.match(/^(\S+)/i);
-    const streetWord = streetMatch ? streetMatch[1].replace(/[^a-zA-Z]/g, '') : 'LN';
-    const prefix = streetWord.substring(0, 3).toUpperCase().padEnd(3, 'X');
+    const prefix = this.extractStreetPrefix(propertyAddress);
 
     const lastLoan = await db.select({ loanNumber: projects.loanNumber })
       .from(projects)
@@ -504,6 +577,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateProjectInternal(id: number, updates: Partial<Project>): Promise<Project | undefined> {
+    const [updated] = await db.update(projects)
+      .set({ ...updates, lastUpdated: new Date() })
+      .where(eq(projects.id, id))
+      .returning();
+    return updated;
+  }
+
   async deleteProject(id: number, userId: number): Promise<void> {
     await db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId)));
   }
@@ -562,7 +643,7 @@ export class DatabaseStorage implements IStorage {
     return { completed: Number(result[0]?.completed || 0), total: Number(result[0]?.total || 0) };
   }
 
-  async getTaskBoardTasks(filters: { date?: string; status?: string; userId?: number }): Promise<any[]> {
+  async getTaskBoardTasks(filters: { date?: string; status?: string; userId?: number; tenantId?: number | null }): Promise<any[]> {
     const conditions = [];
     
     if (filters.status === 'completed') {
@@ -593,6 +674,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(projectTasks.assignedTo, String(filters.userId)));
     }
 
+    const priorityOrder = sql`CASE ${projectTasks.priority} WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`;
+    const dueDateSort = sql`CASE WHEN ${projectTasks.dueDate} IS NULL THEN 1 ELSE 0 END`;
+
     const tasks = await db
       .select({
         id: projectTasks.id,
@@ -618,12 +702,80 @@ export class DatabaseStorage implements IStorage {
       .from(projectTasks)
       .innerJoin(projects, eq(projectTasks.projectId, projects.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(asc(projectTasks.dueDate), asc(projectTasks.priority));
-    
-    return tasks;
+      .orderBy(dueDateSort, asc(projectTasks.dueDate), priorityOrder);
+
+    const intakeConditions = [];
+    if (filters.status === 'completed') {
+      intakeConditions.push(eq(intakeDealTasks.status, 'completed'));
+    } else {
+      intakeConditions.push(sql`${intakeDealTasks.status} != 'completed'`);
+    }
+    if (filters.date) {
+      const dateStart = new Date(filters.date);
+      dateStart.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(filters.date);
+      dateEnd.setHours(23, 59, 59, 999);
+      intakeConditions.push(
+        and(
+          sql`${intakeDealTasks.dueDate} >= ${dateStart}`,
+          sql`${intakeDealTasks.dueDate} <= ${dateEnd}`
+        )!
+      );
+    }
+    if (filters.userId !== undefined) {
+      intakeConditions.push(eq(intakeDealTasks.assignedTo, String(filters.userId)));
+    }
+    if (filters.tenantId) {
+      intakeConditions.push(eq(intakeDeals.tenantId, filters.tenantId));
+    }
+
+    const commercialTasks = await db
+      .select({
+        id: intakeDealTasks.id,
+        dealId: intakeDealTasks.dealId,
+        taskTitle: intakeDealTasks.taskTitle,
+        taskDescription: intakeDealTasks.taskDescription,
+        status: intakeDealTasks.status,
+        priority: intakeDealTasks.priority,
+        assignedTo: intakeDealTasks.assignedTo,
+        dueDate: intakeDealTasks.dueDate,
+        completedAt: intakeDealTasks.completedAt,
+        completedBy: intakeDealTasks.completedBy,
+        createdAt: intakeDealTasks.createdAt,
+        dealName: intakeDeals.dealName,
+        borrowerName: intakeDeals.borrowerName,
+        propertyAddress: intakeDeals.propertyAddress,
+      })
+      .from(intakeDealTasks)
+      .innerJoin(intakeDeals, eq(intakeDealTasks.dealId, intakeDeals.id))
+      .where(intakeConditions.length > 0 ? and(...intakeConditions) : undefined);
+
+    const mappedCommercialTasks = commercialTasks.map(t => ({
+      ...t,
+      source: 'commercial' as const,
+      projectName: t.dealName,
+      projectId: null,
+      stageId: null,
+      taskType: null,
+      requiresDocument: false,
+      projectNumber: null,
+      loanNumber: null,
+    }));
+
+    const allTasks = [...tasks.map(t => ({ ...t, source: 'origination' as const })), ...mappedCommercialTasks];
+    allTasks.sort((a, b) => {
+      const aHasDue = a.dueDate ? 0 : 1;
+      const bHasDue = b.dueDate ? 0 : 1;
+      if (aHasDue !== bHasDue) return aHasDue - bHasDue;
+      if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      const priorityMap: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      return (priorityMap[a.priority || 'medium'] ?? 4) - (priorityMap[b.priority || 'medium'] ?? 4);
+    });
+
+    return allTasks;
   }
 
-  async getPendingProjectTasksCount(userId?: number): Promise<number> {
+  async getPendingProjectTasksCount(userId?: number, tenantId?: number | null): Promise<number> {
     const conditions = [
       sql`${projectTasks.status} != 'completed'`,
       sql`${projectTasks.status} != 'not_applicable'`
@@ -634,10 +786,26 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.select({
       count: count()
     }).from(projectTasks).where(and(...conditions));
-    return result?.count ?? 0;
+
+    const intakeConditions: any[] = [
+      sql`${intakeDealTasks.status} != 'completed'`
+    ];
+    if (userId !== undefined) {
+      intakeConditions.push(sql`${intakeDealTasks.assignedTo} = ${String(userId)}`);
+    }
+    if (tenantId) {
+      intakeConditions.push(eq(intakeDeals.tenantId, tenantId));
+    }
+    const [intakeResult] = await db.select({
+      count: count()
+    }).from(intakeDealTasks)
+      .innerJoin(intakeDeals, eq(intakeDealTasks.dealId, intakeDeals.id))
+      .where(and(...intakeConditions));
+
+    return (result?.count ?? 0) + (intakeResult?.count ?? 0);
   }
 
-  async getTaskBoardDateCounts(startDate: string, endDate: string, userId?: number): Promise<Record<string, number>> {
+  async getTaskBoardDateCounts(startDate: string, endDate: string, userId?: number, tenantId?: number | null): Promise<Record<string, number>> {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
@@ -661,12 +829,68 @@ export class DatabaseStorage implements IStorage {
       .from(projectTasks)
       .where(and(...conditions))
       .groupBy(sql`DATE(${projectTasks.dueDate})`);
+
+    const intakeConditions: any[] = [
+      sql`${intakeDealTasks.dueDate} >= ${start}`,
+      sql`${intakeDealTasks.dueDate} <= ${end}`,
+      sql`${intakeDealTasks.status} != 'completed'`
+    ];
+    if (userId !== undefined) {
+      intakeConditions.push(sql`${intakeDealTasks.assignedTo} = ${String(userId)}`);
+    }
+    if (tenantId) {
+      intakeConditions.push(eq(intakeDeals.tenantId, tenantId));
+    }
+    const intakeQuery = db
+      .select({
+        date: sql<string>`DATE(${intakeDealTasks.dueDate})`,
+        count: count(),
+      })
+      .from(intakeDealTasks);
+    if (tenantId) {
+      intakeQuery.innerJoin(intakeDeals, eq(intakeDealTasks.dealId, intakeDeals.id));
+    }
+    const intakeResults = await intakeQuery
+      .where(and(...intakeConditions))
+      .groupBy(sql`DATE(${intakeDealTasks.dueDate})`);
     
     const dateCounts: Record<string, number> = {};
     for (const r of results) {
       if (r.date) dateCounts[r.date] = r.count;
     }
+    for (const r of intakeResults) {
+      if (r.date) dateCounts[r.date] = (dateCounts[r.date] || 0) + r.count;
+    }
     return dateCounts;
+  }
+
+  async getPendingReviewDocuments(tenantId?: number | null): Promise<any[]> {
+    const conditions = [
+      eq(dealDocuments.status, 'uploaded'),
+      sql`${dealDocuments.filePath} IS NOT NULL`,
+      sql`${dealDocuments.reviewedAt} IS NULL`,
+    ];
+    if (tenantId != null) {
+      conditions.push(sql`${dealDocuments.dealId} IN (SELECT id FROM projects WHERE tenant_id = ${tenantId})`);
+    }
+    const docs = await db
+      .select({
+        id: dealDocuments.id,
+        dealId: dealDocuments.dealId,
+        documentName: dealDocuments.documentName,
+        documentCategory: dealDocuments.documentCategory,
+        fileName: dealDocuments.fileName,
+        uploadedAt: dealDocuments.uploadedAt,
+        projectName: projects.projectName,
+        borrowerName: projects.borrowerName,
+        loanNumber: projects.loanNumber,
+        projectNumber: projects.projectNumber,
+      })
+      .from(dealDocuments)
+      .innerJoin(projects, eq(dealDocuments.dealId, projects.id))
+      .where(and(...conditions))
+      .orderBy(sql`${dealDocuments.uploadedAt} DESC NULLS LAST`);
+    return docs;
   }
 
   // Project activity methods
@@ -675,15 +899,30 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getActivityByProjectId(projectId: number, visibleToBorrower?: boolean): Promise<ProjectActivity[]> {
+  async getActivityByProjectId(projectId: number, visibleToBorrower?: boolean): Promise<(ProjectActivity & { actorName?: string | null })[]> {
     let conditions = [eq(projectActivity.projectId, projectId)];
     if (visibleToBorrower !== undefined) {
       conditions.push(eq(projectActivity.visibleToBorrower, visibleToBorrower));
     }
-    return await db.select().from(projectActivity)
+    const rows = await db.select({
+      id: projectActivity.id,
+      projectId: projectActivity.projectId,
+      userId: projectActivity.userId,
+      activityType: projectActivity.activityType,
+      activityDescription: projectActivity.activityDescription,
+      oldValue: projectActivity.oldValue,
+      newValue: projectActivity.newValue,
+      metadata: projectActivity.metadata,
+      visibleToBorrower: projectActivity.visibleToBorrower,
+      isInternal: projectActivity.isInternal,
+      createdAt: projectActivity.createdAt,
+      actorName: sql<string | null>`COALESCE(${users.fullName}, ${users.email})`,
+    }).from(projectActivity)
+      .leftJoin(users, eq(projectActivity.userId, users.id))
       .where(and(...conditions))
       .orderBy(desc(projectActivity.createdAt))
       .limit(100);
+    return rows;
   }
 
   // Project documents methods
@@ -933,9 +1172,12 @@ export class DatabaseStorage implements IStorage {
       count: count() 
     }).from(documents).where(eq(documents.status, 'completed'));
     
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
     const taskConditions = [
       sql`${projectTasks.status} != 'completed'`,
-      sql`${projectTasks.status} != 'not_applicable'`
+      sql`${projectTasks.status} != 'not_applicable'`,
+      sql`(${projectTasks.dueDate} IS NOT NULL AND ${projectTasks.dueDate} <= ${endOfToday})`
     ];
     if (tenantId != null) {
       taskConditions.push(sql`${projectTasks.projectId} IN (SELECT id FROM projects WHERE tenant_id = ${tenantId})`);
@@ -1519,7 +1761,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getQuotePdfTemplates(tenantId?: string): Promise<QuotePdfTemplate[]> {
+  async getQuotePdfTemplates(tenantId?: number): Promise<QuotePdfTemplate[]> {
     if (tenantId) {
       return await db.select().from(quotePdfTemplates)
         .where(or(eq(quotePdfTemplates.tenantId, tenantId), isNull(quotePdfTemplates.tenantId)))
@@ -1533,7 +1775,7 @@ export class DatabaseStorage implements IStorage {
     return template;
   }
 
-  async getDefaultQuotePdfTemplate(tenantId?: string): Promise<QuotePdfTemplate | undefined> {
+  async getDefaultQuotePdfTemplate(tenantId?: number): Promise<QuotePdfTemplate | undefined> {
     const conditions = [eq(quotePdfTemplates.isDefault, true)];
     if (tenantId) {
       conditions.push(eq(quotePdfTemplates.tenantId, tenantId));

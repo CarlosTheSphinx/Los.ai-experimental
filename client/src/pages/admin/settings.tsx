@@ -18,10 +18,9 @@ import {
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
 import { PERMISSION_CATEGORIES, type PermissionKey } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
+import { cn, safeFormat } from "@/lib/utils";
 import {
   DndContext,
   closestCenter,
@@ -125,6 +124,8 @@ const CONFIG_TABS = [
   { id: "inquiry-forms", label: "Inquiry Forms", icon: FileText },
   { id: "quote-pdfs", label: "Quote PDFs", icon: FileText },
   { id: "custom-fields", label: "Custom Fields", icon: LayoutList },
+  { id: "email-templates", label: "Email Templates", icon: Mail },
+  { id: "onboarding", label: "Onboarding", icon: Layers },
   { id: "billing", label: "Billing & Plans", icon: CreditCard },
 ] as const;
 
@@ -217,12 +218,6 @@ const settingLabels: Record<string, { label: string; description: string; type: 
     label: "Support Email",
     description: "Email address for customer support inquiries",
     type: "text",
-    category: "general",
-  },
-  puppeteer_quote_url: {
-    label: "Quote Scraping URL",
-    description: "The URL used for automated quote scraping via Puppeteer",
-    type: "url",
     category: "general",
   },
   google_drive_parent_folder_id: {
@@ -357,6 +352,298 @@ function TeamPermissionsCard() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function EmailTemplatesConfig() {
+  const { toast } = useToast();
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
+  const [welcomeSubject, setWelcomeSubject] = useState('Welcome to Sphinx Capital - Your Broker Portal is Ready');
+  const [welcomeBody, setWelcomeBody] = useState(`<p>Hello {{firstName}},</p>
+<p>Welcome to Sphinx Capital's lending platform! Your broker account has been created successfully.</p>
+<p>Here's what you can do in your broker portal:</p>
+<ul>
+  <li><strong>Submit Commercial Deals</strong> — Send us your deals for quick AI-powered analysis and fund matching</li>
+  <li><strong>Track Deal Status</strong> — Monitor the progress of all your submissions in real time</li>
+  <li><strong>View Commissions</strong> — See your earnings and commission details</li>
+  <li><strong>Upload Documents</strong> — Securely share required documents for your deals</li>
+</ul>
+<div style="text-align: center;">
+  <a href="{{portalLink}}" style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; font-size: 16px;">Go to Your Portal</a>
+</div>
+<p>If you have any questions, our team is here to help.</p>`);
+  const [loaded, setLoaded] = useState(false);
+
+  const { data: settingsData, isLoading } = useQuery<{ settings: Array<{ id: number; settingKey: string; settingValue: string }> }>({
+    queryKey: ['/api/admin/settings'],
+  });
+
+  useEffect(() => {
+    const settings = settingsData?.settings;
+    if (settings && !loaded) {
+      const enabledSetting = settings.find(s => s.settingKey === 'broker_welcome_email_enabled');
+      if (enabledSetting) setWelcomeEnabled(enabledSetting.settingValue !== 'false');
+
+      const templateSetting = settings.find(s => s.settingKey === 'broker_welcome_email_template');
+      if (templateSetting?.settingValue) {
+        try {
+          const tmpl = JSON.parse(templateSetting.settingValue);
+          if (tmpl.subject) setWelcomeSubject(tmpl.subject);
+          if (tmpl.body) setWelcomeBody(tmpl.body);
+        } catch {}
+      }
+      setLoaded(true);
+    }
+  }, [settingsData, loaded]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest('PUT', '/api/admin/settings/broker_welcome_email_enabled', {
+        value: welcomeEnabled ? 'true' : 'false',
+        description: 'Enable/disable welcome email for new broker registrations',
+      });
+      await apiRequest('PUT', '/api/admin/settings/broker_welcome_email_template', {
+        value: JSON.stringify({ subject: welcomeSubject, body: welcomeBody }),
+        description: 'Template for broker welcome email (subject and body HTML)',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settings'] });
+      toast({ title: 'Email template saved' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to save template', variant: 'destructive' });
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Broker Welcome Email</CardTitle>
+          <CardDescription>
+            Sent automatically when a new broker creates their account. Supports merge tags: {'{{firstName}}'}, {'{{fullName}}'}, {'{{companyName}}'}, {'{{portalLink}}'}, {'{{supportEmail}}'}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={welcomeEnabled}
+              onCheckedChange={setWelcomeEnabled}
+              data-testid="switch-welcome-email-enabled"
+            />
+            <Label>Send welcome email on registration</Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="welcome-subject">Subject Line</Label>
+            <Input
+              id="welcome-subject"
+              value={welcomeSubject}
+              onChange={(e) => setWelcomeSubject(e.target.value)}
+              disabled={!welcomeEnabled}
+              data-testid="input-welcome-email-subject"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="welcome-body">Email Body (HTML)</Label>
+            <Textarea
+              id="welcome-body"
+              value={welcomeBody}
+              onChange={(e) => setWelcomeBody(e.target.value)}
+              disabled={!welcomeEnabled}
+              rows={12}
+              className="font-mono text-xs"
+              data-testid="input-welcome-email-body"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            <Badge variant="outline">{'{{firstName}}'}</Badge>
+            <Badge variant="outline">{'{{fullName}}'}</Badge>
+            <Badge variant="outline">{'{{companyName}}'}</Badge>
+            <Badge variant="outline">{'{{portalLink}}'}</Badge>
+            <Badge variant="outline">{'{{supportEmail}}'}</Badge>
+          </div>
+
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-email-template"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {saveMutation.isPending ? 'Saving...' : 'Save Template'}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+const AVAILABLE_ICONS = [
+  "Send", "Eye", "Upload", "BadgeDollarSign", "MessageSquare",
+  "BarChart3", "FolderKanban", "Zap", "Target", "Inbox",
+  "DollarSign", "FileText", "BookOpen", "Shield", "Building2", "TrendingUp",
+];
+
+const DEFAULT_TOUR_CARDS = [
+  { id: "submit-deal", icon: "Send", title: "Submit a Deal", description: "Fill out a quick form with your deal details. Our AI instantly analyzes it and matches it to our lending programs.", enabled: true },
+  { id: "track-status", icon: "Eye", title: "Track Deal Status", description: "See real-time updates on every deal — from submission through approval, with AI analysis results included.", enabled: true },
+  { id: "upload-docs", icon: "Upload", title: "Upload Documents", description: "Securely upload required documents for each deal. We'll tell you exactly what's needed based on the deal type.", enabled: true },
+  { id: "commissions", icon: "BadgeDollarSign", title: "View Commissions", description: "Track your earnings, broker points, and YSP for every closed deal.", enabled: true },
+  { id: "messaging", icon: "MessageSquare", title: "Message Our Team", description: "Communicate directly with loan officers and processors through your portal inbox.", enabled: true },
+];
+
+function OnboardingTourConfig() {
+  const { toast } = useToast();
+  const [cards, setCards] = useState(DEFAULT_TOUR_CARDS);
+  const [loaded, setLoaded] = useState(false);
+
+  const { data: settingsData, isLoading } = useQuery<{ settings: Array<{ id: number; settingKey: string; settingValue: string }> }>({
+    queryKey: ['/api/admin/settings'],
+  });
+
+  useEffect(() => {
+    const settings = settingsData?.settings;
+    if (settings && !loaded) {
+      const tourSetting = settings.find(s => s.settingKey === 'broker_onboarding_tour_cards');
+      if (tourSetting?.settingValue) {
+        try {
+          const parsed = JSON.parse(tourSetting.settingValue);
+          if (Array.isArray(parsed) && parsed.length > 0) setCards(parsed);
+        } catch {}
+      }
+      setLoaded(true);
+    }
+  }, [settingsData, loaded]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest('PUT', '/api/admin/settings/broker_onboarding_tour_cards', {
+        value: JSON.stringify(cards),
+        description: 'Broker onboarding tour slide cards (JSON array)',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/onboarding/tour-config'] });
+      toast({ title: 'Tour slides saved' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to save tour slides', variant: 'destructive' });
+    },
+  });
+
+  const updateCard = (index: number, field: string, value: string | boolean) => {
+    setCards(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c));
+  };
+
+  const addCard = () => {
+    setCards(prev => [...prev, {
+      id: `card-${Date.now()}`,
+      icon: "Send",
+      title: "",
+      description: "",
+      enabled: true,
+    }]);
+  };
+
+  const removeCard = (index: number) => {
+    setCards(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const resetToDefaults = () => {
+    setCards(DEFAULT_TOUR_CARDS);
+  };
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            Broker Onboarding Tour Slides
+          </CardTitle>
+          <CardDescription>
+            Configure the feature cards shown during the broker onboarding tour step. Each card highlights a key platform feature.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cards.map((card, idx) => (
+            <div key={idx} className="border rounded-lg p-4 space-y-3" data-testid={`tour-card-${idx}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Slide {idx + 1}</span>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={card.enabled}
+                    onCheckedChange={(checked) => updateCard(idx, 'enabled', checked)}
+                    data-testid={`switch-tour-card-${idx}`}
+                  />
+                  <Button variant="ghost" size="icon" onClick={() => removeCard(idx)} data-testid={`delete-tour-card-${idx}`}>
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Title</Label>
+                  <Input
+                    value={card.title}
+                    onChange={(e) => updateCard(idx, 'title', e.target.value)}
+                    placeholder="Feature title"
+                    data-testid={`input-tour-card-title-${idx}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Icon</Label>
+                  <Select value={card.icon} onValueChange={(v) => updateCard(idx, 'icon', v)}>
+                    <SelectTrigger data-testid={`select-tour-card-icon-${idx}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AVAILABLE_ICONS.map(icon => (
+                        <SelectItem key={icon} value={icon}>{icon}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Description</Label>
+                <Textarea
+                  value={card.description}
+                  onChange={(e) => updateCard(idx, 'description', e.target.value)}
+                  placeholder="Brief description of this feature"
+                  rows={2}
+                  className="text-sm"
+                  data-testid={`input-tour-card-desc-${idx}`}
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button variant="outline" onClick={addCard} data-testid="button-add-tour-card">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Slide
+            </Button>
+            <Button variant="ghost" onClick={resetToDefaults} data-testid="button-reset-tour-defaults">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reset to Defaults
+            </Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-tour-config">
+              <Save className="h-4 w-4 mr-2" />
+              {saveMutation.isPending ? 'Saving...' : 'Save Tour Slides'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -576,9 +863,9 @@ export default function AdminSettings() {
           <Label htmlFor={key} className="font-medium">
             {config.label}
           </Label>
-          {setting?.updatedAt && !isNaN(new Date(setting.updatedAt).getTime()) && (
+          {setting?.updatedAt && (
             <span className="text-xs text-muted-foreground">
-              Updated {format(new Date(setting.updatedAt), "MMM d, yyyy")}
+              Updated {safeFormat(setting.updatedAt, "MMM d, yyyy", "")}
             </span>
           )}
         </div>
@@ -1220,6 +1507,10 @@ export default function AdminSettings() {
           {activeTab === "quote-pdfs" && <QuotePdfTemplateConfig />}
 
           {activeTab === "custom-fields" && <CustomFieldsConfig />}
+
+          {activeTab === "email-templates" && <EmailTemplatesConfig />}
+
+          {activeTab === "onboarding" && <OnboardingTourConfig />}
 
           {activeTab === "billing" && <BillingPlansConfig />}
 

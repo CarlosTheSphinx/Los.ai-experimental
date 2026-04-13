@@ -47,8 +47,8 @@ expertMode = true
 [userenv]
 
 [userenv.shared]
-VITE_SITE_MODE = "landing"
-SITE_MODE = "landing"
+VITE_SITE_MODE = "app"
+SITE_MODE = "app"
 VITE_BASE_URL = "https://lendry.ai"
 
 [userenv.production]

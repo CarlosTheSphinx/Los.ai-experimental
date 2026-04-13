@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/phase1/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, sortByActionPriority, taskActionPriority, safeFormat } from "@/lib/utils";
 
 function getPriorityColor(priority: string): string {
   switch (priority?.toLowerCase()) {
@@ -176,7 +176,14 @@ export default function TabTasks({
     if (task.assignedTo) {
       const assignedId = typeof task.assignedTo === "string" ? parseInt(task.assignedTo) : task.assignedTo;
       const member = teamMembers.find((m) => m.id === assignedId);
-      if (member) return member.fullName || member.email;
+      if (member) {
+        const roleLabel = member.role === 'super_admin' ? 'Admin'
+          : member.role === 'lender' ? 'Lender'
+          : member.role === 'processor' ? 'Processor'
+          : member.role === 'broker' ? 'Broker'
+          : member.role || '';
+        return `${member.fullName || member.email}${roleLabel ? ` (${roleLabel})` : ''}`;
+      }
       return `User #${task.assignedTo}`;
     }
     return null;
@@ -210,8 +217,8 @@ export default function TabTasks({
             {assignee && (
               <p className="text-[13px] text-muted-foreground">Assigned to: {assignee}</p>
             )}
-            {task.dueDate && !isNaN(new Date(task.dueDate).getTime()) && (
-              <p className="text-[13px] text-muted-foreground">Due: {format(new Date(task.dueDate), "MMM d, yyyy")}</p>
+            {task.dueDate && (
+              <p className="text-[13px] text-muted-foreground">Due: {safeFormat(task.dueDate, "MMM d, yyyy", "")}</p>
             )}
           </div>
         </div>
@@ -254,6 +261,9 @@ export default function TabTasks({
     const key = task.stageId || null;
     if (!tasksByStage.has(key)) tasksByStage.set(key, []);
     tasksByStage.get(key)!.push(task);
+  });
+  tasksByStage.forEach((items, key) => {
+    tasksByStage.set(key, sortByActionPriority(items, (t) => taskActionPriority(t.status)));
   });
 
   const sortedStageKeys: (number | null)[] = [];
@@ -382,11 +392,18 @@ export default function TabTasks({
                           : `${deal.customerEmail} (Borrower)`}
                       </SelectItem>
                     )}
-                    {teamMembers.map((member) => (
-                      <SelectItem key={member.id} value={String(member.id)}>
-                        {member.fullName || member.email}
-                      </SelectItem>
-                    ))}
+                    {teamMembers.map((member) => {
+                      const roleLabel = member.role === 'super_admin' ? 'Admin'
+                        : member.role === 'lender' ? 'Lender'
+                        : member.role === 'processor' ? 'Processor'
+                        : member.role === 'broker' ? 'Broker'
+                        : member.role || '';
+                      return (
+                        <SelectItem key={member.id} value={String(member.id)}>
+                          {member.fullName || member.email}{roleLabel ? ` (${roleLabel})` : ''}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

@@ -345,7 +345,7 @@ export async function sendPasswordResetEmail(
     const { client, fromEmail } = await getResendClient();
     
     const result = await client.emails.send({
-      from: fromEmail,
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
       to: recipientEmail,
       subject: 'Password Reset Request - Lendry.AI',
       html: `
@@ -396,6 +396,143 @@ export async function sendPasswordResetEmail(
     return { success: true, result };
   } catch (error: any) {
     console.error('Failed to send password reset email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendBrokerWelcomeEmail(
+  recipientEmail: string,
+  recipientName: string,
+  portalLink: string,
+  tenantId?: number | null,
+  companyName?: string | null
+) {
+  try {
+    const { getSettingByKey } = await import('./storage').then(m => ({ getSettingByKey: m.storage.getSettingByKey.bind(m.storage) }));
+
+    const enabledSetting = await getSettingByKey('broker_welcome_email_enabled', tenantId);
+    if (enabledSetting?.settingValue === 'false') return { success: true, skipped: true };
+
+    const templateSetting = await getSettingByKey('broker_welcome_email_template', tenantId);
+    let subject = 'Welcome to Sphinx Capital - Your Broker Portal is Ready';
+    let bodyHtml = `
+      <p>Hello {{firstName}},</p>
+      <p>Welcome to Sphinx Capital's lending platform! Your broker account has been created successfully.</p>
+      <p>Here's what you can do in your broker portal:</p>
+      <ul>
+        <li><strong>Submit Commercial Deals</strong> — Send us your deals for quick AI-powered analysis and fund matching</li>
+        <li><strong>Track Deal Status</strong> — Monitor the progress of all your submissions in real time</li>
+        <li><strong>View Commissions</strong> — See your earnings and commission details</li>
+        <li><strong>Upload Documents</strong> — Securely share required documents for your deals</li>
+      </ul>
+      <div style="text-align: center;">
+        <a href="{{portalLink}}" style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; font-size: 16px;">Go to Your Portal</a>
+      </div>
+      <p>If you have any questions, our team is here to help.</p>
+    `;
+
+    if (templateSetting?.settingValue) {
+      try {
+        const template = JSON.parse(templateSetting.settingValue);
+        if (template.subject) subject = template.subject;
+        if (template.body) bodyHtml = template.body;
+      } catch {}
+    }
+
+    const firstName = recipientName.split(' ')[0] || recipientName;
+    subject = subject
+      .replace(/\{\{firstName\}\}/g, firstName)
+      .replace(/\{\{portalLink\}\}/g, portalLink)
+      .replace(/\{\{companyName\}\}/g, companyName || '');
+    bodyHtml = bodyHtml
+      .replace(/\{\{firstName\}\}/g, firstName)
+      .replace(/\{\{fullName\}\}/g, recipientName)
+      .replace(/\{\{companyName\}\}/g, companyName || '')
+      .replace(/\{\{portalLink\}\}/g, portalLink)
+      .replace(/\{\{supportEmail\}\}/g, 'support@lendry.ai');
+
+    const { client, fromEmail } = await getResendClient();
+
+    const result = await client.emails.send({
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+      to: recipientEmail,
+      subject,
+      html: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+  </style>
+</head>
+<body>
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+      <h1 style="margin: 0; color: white; font-size: 24px;">Welcome to Sphinx Capital</h1>
+    </div>
+    <div style="background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px;">
+      ${bodyHtml}
+    </div>
+    <div style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
+      <p>Powered by Lendry.AI</p>
+    </div>
+  </div>
+</body>
+</html>`
+    });
+
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Failed to send broker welcome email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendMagicLinkEmail(
+  recipientEmail: string,
+  recipientName: string,
+  magicLink: string
+) {
+  try {
+    const { client, fromEmail } = await getResendClient();
+
+    const result = await client.emails.send({
+      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+      to: recipientEmail,
+      subject: 'Your Login Link - Lendry.AI',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          </style>
+        </head>
+        <body>
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: white; font-size: 24px;">One-Click Login</h1>
+            </div>
+            <div style="background-color: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px;">
+              <p>Hello ${recipientName},</p>
+              <p>Click the button below to log in instantly — no password needed.</p>
+              <div style="text-align: center;">
+                <a href="${magicLink}" style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; font-size: 16px;">Log In Now</a>
+              </div>
+              <p style="color: #64748b; font-size: 14px;">This link will expire in 30 minutes and can only be used once.</p>
+              <p style="color: #64748b; font-size: 14px;">If you didn't request this link, you can safely ignore this email.</p>
+            </div>
+            <div style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
+              <p>Powered by Lendry.AI</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Failed to send magic link email:', error);
     return { success: false, error: error.message };
   }
 }

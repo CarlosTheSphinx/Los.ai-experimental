@@ -59,8 +59,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatTimestamp, safeFormat } from "@/lib/utils";
 
 interface AgentConfiguration {
   id: number;
@@ -654,7 +653,7 @@ function RunHistoryTable({
                     {run.userEmail || (run.triggerType ? run.triggerType : "-")}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {run.startedAt ? format(new Date(run.startedAt), "MMM d, HH:mm") : "—"}
+                    {safeFormat(run.startedAt, "MMM d, HH:mm")}
                   </td>
                 </tr>
               ))}
@@ -1119,7 +1118,7 @@ function PipelineOrchestrationEditor({
                               <Badge variant="outline" className="text-xs">{run.triggerType}</Badge>
                             </td>
                             <td className="px-4 py-2 text-muted-foreground">
-                              {run.startedAt ? format(new Date(run.startedAt), "MMM d, HH:mm") : "\u2014"}
+                              {safeFormat(run.startedAt, "MMM d, HH:mm")}
                             </td>
                           </tr>
                         ))}
@@ -2092,7 +2091,7 @@ export default function AIAgentsPage() {
                             <SelectContent>
                               {cpSessions.sessions.map((s: any) => (
                                 <SelectItem key={s.sessionId} value={s.sessionId}>
-                                  {s.fileName || "Untitled"} ({Math.round(s.textLength / 1000)}K chars) — {new Date(s.cachedAt).toLocaleString()}
+                                  {s.fileName || "Untitled"} ({Math.round(s.textLength / 1000)}K chars) — {formatTimestamp(s.cachedAt)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -2325,9 +2324,7 @@ export default function AIAgentsPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">
                       Last run:{" "}
-                      {emailDocCheckSettings?.lastRunAt
-                        ? format(new Date(emailDocCheckSettings.lastRunAt), "MMM d, h:mm a")
-                        : "Never"}
+                      {safeFormat(emailDocCheckSettings?.lastRunAt, "MMM d, h:mm a", "Never")}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Total classifications: {emailDocCheckSettings?.totalClassifications || 0}
@@ -2421,7 +2418,7 @@ export default function AIAgentsPage() {
                               {run.estimatedCost ? `$${run.estimatedCost.toFixed(4)}` : "—"}
                             </td>
                             <td className="py-2 text-muted-foreground">
-                              {run.startedAt ? format(new Date(run.startedAt), "MMM d, h:mm a") : "—"}
+                              {safeFormat(run.startedAt, "MMM d, h:mm a")}
                             </td>
                           </tr>
                         ))}

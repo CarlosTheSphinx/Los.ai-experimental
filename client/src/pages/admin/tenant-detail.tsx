@@ -28,7 +28,8 @@ import {
   Briefcase,
   Loader2,
 } from "lucide-react";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils";
+
 import {
   Table,
   TableBody,
@@ -298,11 +299,11 @@ export default function TenantDetailPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Joined</span>
-                  <span className="font-medium">{tenant.createdAt ? format(new Date(tenant.createdAt), "MMM d, yyyy") : "Unknown"}</span>
+                  <span className="font-medium">{safeFormat(tenant.createdAt, "MMM d, yyyy", "Unknown")}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Last Login</span>
-                  <span className="font-medium">{tenant.lastLoginAt ? format(new Date(tenant.lastLoginAt), "MMM d, yyyy h:mm a") : "Never"}</span>
+                  <span className="font-medium">{safeFormat(tenant.lastLoginAt, "MMM d, yyyy h:mm a", "Never")}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Onboarding</span>
@@ -379,7 +380,7 @@ export default function TenantDetailPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {member.lastLoginAt ? format(new Date(member.lastLoginAt), "MMM d, yyyy") : "Never"}
+                        {safeFormat(member.lastLoginAt, "MMM d, yyyy", "Never")}
                       </TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button
@@ -446,7 +447,7 @@ export default function TenantDetailPage() {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground capitalize">{deal.currentStage || "—"}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {deal.createdAt ? format(new Date(deal.createdAt), "MMM d, yyyy") : "—"}
+                          {safeFormat(deal.createdAt, "MMM d, yyyy")}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -489,7 +490,7 @@ export default function TenantDetailPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {program.createdAt ? format(new Date(program.createdAt), "MMM d, yyyy") : "—"}
+                          {safeFormat(program.createdAt, "MMM d, yyyy")}
                         </TableCell>
                       </TableRow>
                     ))}

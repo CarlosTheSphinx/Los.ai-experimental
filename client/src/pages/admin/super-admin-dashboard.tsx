@@ -33,7 +33,7 @@ import {
   XCircle,
   Loader2,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { safeFormat, safeRelativeTime } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -251,7 +251,7 @@ function LenderAccountsTable({ accounts }: { accounts: LenderAccount[] }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {format(new Date(account.createdAt), "MMM d, yyyy")}
+                      {safeFormat(account.createdAt, "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -506,9 +506,7 @@ function RecentActivityFeed({ signups }: { signups: RecentSignup[] }) {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formatDistanceToNow(new Date(signup.createdAt), {
-                      addSuffix: true,
-                    })}
+                    {safeRelativeTime(signup.createdAt)}
                   </p>
                 </div>
               </div>

@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { Bell, FileUp, MessageSquare, Check, CheckCheck, ExternalLink, ClipboardList, AtSign, Mail, Paperclip, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatDistanceToNow } from "date-fns";
+import { safeRelativeTime } from "@/lib/utils";
 
 interface Notification {
   id: number;
@@ -81,6 +81,8 @@ export function NotificationBell() {
         return <Paperclip className="h-4 w-4 text-amber-500" />;
       case "term_sheet_signed":
         return <FileCheck className="h-4 w-4 text-emerald-500" />;
+      case "admin_broadcast":
+        return <Mail className="h-4 w-4 text-blue-600" />;
       default:
         return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
@@ -168,9 +170,7 @@ export function NotificationBell() {
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[11px] text-muted-foreground/70">
-                        {notif.createdAt && !isNaN(new Date(notif.createdAt).getTime())
-                          ? formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })
-                          : "recently"}
+                        {safeRelativeTime(notif.createdAt, "just now")}
                       </span>
                       {notif.dealId && (
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5">

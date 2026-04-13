@@ -22,7 +22,11 @@ import {
   Ban,
   AlertTriangle,
   Search,
+  Save,
+  FileDown,
+  Trash2,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -242,6 +246,86 @@ export function PricingConfiguration({
   const [extTextInputs, setExtTextInputs] = useState<ExternalTextInput[]>([]);
   const [extDropdowns, setExtDropdowns] = useState<ExternalDropdown[]>([]);
   const [extExpandedDropdown, setExtExpandedDropdown] = useState<number | null>(null);
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  const { data: templatesData, refetch: refetchTemplates } = useQuery<{ templates: any[] }>({
+    queryKey: ['/api/admin/pricing-templates'],
+  });
+  const savedTemplates = templatesData?.templates || [];
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const templateTextInputs = extTextInputs.map(ti => ({
+        fieldKey: ti.fieldKey,
+        label: ti.label,
+        sourceType: ti.sourceType,
+        defaultValue: ti.defaultValue,
+        formula: ti.formula,
+        mappedFrom: ti.mappedFrom,
+      }));
+      const templateDropdowns = extDropdowns.map(dd => ({
+        fieldKey: dd.fieldKey,
+        label: dd.label,
+        sourceType: dd.sourceType,
+        defaultValue: dd.defaultValue,
+        formula: dd.formula,
+        conditionalRules: dd.conditionalRules,
+        fallbackOption: dd.fallbackOption,
+        mappedFrom: dd.mappedFrom,
+      }));
+      const res = await apiRequest('POST', '/api/admin/pricing-templates', { name, textInputs: templateTextInputs, dropdowns: templateDropdowns });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Template saved', description: `"${templateName}" saved successfully.` });
+      setShowSaveTemplateDialog(false);
+      setTemplateName('');
+      refetchTemplates();
+    },
+    onError: () => {
+      toast({ title: 'Save failed', description: 'Could not save the template.', variant: 'destructive' });
+    },
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest('DELETE', `/api/admin/pricing-templates/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Template deleted' });
+      refetchTemplates();
+    },
+  });
+
+  const applyTemplate = (template: any) => {
+    const tTextInputs = (template.textInputs || template.text_inputs || []) as any[];
+    const tDropdowns = (template.dropdowns || []) as any[];
+    let matchedCount = 0;
+    const totalFields = tTextInputs.length + tDropdowns.length;
+
+    const updatedTextInputs = extTextInputs.map(ti => {
+      const match = tTextInputs.find((t: any) => t.label.toLowerCase() === ti.label.toLowerCase());
+      if (match) {
+        matchedCount++;
+        return { ...ti, fieldKey: match.fieldKey || ti.fieldKey, sourceType: match.sourceType || ti.sourceType, defaultValue: match.defaultValue, formula: match.formula, mappedFrom: match.mappedFrom };
+      }
+      return ti;
+    });
+    const updatedDropdowns = extDropdowns.map(dd => {
+      const match = tDropdowns.find((t: any) => t.label.toLowerCase() === dd.label.toLowerCase());
+      if (match) {
+        matchedCount++;
+        return { ...dd, fieldKey: match.fieldKey || dd.fieldKey, sourceType: match.sourceType || dd.sourceType, defaultValue: match.defaultValue, formula: match.formula, conditionalRules: match.conditionalRules, fallbackOption: match.fallbackOption, mappedFrom: match.mappedFrom };
+      }
+      return dd;
+    });
+
+    setExtTextInputs(updatedTextInputs);
+    setExtDropdowns(updatedDropdowns);
+    toast({ title: 'Template applied', description: `Matched ${matchedCount} of ${totalFields} fields from "${template.name}".` });
+  };
 
   const scanFieldsMutation = useMutation({
     mutationFn: async (scanUrl: string) => {
@@ -406,7 +490,7 @@ export function PricingConfiguration({
       brokerPointsEnabled: pointsBrokerAdjustable,
       brokerPointsStep: parseFloat(pointsStep) || 0.25,
     });
-  }, [pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
+  }, [onChange, pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
 
   const hasExistingRuleset = (existingRuleset?.rulesets?.length || 0) > 0;
 
@@ -897,6 +981,60 @@ export function PricingConfiguration({
               )}
             </Button>
           </div>
+
+          {(extTextInputs.length > 0 || extDropdowns.length > 0) && (
+          <div className="rounded-[10px] border bg-white p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[16px] font-bold">Field Mapping Templates</h4>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveTemplateDialog(true)}
+                data-testid="button-save-template"
+              >
+                <Save className="h-3.5 w-3.5 mr-1" />
+                Save as Template
+              </Button>
+            </div>
+            <p className="text-[13px] text-muted-foreground">Save your current field mappings as a reusable template, or apply a saved template to restore settings after scanning a new URL.</p>
+            {savedTemplates.length > 0 ? (
+              <div className="space-y-2">
+                {savedTemplates.map((tpl: any) => (
+                  <div key={tpl.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-muted/30" data-testid={`template-row-${tpl.id}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium truncate">{tpl.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        ({(tpl.textInputs || tpl.text_inputs || []).length + (tpl.dropdowns || []).length} fields)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => applyTemplate(tpl)}
+                        data-testid={`button-apply-template-${tpl.id}`}
+                      >
+                        Apply
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteTemplateMutation.mutate(tpl.id)}
+                        className="text-destructive hover:text-destructive"
+                        data-testid={`button-delete-template-${tpl.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[13px] text-muted-foreground italic">No saved templates yet. Configure your field mappings below, then save as a template.</p>
+            )}
+          </div>
+          )}
 
           <div className="rounded-[10px] border bg-white p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -1487,6 +1625,32 @@ export function PricingConfiguration({
           </div>
         </div>
       )}
+
+      <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save Field Mapping Template</DialogTitle>
+            <DialogDescription>Give this template a name so you can apply it to other programs later.</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Template name (e.g. NQX Pricer Default)"
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            data-testid="input-template-name"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)} data-testid="button-cancel-template">Cancel</Button>
+            <Button
+              onClick={() => saveTemplateMutation.mutate(templateName)}
+              disabled={!templateName.trim() || saveTemplateMutation.isPending}
+              data-testid="button-confirm-save-template"
+            >
+              {saveTemplateMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

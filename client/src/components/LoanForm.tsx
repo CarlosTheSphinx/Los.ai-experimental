@@ -7,7 +7,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Calculator, DollarSign, Building, Percent } from "lucide-react";
+import { Calculator, DollarSign, Building, Percent } from "lucide-react";
 import { useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -25,12 +25,27 @@ interface LoanFormProps {
   visibleFields?: QuoteFormField[];
 }
 
+const REQUIRED_FIELDS_DEFAULT = new Set([
+  'loanAmount', 'propertyValue', 'loanType', 'loanPurpose', 'propertyType', 'ficoScore'
+]);
+
 export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: LoanFormProps) {
   const isFieldVisible = (fieldKey: string) => {
-    if (!visibleFields || visibleFields.length === 0) return true;
+    if (!visibleFields) return true;
+    if (visibleFields.length === 0) return false;
     const field = visibleFields.find(f => f.fieldKey === fieldKey);
-    return field ? field.visible : false;
+    return field ? field.visible !== false : false;
   };
+  const isFieldRequired = (fieldKey: string) => {
+    if (visibleFields) {
+      const field = visibleFields.find(f => f.fieldKey === fieldKey);
+      if (field) return field.required;
+    }
+    return REQUIRED_FIELDS_DEFAULT.has(fieldKey);
+  };
+  const RequiredAsterisk = ({ fieldKey }: { fieldKey: string }) => (
+    isFieldRequired(fieldKey) ? <span className="text-red-500 ml-0.5">*</span> : null
+  );
   const form = useForm<LoanPricingFormData>({
     resolver: zodResolver(loanPricingFormSchema),
     defaultValues: defaultData || {
@@ -46,8 +61,8 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
       annualTaxes: "" as any,
       annualInsurance: "" as any,
       calculatedDscr: "",
-      dscr: "" as any,
-      prepaymentPenalty: "" as any,
+      dscr: "",
+      prepaymentPenalty: "None",
       tpoPremium: "1", // Auto-set 1% TPO (hidden from user)
     },
   });
@@ -144,7 +159,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="loanAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Loan Amount ($)</FormLabel>
+                      <FormLabel className="text-foreground">Loan Amount ($)<RequiredAsterisk fieldKey="loanAmount" /></FormLabel>
                       <FormControl>
                         <CurrencyInput
                           className="h-11 bg-muted border-border focus:bg-background transition-all" 
@@ -166,7 +181,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="propertyValue"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Property Value ($)</FormLabel>
+                      <FormLabel className="text-foreground">Property Value ($)<RequiredAsterisk fieldKey="propertyValue" /></FormLabel>
                       <FormControl>
                         <CurrencyInput
                           className="h-11 bg-muted border-border focus:bg-background transition-all" 
@@ -191,7 +206,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="ltv"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">LTV (%)</FormLabel>
+                      <FormLabel className="text-foreground">LTV (%)<RequiredAsterisk fieldKey="ltv" /></FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Percent className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -209,7 +224,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="ficoScore"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">FICO Score</FormLabel>
+                      <FormLabel className="text-foreground">FICO Score<RequiredAsterisk fieldKey="ficoScore" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -238,7 +253,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="grossMonthlyRent"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Gross Monthly Rent ($)</FormLabel>
+                      <FormLabel className="text-foreground">Gross Monthly Rent ($)<RequiredAsterisk fieldKey="grossMonthlyRent" /></FormLabel>
                       <FormControl>
                         <CurrencyInput
                           className="h-11 bg-muted border-border focus:bg-background transition-all" 
@@ -260,7 +275,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="annualTaxes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Annual Taxes ($)</FormLabel>
+                      <FormLabel className="text-foreground">Annual Taxes ($)<RequiredAsterisk fieldKey="annualTaxes" /></FormLabel>
                       <FormControl>
                         <CurrencyInput
                           className="h-11 bg-muted border-border focus:bg-background transition-all" 
@@ -282,7 +297,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="annualInsurance"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Annual Insurance ($)</FormLabel>
+                      <FormLabel className="text-foreground">Annual Insurance ($)<RequiredAsterisk fieldKey="annualInsurance" /></FormLabel>
                       <FormControl>
                         <CurrencyInput
                           className="h-11 bg-muted border-border focus:bg-background transition-all" 
@@ -307,7 +322,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="calculatedDscr"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Exact DSCR</FormLabel>
+                      <FormLabel className="text-foreground">Exact DSCR<RequiredAsterisk fieldKey="calculatedDscr" /></FormLabel>
                       <FormControl>
                         <Input readOnly className="h-11 bg-muted text-muted-foreground font-medium" placeholder="Calculated" {...field} />
                       </FormControl>
@@ -321,7 +336,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="dscr"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Est. DSCR</FormLabel>
+                      <FormLabel className="text-foreground">Est. DSCR<RequiredAsterisk fieldKey="dscr" /></FormLabel>
                       <Select disabled onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted text-muted-foreground font-medium">
@@ -360,7 +375,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="loanType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Loan Type</FormLabel>
+                      <FormLabel className="text-foreground">Loan Type<RequiredAsterisk fieldKey="loanType" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -386,7 +401,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="loanPurpose"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Loan Purpose</FormLabel>
+                      <FormLabel className="text-foreground">Loan Purpose<RequiredAsterisk fieldKey="loanPurpose" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -411,7 +426,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="propertyType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Property Type</FormLabel>
+                      <FormLabel className="text-foreground">Property Type<RequiredAsterisk fieldKey="propertyType" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -447,7 +462,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="interestOnly"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Interest Only</FormLabel>
+                      <FormLabel className="text-foreground">Interest Only<RequiredAsterisk fieldKey="interestOnly" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -473,7 +488,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
                   name="prepaymentPenalty"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground">Prepayment Penalty</FormLabel>
+                      <FormLabel className="text-foreground">Prepayment Penalty<RequiredAsterisk fieldKey="prepaymentPenalty" /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-11 bg-muted border-border">
@@ -503,14 +518,7 @@ export function LoanForm({ onSubmit, isLoading, defaultData, visibleFields }: Lo
               disabled={isLoading} 
               className="w-full h-14 text-lg font-semibold shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 transition-all duration-300"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Calculating Rate...
-                </>
-              ) : (
-                "Get Pricing Quote"
-              )}
+              {isLoading ? "Calculating Rate..." : "Get Pricing Quote"}
             </Button>
           </form>
         </Form>

@@ -45,7 +45,9 @@ interface AdminActivityItem {
 
 interface TaskBoardItem {
   id: number;
-  projectId: number;
+  projectId: number | null;
+  dealId?: number | null;
+  source?: string;
   stageId: number | null;
   taskTitle: string;
   taskDescription: string | null;
@@ -123,10 +125,10 @@ function TaskBoard() {
   });
 
   const completeMutation = useMutation({
-    mutationFn: async (taskId: number) => {
-      return apiRequest("PATCH", `/api/admin/task-board/${taskId}`, { status: "completed" });
+    mutationFn: async ({ taskId, source }: { taskId: number; source?: string }) => {
+      return apiRequest("PATCH", `/api/admin/task-board/${taskId}`, { status: "completed", source });
     },
-    onMutate: (taskId) => {
+    onMutate: ({ taskId }) => {
       setCompletingIds(prev => new Set(prev).add(taskId));
     },
     onSuccess: () => {
@@ -137,7 +139,7 @@ function TaskBoard() {
         }});
       }, 400);
     },
-    onError: (_err, taskId) => {
+    onError: (_err, { taskId }) => {
       setCompletingIds(prev => {
         const next = new Set(prev);
         next.delete(taskId);
@@ -145,11 +147,11 @@ function TaskBoard() {
       });
       toast({ title: "Error", description: "Failed to complete task", variant: "destructive" });
     },
-    onSettled: (_data, _err, taskId) => {
+    onSettled: (_data, _err, vars) => {
       setTimeout(() => {
         setCompletingIds(prev => {
           const next = new Set(prev);
-          next.delete(taskId);
+          next.delete(vars?.taskId ?? 0);
           return next;
         });
       }, 500);
@@ -157,8 +159,8 @@ function TaskBoard() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
-      return apiRequest("PATCH", `/api/admin/task-board/${id}`, updates);
+    mutationFn: async ({ id, updates, source }: { id: number; updates: any; source?: string }) => {
+      return apiRequest("PATCH", `/api/admin/task-board/${id}`, { ...updates, source });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => {
@@ -191,6 +193,7 @@ function TaskBoard() {
         priority: editPriority,
         dueDate: editDueDate ? editDueDate.toISOString() : null,
       },
+      source: editingTask.source,
     });
   };
 
@@ -220,14 +223,15 @@ function TaskBoard() {
 
   const unscheduledCount = showAllTasks ? 0 : tasks.filter(t => !t.dueDate && !completingIds.has(t.id)).length;
 
-  const tasksByProject = currentTasks.reduce<Record<number, { project: { id: number; name: string; borrower: string; address: string; number: string }; tasks: TaskBoardItem[] }>>((acc, task) => {
-    if (!acc[task.projectId]) {
-      acc[task.projectId] = {
-        project: { id: task.projectId, name: task.projectName, borrower: task.borrowerName, address: task.propertyAddress, number: task.loanNumber || task.projectNumber },
+  const tasksByProject = currentTasks.reduce<Record<string, { project: { id: number | string; name: string; borrower: string; address: string; number: string }; tasks: TaskBoardItem[] }>>((acc, task) => {
+    const groupKey = task.source === 'commercial' ? `commercial-${task.dealId}` : String(task.projectId);
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        project: { id: task.projectId ?? task.dealId ?? 0, name: task.projectName, borrower: task.borrowerName, address: task.propertyAddress, number: task.loanNumber || task.projectNumber || (task.source === 'commercial' ? 'Commercial' : '') },
         tasks: [],
       };
     }
-    acc[task.projectId].tasks.push(task);
+    acc[groupKey].tasks.push(task);
     return acc;
   }, {});
 
@@ -364,7 +368,7 @@ function TaskBoard() {
                     <TaskRow 
                       key={task.id} 
                       task={task}
-                      onComplete={() => completeMutation.mutate(task.id)}
+                      onComplete={() => completeMutation.mutate({ taskId: task.id, source: task.source })}
                       onEdit={() => openEditDialog(task)}
                       priorityColor={priorityColor}
                       isCompleting={completingIds.has(task.id)}
@@ -389,7 +393,7 @@ function TaskBoard() {
                       <TaskRow 
                         key={task.id} 
                         task={task}
-                        onComplete={() => completeMutation.mutate(task.id)}
+                        onComplete={() => completeMutation.mutate({ taskId: task.id, source: task.source })}
                         onEdit={() => openEditDialog(task)}
                         priorityColor={priorityColor}
                         isCompleting={completingIds.has(task.id)}
@@ -530,7 +534,7 @@ function TaskRow({ task, onComplete, onEdit, priorityColor, isCompleting, showDe
   isCompleting: boolean;
   showDealContext?: boolean;
 }) {
-  const dealId = task.loanNumber || `DEAL-${task.projectId}`;
+  const dealId = task.loanNumber || (task.source === 'commercial' ? `CRE-${task.dealId}` : `DEAL-${task.projectId}`);
   return (
     <div 
       className={cn(

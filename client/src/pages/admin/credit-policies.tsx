@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,9 +223,12 @@ export default function AdminCreditPolicies() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/orchestration`);
     wsRef.current = ws;
+    let wsRulesReceived: any[] | null = null;
+    let wsCompleted = false;
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
+        const raw = JSON.parse(event.data);
+        const msg = raw.type === 'orchestration_event' ? raw.data : raw;
         if (msg.eventType === 'credit_extraction_progress' && msg.metadata) {
           const pct = Math.round((msg.metadata.chunksCompleted / msg.metadata.totalChunks) * 100);
           setExtractProgress(Math.min(pct, 95));
@@ -236,6 +240,35 @@ export default function AdminCreditPolicies() {
           if (msg.rules && Array.isArray(msg.rules)) {
             setLiveRules(msg.rules);
           }
+        }
+        if (msg.eventType === 'credit_rule_extracted' && msg.rules) {
+          wsRulesReceived = msg.rules.map((r: any) => ({
+            ...r,
+            ruleTitle: r.rule || r.ruleTitle || '',
+            ruleDescription: r.reasoning || r.ruleDescription || '',
+            documentType: r.documentType || 'General',
+            confidence: typeof r.confidence === 'number' ? (r.confidence >= 0.9 ? 'high' : r.confidence >= 0.7 ? 'medium' : 'low') : r.confidence || 'medium',
+          }));
+        }
+        if (msg.eventType === 'agent_complete' && msg.agentName === 'creditPolicyExtractor') {
+          wsCompleted = true;
+          if (wsRulesReceived && wsRulesReceived.length > 0) {
+            stopProgressSimulation();
+            setRules(wsRulesReceived.map(assignLocalId));
+            toast({ title: `Extracted ${wsRulesReceived.length} rules from ${file.name}` });
+          }
+          extractingLockRef.current = false;
+          setIsExtracting(false);
+          setChunkProgress(null);
+          if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+        }
+        if (msg.eventType === 'agent_error' && msg.agentName === 'creditPolicyExtractor') {
+          wsCompleted = true;
+          stopProgressSimulation();
+          extractingLockRef.current = false;
+          setIsExtracting(false);
+          setChunkProgress(null);
+          if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
         }
       } catch {}
     };
@@ -264,14 +297,25 @@ export default function AdminCreditPolicies() {
         setRules(data.rules.map(assignLocalId));
         toast({ title: `Extracted ${data.rules.length} rules from ${file.name}` });
       }
+      extractingLockRef.current = false;
+      setIsExtracting(false);
+      setChunkProgress(null);
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     } catch (error: any) {
-      stopProgressSimulation();
-      if (error.message?.includes('already being extracted')) {
-        toast({ title: "Extraction already in progress", description: "Please wait for the current extraction to finish." });
-      } else {
-        toast({ title: "Failed to extract rules", description: error.message, variant: "destructive" });
+      if (wsCompleted) return;
+      if (error.message?.includes('already being extracted')) return;
+      if (wsRulesReceived && wsRulesReceived.length > 0) {
+        stopProgressSimulation();
+        setRules(wsRulesReceived.map(assignLocalId));
+        toast({ title: `Extracted ${wsRulesReceived.length} rules from ${file.name}` });
+        extractingLockRef.current = false;
+        setIsExtracting(false);
+        setChunkProgress(null);
+        if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+        return;
       }
-    } finally {
+      stopProgressSimulation();
+      toast({ title: "Failed to extract rules", description: error.message, variant: "destructive" });
       extractingLockRef.current = false;
       setIsExtracting(false);
       setChunkProgress(null);
@@ -845,7 +889,7 @@ export default function AdminCreditPolicies() {
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground">
-                          {new Date(policy.createdAt).toLocaleDateString()}
+                          {formatDate(policy.createdAt)}
                         </span>
                       </div>
                     </div>

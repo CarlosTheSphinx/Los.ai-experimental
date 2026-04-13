@@ -27,12 +27,24 @@ interface ProgramConfig {
   brokerPointsStep?: number;
 }
 
+interface BrokerSettings {
+  yspEnabled?: boolean;
+  yspMaxPercent?: number;
+  brokerPointsEnabled?: boolean;
+  brokerPointsMaxPercent?: number;
+  programOverrides?: Record<string, {
+    yspMaxPercent?: number;
+    brokerPointsMaxPercent?: number;
+  }>;
+}
+
 interface PricingResultProps {
   result: PricingResponse;
   formData: LoanPricingFormData | null;
   onReset: () => void;
   programId?: number | null;
   programConfig?: ProgramConfig | null;
+  brokerSettings?: BrokerSettings | null;
 }
 
 function normalizeKey(key: string): string {
@@ -62,7 +74,7 @@ function safeNumber(value: any): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-export function PricingResult({ result, formData, onReset, programId, programConfig }: PricingResultProps) {
+export function PricingResult({ result, formData, onReset, programId, programConfig, brokerSettings }: PricingResultProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -78,8 +90,18 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   const programBasePointsMin = cfg.basePointsMin ?? 0.5;
   const programBasePointsMax = cfg.basePointsMax ?? 3;
   const programBrokerPointsEnabled = cfg.brokerPointsEnabled ?? true;
-  const programBrokerPointsMax = cfg.brokerPointsMax ?? 2;
+  const rawProgramBrokerPointsMax = cfg.brokerPointsMax ?? 2;
   const programBrokerPointsStep = cfg.brokerPointsStep ?? 0.125;
+
+  const effectiveBrokerPointsMax = (() => {
+    if (!isBroker || !brokerSettings) return rawProgramBrokerPointsMax;
+    const programKey = programId ? String(programId) : null;
+    const override = programKey ? brokerSettings.programOverrides?.[programKey] : undefined;
+    const brokerMax = override?.brokerPointsMaxPercent ?? brokerSettings.brokerPointsMaxPercent;
+    if (brokerMax != null) return Math.min(rawProgramBrokerPointsMax, brokerMax);
+    return rawProgramBrokerPointsMax;
+  })();
+  const programBrokerPointsMax = effectiveBrokerPointsMax;
   const programYspEnabled = cfg.yspEnabled ?? false;
   const programYspBrokerCanToggle = cfg.yspBrokerCanToggle ?? false;
   const programYspFixedAmount = cfg.yspFixedAmount ?? 0;
@@ -148,7 +170,10 @@ export function PricingResult({ result, formData, onReset, programId, programCon
         customerLastName,
         customerCompanyName,
         propertyAddress,
-        loanData: result.loanData || formData,
+        loanData: {
+          ...(result.loanData || formData || {}),
+          ...(formData?.calculatedDscr ? { calculatedDscr: formData.calculatedDscr } : {}),
+        },
         interestRate: formattedRate,
         pointsCharged: totalPointsCharged,
         programId: programId || null,

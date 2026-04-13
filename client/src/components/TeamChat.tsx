@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -210,7 +210,7 @@ export default function TeamChat({
                         </span>
                       )}
                       <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                        {format(new Date(chat.lastMessageAt), "MMM d")}
+                        {safeFormat(chat.lastMessageAt, "MMM d")}
                       </span>
                     </div>
                   </div>
@@ -488,7 +488,7 @@ export function TeamChatDetail({ activeChatId }: { activeChatId: number | null }
                   <div className={`max-w-[70%] rounded-lg p-3 ${isOwn ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs opacity-70">
-                        {msg.senderName || "Unknown"} · {format(new Date(msg.createdAt), "MMM d, h:mm a")}
+                        {msg.senderName || "Unknown"} · {safeFormat(msg.createdAt, "MMM d, h:mm a")}
                       </span>
                     </div>
                     <p className="text-sm whitespace-pre-wrap">{msg.body}</p>

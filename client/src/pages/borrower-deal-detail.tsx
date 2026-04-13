@@ -1,12 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link } from "wouter";
 import { useState, type ChangeEvent } from "react";
 import {
   ArrowLeft, Building2, User, DollarSign, FileText, CheckSquare,
   Upload, Loader2, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
-  Eye, X, ClipboardEdit, HelpCircle, ClipboardList,
+  Eye, ClipboardEdit, HelpCircle, ClipboardList, Calculator,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatPhoneNumber } from "@/lib/validation";
+import { sortByActionPriority, docActionPriority, taskActionPriority } from "@/lib/utils";
 
 function fmt(amount: number | string | undefined | null): string {
   if (amount === null || amount === undefined || amount === "" || amount === "—") return "—";
@@ -236,9 +237,9 @@ export default function BorrowerDealDetail() {
   const dealId = params?.id;
   const { toast } = useToast();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["overview", "checklist"]));
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
-  const [previewDoc, setPreviewDoc] = useState<{ name: string; filePath: string; mimeType?: string; docId: number } | null>(null);
+
+
 
   const { data: dealData, isLoading, error: dealError } = useQuery<{
     project: any;
@@ -256,6 +257,7 @@ export default function BorrowerDealDetail() {
     },
     enabled: !!dealId,
     retry: 2,
+    refetchInterval: 15000,
   });
 
   const deal = dealData?.project;
@@ -301,6 +303,11 @@ export default function BorrowerDealDetail() {
       return false;
     });
 
+  const isBlank = (v: any) => v === null || v === undefined || v === "" || v === "—";
+  const ANCHOR_KEYS = new Set(['fullName', 'email', 'phone', 'address', 'loanAmount', 'propertyType']);
+  const filterBlanks = (fields: { key: string; label: string; value: string }[]) =>
+    fields.filter(f => ANCHOR_KEYS.has(f.key) || !isBlank(f.value));
+
   const buildBorrowerFields = () => {
     const fields = [
       { key: 'fullName', label: "Full Name", value: deal?.borrowerName || `${deal?.customerFirstName || ""} ${deal?.customerLastName || ""}`.trim() || "—" },
@@ -321,7 +328,7 @@ export default function BorrowerDealDetail() {
         { key: 'entityType', label: "Entity Type", value: appData.entityType || "—" },
       );
     }
-    return fields;
+    return filterBlanks(fields);
   };
 
   const buildPropertyFields = () => {
@@ -337,34 +344,25 @@ export default function BorrowerDealDetail() {
           fields.push({ key: f.fieldKey, label: f.label, value: formatFieldValue(getFieldValue(f.fieldKey), f.fieldType) });
         });
     }
-    return fields;
+    return filterBlanks(fields);
   };
 
   const buildLoanFields = () => {
     const loanAmount = deal?.loanAmount || deal?.loanData?.loanAmount;
     const interestRate = deal?.interestRate;
     const termMonths = deal?.termMonths || deal?.loanTermMonths || deal?.loanData?.loanTerm;
-    const propertyValue = deal?.propertyValue || appData.propertyValue || deal?.loanData?.propertyValue;
-    const calculatedLtv = (loanAmount && propertyValue && Number(propertyValue) > 0)
-      ? ((Number(loanAmount) / Number(propertyValue)) * 100).toFixed(1) : null;
     const rateDisplay = interestRate && interestRate !== "—"
       ? (String(interestRate).includes("%") ? interestRate : `${Number(interestRate).toFixed(3)}%`) : "—";
-    const lenderPts = deal?.lenderOriginationPoints ?? appData.originationPoints;
-    const brokerPts = deal?.brokerOriginationPoints ?? appData.brokerPointsCharged;
-    const totalPts = (lenderPts != null || brokerPts != null)
-      ? `${((Number(lenderPts) || 0) + (Number(brokerPts) || 0)).toFixed(2)}%` : "—";
 
     const fields = [
       { key: 'loanAmount', label: "Loan Amount", value: fmt(loanAmount) },
       { key: 'interestRate', label: "Interest Rate", value: rateDisplay },
-      { key: 'ltv', label: "LTV", value: calculatedLtv ? `${calculatedLtv}%` : "—" },
-      { key: 'originationPoints', label: "Origination Points", value: totalPts },
       { key: 'term', label: "Term", value: termMonths ? `${termMonths} months` : "—" },
       { key: 'targetCloseDate', label: "Estimated Closing", value: fmtDate(deal?.targetCloseDate) },
     ];
 
     if (hasProgram) {
-      const lockedKeys = new Set(['ltv', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term', 'targetCloseDate']);
+      const lockedKeys = new Set(['ltv', 'ysp', 'lenderOriginationPoints', 'brokerOriginationPoints', 'interestRate', 'brokerName', 'holdbackAmount', 'loanTermMonths', 'term', 'targetCloseDate', 'originationPoints']);
       const contactKeys = new Set(['firstName', 'lastName', 'email', 'phone', 'address']);
       getFieldsByGroup('loan_details')
         .filter((f: any) => !lockedKeys.has(f.fieldKey) && !contactKeys.has(f.fieldKey) && f.fieldKey !== 'loanAmount')
@@ -372,6 +370,49 @@ export default function BorrowerDealDetail() {
           fields.push({ key: f.fieldKey, label: f.label, value: formatFieldValue(getFieldValue(f.fieldKey), f.fieldType) });
         });
     }
+    return filterBlanks(fields);
+  };
+
+  const buildCalculatedFields = () => {
+    const loanAmount = deal?.loanAmount || deal?.loanData?.loanAmount;
+    const propertyValue = deal?.propertyValue || appData.propertyValue || deal?.loanData?.propertyValue;
+    const interestRate = deal?.interestRate;
+    const lenderPts = deal?.lenderOriginationPoints ?? appData.originationPoints;
+    const brokerPts = deal?.brokerOriginationPoints ?? appData.brokerPointsCharged;
+
+    const fields: { key: string; label: string; value: string }[] = [];
+
+    const calculatedLtv = (loanAmount && propertyValue && Number(propertyValue) > 0)
+      ? ((Number(loanAmount) / Number(propertyValue)) * 100).toFixed(1) : null;
+    if (calculatedLtv) fields.push({ key: 'ltv', label: "LTV", value: `${calculatedLtv}%` });
+
+    const loan = Number(loanAmount) || 0;
+    const rent = Number(deal?.loanData?.grossMonthlyRent || appData.grossMonthlyRent || 0);
+    const taxes = Number(deal?.loanData?.annualTaxes || appData.annualTaxes || 0);
+    const insurance = Number(deal?.loanData?.annualInsurance || appData.annualInsurance || 0);
+    const hoa = Number(deal?.loanData?.annualHOA || appData.annualHOA || 0);
+    const noi = (rent * 12) - taxes - insurance - hoa;
+
+    if (noi > 0 && loan > 0) {
+      fields.push({ key: 'noi', label: "NOI", value: fmt(noi) });
+      const rateStr = String(interestRate || "").replace("%", "");
+      const annualRate = Number(rateStr) || 0;
+      if (annualRate > 0) {
+        const monthlyRate = annualRate / 100 / 12;
+        const n = 360;
+        const monthlyPayment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
+        const annualDebtService = monthlyPayment * 12;
+        if (annualDebtService > 0) {
+          fields.push({ key: 'dscr', label: "DSCR", value: `${(noi / annualDebtService).toFixed(2)}x` });
+        }
+      }
+    }
+
+    if (lenderPts != null || brokerPts != null) {
+      const total = ((Number(lenderPts) || 0) + (Number(brokerPts) || 0)).toFixed(2);
+      fields.push({ key: 'originationPoints', label: "Total Origination Points", value: `${total}%` });
+    }
+
     return fields;
   };
 
@@ -386,19 +427,23 @@ export default function BorrowerDealDetail() {
         contentType: file.type,
       });
       const urlData = await urlRes.json();
+      let objectPath = urlData.objectPath;
       if (urlData.uploadURL) {
-        let uploadRes: Response;
         if (urlData.useDirectUpload || urlData.uploadURL.startsWith('/api/')) {
           const formData = new FormData();
           formData.append('file', file);
-          uploadRes = await fetch(urlData.uploadURL, { method: 'POST', body: formData, credentials: 'include' });
+          const uploadRes = await fetch(urlData.uploadURL, { method: 'POST', body: formData, credentials: 'include' });
+          if (!uploadRes.ok) throw new Error('File upload failed');
+          const directData = await uploadRes.json();
+          if (!directData?.objectPath) throw new Error('Direct upload response missing objectPath');
+          objectPath = directData.objectPath;
         } else {
-          uploadRes = await fetch(urlData.uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+          const uploadRes = await fetch(urlData.uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+          if (!uploadRes.ok) throw new Error('File upload failed');
         }
-        if (!uploadRes.ok) throw new Error('File upload failed');
       }
       await apiRequest("POST", `/api/deals/${dealId}/deal-documents/${docId}/upload-complete`, {
-        objectPath: urlData.objectPath,
+        objectPath,
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type,
@@ -447,29 +492,22 @@ export default function BorrowerDealDetail() {
   const borrowerFields = buildBorrowerFields();
   const propertyFields = buildPropertyFields();
   const loanFields = buildLoanFields();
+  const calculatedFields = buildCalculatedFields();
   const borrowerTasks = allTasks.filter((t: any) => t.borrowerActionRequired || t.assignedTo === 'borrower');
   const pendingDocs = documents.filter((d: any) => d.status === 'pending' || d.status === 'rejected');
 
-  const toggle = (section: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
-      return next;
-    });
-  };
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4 space-y-5">
-      <div className="flex items-center gap-3 mb-2">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-3 sm:px-4 space-y-4 sm:space-y-5">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2">
         <Link href="/">
-          <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-[13px] text-muted-foreground font-medium" data-testid="text-loan-number">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className="text-[12px] sm:text-[13px] text-muted-foreground font-medium" data-testid="text-loan-number">
               {deal.loanNumber || `Loan #${deal.id}`}
             </span>
             <Badge
@@ -480,10 +518,10 @@ export default function BorrowerDealDetail() {
               {deal.status === 'active' ? 'In Progress' : deal.status === 'completed' ? 'Completed' : deal.status}
             </Badge>
           </div>
-          <h1 className="text-xl font-bold truncate" data-testid="text-deal-title">
+          <h1 className="text-lg sm:text-xl font-bold truncate" data-testid="text-deal-title">
             {deal.projectName || deal.propertyAddress || `Loan #${deal.id}`}
           </h1>
-          <p className="text-sm text-muted-foreground" data-testid="text-deal-subtitle">
+          <p className="text-xs sm:text-sm text-muted-foreground truncate" data-testid="text-deal-subtitle">
             {[deal.programName, deal.loanType, deal.propertyAddress?.replace(/,?\s*United States of America$/i, '')].filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -497,60 +535,77 @@ export default function BorrowerDealDetail() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="overflow-hidden" data-testid="card-loan-overview">
-          <button
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
-            onClick={() => toggle("overview")}
-            data-testid="toggle-overview"
-          >
-            <CardTitle className="text-[18px] flex items-center gap-2">
+          <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3" data-testid="header-overview">
+            <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-muted-foreground" />
               Loan Overview
             </CardTitle>
-            {expandedSections.has("overview") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-          </button>
-          {expandedSections.has("overview") && (
-            <CardContent className="pt-0 pb-5">
+          </div>
+          <CardContent className="pt-0 pb-4 sm:pb-5 px-3 sm:px-6">
               <div className="border-t mb-4" />
               <div className="space-y-5">
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Details</span>
+                    <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Borrower Details</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                     {borrowerFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                   </div>
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
+                    <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Property Details</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                     {propertyFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                   </div>
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-3">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Loan Details</span>
+                    <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground">Loan Details</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                     {loanFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
                   </div>
                 </div>
+                {calculatedFields.length > 0 && (
+                  <div className="border-t pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calculator className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-[13px] sm:text-[14px] font-bold uppercase tracking-wider text-muted-foreground" data-testid="header-calculated-fields">Calculated Fields</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                      {calculatedFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
-          )}
         </Card>
 
+        {calculatedFields.length > 0 && (
+          <Card className="overflow-hidden" data-testid="card-calculated-fields">
+            <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3">
+              <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
+                <Calculator className="h-4 w-4 text-muted-foreground" />
+                Calculated Fields
+              </CardTitle>
+            </div>
+            <CardContent className="pt-0 pb-4 sm:pb-5 px-3 sm:px-6">
+              <div className="border-t mb-4" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                {calculatedFields.map(f => <Field key={f.key} label={f.label} value={f.value} />)}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="overflow-hidden" data-testid="card-borrower-checklist">
-          <button
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
-            onClick={() => toggle("checklist")}
-            data-testid="toggle-checklist"
-          >
-            <CardTitle className="text-[18px] flex items-center gap-2">
+          <div className="w-full flex items-center justify-between px-3 sm:px-5 py-3" data-testid="header-checklist">
+            <CardTitle className="text-[16px] sm:text-[18px] flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
               Borrower Checklist
               {(borrowerTasks.filter((t: any) => t.status !== 'completed').length + pendingDocs.length) > 0 && (
@@ -561,11 +616,9 @@ export default function BorrowerDealDetail() {
             </CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{completedItems}/{totalItems}</span>
-              {expandedSections.has("checklist") ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </div>
-          </button>
-          {expandedSections.has("checklist") && (
-            <CardContent className="pt-0 pb-4">
+          </div>
+          <CardContent className="pt-0 pb-4 px-3 sm:px-6">
               <div className="border-t mb-3" />
 
               {borrowerTasks.length > 0 && (
@@ -578,7 +631,7 @@ export default function BorrowerDealDetail() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    {borrowerTasks.map((task: any) => (
+                    {sortByActionPriority(borrowerTasks, (t: any) => taskActionPriority(t.status)).map((task: any) => (
                       <div key={task.id} className="flex flex-col gap-1 py-2 px-3 rounded-lg hover:bg-muted/30" data-testid={`task-row-${task.id}`}>
                         <div className="flex items-center gap-3">
                           {task.status === 'completed' ? (
@@ -621,7 +674,7 @@ export default function BorrowerDealDetail() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    {documents.map((doc: any) => {
+                    {sortByActionPriority(documents, (d: any) => docActionPriority(d.status)).map((doc: any) => {
                       const isExpanded = expandedDocs.has(doc.id);
                       const toggleDoc = () => setExpandedDocs(prev => {
                         const next = new Set(prev);
@@ -633,7 +686,7 @@ export default function BorrowerDealDetail() {
                         <div key={doc.id} className="rounded-lg border border-border/60 overflow-hidden" data-testid={`doc-row-${doc.id}`}>
                           <button
                             onClick={toggleDoc}
-                            className="w-full flex items-center gap-3 py-2.5 px-3 hover:bg-muted/30 transition-colors"
+                            className="w-full flex items-center gap-3 py-3 sm:py-2.5 px-3 hover:bg-muted/30 transition-colors min-h-[44px]"
                             data-testid={`toggle-doc-${doc.id}`}
                           >
                             {getDocStatusIcon(doc.status)}
@@ -678,7 +731,28 @@ export default function BorrowerDealDetail() {
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs gap-1.5"
-                                    onClick={() => setPreviewDoc({ name: doc.documentName || doc.fileName, filePath: doc.filePath, mimeType: doc.mimeType, docId: doc.id })}
+                                    onClick={async () => {
+                                      try {
+                                        const resp = await fetch(`/api/projects/${dealId}/deal-documents/${doc.id}/download`);
+                                        if (!resp.ok) {
+                                          const data = await resp.json().catch(() => null);
+                                          toast({ title: "Download failed", description: data?.error || "Unable to download this file. It may not have been uploaded successfully.", variant: "destructive" });
+                                          return;
+                                        }
+                                        const blob = await resp.blob();
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.target = '_blank';
+                                        a.rel = 'noopener noreferrer';
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        setTimeout(() => URL.revokeObjectURL(url), 60000);
+                                      } catch {
+                                        toast({ title: "Download failed", description: "Unable to download this file.", variant: "destructive" });
+                                      }
+                                    }}
                                     data-testid={`button-preview-${doc.id}`}
                                   >
                                     <Eye className="h-3 w-3" />
@@ -714,78 +788,9 @@ export default function BorrowerDealDetail() {
                 <p className="text-sm text-muted-foreground py-4 text-center">No checklist items yet.</p>
               )}
             </CardContent>
-          )}
         </Card>
       </div>
 
-      {previewDoc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setPreviewDoc(null)}
-          data-testid="preview-overlay"
-        >
-          <div
-            className="relative bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-b">
-              <h3 className="text-sm font-semibold truncate">{previewDoc.name}</h3>
-              <button
-                onClick={() => setPreviewDoc(null)}
-                className="p-1 rounded-md hover:bg-muted transition-colors"
-                data-testid="button-close-preview"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center min-h-[400px]">
-              {previewDoc.mimeType?.startsWith('image/') ? (
-                <img
-                  src={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                  alt={previewDoc.name}
-                  className="max-w-full max-h-[75vh] object-contain rounded"
-                  data-testid="preview-image"
-                />
-              ) : previewDoc.mimeType === 'application/pdf' ? (
-                <div className="w-full h-[75vh] flex flex-col">
-                  <iframe
-                    src={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                    className="w-full flex-1 rounded border"
-                    title={previewDoc.name}
-                    data-testid="preview-pdf"
-                  />
-                  <div className="flex justify-center pt-3">
-                    <a
-                      href={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
-                      data-testid="link-open-pdf-tab"
-                    >
-                      <Eye className="h-3 w-3" />
-                      Open in new tab
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center space-y-3 py-8">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Preview not available for this file type.</p>
-                  <a
-                    href={`/api/projects/${dealId}/deal-documents/${previewDoc.docId}/download?download=true`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                    data-testid="link-download-file"
-                  >
-                    Download file
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

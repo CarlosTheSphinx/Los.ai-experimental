@@ -34,6 +34,7 @@ import {
   Copy
 } from "lucide-react";
 import { format, addDays, subDays } from "date-fns";
+import { safeFormat } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -824,7 +825,7 @@ export default function AdminDigests() {
                           )}
                           {digest.draft.status === 'sent' && digest.draft.sentAt && (
                             <span className="text-sm text-muted-foreground">
-                              Sent at {format(new Date(digest.draft.sentAt), "h:mm a")}
+                              Sent at {safeFormat(digest.draft.sentAt, "h:mm a")}
                             </span>
                           )}
                         </div>
@@ -900,7 +901,7 @@ export default function AdminDigests() {
                           <span>Deal: {comm.projectName || (comm as any).loanNumber || `DEAL-${comm.projectId}`}</span>
                           <span>To: {comm.recipientType || 'borrower'}</span>
                           {comm.approvedAt && (
-                            <span>Approved {format(new Date(comm.approvedAt), "MMM d, h:mm a")}</span>
+                            <span>Approved {safeFormat(comm.approvedAt, "MMM d, h:mm a")}</span>
                           )}
                         </div>
                       </div>

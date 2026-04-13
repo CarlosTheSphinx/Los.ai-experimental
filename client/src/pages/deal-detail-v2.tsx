@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/utils";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,8 @@ import TabTasks from "@/components/admin/deal-v2/TabTasks";
 import TabPeople from "@/components/admin/deal-v2/TabPeople";
 import TabComms from "@/components/admin/deal-v2/TabComms";
 import TabAIInsights from "@/components/admin/deal-v2/TabAIInsights";
+import { FindingsReviewModal } from "@/components/admin/FindingsReviewModal";
+import { EmailPreviewModal } from "@/components/admin/EmailPreviewModal";
 
 function formatCurrency(amount: number | undefined): string {
   if (!amount) return "$0";
@@ -111,9 +114,24 @@ function DealStrip({
       invalidateDeal();
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "tasks"] });
-      toast({ title: "Loan program updated", description: "Documents and tasks have been synced to the new program." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "stages"] });
+      toast({ title: "Loan program updated", description: "Pipeline synced — existing data preserved." });
     },
     onError: () => toast({ title: "Failed to convert program", variant: "destructive" }),
+  });
+
+  const syncProgramMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/admin/projects/${projectId}/sync-program`, {});
+    },
+    onSuccess: () => {
+      invalidateDeal();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId, "stages"] });
+      toast({ title: "Pipeline synced", description: "Pipeline re-synced to current program. No data was deleted." });
+    },
+    onError: () => toast({ title: "Failed to sync program", variant: "destructive" }),
   });
 
   const { data: programsData } = useQuery<any[]>({
@@ -214,7 +232,33 @@ function DealStrip({
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
+        <ControlCard label="Loan Program">
+          <Select
+            value={deal.programId ? String(deal.programId) : "none"}
+            onValueChange={handleProgramChange}
+            disabled={convertProgramMutation.isPending || syncProgramMutation.isPending || !isAdmin}
+          >
+            <SelectTrigger className="h-8 border-0 shadow-none px-0 text-[18px] font-bold focus:ring-0" data-testid="select-loan-program">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No Program</SelectItem>
+              {programs.map((p: any) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isAdmin && deal.programId && (
+            <button
+              onClick={() => syncProgramMutation.mutate()}
+              disabled={syncProgramMutation.isPending || convertProgramMutation.isPending}
+              className="mt-1 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="button-sync-program"
+            >
+              {syncProgramMutation.isPending ? "Syncing…" : "Sync to Program"}
+            </button>
+          )}
+        </ControlCard>
         <ControlCard label="Deal Status">
           <Select
             value={deal.projectStatus || deal.status || "active"}
@@ -247,23 +291,7 @@ function DealStrip({
         </ControlCard>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-        <ControlCard label="Loan Program">
-          <Select
-            value={deal.programId ? String(deal.programId) : "none"}
-            onValueChange={handleProgramChange}
-            disabled={convertProgramMutation.isPending || !isAdmin}
-          >
-            <SelectTrigger className="h-8 border-0 shadow-none px-0 text-[18px] font-bold focus:ring-0" data-testid="select-loan-program">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No Program</SelectItem>
-              {programs.map((p: any) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </ControlCard>
+        <KpiCard icon={DollarSign} label="Loan Amount" value={formatCurrency(loanAmount)} subtitle={purposeLabel} />
         <KpiCard
           icon={Percent}
           label="Origination"
@@ -277,7 +305,7 @@ function DealStrip({
         <KpiCard
           icon={Calendar}
           label="Target Close"
-          value={deal.targetCloseDate ? new Date(deal.targetCloseDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+          value={formatDate(deal.targetCloseDate)}
         />
       </div>
 
@@ -286,16 +314,15 @@ function DealStrip({
           <AlertDialogHeader>
             <AlertDialogTitle>Change Loan Program?</AlertDialogTitle>
             <AlertDialogDescription>
-              Changing the loan program will rebuild this deal's pipeline, including stages, document requirements, and tasks.
-              Uploaded documents will be preserved, but the checklist structure will be replaced with the new program's template.
-              This action cannot be undone.
+              The new program's stages, tasks, and document requirements will be merged into this deal's existing pipeline.
+              Completed tasks, uploaded documents, and stage progress will all be preserved — only new items from the new program will be added.
+              Stages and tasks from the old program that are not in the new one will be marked inactive rather than deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelProgramChange} data-testid="cancel-program-change">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmProgramChange}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="confirm-program-change"
             >
               Confirm Change
@@ -345,6 +372,13 @@ export default function DealDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineProjectId, setPipelineProjectId] = useState<number | null>(null);
+  const [activePipelineRunId, setActivePipelineRunId] = useState<number | null>(null);
+  const [showFindingsModal, setShowFindingsModal] = useState(false);
+  const [latestFinding, setLatestFinding] = useState<any>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailGenerating, setEmailGenerating] = useState(false);
+  const [activeCommRunId, setActiveCommRunId] = useState<number | null>(null);
+  const [generatedComms, setGeneratedComms] = useState<any[]>([]);
   
   const { toast } = useToast();
 
@@ -422,23 +456,87 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (initialPipelineStatus?.latestRun?.status === "running") {
-      setPipelineRunning(true);
+      const startedAt = initialPipelineStatus.latestRun.startedAt;
+      const ageMs = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
+      const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+      if (ageMs < STALE_THRESHOLD_MS) {
+        setActivePipelineRunId(initialPipelineStatus.latestRun.id);
+        setPipelineRunning(true);
+      }
     }
   }, [initialPipelineStatus]);
 
   const triggerPipeline = useMutation({
     mutationFn: async (projectId: number) => {
-      const res = await apiRequest("POST", "/api/admin/agents/pipeline/start", { projectId });
+      const res = await apiRequest("POST", "/api/admin/agents/pipeline/start", {
+        projectId,
+        agentSequence: ["document_intelligence", "processor"],
+      });
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "AI Pipeline Started", description: "Processing your deal automatically..." });
+      toast({ title: "AI Analysis Started", description: "Analyzing documents and processing deal..." });
+      setActivePipelineRunId(data.pipelineRunId || null);
       setPipelineRunning(true);
     },
     onError: (error: any) => {
       toast({ title: "Pipeline Error", description: error?.message || "Failed to start pipeline", variant: "destructive" });
     },
   });
+
+  const triggerCommunication = useMutation({
+    mutationFn: async (projectId: number) => {
+      const res = await apiRequest("POST", "/api/admin/agents/pipeline/generate-communication", { projectId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setActiveCommRunId(data.pipelineRunId || null);
+      setEmailGenerating(true);
+    },
+    onError: (error: any) => {
+      setEmailGenerating(false);
+      toast({ title: "Error", description: error?.message || "Failed to generate email", variant: "destructive" });
+    },
+  });
+
+  const { data: commPipelineStatus } = useQuery<{ hasRun: boolean; latestRun: any }>({
+    queryKey: ["/api/projects", pipelineProjectId, "pipeline", "status", "comm"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${pipelineProjectId}/pipeline/status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: emailGenerating && !!pipelineProjectId,
+    refetchInterval: emailGenerating ? 2000 : false,
+  });
+
+  useEffect(() => {
+    if (!emailGenerating) return;
+    const latestRun = commPipelineStatus?.latestRun;
+    if (!latestRun) return;
+    if (activeCommRunId && latestRun.id !== activeCommRunId) return;
+
+    if (latestRun.status === "completed") {
+      setEmailGenerating(false);
+      setActiveCommRunId(null);
+      fetch(`/api/projects/${pipelineProjectId}/agent-communications`, { credentials: "include" })
+        .then(r => r.json())
+        .then(comms => {
+          const drafts = (Array.isArray(comms) ? comms : []).filter((c: any) => c.status === "draft");
+          if (drafts.length > 0) {
+            setGeneratedComms(drafts);
+            setShowFindingsModal(false);
+            setShowEmailModal(true);
+          } else {
+            toast({ title: "No emails generated", description: "The AI did not produce any draft emails." });
+          }
+        });
+    } else if (latestRun.status === "failed") {
+      setEmailGenerating(false);
+      setActiveCommRunId(null);
+      toast({ title: "Email Generation Failed", description: "The communication agent encountered an error.", variant: "destructive" });
+    }
+  }, [commPipelineStatus?.latestRun?.id, commPipelineStatus?.latestRun?.status, emailGenerating]);
 
   const { data: pipelineStatus } = useQuery<{
     hasRun: boolean;
@@ -480,19 +578,37 @@ export default function DealDetailV2() {
 
   useEffect(() => {
     if (!pipelineRunning) return;
-    if (pipelineStatusValue === "completed") {
-      toast({ title: "Pipeline Complete", description: "All AI agents have finished processing." });
+    const latestRun = pipelineStatus?.latestRun;
+    if (!latestRun) return;
+    if (activePipelineRunId && latestRun.id !== activePipelineRunId) return;
+
+    if (latestRun.status === "completed") {
+      toast({ title: "Analysis Complete", description: "AI findings are ready for your review." });
       setPipelineRunning(false);
-      setActiveTab("ai-reviews");
+      setActivePipelineRunId(null);
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "documents"] });
       queryClient.invalidateQueries({ queryKey: [apiBase, dealId, "tasks"] });
-    } else if (pipelineStatusValue === "failed") {
-      const errorMsg = pipelineStatus?.latestRun?.errorMessage || "Pipeline encountered an error";
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${pipelineProjectId}/findings`] });
+
+      fetch(`/api/projects/${pipelineProjectId}/findings`, { credentials: "include" })
+        .then(r => r.json())
+        .then(findings => {
+          if (Array.isArray(findings) && findings.length > 0) {
+            setLatestFinding(findings[0]);
+            setShowFindingsModal(true);
+          } else {
+            setActiveTab("ai-reviews");
+          }
+        })
+        .catch(() => setActiveTab("ai-reviews"));
+    } else if (latestRun.status === "failed") {
+      const errorMsg = latestRun.errorMessage || "Pipeline encountered an error";
       toast({ title: "Pipeline Failed", description: errorMsg, variant: "destructive" });
       setPipelineRunning(false);
+      setActivePipelineRunId(null);
     }
-  }, [pipelineStatusValue, pipelineRunning]);
+  }, [pipelineStatus?.latestRun?.id, pipelineStatus?.latestRun?.status, pipelineRunning]);
 
   const handleAutoProcess = () => {
     const projectId = deal?.projectId || deal?.project_id;
@@ -665,7 +781,7 @@ export default function DealDetailV2() {
           <TabsList className="bg-transparent rounded-none w-full justify-between p-0 h-auto">
             {[
               { value: "overview", label: "Overview", icon: LayoutDashboard, badge: null },
-              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} pending` : String(documents.length) },
+              { value: "documents", label: "Documents", icon: FileText, badge: documents.filter((d: any) => d.status === 'pending').length > 0 ? `${documents.filter((d: any) => d.status === 'pending').length} outstanding` : String(documents.length) },
               { value: "tasks", label: "Tasks", icon: CheckSquare, badge: String(tasks.length) },
               { value: "people", label: "People", icon: Users, badge: null },
               { value: "communications", label: "Communications", icon: MessageCircle, badge: null },
@@ -680,7 +796,7 @@ export default function DealDetailV2() {
                 <tab.icon className="h-4.5 w-4.5" />
                 {tab.label}
                 {tab.badge && (
-                  <span className={`text-[13px] ml-0.5 ${tab.badge.includes('pending') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
+                  <span className={`text-[13px] ml-0.5 ${tab.badge.includes('outstanding') ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
                     {tab.badge}
                   </span>
                 )}
@@ -716,6 +832,32 @@ export default function DealDetailV2() {
           </TabsContent>
         </div>
       </div>
+
+      {pipelineProjectId && (
+        <>
+          <FindingsReviewModal
+            open={showFindingsModal}
+            onClose={() => setShowFindingsModal(false)}
+            finding={latestFinding}
+            projectId={pipelineProjectId}
+            emailGenerating={emailGenerating}
+            onGenerateEmail={() => {
+              setEmailGenerating(true);
+              triggerCommunication.mutate(pipelineProjectId);
+            }}
+          />
+          <EmailPreviewModal
+            open={showEmailModal}
+            onClose={() => {
+              setShowEmailModal(false);
+              setActiveTab("ai-reviews");
+              queryClient.invalidateQueries({ queryKey: [`/api/projects/${pipelineProjectId}/agent-communications`] });
+            }}
+            communications={generatedComms}
+            projectId={pipelineProjectId}
+          />
+        </>
+      )}
 
     </Tabs>
   );

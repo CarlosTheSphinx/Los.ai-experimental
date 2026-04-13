@@ -2,6 +2,17 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
+interface BrokerSettings {
+  yspEnabled?: boolean;
+  yspMaxPercent?: number;
+  brokerPointsEnabled?: boolean;
+  brokerPointsMaxPercent?: number;
+  programOverrides?: Record<string, {
+    yspMaxPercent?: number;
+    brokerPointsMaxPercent?: number;
+  }>;
+}
+
 interface User {
   id: number;
   email: string;
@@ -11,13 +22,14 @@ interface User {
   role?: string;
   userType?: string;
   onboardingCompleted?: boolean;
+  brokerSettings?: BrokerSettings | null;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User | null>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -56,9 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiRequest('POST', '/api/auth/login', { email, password });
       return res.json();
     },
-    onSuccess: () => {
-      refetch();
-    },
     onError: () => {},
   });
 
@@ -66,9 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: async (data: RegisterData) => {
       const res = await apiRequest('POST', '/api/auth/register', data);
       return res.json();
-    },
-    onSuccess: () => {
-      refetch();
     },
   });
 
@@ -82,12 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User | null> => {
     await loginMutation.mutateAsync({ email, password });
+    const result = await refetch();
+    return result.data ?? null;
   };
 
   const register = async (data: RegisterData) => {
     await registerMutation.mutateAsync(data);
+    await refetch();
   };
 
   const logout = async () => {

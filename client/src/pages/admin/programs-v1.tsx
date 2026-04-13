@@ -527,13 +527,18 @@ export default function AdminPrograms() {
 
   const toggleProgram = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest("PATCH", `/api/admin/programs/${id}/toggle`);
+      const res = await apiRequest("PATCH", `/api/admin/programs/${id}/toggle`);
+      return await res.json() as { program: { id: number; isActive: boolean } };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
+      const isActive = data?.program?.isActive;
+      toast({ title: isActive ? "Program activated" : "Program deactivated" });
     },
     onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/programs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programs-with-pricing"] });
       toast({ title: "Failed to toggle program", variant: "destructive" });
     },
   });
@@ -1237,6 +1242,7 @@ export default function AdminPrograms() {
                         <Switch
                           checked={program.isActive}
                           onCheckedChange={() => toggleProgram.mutate(program.id)}
+                          disabled={toggleProgram.isPending}
                           data-testid={`switch-program-${program.id}`}
                         />
                         <Button

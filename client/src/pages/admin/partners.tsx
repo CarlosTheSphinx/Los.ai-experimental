@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -1001,7 +1002,7 @@ function UsersStatus() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {formatDate(user.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1044,17 +1045,13 @@ function UsersStatus() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {user.partnershipAgreementSignedAt
-                        ? new Date(user.partnershipAgreementSignedAt).toLocaleDateString()
-                        : 'N/A'}
+                      {formatDate(user.partnershipAgreementSignedAt, 'N/A')}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {user.trainingCompletedAt
-                        ? new Date(user.trainingCompletedAt).toLocaleDateString()
-                        : 'N/A'}
+                      {formatDate(user.trainingCompletedAt, 'N/A')}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {formatDate(user.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))}

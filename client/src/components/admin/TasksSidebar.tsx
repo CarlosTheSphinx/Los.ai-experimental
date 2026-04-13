@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, safeFormat } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -361,7 +361,7 @@ export function TasksSidebar({
                                 {task.completedAt && (
                                   <span className="flex items-center gap-1 text-green-600">
                                     <Clock className="h-3 w-3" />
-                                    {format(new Date(task.completedAt), "MMM d 'at' h:mm a")}
+                                    {safeFormat(task.completedAt, "MMM d 'at' h:mm a")}
                                     {task.completedBy && ` by ${task.completedBy}`}
                                   </span>
                                 )}

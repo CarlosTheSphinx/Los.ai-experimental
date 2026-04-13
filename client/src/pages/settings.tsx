@@ -71,7 +71,16 @@ function BorrowerProfileTab() {
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
       const payload = { ...data };
-      if (payload.annualIncome) payload.annualIncome = parseFloat(payload.annualIncome) || null;
+      const stringFields = ['firstName', 'lastName', 'phone', 'dateOfBirth', 'streetAddress', 'city', 'state', 'zipCode', 'ssnLast4', 'idType', 'idNumber', 'idExpirationDate', 'employerName', 'employmentTitle', 'employmentType', 'entityName', 'entityType', 'einNumber'];
+      for (const key of stringFields) {
+        if (payload[key] === '') payload[key] = null;
+      }
+      if (payload.annualIncome !== '' && payload.annualIncome != null) {
+        const parsed = parseFloat(payload.annualIncome);
+        payload.annualIncome = Number.isNaN(parsed) ? null : parsed;
+      } else {
+        payload.annualIncome = null;
+      }
       return await apiRequest("PUT", "/api/borrower/profile", payload);
     },
     onSuccess: () => {

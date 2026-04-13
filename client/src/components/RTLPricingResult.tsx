@@ -28,6 +28,17 @@ interface ProgramConfig {
   brokerPointsStep?: number;
 }
 
+interface BrokerSettings {
+  yspEnabled?: boolean;
+  yspMaxPercent?: number;
+  brokerPointsEnabled?: boolean;
+  brokerPointsMaxPercent?: number;
+  programOverrides?: Record<string, {
+    yspMaxPercent?: number;
+    brokerPointsMaxPercent?: number;
+  }>;
+}
+
 interface RTLPricingResultProps {
   result: RTLPricingResponse;
   formData: RTLPricingFormData | null;
@@ -35,15 +46,17 @@ interface RTLPricingResultProps {
   onEdit: () => void;
   programId?: number | null;
   programConfig?: ProgramConfig | null;
+  brokerSettings?: BrokerSettings | null;
 }
 
-export function RTLPricingResult({ result, formData, onReset, onEdit, programId, programConfig }: RTLPricingResultProps) {
+export function RTLPricingResult({ result, formData, onReset, onEdit, programId, programConfig, brokerSettings }: RTLPricingResultProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
 
   // Determine user role
   const isLender = user?.role === 'admin' || user?.role === 'super_admin';
+  const isBroker = user?.role === 'broker';
 
   // Program config with defaults
   const cfg = programConfig || {};
@@ -51,8 +64,18 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
   const programBasePointsMin = cfg.basePointsMin ?? 1;
   const programBasePointsMax = cfg.basePointsMax ?? 4;
   const programBrokerPointsEnabled = cfg.brokerPointsEnabled ?? true;
-  const programBrokerPointsMax = cfg.brokerPointsMax ?? 3;
+  const rawProgramBrokerPointsMax = cfg.brokerPointsMax ?? 3;
   const programBrokerPointsStep = cfg.brokerPointsStep ?? 0.125;
+
+  const effectiveBrokerPointsMax = (() => {
+    if (!isBroker || !brokerSettings) return rawProgramBrokerPointsMax;
+    const programKey = programId ? String(programId) : null;
+    const override = programKey ? brokerSettings.programOverrides?.[programKey] : undefined;
+    const brokerMax = override?.brokerPointsMaxPercent ?? brokerSettings.brokerPointsMaxPercent;
+    if (brokerMax != null) return Math.min(rawProgramBrokerPointsMax, brokerMax);
+    return rawProgramBrokerPointsMax;
+  })();
+  const programBrokerPointsMax = effectiveBrokerPointsMax;
   const programYspEnabled = cfg.yspEnabled ?? false;
   const programYspBrokerCanToggle = cfg.yspBrokerCanToggle ?? false;
   const programYspFixedAmount = cfg.yspFixedAmount ?? 0;

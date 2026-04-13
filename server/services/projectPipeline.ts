@@ -6,7 +6,7 @@ import {
   programTaskTemplates, programDocumentTemplates
 } from "@shared/schema";
 import type * as schemaTypes from "@shared/schema";
-import { eq, and, asc, isNull, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { storage } from "../storage";
 
 interface PipelineResult {
@@ -66,6 +66,10 @@ export async function buildProjectPipelineFromProgram(
   const stageIdByOrder = new Map<number, number>();
   const stageIdByStepId = new Map<number, number>();
 
+  const now = new Date();
+  const defaultDueDayOffsets: Record<number, number> = { 1: 3, 2: 7, 3: 14 };
+  const defaultFallbackOffset = 21;
+
   for (const step of workflowSteps) {
     const [stage] = await dbOrTx.insert(projectStages).values({
       projectId,
@@ -83,6 +87,10 @@ export async function buildProjectPipelineFromProgram(
     stageIdByStepId.set(step.stepId, stage.id);
     stagesCreated++;
 
+    const dueDayOffset = step.estimatedDays
+      ? cumulativeDaysForStage(workflowSteps, step.stepOrder)
+      : (defaultDueDayOffsets[step.stepOrder] ?? defaultFallbackOffset);
+
     const tasks = await dbOrTx.select()
       .from(programTaskTemplates)
       .where(and(
@@ -96,6 +104,8 @@ export async function buildProjectPipelineFromProgram(
       const isBorrowerVisible = taskVisibility === 'all' || taskVisibility === 'borrower';
       const assignRole = (task.assignToRole || '').toLowerCase();
       const isBorrowerAssigned = assignRole === 'user' || assignRole === 'borrower';
+      const taskDueDate = new Date(now);
+      taskDueDate.setDate(taskDueDate.getDate() + dueDayOffset);
       await dbOrTx.insert(projectTasks).values({
         projectId,
         stageId: stage.id,
@@ -110,6 +120,7 @@ export async function buildProjectPipelineFromProgram(
         borrowerActionRequired: isBorrowerAssigned || !!task.formTemplateId,
         status: 'pending',
         formTemplateId: task.formTemplateId || null,
+        dueDate: taskDueDate,
       });
       tasksCreated++;
     }
@@ -212,82 +223,65 @@ export async function convertDealToProgram(
   newProgramId: number,
 ): Promise<PipelineResult & { documentsPreserved: number }> {
   return await db.transaction(async (tx) => {
-    const existingDocs = await tx.select()
-      .from(dealDocuments)
-      .where(eq(dealDocuments.dealId, projectId));
+    const [program] = await tx.select()
+      .from(loanPrograms)
+      .where(eq(loanPrograms.id, newProgramId))
+      .limit(1);
 
-    const uploadedDocs = existingDocs.filter(d => d.filePath);
-    const emptyDocs = existingDocs.filter(d => !d.filePath);
-
-    for (const doc of emptyDocs) {
-      await tx.delete(dealDocuments).where(eq(dealDocuments.id, doc.id));
+    if (!program) {
+      throw new Error(`Program ${newProgramId} not found`);
     }
 
-    if (uploadedDocs.length > 0) {
-      for (const doc of uploadedDocs) {
-        await tx.update(dealDocuments)
-          .set({ stageId: null, programDocumentTemplateId: null })
-          .where(eq(dealDocuments.id, doc.id));
-      }
-    }
+    const workflowSteps = await tx.select({
+      stepId: programWorkflowSteps.id,
+      stepOrder: programWorkflowSteps.stepOrder,
+      isRequired: programWorkflowSteps.isRequired,
+      estimatedDays: programWorkflowSteps.estimatedDays,
+      defName: workflowStepDefinitions.name,
+      defKey: workflowStepDefinitions.key,
+      defDescription: workflowStepDefinitions.description,
+    })
+      .from(programWorkflowSteps)
+      .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+      .where(eq(programWorkflowSteps.programId, newProgramId))
+      .orderBy(asc(programWorkflowSteps.stepOrder));
 
-    await tx.delete(projectTasks).where(eq(projectTasks.projectId, projectId));
-    await tx.delete(projectStages).where(eq(projectStages.projectId, projectId));
+    const docTemplates = await tx.select()
+      .from(programDocumentTemplates)
+      .where(eq(programDocumentTemplates.programId, newProgramId))
+      .orderBy(asc(programDocumentTemplates.sortOrder));
 
-    const result = await buildProjectPipelineFromProgram(projectId, newProgramId, undefined, tx);
+    const taskTemplates = await tx.select()
+      .from(programTaskTemplates)
+      .where(eq(programTaskTemplates.programId, newProgramId))
+      .orderBy(asc(programTaskTemplates.sortOrder));
 
-    const newStages = await tx.select()
-      .from(projectStages)
-      .where(eq(projectStages.projectId, projectId))
-      .orderBy(asc(projectStages.stageOrder));
-
-    const stage1Id = newStages.length > 0 ? newStages[0].id : null;
-
-    for (const doc of uploadedDocs) {
-      const matchingNewDocs = await tx.select()
-        .from(dealDocuments)
-        .where(and(
-          eq(dealDocuments.dealId, projectId),
-          eq(dealDocuments.documentName, doc.documentName),
-          isNull(dealDocuments.filePath)
-        ));
-
-      if (matchingNewDocs.length > 0) {
-        const templateDoc = matchingNewDocs[0];
-        await tx.update(dealDocuments)
-          .set({
-            filePath: doc.filePath,
-            fileSize: doc.fileSize,
-            mimeType: doc.mimeType,
-            fileName: doc.fileName,
-            status: doc.status,
-            uploadedAt: doc.uploadedAt,
-            uploadedBy: doc.uploadedBy,
-            reviewedAt: doc.reviewedAt,
-            reviewedBy: doc.reviewedBy,
-            reviewNotes: doc.reviewNotes,
-            driveFileId: doc.driveFileId,
-            documentCategory: templateDoc.documentCategory,
-            documentDescription: templateDoc.documentDescription,
-            assignedTo: templateDoc.assignedTo,
-            visibility: templateDoc.visibility,
-            isRequired: templateDoc.isRequired,
-          })
-          .where(eq(dealDocuments.id, templateDoc.id));
-
-        await tx.delete(dealDocuments).where(eq(dealDocuments.id, doc.id));
-      } else {
-        await tx.update(dealDocuments)
-          .set({ stageId: stage1Id })
-          .where(eq(dealDocuments.id, doc.id));
-      }
-    }
+    const delta = await syncSingleProject(projectId, workflowSteps, docTemplates, taskTemplates, tx);
 
     return {
-      ...result,
-      documentsPreserved: uploadedDocs.length,
+      stagesCreated: delta.stagesCreated,
+      tasksCreated: delta.tasksCreated,
+      documentsCreated: delta.documentsCreated,
+      usedProgramTemplate: true,
+      programName: program.name,
+      documentsPreserved: delta.documentsPreserved,
     };
   });
+}
+
+export async function syncDealToCurrentProgram(
+  projectId: number,
+): Promise<PipelineResult & { documentsPreserved: number }> {
+  const [project] = await db.select({ programId: projects.programId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (!project || !project.programId) {
+    throw new Error('No program linked to this project');
+  }
+
+  return convertDealToProgram(projectId, project.programId);
 }
 
 async function buildProjectPipelineFromLegacyTemplate(
@@ -418,14 +412,25 @@ export async function syncProgramToProjects(
   return { projectsSynced: successCount };
 }
 
+interface SyncDelta {
+  stagesCreated: number;
+  tasksCreated: number;
+  documentsCreated: number;
+  documentsPreserved: number;
+}
+
 async function syncSingleProject(
   projectId: number,
   workflowSteps: Array<{ stepId: number; stepOrder: number; isRequired: boolean | null; estimatedDays: number | null; defName: string; defKey: string; defDescription: string | null }>,
   docTemplates: Array<any>,
   taskTemplates: Array<any>,
   tx?: NodePgDatabase<typeof schemaTypes>
-) {
+): Promise<SyncDelta> {
   const dbOrTx = tx || db;
+  let stagesCreated = 0;
+  let tasksCreated = 0;
+  let documentsCreated = 0;
+  let documentsPreserved = 0;
 
   const existingStages = await dbOrTx.select()
     .from(projectStages)
@@ -471,6 +476,7 @@ async function syncSingleProject(
         startedAt: null,
       }).returning();
       newStageIdByStepId.set(step.stepId, stage.id);
+      stagesCreated++;
     }
   }
 
@@ -552,6 +558,7 @@ async function syncSingleProject(
         status: 'pending',
         formTemplateId: template.formTemplateId || null,
       });
+      tasksCreated++;
     }
   }
 
@@ -629,6 +636,7 @@ async function syncSingleProject(
         status: 'pending',
         stageId,
       });
+      documentsCreated++;
     }
   }
 
@@ -640,5 +648,23 @@ async function syncSingleProject(
           .where(eq(dealDocuments.id, doc.id));
       }
     }
+    if (doc.filePath) {
+      documentsPreserved++;
+    }
   }
+
+  return { stagesCreated, tasksCreated, documentsCreated, documentsPreserved };
+}
+
+function cumulativeDaysForStage(
+  steps: { stepOrder: number; estimatedDays: number | null }[],
+  targetOrder: number
+): number {
+  let total = 0;
+  for (const s of steps) {
+    if (s.stepOrder <= targetOrder) {
+      total += s.estimatedDays || 7;
+    }
+  }
+  return total;
 }

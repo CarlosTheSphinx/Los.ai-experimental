@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDate } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Table,
@@ -596,7 +597,7 @@ export default function BrokerOutreachPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {new Date(message.sentAt || message.createdAt).toLocaleDateString()}
+                            {formatDate(message.sentAt || message.createdAt)}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
@@ -376,7 +377,7 @@ export default function OnboardingPage() {
                       <div>
                         <p className="font-semibold text-green-900 dark:text-green-100">Agreement Signed</p>
                         <p className="text-sm text-green-800 dark:text-green-200">
-                          Signed on {new Date(status.user.partnershipAgreementSignedAt!).toLocaleDateString()}
+                          Signed on {formatDate(status.user.partnershipAgreementSignedAt)}
                         </p>
                       </div>
                     </div>

@@ -2,8 +2,8 @@ import type { Express, Request, Response } from 'express';
 import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
 import { OAuth2Client } from 'google-auth-library';
-import { eq } from 'drizzle-orm';
-import { users, auditLogs, loginAttempts } from '@shared/schema';
+import { eq, and, or } from 'drizzle-orm';
+import { users, auditLogs, loginAttempts, notifications } from '@shared/schema';
 import {
   hashPassword,
   comparePassword,
@@ -14,7 +14,7 @@ import {
   encryptToken,
   verifyToken
 } from '../auth';
-import { sendPasswordResetEmail } from '../email';
+import { sendPasswordResetEmail, sendBrokerWelcomeEmail } from '../email';
 import {
   isAccountLocked,
   calculateLockoutUntil,
@@ -81,6 +81,35 @@ async function recordLoginAttempt(
     });
   } catch (err) {
     console.error('Login attempt log failed:', err);
+  }
+}
+
+async function notifyLenderStaffOfNewUser(
+  db: any,
+  role: string,
+  newUser: { id: number; fullName: string | null; email: string; tenantId: number | null }
+): Promise<void> {
+  if (role !== 'broker' && role !== 'borrower') return;
+  try {
+    const label = role === 'broker' ? 'Broker' : 'Borrower';
+    const displayName = newUser.fullName || newUser.email;
+    const tenantId = newUser.tenantId;
+    const conditions: any[] = [or(eq(users.role, 'super_admin'), eq(users.role, 'lender'))];
+    if (tenantId != null) conditions.push(eq(users.tenantId, tenantId));
+    const admins = await db.select({ id: users.id }).from(users).where(and(...conditions));
+    for (const admin of admins) {
+      if (admin.id === newUser.id) continue;
+      await db.insert(notifications).values({
+        userId: admin.id,
+        type: `new_${role}`,
+        title: `New ${label} Joined`,
+        message: `${displayName} has joined the platform as a ${label.toLowerCase()}.`,
+        link: `/admin/users`,
+        isRead: false,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error(`Failed to notify staff of new ${role}:`, err);
   }
 }
 
@@ -191,7 +220,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
   // Register
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     try {
-      const { email, password, fullName, firstName, lastName, companyName, phone, userType: requestedRole } = req.body;
+      const { email, password, fullName, firstName, lastName, companyName, phone, userType: requestedRole, magicLinkToken } = req.body;
 
       // Support both fullName and firstName/lastName
       const resolvedFullName = fullName || (firstName && lastName ? `${firstName} ${lastName}` : null);
@@ -219,6 +248,33 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
 
       const onboardingCompleted = userRole === 'borrower';
 
+      let resolvedTenantId: number | null = null;
+      let resolvedInvitedBy: number | null = null;
+
+      if (magicLinkToken) {
+        const [borrowerMatch] = await db.select({
+          id: users.id,
+          tenantId: users.tenantId,
+          borrowerMagicLinkEnabled: users.borrowerMagicLinkEnabled,
+        }).from(users).where(eq(users.borrowerMagicLink, magicLinkToken));
+
+        if (borrowerMatch && borrowerMatch.borrowerMagicLinkEnabled) {
+          resolvedTenantId = borrowerMatch.tenantId;
+          resolvedInvitedBy = borrowerMatch.id;
+        } else {
+          const [brokerMatch] = await db.select({
+            id: users.id,
+            tenantId: users.tenantId,
+            brokerMagicLinkEnabled: users.brokerMagicLinkEnabled,
+          }).from(users).where(eq(users.brokerMagicLink, magicLinkToken));
+
+          if (brokerMatch && brokerMatch.brokerMagicLinkEnabled) {
+            resolvedTenantId = brokerMatch.tenantId;
+            resolvedInvitedBy = brokerMatch.id;
+          }
+        }
+      }
+
       const user = await storage.createUser({
         email: email.toLowerCase(),
         passwordHash,
@@ -233,7 +289,11 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         userType: userRole,
         onboardingCompleted,
         passwordExpiresAt: calculatePasswordExpiry(),
+        tenantId: resolvedTenantId || 1,
+        ...(resolvedInvitedBy ? { invitedBy: resolvedInvitedBy } : {}),
       });
+
+      notifyLenderStaffOfNewUser(db, userRole, user).catch(() => {});
 
       await logAudit(db, {
         userId: user.id,
@@ -247,6 +307,15 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         statusCode: 201,
         success: true,
       });
+
+      if (userRole === 'broker') {
+        const portalLink = `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/broker-portal`;
+        sendBrokerWelcomeEmail(user.email, resolvedFullName, portalLink, user.tenantId, companyName || null).catch(err => {
+          console.error('Failed to send broker welcome email:', err);
+        });
+      }
+
+      await storage.updateUser(user.id, { lastLoginAt: new Date() });
 
       const token = generateToken(user.id, user.email, user.tokenVersion ?? 0);
       setAuthCookie(res, token);
@@ -575,12 +644,20 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
 
     const userType = req.query.userType as string | undefined;
     const returnTo = req.query.returnTo as string | undefined;
+    const inviteToken = req.query.inviteToken as string | undefined;
+    const magicLinkToken = req.query.magicLinkToken as string | undefined;
     const stateObj: Record<string, string> = {};
     if (userType && ['broker', 'borrower', 'lender'].includes(userType)) {
       stateObj.userType = userType;
     }
     if (returnTo && returnTo.startsWith('/')) {
       stateObj.returnTo = returnTo;
+    }
+    if (inviteToken) {
+      stateObj.inviteToken = inviteToken;
+    }
+    if (magicLinkToken) {
+      stateObj.magicLinkToken = magicLinkToken;
     }
 
     const authorizeUrl = googleOAuth.generateAuthUrl({
@@ -659,6 +736,48 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
         tokenUpdates.googleTokenExpiresAt = new Date(tokens.expiry_date);
       }
 
+      const oauthInviteToken = oauthState.inviteToken || null;
+      if (oauthInviteToken) {
+        const [invitedUser] = await db.select().from(users).where(eq(users.inviteToken, oauthInviteToken));
+        if (!invitedUser) {
+          return res.redirect('/login?error=invite_invalid');
+        }
+        if (invitedUser.inviteTokenExpires && new Date() > new Date(invitedUser.inviteTokenExpires)) {
+          return res.redirect('/login?error=invite_expired');
+        }
+        if (email !== invitedUser.email.toLowerCase()) {
+          return res.redirect('/login?error=invite_email_mismatch');
+        }
+        await storage.updateUser(invitedUser.id, {
+          googleId,
+          avatarUrl: avatarUrl || invitedUser.avatarUrl,
+          inviteToken: null,
+          inviteTokenExpires: null,
+          inviteStatus: 'accepted',
+          emailVerified: true,
+          isActive: true,
+          lastLoginAt: new Date(),
+          ...tokenUpdates,
+        });
+        user = await storage.getUserById(invitedUser.id);
+        // Notify lender staff that an invited broker or borrower has accepted and joined
+        if (user) {
+          notifyLenderStaffOfNewUser(db, user.role, user).catch(() => {});
+        }
+        const jwtToken = generateToken(user!.id, user!.email, user!.tokenVersion ?? 0);
+        setAuthCookie(res, jwtToken);
+        if (user!.role === 'broker') {
+          const link = `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/broker-portal`;
+          sendBrokerWelcomeEmail(user!.email, user!.fullName || email, link, user!.tenantId, user!.companyName).catch(err => {
+            console.error('Failed to send broker welcome email (invite accept):', err);
+          });
+          if (!user!.onboardingCompleted) {
+            return res.redirect('/onboarding');
+          }
+        }
+        return res.redirect('/');
+      }
+
       if (user) {
         if (!user.googleId) {
           await storage.updateUser(user.id, { googleId, avatarUrl: avatarUrl || user.avatarUrl, ...tokenUpdates });
@@ -675,6 +794,25 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           : null;
         const onboardingCompleted = assignedRole === 'borrower';
 
+        let oauthTenantId: number | null = null;
+        let oauthInvitedById: number | null = null;
+        const oauthMagicLinkToken = oauthState.magicLinkToken || null;
+        if (oauthMagicLinkToken) {
+          const [bMatch] = await db.select({ id: users.id, tenantId: users.tenantId, borrowerMagicLinkEnabled: users.borrowerMagicLinkEnabled })
+            .from(users).where(eq(users.borrowerMagicLink, oauthMagicLinkToken));
+          if (bMatch && bMatch.borrowerMagicLinkEnabled) {
+            oauthTenantId = bMatch.tenantId;
+            oauthInvitedById = bMatch.id;
+          } else {
+            const [brMatch] = await db.select({ id: users.id, tenantId: users.tenantId, brokerMagicLinkEnabled: users.brokerMagicLinkEnabled })
+              .from(users).where(eq(users.brokerMagicLink, oauthMagicLinkToken));
+            if (brMatch && brMatch.brokerMagicLinkEnabled) {
+              oauthTenantId = brMatch.tenantId;
+              oauthInvitedById = brMatch.id;
+            }
+          }
+        }
+
         user = await storage.createUser({
           email,
           passwordHash: null,
@@ -690,7 +828,20 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           passwordResetToken: null,
           passwordResetExpires: null,
           role: assignedRole || 'broker',
+          tenantId: oauthTenantId || 1,
+          ...(oauthInvitedById ? { invitedBy: oauthInvitedById } : {}),
         });
+
+        await storage.updateUser(user.id, { lastLoginAt: new Date() });
+
+        notifyLenderStaffOfNewUser(db, assignedRole || 'broker', user).catch(() => {});
+
+        if ((assignedRole || 'broker') === 'broker') {
+          const link = `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/broker-portal`;
+          sendBrokerWelcomeEmail(email, fullName || email, link, user.tenantId, user.companyName).catch(err => {
+            console.error('Failed to send broker welcome email (OAuth):', err);
+          });
+        }
       }
 
       const token = generateToken(user.id, user.email, user.tokenVersion ?? 0);
@@ -740,7 +891,8 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
           role: user.role,
           userType: user.role,
           onboardingCompleted: user.onboardingCompleted,
-          createdAt: user.createdAt
+          createdAt: user.createdAt,
+          brokerSettings: user.role === 'broker' ? (user.brokerSettings || null) : undefined,
         }
       });
     } catch (error) {
@@ -754,11 +906,16 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
       const user = await storage.getUserById(req.user!.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      const { fullName, phone, companyName } = req.body;
+      const { fullName, phone, companyName, brokerCompanyName, brokerLicenseNumber, brokerOperatingStates, brokerYearsExperience, brokerPreferredLoanTypes } = req.body;
       const updates: Record<string, any> = {};
       if (fullName !== undefined) updates.fullName = fullName;
       if (phone !== undefined) updates.phone = phone;
       if (companyName !== undefined) updates.companyName = companyName;
+      if (brokerCompanyName !== undefined) updates.brokerCompanyName = brokerCompanyName;
+      if (brokerLicenseNumber !== undefined) updates.brokerLicenseNumber = brokerLicenseNumber;
+      if (brokerOperatingStates !== undefined) updates.brokerOperatingStates = brokerOperatingStates;
+      if (brokerYearsExperience !== undefined) updates.brokerYearsExperience = brokerYearsExperience;
+      if (brokerPreferredLoanTypes !== undefined) updates.brokerPreferredLoanTypes = brokerPreferredLoanTypes;
 
       await storage.updateUser(user.id, updates);
       res.json({ success: true });
@@ -831,7 +988,7 @@ export function registerAuthRoutes(app: Express, deps: RouteDeps) {
       });
 
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+      const resetUrl = `${baseUrl}/reset-password/${resetToken}`;
 
       await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
 

@@ -30,6 +30,7 @@ import {
   MessageSquare,
   BotMessageSquare,
   Home,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Select,
@@ -97,9 +98,9 @@ function NavIcon({ icon: IconComponent, isActive }: { icon: any; isActive: boole
 }
 
 const brokerNavItems: NavItem[] = [
-  { href: "/", label: "New Quote", icon: Sparkles, shortcut: undefined },
   { href: "/quotes", label: "Quotes", icon: FileText, shortcut: undefined },
   { href: "/deals", label: "My Loans", icon: FolderKanban, shortcut: undefined },
+  { href: "/commercial-deals", label: "Commercial Deals", icon: Building2, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
   { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: undefined },
@@ -120,6 +121,8 @@ const borrowerNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
+  { href: "/admin/commercial-form-config", label: "Form Builder", icon: SlidersHorizontal },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
@@ -132,6 +135,8 @@ const adminNavItems: NavItem[] = [
 const adminNavItemsV2: NavItem[] = [
   { href: "/admin/overview", label: "Dashboard", icon: Gauge },
   { href: "/admin", label: "Pipeline", icon: LayoutDashboard, shortcut: "⌘1" },
+  { href: "/admin/commercial-pipeline", label: "Commercial Pipeline", icon: Building2 },
+  { href: "/admin/commercial-form-config", label: "Form Builder", icon: SlidersHorizontal },
   { href: "/admin/programs", label: "Programs", icon: Settings2, requiredPermission: "programs.view" },
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
@@ -215,22 +220,29 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
     return "super_admin";
   });
 
-  useEffect(() => {
-    localStorage.setItem(VIEW_AS_STORAGE_KEY, viewAsMode);
-  }, [viewAsMode]);
-
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin', 'lender', 'processor'].includes(user.role);
   const isBorrower = user?.role === 'borrower';
+  const isBroker = user?.role === 'broker';
+
+  useEffect(() => {
+    if (isBroker || isBorrower) {
+      localStorage.removeItem(VIEW_AS_STORAGE_KEY);
+    } else {
+      localStorage.setItem(VIEW_AS_STORAGE_KEY, viewAsMode);
+    }
+  }, [viewAsMode, isBroker, isBorrower]);
 
   const userIsSuperAdmin = isSuperAdmin || user?.role === 'super_admin';
 
-  const isPreviewingOtherRole = userIsSuperAdmin && viewAsMode !== "super_admin";
-  const effectiveViewAsBorrower = userIsSuperAdmin && viewAsMode === "borrower";
-  const effectiveViewAsLender = userIsSuperAdmin && viewAsMode === "lender";
+  const canViewAs = userIsSuperAdmin && !isBroker && !isBorrower;
+
+  const isPreviewingOtherRole = canViewAs && viewAsMode !== "super_admin";
+  const effectiveViewAsBorrower = canViewAs && viewAsMode === "borrower";
+  const effectiveViewAsLender = canViewAs && viewAsMode === "lender";
 
   const navItems = (effectiveViewAsBorrower || isBorrower) ? borrowerNavItems : brokerNavItems;
 
-  const showAdminSection = isAdmin && !effectiveViewAsBorrower && !effectiveViewAsLender;
+  const showAdminSection = isAdmin && !isBroker && !isBorrower && !effectiveViewAsBorrower && !effectiveViewAsLender;
 
   const { isEnabled: isFlagEnabled } = useFeatureFlags();
   const useV2Nav = isFlagEnabled("phase1.sidebar");
@@ -468,7 +480,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           )}
 
           {/* Lendry Admin section — only visible to super_admin / Lendry platform team */}
-          {userIsSuperAdmin && !effectiveViewAsBorrower && (
+          {canViewAs && !effectiveViewAsBorrower && (
             <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
               <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
                 Lendry Admin View
@@ -509,7 +521,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border p-2">
           <div className="flex flex-col gap-2">
-            {userIsSuperAdmin && (
+            {canViewAs && (
               <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Eye className="h-3 w-3 text-[hsl(212,67%,51%)]" />

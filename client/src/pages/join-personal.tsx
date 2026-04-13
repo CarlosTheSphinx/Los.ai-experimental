@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,12 +23,9 @@ export default function JoinPersonalPage() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const token = params?.token;
-
-  useEffect(() => {
-    if (isAuthenticated && !authLoading) {
-      setLocation("/");
-    }
-  }, [isAuthenticated, authLoading, setLocation]);
+  const autoLoginAttempted = useRef(false);
+  const [autoLoginError, setAutoLoginError] = useState<string | null>(null);
+  const [autoLoggingIn, setAutoLoggingIn] = useState(false);
   const [formData, setFormData] = useState({
     password: "",
     confirmPassword: "",
@@ -51,6 +48,29 @@ export default function JoinPersonalPage() {
     enabled: !!token,
     retry: false,
   });
+
+  useEffect(() => {
+    if (info?.hasPassword && token && !autoLoginAttempted.current && !isAuthenticated) {
+      autoLoginAttempted.current = true;
+      setAutoLoggingIn(true);
+      fetch(`/api/join/personal/${token}/auto-login`, {
+        method: "POST",
+        credentials: "include",
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            window.location.href = "/";
+          } else {
+            setAutoLoginError("Auto-login failed. Please log in manually.");
+            setAutoLoggingIn(false);
+          }
+        })
+        .catch(() => {
+          setAutoLoginError("Auto-login failed. Please log in manually.");
+          setAutoLoggingIn(false);
+        });
+    }
+  }, [info, token]);
 
   const registerMutation = useMutation({
     mutationFn: async () => {
@@ -126,26 +146,31 @@ export default function JoinPersonalPage() {
   }
 
   if (info.hasPassword) {
+    if (autoLoggingIn) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#0F1729]">
+          <div className="text-center space-y-3">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#C9A84C]" />
+            <p className="text-sm text-gray-400">Signing you in...</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0F1729]">
         <Card className="w-full max-w-md mx-4 bg-[#1a2332] border-gray-700">
           <CardContent className="pt-8 text-center space-y-4">
-            <CheckCircle className="h-12 w-12 mx-auto text-[#C9A84C]" />
-            <h2 className="text-lg font-semibold text-white">Account Already Set Up</h2>
+            <AlertCircle className="h-12 w-12 mx-auto text-amber-400" />
+            <h2 className="text-lg font-semibold text-white">Sign In Required</h2>
             <p className="text-sm text-gray-400">
-              Your account ({info.email}) is already active. Please log in to continue.
+              {autoLoginError || `Please log in to access your account (${info.email}).`}
             </p>
-            {info.dealCount > 0 && (
-              <p className="text-xs text-gray-500">
-                You have {info.dealCount} deal{info.dealCount > 1 ? "s" : ""} linked to your account.
-              </p>
-            )}
             <Button
               onClick={() => setLocation("/login")}
               className="bg-[#C9A84C] hover:bg-[#b8973b] text-white"
               data-testid="button-go-login-existing"
             >
-              Log In
+              Go to Login
             </Button>
           </CardContent>
         </Card>

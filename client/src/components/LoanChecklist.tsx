@@ -12,10 +12,14 @@ import {
   FileText,
   CheckSquare,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   ClipboardEdit,
   Send,
   HelpCircle,
+  Plus,
+  Eye,
+  Download,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +35,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface DocFile {
   id: number;
+  filePath: string | null;
   fileName: string | null;
   fileSize: number | null;
   mimeType: string | null;
@@ -127,7 +132,9 @@ interface LoanChecklistProps {
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
-    return new Date(dateStr).toLocaleDateString("en-US", {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -175,25 +182,25 @@ function getStatusIcon(status: string, type: "document" | "task") {
   if (type === "document") {
     switch (status) {
       case "approved":
-        return <CheckCircle2 className="h-5 w-5 text-success shrink-0" />;
+        return <CheckCircle2 className="h-5 w-5 text-success fill-current shrink-0" />;
       case "ai_reviewed":
-        return <CheckSquare className="h-5 w-5 text-violet-600 dark:text-violet-400 shrink-0" />;
+        return <CheckSquare className="h-5 w-5 text-violet-600 dark:text-violet-400 fill-current shrink-0" />;
       case "uploaded":
       case "submitted":
-        return <Clock className="h-5 w-5 text-info shrink-0" />;
+        return <Clock className="h-5 w-5 text-amber-500 fill-current shrink-0" />;
       case "rejected":
-        return <AlertCircle className="h-5 w-5 text-destructive shrink-0" />;
+        return <AlertCircle className="h-5 w-5 text-destructive fill-current shrink-0" />;
       default:
         return <Circle className="h-5 w-5 text-muted-foreground shrink-0" />;
     }
   } else {
     switch (status) {
       case "completed":
-        return <CheckCircle2 className="h-5 w-5 text-success shrink-0" />;
+        return <CheckCircle2 className="h-5 w-5 text-success fill-current shrink-0" />;
       case "in_progress":
-        return <Clock className="h-5 w-5 text-info shrink-0" />;
+        return <Clock className="h-5 w-5 text-amber-500 fill-current shrink-0" />;
       case "blocked":
-        return <AlertCircle className="h-5 w-5 text-destructive shrink-0" />;
+        return <AlertCircle className="h-5 w-5 text-destructive fill-current shrink-0" />;
       default:
         return <Circle className="h-5 w-5 text-muted-foreground shrink-0" />;
     }
@@ -593,6 +600,7 @@ function ChecklistItemRow({
   onUploadDoc?: (docId: number) => void;
   onReviewDoc?: (docId: number, decision: "approved" | "rejected", notes?: string) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isDocument = item.type === "document";
   const canUpload = isDocument && (item.status === "pending" || item.status === "rejected");
   const canReview = isDocument && mode === "admin" && (item.status === "uploaded" || item.status === "submitted" || item.status === "ai_reviewed");
@@ -600,17 +608,33 @@ function ChecklistItemRow({
   const hasForm = !isDocument && item.formTemplateId && item.formTemplate;
   const isFormTask = hasForm && mode === "borrower" && portalToken;
   const isAdminViewForm = hasForm && mode === "admin";
+  const files = item.files ?? [];
+  const hasFiles = files.length > 0;
+  const isBorrowerOrBroker = mode === "borrower" || mode === "broker";
+  const canAddMoreFiles = isDocument && isBorrowerOrBroker && item.status !== "approved" && onUploadDoc;
+  const isExpandable = isDocument && isBorrowerOrBroker && (hasFiles || canAddMoreFiles);
+
+  const getFileDownloadUrl = (fileId: number, download?: boolean) => {
+    if (portalToken) {
+      return `/api/portal/${portalToken}/document-files/${fileId}/download${download ? "?download=true" : ""}`;
+    }
+    return `/api/admin/document-files/${fileId}/download${download ? "?download=true" : ""}`;
+  };
 
   return (
     <div
-      className={`p-3 rounded-md border transition-colors ${
+      className={`rounded-md border transition-colors ${
         item.status === "rejected" ? "border-destructive/50 bg-destructive/5" :
         item.status === "ai_reviewed" ? "border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-900/10" :
         "border-border"
       } ${item.status === "approved" || item.status === "completed" ? "border-success/30 bg-success/5" : ""}`}
       data-testid={`checklist-item-${item.id}`}
     >
-      <div className="flex items-center gap-3">
+      <div
+        className={`p-3 flex items-center gap-3 ${isExpandable ? "cursor-pointer select-none" : ""}`}
+        onClick={isExpandable ? () => setIsExpanded(v => !v) : undefined}
+        data-testid={isExpandable ? `button-expand-checklist-${item.id}` : undefined}
+      >
         {getStatusIcon(item.status, item.type)}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -623,7 +647,7 @@ function ChecklistItemRow({
             }`}>
               {item.title}
             </span>
-            {isDocument && item.description && (mode === "borrower" || mode === "broker") && (
+            {isDocument && item.description && isBorrowerOrBroker && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -677,7 +701,7 @@ function ChecklistItemRow({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
           {getStatusBadge(item.status, item.type)}
           {showUploadButton && onUploadDoc && (
             <Button
@@ -715,8 +739,95 @@ function ChecklistItemRow({
               </Button>
             </div>
           )}
+          {isExpandable && (
+            isExpanded
+              ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+              : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+          )}
         </div>
       </div>
+
+      {isExpandable && isExpanded && (
+        <div className="border-t border-border/40 px-4 py-3 space-y-3 bg-muted/10" data-testid={`checklist-detail-${item.id}`}>
+          <div className="flex items-center justify-between">
+            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Files ({files.length})
+            </h4>
+            {canAddMoreFiles && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[12px] gap-1"
+                onClick={() => onUploadDoc!(item.itemId)}
+                data-testid={`button-add-file-${item.id}`}
+              >
+                <Plus className="h-3 w-3" />
+                Add File
+              </Button>
+            )}
+          </div>
+
+          {files.length > 0 ? (
+            <div className="space-y-1.5">
+              {files.map((file, idx) => (
+                <div
+                  key={file.id || idx}
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-card border border-border/30 hover:border-border/60 transition-colors"
+                  data-testid={`checklist-file-${item.id}-${file.id || idx}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <FileText className="h-4 w-4 text-blue-400 shrink-0" />
+                    <span className="text-[13px] font-medium truncate">
+                      {file.fileName || `File ${idx + 1}`}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0 hidden sm:inline">
+                      {file.fileSize ? `${(file.fileSize / 1024).toFixed(1)} KB` : ""}
+                      {file.uploadedAt ? ` · ${formatDateTime(file.uploadedAt)}` : ""}
+                    </span>
+                  </div>
+                  {file.id && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={getFileDownloadUrl(file.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                              data-testid={`button-preview-checklist-file-${file.id}`}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>Preview</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <a
+                              href={getFileDownloadUrl(file.id, true)}
+                              className="h-6 w-6 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 flex items-center justify-center transition-colors"
+                              data-testid={`button-download-checklist-file-${file.id}`}
+                            >
+                              <Download className="h-3 w-3" />
+                            </a>
+                          </TooltipTrigger>
+                          <TooltipContent>Download</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-muted-foreground py-1">No files uploaded yet.</p>
+          )}
+        </div>
+      )}
+
       {isFormTask && portalToken && item.status !== "completed" && (
         <FormTaskInline item={item} portalToken={portalToken} />
       )}

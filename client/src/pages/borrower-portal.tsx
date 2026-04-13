@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Star,
   LinkIcon,
+  MapPin,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,12 +39,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatDate } from "@/lib/utils";
 import { getMessageFileMeta, getAttachmentDownloadUrl } from "@/lib/messagesApi";
 import { formatPhoneNumber } from "@/lib/validation";
 import { LoanChecklist } from "@/components/LoanChecklist";
 import { PortalOnboarding, hasCompletedOnboarding } from "@/components/portal/PortalOnboarding";
 import { PortalSidebar, type PortalView } from "@/components/portal/PortalSidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Task {
   id: number;
@@ -176,6 +178,8 @@ interface RelatedDeal {
   currentStage: string;
   portalToken: string;
   programName: string | null;
+  loanNumber: string | null;
+  projectNumber: string | null;
   isCurrent: boolean;
 }
 
@@ -216,6 +220,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
@@ -273,7 +278,20 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: Partial<BorrowerProfile>) => {
-      const res = await apiRequest('PUT', `/api/portal/${token}/borrower-profile`, data);
+      const editableFields = ['firstName', 'lastName', 'phone', 'dateOfBirth', 'streetAddress', 'city', 'state', 'zipCode', 'ssnLast4', 'idType', 'idNumber', 'idExpirationDate', 'employerName', 'employmentTitle', 'annualIncome', 'employmentType', 'entityName', 'entityType', 'einNumber'] as const;
+      const payload: Record<string, any> = {};
+      for (const key of editableFields) {
+        if (key in data) {
+          const val = data[key as keyof BorrowerProfile];
+          if (key === 'annualIncome') {
+            const parsed = val != null && val !== '' ? parseFloat(String(val)) : NaN;
+            payload[key] = Number.isNaN(parsed) ? null : parsed;
+          } else {
+            payload[key] = val === '' ? null : val;
+          }
+        }
+      }
+      const res = await apiRequest('PUT', `/api/portal/${token}/borrower-profile`, payload);
       return res.json();
     },
     onSuccess: () => {
@@ -540,12 +558,19 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && selectedDocId) {
-      uploadMutation.mutate({ docId: selectedDocId, file });
-    }
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    const docId = selectedDocId;
     e.target.value = '';
+    if (files && files.length > 0 && docId) {
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await uploadMutation.mutateAsync({ docId, file: files[i] });
+        } catch {
+          // Error is handled by onError in the mutation; continue with remaining files
+        }
+      }
+    }
   };
 
   if (isLoading) {
@@ -593,15 +618,21 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const formatDate = (dateStr: string | null | undefined) => {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const getLoanTypeLabel = (loanType: string | null): string => {
+    if (!loanType) return "N/A";
+    const labels: Record<string, string> = {
+      rtl: "RTL",
+      dscr: "DSCR",
+      "fix-and-flip": "Fix & Flip",
+      bridge: "Bridge",
+      "ground-up": "Ground Up",
+      rental: "Rental",
+    };
+    return labels[loanType.toLowerCase()] || loanType;
   };
 
   return (
-    <div className={`flex min-h-screen ${isPreview ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'}`} data-testid="borrower-portal">
+    <div className={`flex flex-col md:flex-row min-h-screen ${isPreview ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'}`} data-testid="borrower-portal">
       {!isPreview && (
         <PortalSidebar
           portalType="borrower"
@@ -617,6 +648,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
         type="file"
         ref={fileInputRef}
         className="hidden"
+        multiple
         onChange={handleFileChange}
         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.csv,.txt"
         data-testid="input-file-upload"
@@ -680,68 +712,82 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                 <p className="text-sm text-muted-foreground font-ui">Click a loan to view progress, details, and documents</p>
               </div>
 
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm font-ui">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Loan</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Property</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Amount</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-muted-foreground text-xs">Status</th>
-                      <th className="w-[120px]" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayDeals.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="text-center py-12 text-muted-foreground">
-                          <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                          <p className="text-sm">No active loans yet.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      displayDeals.map((deal) => {
-                        const isCurrent = deal.isCurrent;
-                        return (
-                          <tr
-                            key={deal.id}
-                            className="border-b last:border-b-0 hover:bg-muted/30 transition-colors"
-                          >
-                            <td className="py-3 px-3">
-                              <div className="font-medium truncate" data-testid={`text-deal-name-${deal.id}`}>{deal.dealName}</div>
-                              {deal.programName && <div className="text-[11px] text-muted-foreground">{deal.programName}</div>}
-                            </td>
-                            <td className="py-3 px-3 text-muted-foreground truncate max-w-[200px]">{deal.propertyAddress || '—'}</td>
-                            <td className="py-3 px-3 font-medium">{deal.loanAmount ? formatCurrency(deal.loanAmount) : '—'}</td>
-                            <td className="py-3 px-3">
-                              <Badge variant={deal.status === 'active' ? 'default' : 'secondary'} className="text-[11px]" data-testid={`badge-status-${deal.id}`}>
-                                {deal.status}
-                              </Badge>
-                            </td>
-                            <td className="py-3 px-3 text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  if (isCurrent) {
-                                    setActiveView("deal-detail");
-                                  } else {
-                                    sessionStorage.setItem('portal_open_deal', deal.portalToken);
-                                    handleDealSwitch(deal.portalToken);
-                                  }
-                                }}
-                                data-testid={`btn-open-deal-${deal.id}`}
-                              >
-                                Open Deal <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {displayDeals.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No active loans yet.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {displayDeals.map((deal) => {
+                    const isCurrent = deal.isCurrent;
+                    return (
+                      <Card key={deal.id} className="overflow-hidden" data-testid={`card-deal-${deal.id}`}>
+                        <CardContent className="p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-1">
+                            <span className="text-sm font-medium leading-tight line-clamp-2" data-testid={`text-deal-name-${deal.id}`}>
+                              {deal.dealName}
+                            </span>
+                            <Badge variant={deal.status === 'active' ? 'default' : 'secondary'} className="text-[10px] flex-shrink-0" data-testid={`badge-status-${deal.id}`}>
+                              {deal.status}
+                            </Badge>
+                          </div>
+
+                          {deal.propertyAddress && (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{deal.propertyAddress}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1 text-xs">
+                              <DollarSign className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-medium">
+                                {deal.loanAmount ? formatCurrency(deal.loanAmount) : '—'}
+                              </span>
+                            </div>
+                            <Badge variant="outline" className="text-[10px]">
+                              {getLoanTypeLabel(deal.loanType)}
+                            </Badge>
+                          </div>
+
+                          {deal.currentStage && (
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="text-[10px] text-muted-foreground truncate">{deal.currentStage}</span>
+                            </div>
+                          )}
+
+                          {(deal.loanNumber || deal.projectNumber) && (
+                            <span className="text-[10px] font-mono text-muted-foreground block truncate">
+                              {deal.loanNumber || deal.projectNumber}
+                            </span>
+                          )}
+
+                          <div className="pt-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                if (isCurrent) {
+                                  setActiveView("deal-detail");
+                                } else {
+                                  sessionStorage.setItem('portal_open_deal', deal.portalToken);
+                                  handleDealSwitch(deal.portalToken);
+                                }
+                              }}
+                              data-testid={`btn-open-deal-${deal.id}`}
+                            >
+                              Open Deal <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
 
@@ -884,8 +930,8 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                 <p className="text-sm text-muted-foreground font-ui">Messages about your loans</p>
               </div>
 
-              <div className="flex flex-1 border rounded-lg overflow-hidden bg-background min-h-0">
-                <div className="w-[280px] md:w-[320px] border-r flex flex-col shrink-0">
+              <div className="flex flex-col md:flex-row flex-1 border rounded-lg overflow-hidden bg-background min-h-0">
+                <div className={`${isMobile && (selectedThreadId || composing) ? 'hidden' : 'flex'} w-full md:w-[320px] border-r flex-col shrink-0`}>
                   <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Conversations</span>
                     <Button
@@ -952,11 +998,16 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                   </ScrollArea>
                 </div>
 
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className={`${isMobile && !selectedThreadId && !composing ? 'hidden' : 'flex'} flex-1 flex-col min-w-0`}>
                   {composing ? (
                     <div className="flex-1 flex flex-col p-4">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold">New Conversation</h3>
+                        {isMobile && (
+                          <Button variant="ghost" size="sm" className="mr-2" onClick={() => setComposing(false)} data-testid="button-back-compose">
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <h3 className="text-sm font-semibold flex-1">New Conversation</h3>
                         <Button variant="ghost" size="sm" onClick={() => setComposing(false)} data-testid="button-cancel-compose">
                           <X className="h-3.5 w-3.5" />
                         </Button>
@@ -1025,6 +1076,11 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                   ) : (
                     <>
                       <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center gap-2">
+                        {isMobile && (
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setSelectedThreadId(null)} data-testid="button-back-thread">
+                            <ArrowLeft className="h-4 w-4" />
+                          </Button>
+                        )}
                         <div className="min-w-0">
                           <div className="text-sm font-semibold truncate">
                             {threadDetail?.thread?.subject || threads.find(t => t.id === selectedThreadId)?.dealName || 'Conversation'}
@@ -1206,7 +1262,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                           From: {doc.sourceDealName}
                         </span>
                       )}
-                      <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                      <span>{formatDate(doc.uploadedAt)}</span>
                       {doc.fileSize && <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>}
                     </div>
                   </div>
@@ -1415,7 +1471,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                             { label: "Name", value: [p.firstName, p.lastName].filter(Boolean).join(' ') },
                             { label: "Email", value: p.email },
                             { label: "Phone", value: p.phone },
-                            { label: "Date of Birth", value: p.dateOfBirth },
+                            { label: "Date of Birth", value: formatDate(p.dateOfBirth) },
                           ]},
                           { title: "Address", fields: [
                             { label: "Street", value: p.streetAddress },
@@ -1427,7 +1483,7 @@ export default function BorrowerPortal({ token: propToken, isPreview }: Borrower
                             { label: "SSN (last 4)", value: p.ssnLast4 ? `••••${p.ssnLast4}` : null },
                             { label: "ID Type", value: p.idType },
                             { label: "ID Number", value: p.idNumber },
-                            { label: "ID Expiration", value: p.idExpirationDate },
+                            { label: "ID Expiration", value: formatDate(p.idExpirationDate) },
                           ]},
                           { title: "Employment", fields: [
                             { label: "Employer", value: p.employerName },

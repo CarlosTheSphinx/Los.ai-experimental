@@ -101,22 +101,21 @@ function getEntryConfig(type: string) {
   return ENTRY_TYPE_CONFIG[type] || { icon: Clock, color: "text-muted-foreground", label: type.replace(/_/g, " ") };
 }
 
-function formatRelativeTime(dateStr: string) {
+function formatRelativeTime(dateStr: string | null | undefined) {
+  if (dateStr == null || dateStr === '') return '—';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '—';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  // Exact time portion (always shown)
   const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
-  // Relative label for context
   if (diffMins < 1) return `Just now · ${timeStr}`;
   if (diffMins < 60) return `${diffMins}m ago · ${timeStr}`;
   if (diffHours < 24) return `${diffHours}h ago · ${timeStr}`;
-  // For older entries, show full date + time
   const dateStr2 = date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: diffDays > 365 ? "numeric" : undefined });
   return `${dateStr2} at ${timeStr}`;
 }

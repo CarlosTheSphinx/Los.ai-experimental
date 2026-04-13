@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatTimestamp } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -412,7 +413,7 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
                 <h3 className="font-semibold text-base">AI Insights</h3>
                 <p className="text-xs text-muted-foreground">
                   {hasAnyData
-                    ? `Last analyzed ${story?.lastAgentUpdate ? new Date(story.lastAgentUpdate).toLocaleString() : "recently"}`
+                    ? `Last analyzed ${story?.lastAgentUpdate ? formatTimestamp(story.lastAgentUpdate) : "recently"}`
                     : "Run the AI pipeline to analyze this deal"}
                 </p>
               </div>
@@ -779,7 +780,7 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
                 )}
 
                 <div className="text-xs text-muted-foreground pt-2 border-t">
-                  Analyzed {new Date(latestFinding.createdAt).toLocaleString()}
+                  Analyzed {formatTimestamp(latestFinding.createdAt)}
                 </div>
               </CardContent>
             </CollapsibleContent>
@@ -974,7 +975,7 @@ export function AIInsightsPanel({ projectId, onPipelineComplete }: AIInsightsPan
                       )}
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(selectedRun.startedAt).toLocaleString()}
+                        {formatTimestamp(selectedRun.startedAt)}
                       </span>
                       <span>{selectedRun.agentSequence.length} agents</span>
                     </div>

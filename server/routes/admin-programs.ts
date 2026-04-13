@@ -15,7 +15,8 @@ import {
   creditPolicies,
   documentReviewResults,
   programReviewRules,
-  documentReviewRules
+  documentReviewRules,
+  pricingFieldTemplates
 } from '@shared/schema';
 
 export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
@@ -24,7 +25,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
   async function resolveUserTenantId(userId: number): Promise<number | null> {
     const user = await storage.getUserById(userId);
     if (!user) return null;
-    return getTenantId({ id: user.id, role: user.role, invitedBy: user.invitedBy ?? undefined });
+    return getTenantId({ id: user.id, role: user.role, tenantId: user.tenantId ?? null });
   }
 
   async function verifyProgramOwnership(req: AuthRequest, res: Response, programId: number): Promise<boolean> {
@@ -108,7 +109,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -173,7 +173,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
           maxUnits: maxUnits ? parseInt(maxUnits) : null,
           termOptions,
           eligiblePropertyTypes: eligiblePropertyTypes || [],
-          quoteFormFields: quoteFormFields ? JSON.stringify(quoteFormFields) : null,
+          quoteFormFields: quoteFormFields || null,
           isActive: isActive !== false,
           creditPolicyId: creditPolicyId ? parseInt(creditPolicyId) : null,
           createdBy: req.user!.id,
@@ -352,7 +352,7 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         if (maxUnits !== undefined) updateData.maxUnits = maxUnits ? parseInt(maxUnits) : null;
         if (termOptions !== undefined) updateData.termOptions = termOptions;
         if (eligiblePropertyTypes !== undefined) updateData.eligiblePropertyTypes = eligiblePropertyTypes;
-        if (quoteFormFields !== undefined) updateData.quoteFormFields = quoteFormFields ? JSON.stringify(quoteFormFields) : null;
+        if (quoteFormFields !== undefined) updateData.quoteFormFields = quoteFormFields || null;
         if (isActive !== undefined) updateData.isActive = isActive;
         if (reviewGuidelines !== undefined) updateData.reviewGuidelines = reviewGuidelines;
         if (creditPolicyId !== undefined) updateData.creditPolicyId = creditPolicyId ? parseInt(creditPolicyId) : null;
@@ -560,11 +560,13 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         return res.status(403).json({ error: 'Not authorized to modify this program' });
       }
 
+      const newIsActive = !program.isActive;
       const [updated] = await db.update(loanPrograms)
-        .set({ isActive: !program.isActive, updatedAt: new Date() })
+        .set({ isActive: newIsActive, updatedAt: new Date() })
         .where(eq(loanPrograms.id, parseInt(id)))
         .returning();
 
+      console.log(`Program ${id} toggled: isActive=${updated.isActive} by user ${req.user!.id}`);
       res.json({ program: updated });
     } catch (error) {
       console.error('Toggle program error:', error);
@@ -1298,7 +1300,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1424,7 +1425,6 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
         stepOrder: programWorkflowSteps.stepOrder,
         isRequired: programWorkflowSteps.isRequired,
         estimatedDays: programWorkflowSteps.estimatedDays,
-        color: programWorkflowSteps.color,
         createdAt: programWorkflowSteps.createdAt,
         definition: {
           id: workflowStepDefinitions.id,
@@ -1470,20 +1470,26 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
       if (!Array.isArray(rules)) {
         return res.status(400).json({ error: 'rules must be an array' });
       }
-      await storage.deleteReviewRulesByProgramId(programId);
-      const created = await storage.createReviewRules(
-        rules.map((r: any, idx: number) => ({
+      const created = await db.transaction(async (tx) => {
+        await tx.delete(programReviewRules).where(eq(programReviewRules.programId, programId));
+        const ruleValues = rules.map((r: any, idx: number) => ({
           programId,
           documentType: r.documentType || 'General',
           ruleTitle: r.ruleTitle,
           ruleDescription: r.ruleDescription || null,
+          ruleType: r.ruleType || 'general',
+          severity: r.severity || 'fail',
           category: r.category || null,
           isActive: r.isActive !== false,
           sortOrder: idx,
-        }))
-      );
-      const guidelinesText = created.map(r => `[${r.documentType}] ${r.ruleTitle}: ${r.ruleDescription || ''}`).join('\n');
-      await db.update(loanPrograms).set({ reviewGuidelines: guidelinesText }).where(eq(loanPrograms.id, programId));
+        }));
+        const inserted = ruleValues.length > 0
+          ? await tx.insert(programReviewRules).values(ruleValues).returning()
+          : [];
+        const guidelinesText = inserted.map(r => `[${r.documentType}] ${r.ruleTitle}: ${r.ruleDescription || ''}`).join('\n');
+        await tx.update(loanPrograms).set({ reviewGuidelines: guidelinesText }).where(eq(loanPrograms.id, programId));
+        return inserted;
+      });
       res.json({ rules: created });
     } catch (error: any) {
       console.error('Save review rules error:', error);
@@ -1575,6 +1581,60 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     } catch (error) {
       console.error('Get quote fields error:', error);
       res.status(500).json({ error: 'Failed to get quote fields' });
+    }
+  });
+
+  // ==================== PRICING FIELD TEMPLATES ====================
+
+  app.get('/api/admin/pricing-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = await resolveUserTenantId(req.user!.id);
+      const templates = await db.select()
+        .from(pricingFieldTemplates)
+        .where(eq(pricingFieldTemplates.tenantId, tenantId!))
+        .orderBy(pricingFieldTemplates.name);
+      res.json({ templates });
+    } catch (error) {
+      console.error('List pricing templates error:', error);
+      res.status(500).json({ error: 'Failed to list pricing templates' });
+    }
+  });
+
+  app.post('/api/admin/pricing-templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, textInputs, dropdowns } = req.body;
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Template name is required' });
+      }
+      const tenantId = await resolveUserTenantId(req.user!.id);
+      const [template] = await db.insert(pricingFieldTemplates).values({
+        name: name.trim(),
+        tenantId,
+        textInputs: textInputs || [],
+        dropdowns: dropdowns || [],
+        createdBy: req.user!.id,
+      }).returning();
+      res.json({ template });
+    } catch (error) {
+      console.error('Create pricing template error:', error);
+      res.status(500).json({ error: 'Failed to create pricing template' });
+    }
+  });
+
+  app.delete('/api/admin/pricing-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      const tenantId = await resolveUserTenantId(req.user!.id);
+      const [existing] = await db.select().from(pricingFieldTemplates)
+        .where(and(eq(pricingFieldTemplates.id, templateId), eq(pricingFieldTemplates.tenantId, tenantId!)));
+      if (!existing) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      await db.delete(pricingFieldTemplates).where(and(eq(pricingFieldTemplates.id, templateId), eq(pricingFieldTemplates.tenantId, tenantId!)));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete pricing template error:', error);
+      res.status(500).json({ error: 'Failed to delete pricing template' });
     }
   });
 }

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Calculator, DollarSign, Building, User, FileText, CreditCard, Landmark } from "lucide-react";
+import { Calculator, DollarSign, Building, User, FileText, CreditCard, Landmark } from "lucide-react";
 import { useEffect } from "react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
@@ -28,9 +28,10 @@ interface RTLLoanFormProps {
 
 export function RTLLoanForm({ onSubmit, isLoading, defaultData, visibleFields }: RTLLoanFormProps) {
   const isFieldVisible = (fieldKey: string) => {
-    if (!visibleFields || visibleFields.length === 0) return true;
+    if (!visibleFields) return true;
+    if (visibleFields.length === 0) return false;
     const field = visibleFields.find(f => f.fieldKey === fieldKey);
-    return field ? field.visible : false;
+    return field ? field.visible !== false : false;
   };
   const form = useForm<RTLPricingFormData>({
     resolver: zodResolver(rtlPricingFormSchema),
@@ -761,10 +762,7 @@ export function RTLLoanForm({ onSubmit, isLoading, defaultData, visibleFields }:
                 data-testid="button-rtl-submit"
               >
                 {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Calculating Price...
-                  </>
+                  "Calculating Price..."
                 ) : (
                   <>
                     <Calculator className="mr-2 h-5 w-5" />

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,7 +87,7 @@ export default function BorrowerQuotes() {
           <div className="space-y-4">
             {quotes.map((quote) => {
               const loanData = quote.loanData as Record<string, any>;
-              const createdAt = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString() : 'N/A';
+              const createdAt = formatDate(quote.createdAt, 'N/A');
 
               const isRTLQuote = loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined;
 

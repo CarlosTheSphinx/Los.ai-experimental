@@ -27,10 +27,9 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, safeFormat } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
 
 interface AIReviewTabProps {
   dealId: number;
@@ -596,7 +595,7 @@ export function AIReviewTab({ dealId, projectId }: AIReviewTabProps) {
                 />
                 {dealStory.lastAgentUpdate && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Last updated: {format(new Date(dealStory.lastAgentUpdate), "MMM d, yyyy h:mm a")}
+                    Last updated: {safeFormat(dealStory.lastAgentUpdate, "MMM d, yyyy h:mm a")}
                   </p>
                 )}
               </div>
@@ -612,7 +611,7 @@ export function AIReviewTab({ dealId, projectId }: AIReviewTabProps) {
       {/* Pipeline History */}
       {hasRun && pipelineStatus?.latestRun && (
         <div className="text-xs text-muted-foreground text-center py-2">
-          Last run: {format(new Date(pipelineStatus.latestRun.startedAt), "MMM d, yyyy h:mm a")}
+          Last run: {safeFormat(pipelineStatus.latestRun.startedAt, "MMM d, yyyy h:mm a")}
           {pipelineStatus.latestRun.triggerType && (
             <span> ({pipelineStatus.latestRun.triggerType})</span>
           )}

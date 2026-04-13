@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Mail, CheckCircle2, FolderOpen, RefreshCw, Unplug, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils";
 
 interface EmailAccount {
   id: number;
@@ -149,7 +149,7 @@ export default function EmailIntegrationConfig() {
                   <p className="text-sm font-medium">Gmail</p>
                   <p className="text-xs text-muted-foreground truncate">
                     {account.lastSyncAt
-                      ? `Last synced ${format(new Date(account.lastSyncAt), "MMM d, h:mm a")}`
+                      ? `Last synced ${safeFormat(account.lastSyncAt, "MMM d, h:mm a")}`
                       : "Not yet synced"}
                   </p>
                 </div>

@@ -48,7 +48,9 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {

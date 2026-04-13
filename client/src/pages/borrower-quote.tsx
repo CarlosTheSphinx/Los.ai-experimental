@@ -18,6 +18,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { formatPhoneNumber, isValidPhone } from "@/lib/validation";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { PricingDisclaimer } from "@/components/PricingDisclaimer";
+import { CalculatingOverlay } from "@/components/CalculatingOverlay";
+import { useSimulatedProgress } from "@/components/CircularProgress";
 
 interface ProgramWithPricing {
   id: number;
@@ -166,8 +169,16 @@ export default function BorrowerQuote() {
   const hasResult = (loanProductType === "dscr" && dscrResult) || (loanProductType === "rtl" && rtlResult);
   const isLoading = dscrPending || rtlPricingMutation.isPending;
 
+  const isCalcComplete = !isLoading && Boolean(hasResult);
+  const { progress: calcProgress, visible: showCalcOverlay } = useSimulatedProgress(isLoading, isCalcComplete);
+
   return (
     <div className="min-h-screen">
+      <CalculatingOverlay
+        progress={calcProgress}
+        visible={showCalcOverlay}
+        label={loanProductType === "rtl" ? "Calculating your price..." : "Calculating your rate..."}
+      />
       <header className="bg-white/80 backdrop-blur-md border-b border-primary/10 sticky top-0 z-40">
         <div className="px-4 md:px-6 py-3 md:py-4">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
@@ -224,34 +235,20 @@ export default function BorrowerQuote() {
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Select
-                    value={loanProductType}
-                    onValueChange={(v: "dscr" | "rtl") => {
-                      setLoanProductType(v);
-                      setSelectedProgramId(null);
-                      setDscrResult(null);
-                      setRtlResult(null);
-                    }}
-                  >
-                    <SelectTrigger className="w-full md:w-80" data-testid="select-loan-product-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dscr">DSCR</SelectItem>
-                      <SelectItem value="rtl">Fix and Flip/Ground Up Construction</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-muted-foreground" data-testid="text-no-programs">No loan programs are currently available.</p>
                 )}
               </CardContent>
             </Card>
 
-            <div className="max-w-4xl mx-auto">
-              {loanProductType === "dscr" ? (
-                <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
-              ) : (
-                <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
-              )}
-            </div>
+            {selectedProgramId && (
+              <div className="max-w-4xl mx-auto">
+                {loanProductType === "dscr" ? (
+                  <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
+                ) : (
+                  <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -272,6 +269,8 @@ export default function BorrowerQuote() {
                 onReset={handleReset}
               />
             )}
+
+            <PricingDisclaimer />
 
             {((loanProductType === "dscr" && dscrResult?.success) ||
               (loanProductType === "rtl" && rtlResult?.eligible)) && (

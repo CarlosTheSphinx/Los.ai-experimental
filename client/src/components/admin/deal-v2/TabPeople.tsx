@@ -63,13 +63,18 @@ const THIRD_PARTY_ROLES = [
 
 const emptyForm = { name: "", email: "", phone: "", role: "", company: "", notes: "" };
 
+const emptyBrokerForm = { name: "", email: "", phone: "", company: "" };
+
 export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin?: boolean }) {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const dealId = deal.projectId || deal.id;
+  const [editingBroker, setEditingBroker] = useState(false);
+  const [brokerForm, setBrokerForm] = useState(emptyBrokerForm);
+
+  const dealId = String(deal.projectId || deal.id);
 
   const { data: teamData } = useQuery<{ teamMembers: { id: number; fullName: string; email: string; role: string }[] }>({
     queryKey: ["/api/admin/team-members"],
@@ -195,6 +200,41 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
     setForm(emptyForm);
   };
 
+  const saveBrokerMutation = useMutation({
+    mutationFn: async (data: typeof emptyBrokerForm) => {
+      const res = await apiRequest("PATCH", `/api/admin/deals/${dealId}/people`, {
+        brokerName: data.name,
+        brokerEmail: data.email,
+        brokerPhone: data.phone,
+        brokerCompany: data.company,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals", dealId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/projects", dealId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/projects", deal.id, "broker-link"] });
+      toast({ title: "Broker info updated" });
+      setEditingBroker(false);
+    },
+    onError: () => toast({ title: "Failed to update broker info", variant: "destructive" }),
+  });
+
+  const startEditBroker = () => {
+    setBrokerForm({
+      name: deal.brokerName || "",
+      email: deal.brokerEmail || "",
+      phone: deal.brokerPhone || "",
+      company: deal.brokerCompany || "",
+    });
+    setEditingBroker(true);
+  };
+
+  const cancelBrokerEdit = () => {
+    setEditingBroker(false);
+    setBrokerForm(emptyBrokerForm);
+  };
+
   const borrowerName = deal.borrowerName || `${deal.customerFirstName || ""} ${deal.customerLastName || ""}`.trim();
   const borrowerEmail = deal.borrowerEmail || deal.customerEmail;
   const borrowerPhone = deal.borrowerPhone || deal.customerPhone;
@@ -286,11 +326,110 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
         </Card>
       </div>
 
-      {deal.brokerName && (
-        <div>
-          <h3 className="text-[14px] font-semibold text-muted-foreground uppercase tracking-wider mb-3" data-testid="text-broker-section-title">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[14px] font-semibold text-muted-foreground uppercase tracking-wider" data-testid="text-broker-section-title">
             Broker
           </h3>
+          {isAdmin && !editingBroker && (
+            (deal.brokerName || deal.brokerEmail || deal.brokerPhone || deal.brokerCompany) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={startEditBroker}
+                    data-testid="button-edit-broker"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Edit Broker Info</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[13px]"
+                onClick={startEditBroker}
+                data-testid="button-add-broker"
+              >
+                <Plus className="h-3 w-3 mr-1" /> Add
+              </Button>
+            )
+          )}
+        </div>
+
+        {editingBroker ? (
+          <Card className="mb-3">
+            <CardContent className="py-4 px-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[15px] font-semibold">{(deal.brokerName || deal.brokerEmail || deal.brokerPhone || deal.brokerCompany) ? "Edit Broker" : "Add Broker"}</span>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={cancelBrokerEdit} data-testid="button-cancel-broker-edit">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[13px]">Name</Label>
+                  <Input
+                    className="h-8 text-[14px] mt-1"
+                    placeholder="Full name"
+                    value={brokerForm.name}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, name: e.target.value })}
+                    data-testid="input-broker-name"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[13px]">Company</Label>
+                  <Input
+                    className="h-8 text-[14px] mt-1"
+                    placeholder="Company name"
+                    value={brokerForm.company}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, company: e.target.value })}
+                    data-testid="input-broker-company"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[13px]">Email</Label>
+                  <Input
+                    className="h-8 text-[14px] mt-1"
+                    placeholder="email@example.com"
+                    value={brokerForm.email}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, email: e.target.value })}
+                    data-testid="input-broker-email"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[13px]">Phone</Label>
+                  <Input
+                    className="h-8 text-[14px] mt-1"
+                    placeholder="(555) 123-4567"
+                    value={brokerForm.phone}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, phone: formatPhoneNumber(e.target.value) })}
+                    data-testid="input-broker-phone"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-3">
+                <Button variant="outline" size="sm" className="h-8 text-[13px]" onClick={cancelBrokerEdit}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-[13px]"
+                  onClick={() => saveBrokerMutation.mutate(brokerForm)}
+                  disabled={saveBrokerMutation.isPending}
+                  data-testid="button-save-broker"
+                >
+                  {saveBrokerMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                  Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (deal.brokerName || deal.brokerEmail || deal.brokerPhone || deal.brokerCompany) ? (
           <Card>
             <CardContent className="py-4 px-5">
               <div className="flex items-start gap-4">
@@ -302,6 +441,9 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
                     <span className="text-[17px] font-semibold" data-testid="text-broker-name">{deal.brokerName}</span>
                     <Badge variant="secondary" className="text-[12px]">Broker</Badge>
                   </div>
+                  {deal.brokerCompany && (
+                    <div className="text-[13px] text-muted-foreground mb-1" data-testid="text-broker-company">{deal.brokerCompany}</div>
+                  )}
                   <div className="space-y-1">
                     {deal.brokerEmail && (
                       <div className="flex items-center gap-1.5 text-[14px] text-muted-foreground">
@@ -316,12 +458,62 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
                       </div>
                     )}
                   </div>
+                  {brokerPortalUrl && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="text-[13px] text-muted-foreground">Broker Portal</span>
+                      <a href={brokerPortalUrl} target="_blank" rel="noreferrer">
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[13px]" data-testid="link-broker-portal">
+                          <ExternalLink className="h-3 w-3 mr-1" /> Open
+                        </Button>
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[13px]"
+                        onClick={() => copyToClipboard(brokerPortalUrl, "Broker portal link")}
+                        data-testid="button-copy-broker-portal"
+                      >
+                        <Copy className="h-3 w-3 mr-1" /> Copy Link
+                      </Button>
+                    </div>
+                  )}
+                  {deal.brokerProfile && (
+                    <div className="mt-3 pt-3 border-t space-y-1.5" data-testid="broker-profile-section">
+                      {deal.brokerProfile.brokerLicenseNumber && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-license">
+                          License: {deal.brokerProfile.brokerLicenseNumber}
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerYearsExperience && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-experience">
+                          Experience: {deal.brokerProfile.brokerYearsExperience}+ years
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerOperatingStates && deal.brokerProfile.brokerOperatingStates.length > 0 && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-states">
+                          States: {deal.brokerProfile.brokerOperatingStates.join(", ")}
+                        </div>
+                      )}
+                      {deal.brokerProfile.brokerPreferredLoanTypes && deal.brokerProfile.brokerPreferredLoanTypes.length > 0 && (
+                        <div className="text-[13px] text-muted-foreground" data-testid="text-broker-loan-types">
+                          Preferred: {deal.brokerProfile.brokerPreferredLoanTypes.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
+        ) : (
+          <Card>
+            <CardContent className="py-4 px-5">
+              <p className="text-[14px] text-muted-foreground" data-testid="text-no-broker">No broker assigned yet.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <div>
         <h3 className="text-[14px] font-semibold text-muted-foreground uppercase tracking-wider mb-3" data-testid="text-team-section-title">
@@ -350,28 +542,6 @@ export default function TabPeople({ deal, isAdmin = true }: { deal: any; isAdmin
                     </div>
                   </div>
                 ))}
-                {brokerPortalUrl && (
-                  <div className="pt-3 pb-1">
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="text-[13px] text-muted-foreground">Broker Portal</span>
-                      <a href={brokerPortalUrl} target="_blank" rel="noreferrer">
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[13px]" data-testid="link-broker-portal">
-                          <ExternalLink className="h-3 w-3 mr-1" /> Open
-                        </Button>
-                      </a>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[13px]"
-                        onClick={() => copyToClipboard(brokerPortalUrl, "Broker portal link")}
-                        data-testid="button-copy-broker-portal"
-                      >
-                        <Copy className="h-3 w-3 mr-1" /> Copy Link
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </CardContent>

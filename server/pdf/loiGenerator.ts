@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from 'pdf-lib';
 import type { QuotePdfData } from './quoteGenerator';
+import { sanitizeForPdf } from './quoteGenerator';
 import type { LoiDefaults } from '@shared/schema';
 
 function normalizeKey(key: string): string {
@@ -37,7 +38,7 @@ function formatCurrency(value: any): string {
 
 function fv(value: any): string {
   if (value === undefined || value === null || value === '') return '';
-  return String(value);
+  return sanitizeForPdf(String(value));
 }
 
 interface Fonts {
@@ -76,7 +77,7 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
 }
 
 function drawWrappedText(page: PDFPage, text: string, x: number, y: number, font: PDFFont, size: number, maxWidth: number, lineHeight: number, color = DARK_GRAY): number {
-  const lines = wrapText(text, font, size, maxWidth);
+  const lines = wrapText(sanitizeForPdf(text), font, size, maxWidth);
   let cy = y;
   for (const line of lines) {
     page.drawText(line, { x, y: cy, size, font, color });
@@ -86,7 +87,7 @@ function drawWrappedText(page: PDFPage, text: string, x: number, y: number, font
 }
 
 function drawPageHeader(page: PDFPage, fonts: Fonts): number {
-  const title = 'Letter of Intent – BPL Term Loan';
+  const title = sanitizeForPdf('Letter of Intent – BPL Term Loan');
   page.drawText(title, {
     x: MARGIN,
     y: PAGE_H - 50,
@@ -149,7 +150,7 @@ function drawTableRow(
 
   const textY = y - rowHeight + 5;
 
-  page.drawText(leftLabel, {
+  page.drawText(sanitizeForPdf(leftLabel), {
     x: MARGIN + 4,
     y: textY,
     size: labelSize,
@@ -158,7 +159,7 @@ function drawTableRow(
   });
 
   if (leftValue) {
-    page.drawText(leftValue, {
+    page.drawText(sanitizeForPdf(leftValue), {
       x: MARGIN + labelW + 4,
       y: textY,
       size: valueSize,
@@ -169,7 +170,7 @@ function drawTableRow(
     drawBlankLine(page, MARGIN + labelW + 4, textY, halfW - labelW - 12);
   }
 
-  page.drawText(rightLabel, {
+  page.drawText(sanitizeForPdf(rightLabel), {
     x: MARGIN + halfW + 4,
     y: textY,
     size: labelSize,
@@ -178,7 +179,7 @@ function drawTableRow(
   });
 
   if (rightValue) {
-    page.drawText(rightValue, {
+    page.drawText(sanitizeForPdf(rightValue), {
       x: MARGIN + halfW + labelW + 4,
       y: textY,
       size: valueSize,
@@ -227,7 +228,7 @@ export const LOI_DEFAULT_VALUES: Required<LoiDefaults> = {
   feesFootnote: DEFAULT_LOI_FEES_FOOTNOTE,
 };
 
-export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaults): Promise<Uint8Array> {
+export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaults): Promise<{ pdfBytes: Uint8Array; signingFields: LoiSigningField[] }> {
   const d = { ...LOI_DEFAULT_VALUES, ...loiDefaults };
   const pdfDoc = await PDFDocument.create();
 
@@ -254,7 +255,34 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   const propertyType = fv(resolveField(allData, 'propertyType', 'property_type'));
   const loanPurpose = fv(resolveField(allData, 'loanPurpose', 'loan_purpose', 'purpose'));
   const prepaymentPenalty = fv(resolveField(allData, 'prepaymentPenalty', 'prepayment_penalty', 'prepayPenalty'));
-  const dscr = fv(resolveField(allData, 'dscr', 'dscrRatio', 'estimatedDscr'));
+  let dscr = fv(resolveField(allData, 'calculatedDscr', 'dscr', 'dscrRatio', 'estimatedDscr'));
+  if (!dscr) {
+    const rent = safeNumber(resolveField(allData, 'grossMonthlyRent', 'gross_monthly_rent', 'monthlyRent'));
+    const annTaxes = safeNumber(resolveField(allData, 'annualTaxes', 'annual_taxes'));
+    const annInsurance = safeNumber(resolveField(allData, 'annualInsurance', 'annual_insurance'));
+    const annHOA = safeNumber(resolveField(allData, 'annualHOA', 'annual_hoa'));
+    const mTaxes = annTaxes > 0 ? annTaxes / 12 : safeNumber(resolveField(allData, 'monthlyTaxes', 'monthly_taxes'));
+    const mInsurance = annInsurance > 0 ? annInsurance / 12 : safeNumber(resolveField(allData, 'monthlyInsurance', 'monthly_insurance'));
+    const mHOA = annHOA > 0 ? annHOA / 12 : safeNumber(resolveField(allData, 'monthlyHOA', 'monthly_hoa'));
+    const la = safeNumber(loanAmount);
+    const rateStr = String(data.interestRate || resolveField(allData, 'interestRate', 'interest_rate') || '');
+    const annualRate = safeNumber(rateStr) / 100;
+    let termMonths = 360;
+    const termStr = String(resolveField(allData, 'loanTerm', 'loan_term', 'amortizationTerm') || resolveField(allData, 'loanType', 'loan_type') || '');
+    const moMatch = termStr.match(/(\d+)\s*months?/i);
+    const yrMatch = termStr.match(/(\d+)\s*(?:yr|year)/i);
+    if (moMatch) termMonths = parseInt(moMatch[1]);
+    else if (yrMatch) termMonths = parseInt(yrMatch[1]) * 12;
+
+    if (rent > 0 && la > 0 && annualRate > 0) {
+      const mr = annualRate / 12;
+      const monthlyPI = la * mr / (1 - Math.pow(1 + mr, -termMonths));
+      const totalMonthly = monthlyPI + mTaxes + mInsurance + mHOA;
+      if (totalMonthly > 0) {
+        dscr = (rent / totalMonthly).toFixed(2);
+      }
+    }
+  }
   const entityName = fv(resolveField(allData, 'customerCompanyName', 'entityName', 'borrowingEntity', 'companyName'));
   const borrowerName = fv(resolveField(allData, 'customerName', 'borrowerName'));
   const address = fv(data.propertyAddress || resolveField(allData, 'propertyAddress', 'property_address'));
@@ -274,7 +302,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
 
   page1.drawText('Date:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   if (quoteDate) {
-    page1.drawText(quoteDate, { x: MARGIN + 32, y, size: 9, font: fonts.regular, color: BLACK });
+    page1.drawText(sanitizeForPdf(quoteDate), { x: MARGIN + 32, y, size: 9, font: fonts.regular, color: BLACK });
   } else {
     drawBlankLine(page1, MARGIN + 32, y, 120);
   }
@@ -283,17 +311,17 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   page1.drawText('Re:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   page1.drawText('Loan #', { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
   if (quoteNumber) {
-    page1.drawText(quoteNumber, { x: MARGIN + 80, y, size: 9, font: fonts.regular, color: BLACK });
+    page1.drawText(sanitizeForPdf(quoteNumber), { x: MARGIN + 80, y, size: 9, font: fonts.regular, color: BLACK });
   } else {
     drawBlankLine(page1, MARGIN + 80, y, 100);
   }
   y -= 14;
-  page1.drawText('Property Addresses – See Exhibit A', { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
+  page1.drawText(sanitizeForPdf('Property Addresses – See Exhibit A'), { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
   y -= 20;
 
   page1.drawText('Dear', { x: MARGIN, y, size: 9, font: fonts.regular, color: DARK_GRAY });
   if (borrowerName) {
-    page1.drawText(borrowerName + ',', { x: MARGIN + 28, y, size: 9, font: fonts.regular, color: BLACK });
+    page1.drawText(sanitizeForPdf(borrowerName) + ',', { x: MARGIN + 28, y, size: 9, font: fonts.regular, color: BLACK });
   } else {
     drawBlankLine(page1, MARGIN + 28, y, 150);
   }
@@ -364,7 +392,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
       font: fonts.bold,
       color: DARK_GRAY,
     });
-    page1.drawText(value, {
+    page1.drawText(sanitizeForPdf(value), {
       x: MARGIN + 120,
       y: y - rowH + 4,
       size: 8,
@@ -374,7 +402,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
     y -= rowH;
   }
 
-  const appraisalLines = wrapText(d.appraisalNote, fonts.italic, 6.5, CONTENT_W - 124);
+  const appraisalLines = wrapText(sanitizeForPdf(d.appraisalNote), fonts.italic, 6.5, CONTENT_W - 124);
   const appraisalH = Math.max(28, appraisalLines.length * 8 + 8);
   page1.drawRectangle({
     x: MARGIN,
@@ -414,7 +442,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
 
   page2.drawText('Date:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   if (quoteDate) {
-    page2.drawText(quoteDate, { x: MARGIN + 32, y, size: 9, font: fonts.regular, color: BLACK });
+    page2.drawText(sanitizeForPdf(quoteDate), { x: MARGIN + 32, y, size: 9, font: fonts.regular, color: BLACK });
   } else {
     drawBlankLine(page2, MARGIN + 32, y, 120);
   }
@@ -423,12 +451,12 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
   page2.drawText('Re:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   page2.drawText('Loan #:', { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
   if (quoteNumber) {
-    page2.drawText(quoteNumber, { x: MARGIN + 82, y, size: 9, font: fonts.regular, color: BLACK });
+    page2.drawText(sanitizeForPdf(quoteNumber), { x: MARGIN + 82, y, size: 9, font: fonts.regular, color: BLACK });
   } else {
     drawBlankLine(page2, MARGIN + 82, y, 100);
   }
   y -= 14;
-  page2.drawText('Property Addresses – See Exhibit A', { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
+  page2.drawText(sanitizeForPdf('Property Addresses – See Exhibit A'), { x: MARGIN + 40, y, size: 9, font: fonts.regular, color: DARK_GRAY });
   y -= 22;
 
   page2.drawText('Disclaimer', {
@@ -459,7 +487,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
 
   page2.drawText('Name:', { x: MARGIN, y, size: 9, font: fonts.bold, color: DARK_GRAY });
   if (borrowerName) {
-    page2.drawText(borrowerName, { x: MARGIN + 50, y, size: 9, font: fonts.regular, color: BLACK });
+    page2.drawText(sanitizeForPdf(borrowerName), { x: MARGIN + 50, y, size: 9, font: fonts.regular, color: BLACK });
   }
   drawBlankLine(page2, MARGIN + 50, y, 200);
   y -= 30;
@@ -475,16 +503,17 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
 
   const sigFieldHeight = 25;
   const dateFieldHeight = 20;
-  _lastSigningFields = [
+  const computedSigningFields: LoiSigningField[] = [
     { fieldType: 'signature', pageNumber: 2, x: MARGIN + 60, y: PAGE_H - sigFieldY_pdflib - sigFieldHeight, width: 200, height: sigFieldHeight },
     { fieldType: 'date', pageNumber: 2, x: MARGIN + 35, y: PAGE_H - dateFieldY_pdflib - dateFieldHeight, width: 120, height: dateFieldHeight },
   ];
+  _lastSigningFields = computedSigningFields;
 
   // ==================== PAGE 3 ====================
   const page3 = pdfDoc.addPage([PAGE_W, PAGE_H]);
   y = drawPageHeader(page3, fonts);
 
-  const exhibitTitle = 'Exhibit A – Property Address';
+  const exhibitTitle = sanitizeForPdf('Exhibit A – Property Address');
   const exhibitTitleW = fonts.bold.widthOfTextAtSize(exhibitTitle, 12);
   page3.drawText(exhibitTitle, {
     x: MARGIN + (CONTENT_W - exhibitTitleW) / 2,
@@ -507,7 +536,7 @@ export async function generateLoiPdf(data: QuotePdfData, loiDefaults?: LoiDefaul
     }
   }
 
-  return pdfDoc.save();
+  return { pdfBytes: await pdfDoc.save(), signingFields: computedSigningFields };
 }
 
 export interface LoiSigningField {
@@ -526,6 +555,6 @@ export function getLastLoiSigningFields(): LoiSigningField[] {
 }
 
 export async function generateLoiPdfWithFields(data: QuotePdfData, loiDefaults?: LoiDefaults): Promise<{ pdfBytes: Uint8Array; signingFields: LoiSigningField[] }> {
-  const pdfBytes = await generateLoiPdf(data, loiDefaults);
-  return { pdfBytes: new Uint8Array(pdfBytes), signingFields: [..._lastSigningFields] };
+  const result = await generateLoiPdf(data, loiDefaults);
+  return { pdfBytes: new Uint8Array(result.pdfBytes), signingFields: result.signingFields };
 }

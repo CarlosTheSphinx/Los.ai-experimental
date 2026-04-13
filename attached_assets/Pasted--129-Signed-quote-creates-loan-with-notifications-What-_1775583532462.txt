@@ -1,0 +1,29 @@
+#129 - Signed quote creates loan with notifications
+What & Why
+When a term sheet/quote is signed via PandaDoc, the system already auto-creates a project (loan) in the database. However, there are gaps: no broker portal token is generated (so brokers can't see the loan in "My Loans"), no email/in-app notifications are sent to the broker or lender about the signing, and the loan may not appear correctly for all three parties (lender, broker, borrower). This task ensures the full post-signing flow works end-to-end in production.
+
+Done looks like
+When a quote is signed, a loan (project) is created and immediately visible in "My Loans" for the borrower, the broker, and the lender/admin.
+A brokerPortalToken is generated alongside the existing borrowerPortalToken so the broker can access the loan via their portal.
+The broker receives an email notification and an in-app notification that the term sheet was signed and the loan is now active.
+The lender/admin receives an email notification and an in-app notification that the term sheet was signed and the loan is now active.
+Notifications use the existing email system (Resend via emailWrapper) and in-app notification system (notifications table).
+Both the PandaDoc webhook handler and the PandaDoc polling sync service handle this consistently.
+Out of scope
+Borrower email notifications (borrower already sees the document completion via PandaDoc's own email flow).
+Changes to the "My Loans" UI itself — this task focuses on the backend data and notification plumbing.
+SMS notifications for this event.
+Tasks
+In the PandaDoc webhook handler's auto-create project logic, generate a brokerPortalToken and set brokerPortalEnabled: true on the new project record, using the same UUID approach as borrowerPortalToken.
+After project creation in the webhook handler, send email notifications to the broker (using brokerEmail from the quote/partner data) and to lender/admin users (from the tenant), using the existing emailWrapper pattern and Resend integration.
+After project creation in the webhook handler, insert in-app notifications into the notifications table for: (a) all admin/staff users in the tenant, (b) the broker user if they have an account, and (c) the quote owner. Use notification type term_sheet_signed.
+Apply the same broker portal token generation and notification logic to the PandaDoc polling sync service (pandadocSync.ts), which has a parallel code path for the same auto-creation flow.
+Ensure the existing notification preference check (isNotificationEnabled('term_sheet_signed')) gates both email and in-app notifications consistently.
+Relevant files
+server/routes.ts:18658-18954
+server/services/pandadocSync.ts:140-245
+server/services/commercialNotifications.ts:38-50
+server/email.ts
+shared/schema.ts:495-586
+server/routes/messaging.ts:379-440
+server/services/notificationHelper.ts

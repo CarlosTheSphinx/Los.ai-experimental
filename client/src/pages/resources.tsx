@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -190,7 +191,7 @@ export default function ResourcesPage() {
                     <div>
                       <p className="font-medium text-success">Agreement Signed</p>
                       <p className="text-sm text-success/80">
-                        Signed on {new Date(status.user.partnershipAgreementSignedAt!).toLocaleDateString()}
+                        Signed on {formatDate(status.user.partnershipAgreementSignedAt)}
                       </p>
                     </div>
                   </div>

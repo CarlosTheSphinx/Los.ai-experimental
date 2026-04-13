@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { Readable } from 'stream';
 import { decryptToken, encryptToken } from '../utils/encryption';
 
-async function getAdminWithDriveTokens(): Promise<{ id: number; googleRefreshToken: string; googleAccessToken: string | null; googleTokenExpiresAt: Date | null } | null> {
+export async function getAdminWithDriveTokens(): Promise<{ id: number; googleRefreshToken: string; googleAccessToken: string | null; googleTokenExpiresAt: Date | null } | null> {
   const [admin] = await db.select({
     id: users.id,
     googleRefreshToken: users.googleRefreshToken,

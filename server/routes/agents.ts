@@ -7,6 +7,7 @@ import type { Express, Response } from 'express';
 import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
 import { eq, desc, and, or } from 'drizzle-orm';
+import { INTAKE_AGENT_PROMPTS } from '../agents/intakePrompts';
 import {
   agentConfigurations,
   agentRuns,
@@ -166,6 +167,36 @@ export async function seedDefaultAgentConfigs(db: RouteDeps['db']): Promise<void
       modelName: 'gpt-4o',
       maxTokens: 1024,
       temperature: 0.2
+    },
+    {
+      agentType: 'intake_validator',
+      name: 'Deal Validator',
+      systemPrompt: INTAKE_AGENT_PROMPTS.VALIDATOR,
+      toolDefinitions: ['deal_validation', 'metrics_calculation'],
+      modelProvider: 'openai',
+      modelName: 'gpt-4o',
+      maxTokens: 4096,
+      temperature: 0.3
+    },
+    {
+      agentType: 'intake_fund_matcher',
+      name: 'Fund Matcher',
+      systemPrompt: INTAKE_AGENT_PROMPTS.FUND_MATCHER,
+      toolDefinitions: ['fund_matching', 'risk_analysis'],
+      modelProvider: 'openai',
+      modelName: 'gpt-4o',
+      maxTokens: 4096,
+      temperature: 0.3
+    },
+    {
+      agentType: 'intake_feedback_generator',
+      name: 'Feedback Generator',
+      systemPrompt: INTAKE_AGENT_PROMPTS.FEEDBACK_GENERATOR,
+      toolDefinitions: ['feedback_generation', 'verdict_calculation'],
+      modelProvider: 'openai',
+      modelName: 'gpt-4o',
+      maxTokens: 4096,
+      temperature: 0.3
     }
   ];
 
@@ -1231,7 +1262,6 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Check if there's already a running pipeline for this project
         const [existingRun] = await db
           .select()
           .from(agentPipelineRuns)
@@ -1241,13 +1271,21 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
           ));
 
         if (existingRun) {
-          return res.status(409).json({
-            error: 'A pipeline is already running for this deal',
-            pipelineRunId: existingRun.id,
-          });
+          const startedAt = existingRun.startedAt ? new Date(existingRun.startedAt).getTime() : 0;
+          const ageMs = Date.now() - startedAt;
+          const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+          if (ageMs > STALE_THRESHOLD_MS) {
+            await db.update(agentPipelineRuns)
+              .set({ status: 'failed', completedAt: new Date().toISOString(), errorMessage: 'Auto-expired: exceeded 10 minute timeout' })
+              .where(eq(agentPipelineRuns.id, existingRun.id));
+          } else {
+            return res.status(409).json({
+              error: 'A pipeline is already running for this deal',
+              pipelineRunId: existingRun.id,
+            });
+          }
         }
 
-        // Start the pipeline (runs asynchronously)
         const sequence = agentSequence || ['document_intelligence', 'processor', 'communication'];
         const pipelineRun = await startPipeline(
           parseInt(projectId),
@@ -1265,6 +1303,122 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
       } catch (error) {
         console.error('Error starting pipeline:', error);
         res.status(500).json({ error: 'Failed to start pipeline' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/agents/pipeline/generate-communication
+   * Run only Agent 3 (Communication) for a deal using the latest findings
+   */
+  app.post(
+    '/api/admin/agents/pipeline/generate-communication',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { projectId } = req.body;
+
+        if (!projectId) {
+          return res.status(400).json({ error: 'projectId is required' });
+        }
+
+        const [project] = await db
+          .select()
+          .from(projects)
+          .where(eq(projects.id, parseInt(projectId)));
+
+        if (!project) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const [existingRun] = await db
+          .select()
+          .from(agentPipelineRuns)
+          .where(and(
+            eq(agentPipelineRuns.projectId, parseInt(projectId)),
+            eq(agentPipelineRuns.status, 'running')
+          ));
+
+        if (existingRun) {
+          return res.status(409).json({
+            error: 'A pipeline is already running for this deal',
+            pipelineRunId: existingRun.id,
+          });
+        }
+
+        const pipelineRun = await startPipeline(
+          parseInt(projectId),
+          req.user?.id || null,
+          'manual_communication',
+          ['communication']
+        );
+
+        res.status(202).json({
+          success: true,
+          pipelineRunId: pipelineRun.id,
+          status: pipelineRun.status,
+          message: 'Communication agent started'
+        });
+      } catch (error) {
+        console.error('Error starting communication pipeline:', error);
+        res.status(500).json({ error: 'Failed to start communication agent' });
+      }
+    }
+  );
+
+  /**
+   * PATCH /api/projects/:id/findings/:findingId/decision
+   * Save lender decision on AI findings
+   */
+  app.patch(
+    '/api/projects/:id/findings/:findingId/decision',
+    authenticateUser,
+    requireAdmin,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        const findingId = parseInt(req.params.findingId);
+        const { decision, notes } = req.body;
+
+        if (!decision || !['approve', 'conditional', 'deny', 'at_risk'].includes(decision)) {
+          return res.status(400).json({ error: 'Valid decision required: approve, conditional, deny, at_risk' });
+        }
+
+        const [updated] = await db
+          .update(agentFindings)
+          .set({
+            lenderDecision: decision,
+            lenderDecisionBy: req.user?.id || null,
+            lenderDecisionAt: new Date(),
+            lenderDecisionNotes: notes || null,
+          })
+          .where(and(
+            eq(agentFindings.id, findingId),
+            eq(agentFindings.projectId, projectId)
+          ))
+          .returning();
+
+        if (!updated) {
+          return res.status(404).json({ error: 'Finding not found' });
+        }
+
+        try {
+          await db.insert(dealMemoryEntries).values({
+            dealId: projectId,
+            entryType: 'lender_decision',
+            title: `Deal marked as ${decision.replace('_', ' ')}`,
+            description: notes || null,
+            sourceType: 'admin',
+            sourceUserId: req.user?.id || null,
+            metadata: { findingId, decision },
+          });
+        } catch (e) { console.error('Memory entry error:', e); }
+
+        res.json({ success: true, finding: updated });
+      } catch (error) {
+        console.error('Error saving finding decision:', error);
+        res.status(500).json({ error: 'Failed to save decision' });
       }
     }
   );
@@ -1571,6 +1725,36 @@ export function registerAgentRoutes(app: Express, deps: RouteDeps): void {
             modelName: 'gpt-4o',
             maxTokens: 1024,
             temperature: 0.2
+          },
+          {
+            agentType: 'intake_validator',
+            name: 'Commercial Intake Validator',
+            systemPrompt: `You are a Commercial Real Estate Deal Validator AI Agent. Your job is to:\n1. Parse and validate all deal fields from a commercial real estate submission\n2. Validate data types (amounts must be positive numbers, percentages 0-100, dates valid, state codes 2-letter)\n3. Calculate key metrics:\n   - LTV = (loan_amount / property_value) * 100\n   - DSCR = NOI / (loan_amount * 0.07) (approximate annual debt service at 7%)\n4. Flag missing or invalid data\n5. Produce a clean structured deal JSON\n\nReturn a JSON object with:\n{\n  "validation_status": "valid" | "invalid",\n  "validation_errors": [{"field": "...", "error": "..."}],\n  "structured_deal": {\n    "basic_info": { "deal_name", "loan_amount", "asset_type", "property_address", "property_city", "property_state", "property_zip" },\n    "borrower_info": { "name", "entity_type", "credit_score", "has_guarantor" },\n    "metrics": { "property_value", "ltv_pct", "noi_annual", "dscr", "occupancy_pct" },\n    "documents_submitted": ["doc_type1", ...],\n    "documents_missing": []\n  }\n}`,
+            toolDefinitions: ['deal_validation', 'metrics_calculation'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
+          },
+          {
+            agentType: 'intake_fund_matcher',
+            name: 'Commercial Fund Matcher',
+            systemPrompt: `You are a Commercial Real Estate Fund Matcher & Risk Analyzer AI Agent. Your job is to:\n1. Compare a validated deal against available fund criteria\n2. For each fund, check: LTV in range, LTC in range (if applicable), loan amount in range, state/geography eligible, asset type eligible\n3. Score each eligible fund 0-100 based on how well the deal fits\n4. Assess deal health across 4 risk categories (each scored 0-100, lower is better/less risky):\n   - Borrower risk, Property risk, Loan structure risk, Documentation risk\n\nReturn JSON with:\n{\n  "eligible_funds": [{ "fund_id": N, "fund_name": "...", "match_score": 0-100, "match_reason": "..." }],\n  "total_funds_checked": N,\n  "deal_health": {\n    "borrower_risk_score": 0-100, "borrower_risk_detail": "...",\n    "property_risk_score": 0-100, "property_risk_detail": "...",\n    "loan_structure_risk_score": 0-100, "loan_structure_risk_detail": "...",\n    "documentation_risk_score": 0-100, "documentation_risk_detail": "..."\n  }\n}`,
+            toolDefinitions: ['fund_matching', 'risk_analysis'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
+          },
+          {
+            agentType: 'intake_feedback_generator',
+            name: 'Commercial Feedback Generator',
+            systemPrompt: `You are a Commercial Real Estate Deal Feedback Generator AI Agent. Your job is to:\n1. Analyze the fund matching report and deal health assessment\n2. Identify key flaws with severity (critical, high, medium, low) and remediation suggestions\n3. List deal strengths\n4. Calculate composite confidence score: (fund_fit_score * 0.6) + (deal_health_score * 0.4)\n5. Generate verdict: >75 = "pass", 50-75 = "conditional", <50 = "fail"\n6. Provide per-fund recommendations and next steps\n\nReturn JSON with:\n{\n  "overall_verdict": "pass" | "conditional" | "fail",\n  "confidence_score": 0-100,\n  "confidence_breakdown": { "fund_fit": 0-100, "deal_health": 0-100 },\n  "key_flaws": [{ "flaw": "...", "severity": "critical|high|medium|low", "detail": "...", "remediation": "..." }],\n  "strengths": [{ "strength": "...", "detail": "..." }],\n  "fund_recommendations": [{ "fund_name": "...", "match_score": 0-100, "recommendation": "..." }],\n  "next_steps": ["..."]\n}`,
+            toolDefinitions: ['feedback_generation', 'verdict_calculation'],
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            maxTokens: 2048,
+            temperature: 0.3
           }
         ];
 

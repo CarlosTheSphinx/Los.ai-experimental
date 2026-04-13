@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calculator, ArrowLeft, Building, DollarSign, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Calculator, ArrowLeft, Building, DollarSign, CheckCircle2, AlertCircle, Loader2, Hash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LoanForm } from "@/components/LoanForm";
 import { RTLLoanForm } from "@/components/RTLLoanForm";
@@ -220,8 +220,9 @@ export default function MagicLinkQuoteBuilder({
               </SelectTrigger>
               <SelectContent>
                 {programs.map((program) => (
-                  <SelectItem key={program.id} value={program.id.toString()}>
+                  <SelectItem key={program.id} value={program.id.toString()} data-testid={`select-program-${program.id}`}>
                     <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-mono">#{program.id}</span>
                       <span>{program.name}</span>
                       {program.loanType && (
                         <Badge variant="outline" className="text-xs">
@@ -237,10 +238,13 @@ export default function MagicLinkQuoteBuilder({
 
           {/* Program Details */}
           {selectedProgram && (
-            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2" data-testid={`program-details-${selectedProgram.id}`}>
               <div className="flex items-center gap-2">
                 <Building className="h-4 w-4 text-primary" />
                 <span className="font-medium text-sm">{selectedProgram.name}</span>
+                <span className="text-xs text-muted-foreground font-mono flex items-center gap-0.5">
+                  <Hash className="h-3 w-3" />{selectedProgram.id}
+                </span>
                 {selectedProgram.loanType && (
                   <Badge variant="secondary" className="text-xs">{selectedProgram.loanType}</Badge>
                 )}

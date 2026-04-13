@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatPhoneNumber, getPhoneError, getEmailError } from "@/lib/validation";
+import { formatDate, formatTimestamp } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -308,10 +309,8 @@ function DrivePushButton({ deal }: { deal: Deal }) {
 
 function ExpandedDealRow({ deal, stageStats }: { deal: Deal; stageStats?: StageInfo[] }) {
   const [composeOpen, setComposeOpen] = useState(false);
-  const createdDate = new Date(deal.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  const targetDate = deal.targetCloseDate
-    ? new Date(deal.targetCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '—';
+  const createdDate = formatDate(deal.createdAt);
+  const targetDate = formatDate(deal.targetCloseDate);
   const daysInStage = getDaysInStage(deal.createdAt);
   const ltv = deal.loanData?.ltv || '—';
   const dscr = deal.loanData?.dscr || '—';
@@ -408,7 +407,7 @@ function ExpandedDealRow({ deal, stageStats }: { deal: Deal; stageStats?: StageI
 function DealExpandedCard({ deal, stageStats }: { deal: Deal; stageStats?: StageInfo[] }) {
   const progress = deal.progressPercentage || 0;
   const stageColor = getStageColor(deal.stage);
-  const targetDate = deal.targetCloseDate ? new Date(deal.targetCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  const targetDate = deal.targetCloseDate ? formatDate(deal.targetCloseDate) : null;
   const daysInStage = getDaysInStage(deal.createdAt);
   const fullName = `${deal.customerFirstName} ${deal.customerLastName}`;
   const initials = getInitials(deal.customerFirstName, deal.customerLastName);

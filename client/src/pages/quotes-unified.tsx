@@ -7,7 +7,7 @@ import {
   Search,
   Send,
   Trash2,
-  Edit,
+  Copy,
   Calculator,
   MessageSquare,
   Eye,
@@ -44,6 +44,7 @@ import { RTLLoanForm } from "@/components/RTLLoanForm";
 import { DynamicQuoteForm } from "@/components/DynamicQuoteForm";
 import { PricingResult } from "@/components/PricingResult";
 import { RTLPricingResult } from "@/components/RTLPricingResult";
+import { PricingDisclaimer } from "@/components/PricingDisclaimer";
 import { usePricing } from "@/hooks/use-pricing";
 import { type LoanPricingFormData, type PricingResponse, type RTLPricingFormData, type RTLPricingResponse } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -100,6 +101,152 @@ interface ProgramWithPricing {
     textInputs?: Array<{ id: string; fieldKey: string; label: string; sourceType?: string }>;
     dropdowns?: Array<{ label: string; fieldKey: string; options: string[]; sourceType?: string }>;
   } | null;
+  minLoanAmount?: number | null;
+  maxLoanAmount?: number | null;
+  minLtv?: number | null;
+  maxLtv?: number | null;
+  minInterestRate?: number | null;
+  maxInterestRate?: number | null;
+  minDscr?: number | null;
+  minFico?: number | null;
+  minUnits?: number | null;
+  maxUnits?: number | null;
+  termOptions?: string | null;
+  eligiblePropertyTypes?: string[] | null;
+}
+
+function formatCurrency(val: number): string {
+  if (val >= 1_000_000) {
+    const m = val / 1_000_000;
+    return `$${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
+  if (val >= 1_000) {
+    const k = val / 1_000;
+    return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+  }
+  return `$${val.toLocaleString()}`;
+}
+
+function formatPropertyType(pt: string): string {
+  return pt.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function ProgramSummaryCard({
+  program,
+  isSelected,
+  onSelect,
+}: {
+  program: ProgramWithPricing;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const loanRange =
+    program.minLoanAmount != null && program.maxLoanAmount != null
+      ? `${formatCurrency(program.minLoanAmount)} – ${formatCurrency(program.maxLoanAmount)}`
+      : program.minLoanAmount != null
+        ? `Min ${formatCurrency(program.minLoanAmount)}`
+        : program.maxLoanAmount != null
+          ? `Max ${formatCurrency(program.maxLoanAmount)}`
+          : null;
+
+  const ltvRange =
+    program.maxLtv != null ? `Up to ${program.maxLtv}%` : null;
+
+  const rateRange =
+    program.minInterestRate != null && program.maxInterestRate != null
+      ? `${program.minInterestRate}% – ${program.maxInterestRate}%`
+      : program.minInterestRate != null
+        ? `From ${program.minInterestRate}%`
+        : program.maxInterestRate != null
+          ? `Up to ${program.maxInterestRate}%`
+          : null;
+
+  const unitRange =
+    program.minUnits != null && program.maxUnits != null
+      ? `${program.minUnits} – ${program.maxUnits}`
+      : program.minUnits != null
+        ? `Min ${program.minUnits}`
+        : program.maxUnits != null
+          ? `Max ${program.maxUnits}`
+          : null;
+
+  const terms = program.termOptions
+    ? program.termOptions.split(",").map(t => t.trim()).filter(Boolean).map(t => `${t} mo`).join(", ")
+    : null;
+
+  const propertyTypes =
+    program.eligiblePropertyTypes && program.eligiblePropertyTypes.length > 0
+      ? program.eligiblePropertyTypes.map(formatPropertyType).join(", ")
+      : null;
+
+  const details: { label: string; value: string }[] = [];
+  if (loanRange) details.push({ label: "Loan Amount", value: loanRange });
+  if (ltvRange) details.push({ label: "Max LTV", value: ltvRange });
+  if (rateRange) details.push({ label: "Rate Range", value: rateRange });
+  if (program.minFico != null) details.push({ label: "Min FICO", value: program.minFico.toString() });
+  if (program.loanType?.toLowerCase() === "dscr" && program.minDscr != null) details.push({ label: "Min DSCR", value: program.minDscr.toFixed(2) });
+  if (unitRange) details.push({ label: "Units", value: unitRange });
+  if (terms) details.push({ label: "Terms", value: terms });
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      data-testid={`card-program-${program.id}`}
+      className={`w-full text-left bg-card border rounded-[10px] shadow-sm p-4 transition-all cursor-pointer hover:shadow-md ${
+        isSelected
+          ? "ring-2 ring-primary border-primary"
+          : "hover:border-muted-foreground/40"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${
+            program.loanType?.toLowerCase() === "dscr"
+              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          }`}
+          data-testid={`badge-loan-type-${program.id}`}
+        >
+          {program.loanType?.toLowerCase() === "dscr" ? "DSCR" : "RTL"}
+        </span>
+        <span className="text-[14px] font-semibold truncate" data-testid={`text-program-name-${program.id}`}>
+          {program.name}
+        </span>
+      </div>
+      {details.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          {details.map(d => (
+            <div key={d.label} className="min-w-0">
+              <div className="text-[11px] text-muted-foreground leading-tight">{d.label}</div>
+              <div className="text-[13px] font-medium truncate" data-testid={`text-${d.label.toLowerCase().replace(/\s+/g, "-")}-${program.id}`}>{d.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {propertyTypes && (
+        <div className="mt-2 pt-2 border-t">
+          <div className="text-[11px] text-muted-foreground leading-tight">Property Types</div>
+          <div className="text-[12px] font-medium text-muted-foreground mt-0.5" data-testid={`text-property-types-${program.id}`}>{propertyTypes}</div>
+        </div>
+      )}
+    </button>
+  );
+}
+
+function safeParseQuoteFields(fields: any): any[] | undefined {
+  if (Array.isArray(fields)) return fields;
+  if (typeof fields === 'string') {
+    try {
+      const parsed = JSON.parse(fields);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'string') {
+        const doubleParsed = JSON.parse(parsed);
+        if (Array.isArray(doubleParsed)) return doubleParsed;
+      }
+    } catch {}
+  }
+  return undefined;
 }
 
 function normalizeFieldKey(key: string): string {
@@ -121,7 +268,8 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
 
   const baseKeysByNormalized: Record<string, string> = {};
   (baseQuoteFields || []).forEach((f: any) => {
-    baseKeysByNormalized[normalizeFieldKey(f.fieldKey)] = f.fieldKey;
+    const nk = normalizeFieldKey(f.fieldKey);
+    baseKeysByNormalized[nk] = f.fieldKey;
   });
 
   (cfg.textInputs || []).forEach(ti => {
@@ -424,6 +572,7 @@ export default function QuotesUnified() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const isBorrower = user?.role === 'borrower';
+  const isAdminRole = ['super_admin', 'lender', 'processor'].includes(user?.role || '');
 
   const [loanProductType, setLoanProductType] = useState<"dscr" | "rtl">("dscr");
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
@@ -438,8 +587,6 @@ export default function QuotesUnified() {
   const [statusFilter, setStatusFilter] = useState<"all" | "no_term_sheet" | "sent" | "opened" | "signed">("all");
   const [programFilter, setProgramFilter] = useState<string>("all");
   const [expandedQuoteId, setExpandedQuoteId] = useState<number | null>(null);
-  const [testDataKey, setTestDataKey] = useState(0);
-  const [generatedTestData, setGeneratedTestData] = useState<Record<string, any> | null>(null);
   const [scraperDebug, setScraperDebug] = useState<{
     url?: string;
     textInputs?: Array<{ label: string; value: string }>;
@@ -579,64 +726,8 @@ export default function QuotesUnified() {
     setRtlResult(null);
   };
 
-  const generateTestData = () => {
-    const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
-    const quoteFields = selectedProgram?.quoteFormFields;
-    const testValues: Record<string, any> = {};
 
-    const fieldDefaults: Record<string, any> = {
-      firstName: 'John', lastName: 'Doe', email: 'test@example.com',
-      phone: '(555) 555-1234', address: '123 Main St, Miami, FL 33101',
-      propertyAddress: '456 Oak Ave, Miami, FL 33101', propertyState: 'FL', propertyZip: '33101',
-      loanAmount: 500000, propertyValue: 650000, asIsValue: 650000, purchasePrice: 650000,
-      arv: 850000, rehabBudget: 150000, originalPurchasePrice: 550000,
-      grossMonthlyRent: 4500, monthlyTaxes: 450, monthlyInsurance: 150,
-      annualTaxes: 5400, annualInsurance: 1800, annualHOA: 3600,
-      ficoScore: 740, dscr: 1.25, ltv: 75, entityName: 'Test Holdings LLC',
-      entityType: 'LLC', entityMemberCount: 2,
-      member1FirstName: 'John', member1LastName: 'Doe', member1Email: 'john@test.com',
-      member1Phone: '(555) 555-5678', member1CreditScore: 740,
-      member1MailingAddress: '123 Main St, Miami, FL 33101',
-      member1NetWorth: 1500000, member1Liquidity: 350000,
-      member1PropertiesOwned: 5, member1PropertiesSold2Yrs: 3,
-      member1IsGuarantor: 'Yes', propertyUnits: '1',
-    };
-
-    if (Array.isArray(quoteFields) && quoteFields.length > 0) {
-      quoteFields.forEach((f: any) => {
-        if (!f.visible) return;
-        if (fieldDefaults[f.fieldKey] !== undefined) {
-          testValues[f.fieldKey] = fieldDefaults[f.fieldKey];
-        } else if (f.fieldType === 'select' && f.options?.length > 0) {
-          testValues[f.fieldKey] = f.options[0];
-        } else if (f.fieldType === 'yes_no') {
-          testValues[f.fieldKey] = 'No';
-        } else if (f.fieldType === 'currency') {
-          testValues[f.fieldKey] = 500000;
-        } else if (f.fieldType === 'number') {
-          testValues[f.fieldKey] = 100;
-        } else if (f.fieldType === 'percentage') {
-          testValues[f.fieldKey] = 7.5;
-        } else if (f.fieldType === 'date') {
-          testValues[f.fieldKey] = '2024-01-15';
-        } else if (f.fieldType === 'email') {
-          testValues[f.fieldKey] = 'test@example.com';
-        } else if (f.fieldType === 'phone') {
-          testValues[f.fieldKey] = '(555) 555-0000';
-        } else {
-          testValues[f.fieldKey] = 'Test';
-        }
-      });
-    } else {
-      Object.assign(testValues, fieldDefaults);
-    }
-
-    setGeneratedTestData(testValues);
-    setTestDataKey(prev => prev + 1);
-    toast({ title: 'Test data generated', description: 'Form filled with sample values. Review and submit.' });
-  };
-
-  const handleEditQuote = (quote: SavedQuote) => {
+  const handleDuplicateQuote = (quote: SavedQuote) => {
     const loanData = quote.loanData as Record<string, any>;
     const isRTLQuote = !!(loanData?.asIsValue || loanData?.arv || (loanData?.rehabBudget !== undefined && loanData?.rehabBudget !== null));
 
@@ -655,13 +746,11 @@ export default function QuotesUnified() {
       setDscrResult(null);
     }
 
-    setGeneratedTestData(null);
-    setTestDataKey(prev => prev + 1);
     setActiveView("create");
 
     toast({
-      title: "Editing Quote",
-      description: `${quote.loanNumber || 'Quote'} loaded — make changes and resubmit.`,
+      title: "Quote Duplicated",
+      description: `${quote.loanNumber || 'Quote'} loaded — adjust fields and reprice.`,
     });
   };
 
@@ -1107,28 +1196,29 @@ export default function QuotesUnified() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 pt-3 border-t border-border/50">
+                            <div className="flex items-center gap-2 pt-3 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
                               {!isBorrower && (
                                 <>
-                                  <Button variant="outline" size="sm" onClick={() => handleEditQuote(quote)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-edit-${quote.id}`}>
-                                    <Edit className="h-3.5 w-3.5" /> Edit
+                                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleDuplicateQuote(quote); }} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-duplicate-${quote.id}`}>
+                                    <Copy className="h-3.5 w-3.5" /> Duplicate
                                   </Button>
-                                  <Button variant="outline" size="sm" onClick={() => navigate(`/messages?dealId=${quote.id}&new=true`)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-message-${quote.id}`}>
+                                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/messages?dealId=${quote.id}&new=true`); }} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-message-${quote.id}`}>
                                     <MessageSquare className="h-3.5 w-3.5" /> Message
                                   </Button>
                                   {!hasAnyTermSheet && (
-                                    <Button size="sm" onClick={() => navigate(`/quotes/${quote.id}/documents`)} className="h-8 rounded-full text-[14px] gap-1.5 px-3 shadow-md" data-testid={`button-send-${quote.id}`}>
+                                    <Button size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/quotes/${quote.id}/documents`); }} className="h-8 rounded-full text-[14px] gap-1.5 px-3 shadow-md" data-testid={`button-send-${quote.id}`}>
                                       <Send className="h-3.5 w-3.5" /> Send Term Sheet
                                     </Button>
                                   )}
                                   {hasAnyTermSheet && !(internalSignerStatus === 'signed' || intDoc?.status === 'completed') && !(envelopeStatus === 'completed') && (
-                                    <Button variant="outline" size="sm" onClick={() => handleOpenResendDialog(quote, intDoc?.documentId)} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-resend-${quote.id}`}>
+                                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenResendDialog(quote, intDoc?.documentId); }} className="h-8 rounded-full text-[14px] gap-1.5 px-3" data-testid={`button-resend-${quote.id}`}>
                                       <Send className="h-3.5 w-3.5" /> Resend
                                     </Button>
                                   )}
                                 </>
                               )}
-                              <Button variant="outline" size="sm" onClick={async () => {
+                              <Button variant="outline" size="sm" onClick={async (e) => {
+                                e.stopPropagation();
                                 try {
                                   const res = await fetch(`/api/quotes/${quote.id}/pdf`, { credentials: 'include' });
                                   if (!res.ok) throw new Error('Failed');
@@ -1142,7 +1232,7 @@ export default function QuotesUnified() {
                                 <Download className="h-3.5 w-3.5" /> PDF
                               </Button>
                               {!isBorrower && (
-                                <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(quote.id)} disabled={deleteMutation.isPending} className="h-8 rounded-full text-[14px] gap-1.5 px-3 text-muted-foreground hover:text-destructive ml-auto" data-testid={`button-delete-${quote.id}`}>
+                                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(quote.id); }} disabled={deleteMutation.isPending} className="h-8 rounded-full text-[14px] gap-1.5 px-3 text-muted-foreground hover:text-destructive ml-auto" data-testid={`button-delete-${quote.id}`}>
                                   <Trash2 className="h-3.5 w-3.5" /> Delete
                                 </Button>
                               )}
@@ -1164,7 +1254,7 @@ export default function QuotesUnified() {
                   isBorrower={isBorrower}
                   latestEnvelope={envelopeMap.get(quote.id) || null}
                   internalDoc={internalDocMap.get(quote.id) || null}
-                  onEdit={() => handleEditQuote(quote)}
+                  onEdit={() => handleDuplicateQuote(quote)}
                   onDelete={() => deleteMutation.mutate(quote.id)}
                   onSendTermSheet={() => navigate(`/quotes/${quote.id}/documents`)}
                   onResendTermSheet={() => handleOpenResendDialog(quote, internalDocMap.get(quote.id)?.documentId)}
@@ -1181,99 +1271,98 @@ export default function QuotesUnified() {
         <div className="space-y-5">
           {!hasResult ? (
             <>
-              <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4">
-                <h3 className="text-[16px] font-semibold mb-1">Loan Program</h3>
-                <p className="text-[13px] text-muted-foreground mb-3">Select the loan program to price</p>
-                <div>
-                  {programsLoading ? (
-                    <SelectTrigger className="w-full md:w-96" data-testid="select-loan-program-loading" disabled>
-                      <SelectValue placeholder="Loading programs..." />
-                    </SelectTrigger>
-                  ) : allActivePrograms.length > 0 ? (
-                    <Select
-                      value={selectedProgramId?.toString() || ""}
-                      onValueChange={(v) => {
-                        const prog = allActivePrograms.find(p => p.id === parseInt(v));
-                        if (prog) {
-                          setSelectedProgramId(prog.id);
-                          const derivedType = (prog.loanType === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
-                          setLoanProductType(derivedType);
-                          setDscrResult(null);
-                          setRtlResult(null);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full md:w-96" data-testid="select-loan-program">
-                        <SelectValue placeholder="Select a loan program" />
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-5">
+                <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4">
+                  <h3 className="text-[16px] font-semibold mb-1">Loan Program</h3>
+                  <p className="text-[13px] text-muted-foreground mb-3">Select the loan program to price</p>
+                  <div>
+                    {programsLoading ? (
+                      <SelectTrigger className="w-full" data-testid="select-loan-program-loading" disabled>
+                        <SelectValue placeholder="Loading programs..." />
                       </SelectTrigger>
-                      <SelectContent>
-                        {allActivePrograms.map((program) => (
-                          <SelectItem key={program.id} value={program.id.toString()}>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11.5px] font-medium bg-gray-100 text-gray-600">
-                                {program.loanType.toUpperCase()}
-                              </span>
-                              <span className="text-[16px]">{program.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Select
-                      value={loanProductType}
-                      onValueChange={(v: "dscr" | "rtl") => {
-                        setLoanProductType(v);
-                        setSelectedProgramId(null);
-                        setDscrResult(null);
-                        setRtlResult(null);
-                      }}
-                    >
-                      <SelectTrigger className="w-full md:w-80" data-testid="select-loan-product-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="dscr">DSCR</SelectItem>
-                        <SelectItem value="rtl">Fix and Flip/Ground Up Construction</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
+                    ) : allActivePrograms.length > 0 ? (
+                      <Select
+                        value={selectedProgramId?.toString() || ""}
+                        onValueChange={(v) => {
+                          const prog = allActivePrograms.find(p => p.id === parseInt(v));
+                          if (prog) {
+                            setSelectedProgramId(prog.id);
+                            const derivedType = (prog.loanType?.toLowerCase() === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
+                            setLoanProductType(derivedType);
+                            setDscrResult(null);
+                            setRtlResult(null);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full" data-testid="select-loan-program">
+                          <SelectValue placeholder="Select a loan program" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allActivePrograms.map((program) => (
+                            <SelectItem key={program.id} value={program.id.toString()}>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11.5px] font-medium bg-gray-100 text-gray-600">
+                                  {program.loanType.toUpperCase()}
+                                </span>
+                                <span className="text-[16px]">{program.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-muted-foreground/30 text-sm text-muted-foreground" data-testid="text-no-programs">
+                        No loan programs available — contact your lender to set up programs.
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {!programsLoading && allActivePrograms.length > 0 && (
+                  <div className="bg-card border rounded-[10px] shadow-sm overflow-hidden px-5 py-4 order-first lg:order-last">
+                    <h3 className="text-[16px] font-semibold mb-1">Available Programs</h3>
+                    <p className="text-[13px] text-muted-foreground mb-3">Click a card to select a program</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3" data-testid="grid-available-programs">
+                      {allActivePrograms.map((program) => (
+                        <ProgramSummaryCard
+                          key={program.id}
+                          program={program}
+                          isSelected={selectedProgramId === program.id}
+                          onSelect={() => {
+                            setSelectedProgramId(program.id);
+                            const derivedType = (program.loanType?.toLowerCase() === "dscr" ? "dscr" : "rtl") as "dscr" | "rtl";
+                            setLoanProductType(derivedType);
+                            setDscrResult(null);
+                            setRtlResult(null);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {selectedProgramId && (
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={generateTestData}
-                    data-testid="button-generate-test-quote"
-                  >
-                    <Calculator className="h-3.5 w-3.5 mr-1.5" />
-                    Generate Test Quote
-                  </Button>
-                </div>
-              )}
 
               {selectedProgramId && (() => {
                 const selectedProgram = allActivePrograms.find(p => p.id === selectedProgramId);
-                const baseQuoteFields = selectedProgram?.quoteFormFields;
-                const { pricingFields, pricingNormalizedKeys, keyAliases } = selectedProgram
+                const baseQuoteFields = safeParseQuoteFields(selectedProgram?.quoteFormFields);
+                const hasConfiguredFields = Array.isArray(baseQuoteFields) && baseQuoteFields.length > 0;
+                const { pricingFields, keyAliases } = selectedProgram
                   ? buildPricingFields(selectedProgram, Array.isArray(baseQuoteFields) ? baseQuoteFields : undefined)
-                  : { pricingFields: [], pricingNormalizedKeys: new Set<string>(), keyAliases: {} as Record<string, string> };
-                const filteredBaseFields = Array.isArray(baseQuoteFields) && pricingNormalizedKeys.size > 0
-                  ? baseQuoteFields.filter((f: any) => !pricingNormalizedKeys.has(normalizeFieldKey(f.fieldKey)))
-                  : baseQuoteFields;
-                const quoteFields = Array.isArray(filteredBaseFields) && filteredBaseFields.length > 0
-                  ? [...filteredBaseFields, ...pricingFields]
-                  : pricingFields.length > 0 ? pricingFields : filteredBaseFields;
-                const hasDynamicFields = Array.isArray(quoteFields) && quoteFields.length > 0;
+                  : { pricingFields: [], keyAliases: {} as Record<string, string> };
+                const mergedFields = Array.isArray(baseQuoteFields) && baseQuoteFields.length > 0
+                  ? [...baseQuoteFields, ...pricingFields]
+                  : pricingFields.length > 0 ? pricingFields : baseQuoteFields;
+                const quoteFields = Array.isArray(mergedFields)
+                  ? mergedFields.filter((f: any) => f.visible !== false)
+                  : mergedFields;
+                const hasDynamicFields = hasConfiguredFields || (Array.isArray(quoteFields) && quoteFields.length > 0);
 
                 return (
                   <div className="max-w-4xl mx-auto">
                     {hasDynamicFields ? (
                       <DynamicQuoteForm
-                        key={`${selectedProgramId}-${testDataKey}`}
+                        key={`${selectedProgramId}`}
                         fields={quoteFields}
                         onSubmit={(data) => {
                           const augmented = applyKeyAliases(data as Record<string, any>, keyAliases);
@@ -1284,23 +1373,23 @@ export default function QuotesUnified() {
                           }
                         }}
                         isLoading={loanProductType === "dscr" ? dscrPending : rtlPricingMutation.isPending}
-                        defaultData={generatedTestData || (loanProductType === "dscr" ? dscrFormData : rtlFormData)}
+                        defaultData={loanProductType === "dscr" ? dscrFormData : rtlFormData}
                         programName={selectedProgram?.name}
                       />
                     ) : loanProductType === "dscr" ? (
                       <LoanForm
-                        key={`dscr-${testDataKey}`}
+                        key="dscr"
                         onSubmit={handleDSCRSubmit}
                         isLoading={dscrPending}
-                        defaultData={generatedTestData || dscrFormData}
+                        defaultData={dscrFormData}
                         visibleFields={quoteFields as any}
                       />
                     ) : (
                       <RTLLoanForm
-                        key={`rtl-${testDataKey}`}
+                        key="rtl"
                         onSubmit={handleRTLSubmit}
                         isLoading={rtlPricingMutation.isPending}
-                        defaultData={generatedTestData || rtlFormData}
+                        defaultData={rtlFormData}
                         visibleFields={quoteFields as any}
                       />
                     )}
@@ -1309,12 +1398,8 @@ export default function QuotesUnified() {
               })()}
 
               {!selectedProgramId && programsFetched && allActivePrograms.length === 0 && (
-                <div className="max-w-4xl mx-auto">
-                  {loanProductType === "dscr" ? (
-                    <LoanForm onSubmit={handleDSCRSubmit} isLoading={dscrPending} defaultData={dscrFormData} />
-                  ) : (
-                    <RTLLoanForm onSubmit={handleRTLSubmit} isLoading={rtlPricingMutation.isPending} defaultData={rtlFormData} />
-                  )}
+                <div className="max-w-4xl mx-auto text-center py-8">
+                  <p className="text-muted-foreground" data-testid="text-no-programs">No loan programs are currently available. Please configure a program first.</p>
                 </div>
               )}
 
@@ -1338,6 +1423,7 @@ export default function QuotesUnified() {
                   formData={dscrFormData}
                   onReset={handleReset}
                   programId={selectedProgramId}
+                  brokerSettings={user?.brokerSettings}
                 />
               )}
               {loanProductType === "rtl" && rtlResult && (
@@ -1346,9 +1432,11 @@ export default function QuotesUnified() {
                   formData={rtlFormData}
                   onReset={handleReset}
                   programId={selectedProgramId}
+                  brokerSettings={user?.brokerSettings}
                 />
               )}
-              {scraperDebug && !isBorrower && (
+              <PricingDisclaimer />
+              {isAdminRole && scraperDebug && (
                 <div className="border rounded-[10px] overflow-hidden bg-card" data-testid="scraper-debug-panel">
                   <button
                     onClick={() => setShowScraperDebug(!showScraperDebug)}
@@ -1611,10 +1699,10 @@ function QuoteCard({
                   size="sm"
                   onClick={onEdit}
                   className="h-8 rounded-full text-[14px] gap-1.5 px-3"
-                  data-testid={`button-edit-quote-${quote.id}`}
+                  data-testid={`button-duplicate-quote-${quote.id}`}
                 >
-                  <Edit className="h-3.5 w-3.5" />
-                  Edit
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
                 </Button>
                 <Button
                   variant="outline"

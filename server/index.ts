@@ -7,7 +7,9 @@ import { apiLimiter, authLimiter, pricingLimiter, uploadLimiter } from "./middle
 
 import { validateConfig } from "./utils/validateConfig";
 import { seedDefaultAgentConfigs } from "./routes/agents";
+import { seedCommercialFormConfig } from "./routes/commercialIntake";
 import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { seedSuperAdmins } from "./seedAdmins";
 import { seedInquiryFormTemplates, registerInquiryFormRoutes } from "./routes/inquiryForms";
 import { initializePIIContext, autoDecryptResponseMiddleware } from "./middleware/piiDecryption";
@@ -42,16 +44,17 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline'; " +
+      "script-src 'self' 'unsafe-inline' https://unpkg.com; " +
       "style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: https:; " +
       "font-src 'self' data:; " +
       "connect-src 'self' https:; " +
+      "worker-src 'self' blob:; " +
       "frame-ancestors 'none'"
     );
   }
@@ -171,6 +174,13 @@ app.use((req, res, next) => {
     console.error('⚠️ Failed to auto-seed agent configs:', err);
   }
 
+  // Seed commercial form config defaults for tenants that don't have any fields yet
+  try {
+    await seedCommercialFormConfig();
+  } catch (err) {
+    console.error('⚠️ Failed to seed commercial form config:', err);
+  }
+
   // Register inquiry form routes and seed templates
   registerInquiryFormRoutes(app);
   try {
@@ -208,9 +218,55 @@ app.use((req, res, next) => {
   }
 
   await seedSuperAdmins();
-  
+
+  try {
+    await db.execute(sql`ALTER TABLE workflow_step_definitions ADD COLUMN IF NOT EXISTS color VARCHAR(50) DEFAULT '#6366f1'`);
+    await db.execute(sql`ALTER TABLE program_workflow_steps ADD COLUMN IF NOT EXISTS color TEXT`);
+  } catch (e) {
+    // Columns may already exist
+  }
+
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS pricing_field_templates (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      text_inputs JSONB,
+      dropdowns JSONB,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (e) {
+    // Table may already exist
+  }
+
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS document_download_tokens (
+      id SERIAL PRIMARY KEY,
+      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (e) {
+    // Table may already exist
+  }
+
   const { backfillTenantIds } = await import('./utils/backfill-tenants');
   await backfillTenantIds();
+
+  setTimeout(async () => {
+    try {
+      const { backfillEmbeddings } = await import('./services/embeddings');
+      const result = await backfillEmbeddings();
+      if (result.knowledgeCount > 0 || result.fundCount > 0) {
+        console.log(`[Startup Embeddings] Backfilled ${result.knowledgeCount} knowledge entries, ${result.fundCount} fund descriptions (${result.errors} errors)`);
+      }
+    } catch (err) {
+      console.warn("[Startup Embeddings] Background backfill skipped:", (err as Error).message);
+    }
+  }, 5000);
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

@@ -39,7 +39,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { format, formatDistanceToNow } from "date-fns";
+import { safeFormat, safeRelativeTime } from "@/lib/utils";
 
 interface EmailThread {
   id: number;
@@ -329,9 +329,7 @@ export default function EmailInboxPage() {
                         {thread.fromName || thread.fromAddress || "Unknown"}
                       </span>
                       <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {thread.lastMessageAt
-                          ? formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: false })
-                          : ""}
+                        {safeRelativeTime(thread.lastMessageAt, "")}
                       </span>
                     </div>
                     <p className={`text-sm truncate ${thread.isUnread ? "font-medium" : "text-muted-foreground"}`}>
@@ -444,7 +442,7 @@ export default function EmailInboxPage() {
                             </div>
                           </div>
                           <span className="text-xs text-muted-foreground flex-shrink-0">
-                            {msg.internalDate ? format(new Date(msg.internalDate), "MMM d, yyyy h:mm a") : ""}
+                            {safeFormat(msg.internalDate, "MMM d, yyyy h:mm a", "")}
                           </span>
                         </div>
                       </CardHeader>

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -380,7 +381,7 @@ export default function BorrowerDocumentsPage() {
                     {doc.uploadedAt && (
                       <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                         <Calendar className="h-2.5 w-2.5" />
-                        {new Date(doc.uploadedAt).toLocaleDateString()}
+                        {formatDate(doc.uploadedAt)}
                       </span>
                     )}
                   </div>

@@ -4,9 +4,9 @@ import { db } from '../db';
 import { commercialSubmissions, users } from '@shared/schema';
 import { and, inArray, lt, eq } from 'drizzle-orm';
 
-async function isNotificationEnabled(settingKey: string): Promise<boolean> {
+async function isNotificationEnabled(settingKey: string, tenantId?: number | null): Promise<boolean> {
   try {
-    const setting = await storage.getSettingByKey(settingKey);
+    const setting = await storage.getSettingByKey(settingKey, tenantId);
     if (!setting) return true;
     return setting.settingValue !== 'false';
   } catch {
@@ -14,11 +14,15 @@ async function isNotificationEnabled(settingKey: string): Promise<boolean> {
   }
 }
 
-async function getAdminEmails(): Promise<{ email: string; fullName: string | null }[]> {
+async function getAdminEmails(tenantId?: number | null): Promise<{ email: string; fullName: string | null }[]> {
   try {
+    const conditions = [inArray(users.role, ['super_admin', 'lender'])];
+    if (tenantId != null) {
+      conditions.push(eq(users.tenantId, tenantId));
+    }
     const adminUsers = await db.select({ email: users.email, fullName: users.fullName })
       .from(users)
-      .where(inArray(users.role, ['admin', 'super_admin']));
+      .where(and(...conditions));
     return adminUsers;
   } catch (err) {
     console.error('Failed to load admin users for notification:', err);
@@ -72,7 +76,7 @@ function submissionSummaryHtml(submission: any): string {
     </div>`;
 }
 
-export async function sendCommercialNotification(type: string, submission: any, additionalData?: any): Promise<void> {
+export async function sendCommercialNotification(type: string, submission: any, additionalData?: any, tenantId?: number | null): Promise<void> {
   try {
     const propertyLabel = submission.propertyName || submission.propertyAddress || 'Commercial Deal';
 
@@ -181,8 +185,8 @@ export async function sendCommercialNotification(type: string, submission: any, 
       }
 
       case 'admin_new_submission': {
-        if (!(await isNotificationEnabled('commercial_notify_admin_new_submission'))) return;
-        const admins = await getAdminEmails();
+        if (!(await isNotificationEnabled('commercial_notify_admin_new_submission', tenantId))) return;
+        const admins = await getAdminEmails(tenantId);
         if (admins.length === 0) return;
         const { client, fromEmail } = await getResendClient();
         for (const admin of admins) {
@@ -215,8 +219,8 @@ export async function sendCommercialNotification(type: string, submission: any, 
       }
 
       case 'admin_needs_review': {
-        if (!(await isNotificationEnabled('commercial_notify_admin_needs_review'))) return;
-        const admins = await getAdminEmails();
+        if (!(await isNotificationEnabled('commercial_notify_admin_needs_review', tenantId))) return;
+        const admins = await getAdminEmails(tenantId);
         if (admins.length === 0) return;
         const { client, fromEmail } = await getResendClient();
         const aiReason = additionalData?.reason || 'AI review flagged this deal for manual review.';

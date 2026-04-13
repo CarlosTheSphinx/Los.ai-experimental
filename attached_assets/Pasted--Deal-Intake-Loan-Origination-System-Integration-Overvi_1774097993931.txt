@@ -1,0 +1,821 @@
+# Deal Intake + Loan Origination System Integration
+
+## Overview: Two-System Architecture
+
+Your platform now has **two interconnected systems**:
+
+1. **Deal Intake & Matching System** (new) - Broker → Lender gateway
+   - Broker submits deals against fund database
+   - Automatic matching
+   - Pre-lender AI screening
+   - Document conditional requirements
+
+2. **Loan Origination System** (existing) - Lender internal workflow
+   - Document extraction with delta tracking
+   - Policy analysis
+   - Communication with borrower
+   - Multi-agent orchestration
+
+**How they connect:**
+
+```
+BROKER SUBMITS DEAL (Intake System)
+           ↓
+LENDER RECEIVES + AI SCREENS (Intake System)
+           ↓
+LENDER DECIDES TO PROCEED
+           ↓
+DEAL MOVES TO LOAN ORIGINATION SYSTEM
+           ↓
+Document Intelligence → Loan Processor → Communication Agent
+           ↓
+BORROWER COMMUNICATION + UNDERWRITING
+```
+
+---
+
+## Part 1: Data Handoff from Intake → Origination
+
+### At the Moment of Transfer
+
+**When lender clicks "Send to Fund" or "Approve to Underwriting":**
+
+```
+Intake System creates:
+├─ deal_id (e.g., DEAL-2026-00523)
+├─ borrower_context
+│  ├─ name
+│  ├─ email
+│  ├─ entity_type
+│  └─ contact_preferences
+├─ property_context
+│  ├─ address
+│  ├─ type
+│  ├─ appraisal_value
+│  └─ key_metrics (NOI, occupancy, etc.)
+├─ deal_documents
+│  ├─ document_id
+│  ├─ document_type
+│  ├─ file_path
+│  └─ version_history
+├─ ai_screening_results
+│  ├─ verdict (pass/conditional/fail)
+│  ├─ confidence_score
+│  ├─ identified_flaws
+│  ├─ fund_recommendations
+│  └─ preliminary_risk_score
+└─ deal_metadata
+   ├─ submitted_at
+   ├─ submitted_by (broker)
+   ├─ created_at
+   └─ origination_start_timestamp
+
+                    ↓ [Export to Origination System]
+
+Origination System receives:
+├─ deal_id (same as intake)
+├─ all_documents (versioned)
+├─ borrower_info (for communication agent)
+├─ property_info (for document extractor)
+├─ intake_ai_assessment (for context only)
+└─ extraction_start_trigger
+```
+
+### Sample Data Export
+
+```json
+{
+  "deal_transfer": {
+    "intake_deal_id": "DEAL-2026-00523",
+    "transferred_to_origination_at": "2026-03-18T14:30:00Z",
+    "transferred_by": "lender_id_001",
+
+    "deal_context": {
+      "deal_name": "200 Commerce Avenue Financing",
+      "loan_amount": 2500000,
+      "asset_type": "Office",
+      "property_address": "200 Commerce Avenue, Denver, CO 80202",
+      "property_value": 2450000,
+      "ltv_pct": 68.4,
+      "ltc_pct": 72,
+      "noi_annual": 285000,
+      "dscr": 1.45,
+      "occupancy_pct": 94
+    },
+
+    "borrower_context": {
+      "borrower_id": "BORROWER-00741",
+      "name": "John Michael Smith",
+      "email": "john@smithpartners.com",
+      "entity_type": "LLC",
+      "entity_name": "Smith Properties LLC",
+      "credit_score": 715,
+      "guarantor": "Jane Elizabeth Smith",
+      "phone": "(303) 555-0100",
+      "preferred_communication": "email",
+      "timezone": "Mountain"
+    },
+
+    "broker_context": {
+      "broker_id": "BROKER-012",
+      "broker_name": "Mike Rodriguez Real Estate",
+      "broker_email": "mike@rodriguezre.com",
+      "broker_phone": "(303) 555-0150"
+    },
+
+    "documents": [
+      {
+        "document_id": "DOC-001",
+        "document_type": "loan_application_1003",
+        "file_path": "/origination/DEAL-2026-00523/1003_v2.pdf",
+        "uploaded_at": "2026-03-18T10:00:00Z",
+        "version": 2,
+        "version_history": [
+          {"version": 1, "uploaded_at": "2026-03-15T10:30:00Z"},
+          {"version": 2, "uploaded_at": "2026-03-18T10:00:00Z"}
+        ]
+      },
+      {
+        "document_id": "DOC-002",
+        "document_type": "bank_statement",
+        "file_path": "/origination/DEAL-2026-00523/bank_stmt_v1.pdf",
+        "uploaded_at": "2026-03-15T10:35:00Z",
+        "version": 1
+      },
+      {
+        "document_id": "DOC-003",
+        "document_type": "tax_return",
+        "file_path": "/origination/DEAL-2026-00523/tax_return_2024_v1.pdf",
+        "uploaded_at": "2026-03-15T10:40:00Z",
+        "version": 1
+      },
+      {
+        "document_id": "DOC-004",
+        "document_type": "appraisal",
+        "file_path": "/origination/DEAL-2026-00523/appraisal_v1.pdf",
+        "uploaded_at": "2026-03-15T10:50:00Z",
+        "version": 1
+      },
+      {
+        "document_id": "DOC-005",
+        "document_type": "purchase_contract",
+        "file_path": "/origination/DEAL-2026-00523/purchase_contract_v2.pdf",
+        "uploaded_at": "2026-03-18T10:00:00Z",
+        "version": 2,
+        "version_history": [
+          {"version": 1, "uploaded_at": "2026-03-15T10:45:00Z"},
+          {"version": 2, "uploaded_at": "2026-03-18T10:00:00Z"}
+        ]
+      }
+    ],
+
+    "intake_ai_assessment": {
+      "screening_verdict": "conditional",
+      "confidence_score": 68,
+      "fund_fit_score": 72,
+      "deal_health_score": 64,
+      "identified_flaws": [
+        {
+          "flaw": "LTV slightly elevated",
+          "severity": "medium",
+          "detail": "Was 102% in intake, now 68% after equity injection"
+        }
+      ],
+      "strengths": [
+        "Strong borrower profile",
+        "Healthy DSCR",
+        "Stabilized asset"
+      ],
+      "recommended_actions": [
+        "Verify purchase contract updated equity terms",
+        "Request rent roll from property manager",
+        "Obtain Phase I environmental report"
+      ]
+    },
+
+    "origination_instructions": {
+      "start_document_extraction": true,
+      "extraction_override_notes": "LTV was initially over 75% but resolved via equity injection. Proceed with standard extraction.",
+      "priority": "normal",
+      "expected_closing_date": "2026-05-15",
+      "assigned_underwriter": "Sarah Chen",
+      "credit_policy_version": "v2.1"
+    }
+  }
+}
+```
+
+---
+
+## Part 2: Three-Agent Origination on Transferred Deals
+
+### Agent 1: Document Extractor (Enhanced for Intake Context)
+
+**Input:** Transfer JSON from Intake System + all documents
+
+**Special handling for transferred deals:**
+
+```python
+# Agent 1 enhancement for transferred deals
+if deal.is_transferred_from_intake:
+    # Documents may have existing versions from intake
+    # Extract all versions and track changes
+
+    for document in deal.documents:
+        if len(document.version_history) > 1:
+            # Compare versions to understand what changed
+            extraction_hash_v1 = compute_hash(document.version_history[0])
+            extraction_hash_v2 = compute_hash(document.version_history[-1])
+
+            if extraction_hash_v1 != extraction_hash_v2:
+                # Flag that document changed since intake screening
+                document_changes.add({
+                    "document": document.document_type,
+                    "changed_between_intake_and_origination": True,
+                    "impact": "Recommend re-review for material changes"
+                })
+
+    # Include intake AI assessment in context
+    context = {
+        "intake_assessment": deal.intake_ai_assessment,
+        "intake_flaws": [f.flaw for f in deal.intake_ai_assessment.identified_flaws],
+        "document_changes_since_intake": document_changes
+    }
+```
+
+**Agent 1 output includes:**
+
+```json
+{
+  "extracted_fields": {
+    /* all fields as before */
+  },
+  "document_intelligence": {
+    "extraction_hash": "xyz789...",
+    "is_first_extraction_in_origination": true,
+    "is_transferred_from_intake": true,
+    "intake_assessment_context": {
+      "original_verdict": "conditional",
+      "original_confidence": 68,
+      "flaws_identified_in_intake": ["LTV initially over 75%"]
+    },
+    "changes_since_intake": [
+      {
+        "document": "purchase_contract",
+        "versions": 2,
+        "note": "Updated to reflect equity injection",
+        "impact": "positive - resolves LTV issue identified in intake"
+      }
+    ]
+  },
+  "risk_score": 28,
+  "key_observations": [
+    "Deal transferred from intake with conditional verdict",
+    "Documents updated since intake screening (purchase contract v2)",
+    "Initial LTV concern (102%) appears resolved by equity injection",
+    "Ready for full origination underwriting"
+  ]
+}
+```
+
+### Agent 2: Loan Processor (Uses Intake Context)
+
+**Input:** Agent 1 output + deal context + credit policy rules
+
+**Enhanced to leverage intake findings:**
+
+```python
+# Agent 2 enhancement for transferred deals
+if deal.is_transferred_from_intake:
+    # Use intake assessment as reference point
+    intake_findings = deal.intake_ai_assessment.identified_flaws
+
+    # Re-evaluate each issue in full policy context
+    for flaw in intake_findings:
+        policy_result = evaluate_against_policy(flaw.detail)
+
+        origination_findings.add({
+            "intake_flaw": flaw.flaw,
+            "intake_severity": flaw.severity,
+            "origination_re_evaluation": policy_result.verdict,
+            "status": "resolved" if policy_result.is_compliant else "still_blocking"
+        })
+
+    # Also evaluate any changes identified by Agent 1
+    for change in agent1.document_changes_since_intake:
+        policy_impact = evaluate_document_change(change)
+        origination_findings.add({
+            "document_change": change.document,
+            "impact_on_policy": policy_impact
+        })
+```
+
+**Agent 2 produces comprehensive report:**
+
+```json
+{
+  "internal_report": {
+    "deal_id": "DEAL-2026-00523",
+    "is_transferred_from_intake": true,
+    "intake_to_origination_timeline": {
+      "intake_screening_date": "2026-03-18T11:45:00Z",
+      "transferred_to_origination": "2026-03-18T14:30:00Z",
+      "origination_analysis_date": "2026-03-18T14:45:00Z"
+    },
+    "overall_status": "on_track",
+
+    "intake_findings_re_evaluation": [
+      {
+        "intake_flaw": "LTV slightly elevated",
+        "intake_severity": "medium",
+        "intake_detail": "Was 102% in initial submission",
+        "current_status": "RESOLVED",
+        "explanation": "Borrower equity injection (documented in purchase contract v2) brings LTV to 68.4%. Compliant with policy."
+      }
+    ],
+
+    "document_change_impact": [
+      {
+        "document": "purchase_contract",
+        "change": "Updated with equity injection terms",
+        "impact": "POSITIVE - Removes blocking issue from intake screening",
+        "approval_implication": "Significantly improves deal viability"
+      }
+    ],
+
+    "policy_findings": [
+      /* full policy analysis as before, but with intake context */
+    ],
+
+    "cumulative_assessment": "Deal has progressed positively since intake screening. Critical flaw (LTV) has been remedied. All updated policy requirements satisfied. Ready for credit committee approval."
+  }
+}
+```
+
+### Agent 3: Communication Agent (References Intake & History)
+
+**Input:** Agent 2 output + broker/borrower context + intake history
+
+**Enhanced to show deal progression:**
+
+```json
+{
+  "emails": [
+    {
+      "recipient_type": "primary_borrower",
+      "recipient_name": "John Smith",
+      "recipient_email": "john@smithpartners.com",
+      "subject": "Excellent progress on your 200 Commerce financing",
+      "body": "Hi John,\n\nGreat news. When we first reviewed your deal two days ago, we had one concern we needed to address: the loan amount was slightly over the property appraisal. Your quick decision to bring additional equity to the table was exactly the right move, and it's made all the difference.\n\nWe've now completed our full underwriting review, and I'm pleased to tell you that everything checks out. Your debt service coverage is strong, the property fundamentals are solid, and your financial position is excellent.\n\nYour deal is now approved and we're moving it to our credit committee for final sign-off (formality at this point). From there, we're looking at closing in approximately 30 days.\n\nSarah Chen from our underwriting team will be reaching out separately with a few final items we need to wrap up, but there's no question we're getting this done.\n\nThanks for your partnership and quick action on the equity injection. That's exactly the kind of deal discipline we love to see.\n\nBest,\nMike Rodriguez\nSenior Loan Officer",
+      "tone_assessment": "warm, celebratory, references deal progression",
+      "action_required_from_recipient": "Respond to underwriter for final items",
+      "related_to_intake_flaws": ["Equity injection resolved LTV concern"]
+    }
+  ]
+}
+```
+
+---
+
+## Part 3: Unified Deal Status & Reporting
+
+### Single Deal Record Across Both Systems
+
+**Database design spanning both systems:**
+
+```sql
+-- UNIFIED DEAL TABLE (shared between systems)
+CREATE TABLE deals_unified (
+  deal_id VARCHAR(50) PRIMARY KEY,
+
+  -- Intake phase
+  intake_deal_id VARCHAR(50),
+  broker_id VARCHAR(50),
+  intake_submitted_at TIMESTAMP,
+  intake_status VARCHAR(50), -- submitted, analyzed, approved_to_origination
+
+  -- Intake AI results
+  intake_verdict VARCHAR(50), -- pass, conditional, fail
+  intake_confidence_score INT,
+  intake_flaws JSONB,
+
+  -- Transfer to origination
+  transferred_to_origination_at TIMESTAMP,
+  transferred_by VARCHAR(50),
+
+  -- Origination phase
+  origination_status VARCHAR(50), -- extraction, underwriting, approval, conditional, rejected
+  assigned_underwriter VARCHAR(100),
+
+  -- Origination AI results
+  origination_agent1_output JSONB,
+  origination_agent2_output JSONB,
+  origination_agent3_output JSONB,
+
+  -- Deal metrics (computed by origination system)
+  final_risk_score INT,
+  final_confidence_score INT,
+
+  -- Timeline
+  expected_closing_date DATE,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+
+  INDEX (broker_id),
+  INDEX (intake_status),
+  INDEX (origination_status),
+  INDEX (expected_closing_date)
+);
+
+-- STATUS TIMELINE (audit trail)
+CREATE TABLE deal_status_timeline (
+  event_id VARCHAR(50) PRIMARY KEY,
+  deal_id VARCHAR(50) NOT NULL,
+
+  phase VARCHAR(50), -- intake, transfer, origination
+  from_status VARCHAR(50),
+  to_status VARCHAR(50),
+
+  event_description TEXT,
+  triggered_by VARCHAR(50),
+  created_at TIMESTAMP,
+
+  FOREIGN KEY (deal_id) REFERENCES deals_unified(deal_id),
+  INDEX (deal_id),
+  INDEX (phase)
+);
+```
+
+### Broker Dashboard: Unified View
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ MY DEALS - Unified Timeline                              │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│ 200 Commerce Avenue (DEAL-2026-00523)                   │
+│                                                          │
+│ INTAKE PHASE (Complete)                                 │
+│ ├─ Submitted: March 15, 2026                            │
+│ ├─ AI Screened: March 18, 2026                          │
+│ └─ Verdict: CONDITIONAL ⚠ (Confidence: 68%)             │
+│    Issue: LTV elevated, equity injection needed         │
+│                                                          │
+│ RESOLUTION TAKEN                                        │
+│ ├─ Document Updated: Purchase contract v2              │
+│ │  (now reflects $560k equity injection)                │
+│ └─ Re-submitted: March 18, 2026                         │
+│                                                          │
+│ ORIGINATION PHASE (In Progress)                         │
+│ ├─ Transferred: March 18, 2026 ✓                        │
+│ ├─ Status: Underwriting                                │
+│ ├─ Assigned: Sarah Chen (Underwriter)                   │
+│ ├─ Approval Likelihood: 88%                             │
+│ └─ Expected Closing: May 15, 2026                       │
+│                                                          │
+│ NEXT STEPS                                              │
+│ • Underwriter Sarah will contact you this week          │
+│ • Final documentation items coming (Phase I env.report) │
+│ • Credit committee approval pending (next week)         │
+│                                                          │
+│ DOCUMENTS                                               │
+│ [↓] See all versions and history                        │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Part 4: Key Integration Points
+
+### Point 1: Document Change Tracking
+
+**Intake System captures initial document versions → Origination System sees all versions**
+
+```
+Timeline:
+┌──────────────────────────────────────────────────────┐
+│ March 15: Broker uploads Purchase Contract v1        │
+│ [Intake System] Stores in database + calculates hash │
+├──────────────────────────────────────────────────────┤
+│ March 18: Broker uploads Purchase Contract v2        │
+│ [Intake System] New version, detects change          │
+├──────────────────────────────────────────────────────┤
+│ March 18: Deal transferred to origination            │
+│ [Origination System] Receives all versions           │
+│ [Agent 1] Sees v1→v2 difference, notes change impact │
+├──────────────────────────────────────────────────────┤
+│ [Agent 2] Re-evaluates policies with new v2          │
+│           "LTV issue resolved by equity injection"   │
+└──────────────────────────────────────────────────────┘
+```
+
+### Point 2: AI Findings Continuity
+
+**Intake AI findings → Origination AI context → Borrower communication**
+
+```
+Information Flow:
+┌─────────────────────────┐
+│ Intake AI identifies:   │
+│ • LTV over 75% (critical)
+│ • Need rent roll        │
+│ • Confidence: 68%       │
+└────────────┬────────────┘
+             │
+             ↓
+┌─────────────────────────────────────┐
+│ Origination Agent 1 receives:        │
+│ • Intake context                    │
+│ • All document versions             │
+│ • Comparison points                 │
+└────────────┬────────────────────────┘
+             │
+             ↓
+┌─────────────────────────────────────┐
+│ Origination Agent 2 re-evaluates:   │
+│ • "LTV issue: NOW RESOLVED"         │
+│ • "Rent roll: OBTAINED"             │
+│ • "Confidence: NOW 88%"             │
+└────────────┬────────────────────────┘
+             │
+             ↓
+┌──────────────────────────────────────────────┐
+│ Origination Agent 3 writes:                  │
+│ "Your quick action on the equity injection   │
+│  resolved our initial concern. Deal is now   │
+│  on track for approval."                     │
+└──────────────────────────────────────────────┘
+```
+
+### Point 3: Fund Matching Feedback to Origination
+
+**If deal sent to specific fund, origination system knows which fund(s)**
+
+```json
+{
+  "deal_context": {
+    "deal_id": "DEAL-2026-00523",
+    "submitted_to_funds": [
+      {
+        "fund_id": "FUND-001",
+        "fund_name": "Prime Capital Fund",
+        "intake_match_score": 92,
+        "fund_criteria": {
+          "ltv_max": 75,
+          "ltc_max": 80,
+          "min_amount": 500000,
+          "max_amount": 10000000
+        }
+      }
+    ]
+  },
+  "origination_validation": {
+    "does_deal_meet_fund_criteria": true,
+    "fund_feedback": "Deal comfortably meets all fund criteria after equity injection"
+  }
+}
+```
+
+### Point 4: Intake-to-Origination Checklist
+
+When deal transfers, use this checklist to ensure nothing is lost:
+
+```
+┌─ DOCUMENTS ──────────────────────────────┐
+│ [✓] All document versions captured       │
+│ [✓] Document hashes computed for delta   │
+│ [✓] Version history timeline created     │
+│ [✓] File paths valid in origination      │
+└──────────────────────────────────────────┘
+
+┌─ DEAL DATA ──────────────────────────────┐
+│ [✓] Borrower info transferred            │
+│ [✓] Property metrics copied              │
+│ [✓] All extracted fields present         │
+│ [✓] Calculated fields (LTV, DSCR, etc.)  │
+└──────────────────────────────────────────┘
+
+┌─ AI ASSESSMENT ──────────────────────────┐
+│ [✓] Intake verdict recorded              │
+│ [✓] Intake flaws noted                   │
+│ [✓] Confidence score stored              │
+│ [✓] Fund recommendations captured        │
+└──────────────────────────────────────────┘
+
+┌─ ORIGINATION CONTEXT ────────────────────┐
+│ [✓] Underwriter assigned                 │
+│ [✓] Credit policy version specified      │
+│ [✓] Expected closing date set            │
+│ [✓] Deal status initialized              │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## Part 5: Error Handling & Exceptional Cases
+
+### Case 1: Deal Fails Intake Screening (Immediate No)
+
+```
+Deal submitted → No matching funds identified
+
+BROKER SEES:
+• "No funds currently available for this deal type"
+• Can edit deal and resubmit
+
+LENDER SEES:
+• Deal marked as "no_match"
+• AI assessment showing why no fund match
+• Can review document/policy if desired
+• Deal can be manually overridden if lender believes it's fundable
+
+PATH FORWARD:
+Option A: Broker adjusts deal parameters, resubmits
+Option B: Lender manually approves to origination despite no fund match
+Option C: Lender adds new fund to database that matches
+```
+
+### Case 2: Document Change Between Intake & Origination Rejection
+
+```
+Scenario: Broker uploads new document version between
+          intake screening and origination transfer
+
+DETECTION:
+• Agent 1 in origination sees extraction_hash differs
+• Compares to intake extraction_hash
+• Flags material change
+
+ORIGINATION RESPONSE:
+• Agent 2 re-evaluates policies with new data
+• May increase/decrease risk score
+• May identify new flaws or resolve existing ones
+• Updates deal status accordingly
+
+COMMUNICATION:
+• If change negative: Notify underwriter + broker
+• If change positive: Celebrate in communication
+
+EXAMPLE:
+  Broker uploads updated rent roll after intake screening
+  Shows higher NOI than initial estimate
+  → DSCR improves from 1.45 to 1.62
+  → Risk score drops further
+  → Approval likelihood increases to 92%
+  → Send congratulatory email
+```
+
+### Case 3: Fund Manager Rejects After Transfer
+
+```
+Timeline:
+1. Deal matches Fund A in intake (92% match)
+2. Lender sends to Fund A
+3. Origination proceeds
+4. Fund A declines deal
+
+RECOVERY:
+1. Lender checks if deal matches Fund B, C (from intake analysis)
+2. If yes: Send to alternative fund immediately
+3. Update deal status: "Re-submitted to Fund B"
+4. Send communication to borrower:
+   "Original fund financing structure won't work,
+    but we have excellent alternative. Timeline unchanged."
+5. Continue with origination against new fund
+
+SYSTEM SUPPORT:
+• Intake system preserved all fund matches (not just first choice)
+• Lender dashboard shows eligible funds list
+• Can reshuffle fund assignments anytime
+```
+
+---
+
+## Part 6: Unified Reporting & Analytics
+
+### Single Dashboard View: Intake + Origination
+
+```
+LENDER PORTFOLIO DASHBOARD
+
+┌────────────────────────────────────────────────┐
+│ DEALS IN PIPELINE (This Month)                │
+├────────────────────────────────────────────────┤
+│                                                │
+│ Intake Phase:          5 deals                 │
+│ ├─ Submitted:          3                       │
+│ ├─ Conditional pass:   2                       │
+│ └─ Rejected:           0                       │
+│                                                │
+│ Origination Phase:     12 deals                │
+│ ├─ In underwriting:    8                       │
+│ ├─ Approved:           3                       │
+│ ├─ Conditional:        1                       │
+│ └─ Rejected:           0                       │
+│                                                │
+│ METRICS                                        │
+│ ├─ Avg time (Intake→Decision): 4.2 days       │
+│ ├─ Avg time (Origination): 18.5 days          │
+│ ├─ Approval rate (Intake): 80%                │
+│ ├─ Approval rate (Origination): 95%           │
+│ └─ Total conversion (Intake to Close): 72%    │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### Broker Performance Metrics
+
+```
+PERFORMANCE BY BROKER
+
+Broker: Mike Rodriguez (10 deals YTD)
+├─ Submitted via Intake: 10
+├─ Matched to funds: 9 (90%)
+├─ Transferred to origination: 8 (80%)
+├─ Currently closing: 3
+├─ Approved/conditional: 5
+├─ Rejected: 0
+├─ Avg deal quality (confidence): 74%
+└─ Avg approval rate: 88%
+
+Comparison to portfolio average:
+• Match rate: 90% vs 85% (above average ✓)
+• Approval rate: 88% vs 82% (above average ✓)
+• Quality score: 74% vs 70% (above average ✓)
+
+Recommendation: High-quality broker
+Status: Preferred partner
+```
+
+---
+
+## Implementation Roadmap: Integration Timeline
+
+```
+PHASE 1: Intake System Foundation (Weeks 1-3)
+├─ Deploy core intake + matching system
+├─ Create deal form + document requirements
+└─ Basic broker/lender interface
+
+PHASE 2: Pre-Origination AI (Weeks 4-5)
+├─ Deploy Agent 1 & 2 for intake screening
+├─ Generate "pass/conditional/fail" verdicts
+└─ Lender sees preliminary AI feedback
+
+PHASE 3: Integration Preparation (Week 6)
+├─ Design unified deal database schema
+├─ Create data export format (Intake → Origination)
+├─ Build transfer trigger/workflow
+└─ Test data migration
+
+PHASE 4: Origination Integration (Week 7)
+├─ Deploy origination system agents (1, 2, 3)
+├─ Enable deal transfer from intake to origination
+├─ Unified status dashboard
+└─ Test end-to-end workflow
+
+PHASE 5: Refinement (Week 8)
+├─ Performance optimization
+├─ Error handling & edge cases
+├─ User feedback & UI improvements
+└─ Go live
+```
+
+---
+
+## Summary: Two Systems as One
+
+Your platform now has:
+
+1. **Intake System** (Broker-facing)
+   - Simple deal submission
+   - Automatic fund matching
+   - Pre-screening with AI
+   - Document conditional requirements
+   - "Gate keeper" between broker and lender
+
+2. **Origination System** (Lender-facing)
+   - Deep document analysis
+   - Comprehensive policy review
+   - Borrower communication
+   - Underwriting workflow
+   - Credit decision engine
+
+**Bridge:**
+- Intake AI provides context (flaws, confidence, fund recs)
+- Origination AI re-validates and deepens analysis
+- Single unified deal record tracks progression
+- Document version history enables change detection
+- Broker sees deal status throughout
+- Lender controls flow between systems
+
+This architecture ensures:
+- ✓ Brokers can submit deals quickly (no upfront screening friction)
+- ✓ Lenders get pre-screened deals with AI guidance (saves time)
+- ✓ Automatic fund matching enables instant feedback (improves UX)
+- ✓ Document conditional rules prevent wasted submissions (better quality)
+- ✓ Three-agent origination system deeply analyzes approved deals (thorough)
+- ✓ Unified reporting across both systems (complete visibility)
+
+The intake system filters deals. The origination system approves them. Together, they create a powerful commercial real estate lending platform.

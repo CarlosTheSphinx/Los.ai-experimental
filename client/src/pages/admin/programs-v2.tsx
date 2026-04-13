@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatDate } from "@/lib/utils";
 import {
   Layers, Plus, Search, CheckCircle2, FileText, ListTodo,
   Pencil, Copy, ShieldCheck,
@@ -112,10 +113,6 @@ function CreditPoliciesTab() {
     }, {} as Record<string, CreditPolicyRule[]>);
   }
 
-  function formatDate(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
 
   if (isLoading) {
     return (

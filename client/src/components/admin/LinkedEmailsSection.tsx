@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Mail, Paperclip, ExternalLink } from "lucide-react";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils";
 import { useLocation } from "wouter";
 
 interface LinkedEmailsSectionProps {
@@ -70,7 +70,7 @@ export function LinkedEmailsSection({ dealId }: LinkedEmailsSectionProps) {
                       {thread.subject || "(No Subject)"}
                     </p>
                     <span className="text-xs text-muted-foreground flex-shrink-0" data-testid={`text-email-date-${thread.id}`}>
-                      {thread.lastMessageAt ? format(new Date(thread.lastMessageAt), "MMM d") : ""}
+                      {safeFormat(thread.lastMessageAt, "MMM d", "")}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-from-${thread.id}`}>

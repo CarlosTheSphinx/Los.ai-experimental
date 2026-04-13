@@ -116,7 +116,9 @@ function formatCurrency(amount: number | null | undefined): string {
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "N/A";
+  return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDate, formatTimestamp } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1286,7 +1287,7 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
                           </div>
                         )}
                         {draft.sentAt && (
-                          <p className="text-xs text-muted-foreground">Sent: {new Date(draft.sentAt).toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">Sent: {formatTimestamp(draft.sentAt)}</p>
                         )}
                       </div>
                     )}
@@ -1381,7 +1382,7 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                           <span>To: {comm.recipientType || 'borrower'}</span>
                           {comm.approvedAt && (
-                            <span>Approved {new Date(comm.approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                            <span>Approved {formatDate(comm.approvedAt)}</span>
                           )}
                         </div>
                       </div>
@@ -1450,7 +1451,7 @@ export function DigestConfigPanel({ dealId }: DigestConfigPanelProps) {
                         {entry.status}
                       </Badge>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(entry.sentAt).toLocaleString()}
+                        {formatTimestamp(entry.sentAt)}
                       </p>
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatTime } from '@/lib/utils';
 import type { OrchestrationEvent } from '@/types/orchestration';
 
 interface RealTimeOutputProps {
@@ -67,7 +68,7 @@ export function RealTimeOutput({ events, selectedAgent }: RealTimeOutputProps) {
               className="flex items-start gap-2 py-0.5"
             >
               <span className="text-slate-500 flex-shrink-0 w-[52px] text-right">
-                {new Date(event.timestamp).toLocaleTimeString('en-US', { hour12: false })}
+                {formatTime(event.timestamp)}
               </span>
               <span className={`flex-shrink-0 w-[70px] font-semibold ${getEventColor(event.eventType)}`}>
                 {formatEventType(event.eventType)}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { formatDate, formatTimestamp } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -393,12 +394,12 @@ function ApiKeysTab() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        Created {new Date(key.createdAt).toLocaleDateString()}
+                        Created {formatDate(key.createdAt)}
                       </span>
                       {key.lastUsedAt && (
                         <span className="flex items-center gap-1">
                           <Activity className="h-3 w-3" />
-                          Last used {new Date(key.lastUsedAt).toLocaleDateString()}
+                          Last used {formatDate(key.lastUsedAt)}
                         </span>
                       )}
                       <span>{key.usageCount || 0} calls</span>
@@ -418,7 +419,7 @@ function ApiKeysTab() {
                     {key.expiresAt && (
                       <div className="flex items-center gap-1 text-xs text-amber-600 mt-1">
                         <AlertTriangle className="h-3 w-3" />
-                        Expires {new Date(key.expiresAt).toLocaleDateString()}
+                        Expires {formatDate(key.expiresAt)}
                       </div>
                     )}
                   </div>
@@ -901,12 +902,12 @@ function WebhooksTab() {
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        Created {new Date(wh.createdAt).toLocaleDateString()}
+                        Created {formatDate(wh.createdAt)}
                       </span>
                       {wh.lastTriggeredAt && (
                         <span className="flex items-center gap-1">
                           <Zap className="h-3 w-3" />
-                          Last triggered {new Date(wh.lastTriggeredAt).toLocaleDateString()}
+                          Last triggered {formatDate(wh.lastTriggeredAt)}
                         </span>
                       )}
                     </div>
@@ -991,7 +992,7 @@ function WebhooksTab() {
                             <div className="flex items-center gap-3 text-muted-foreground">
                               {d.statusCode && <span>HTTP {d.statusCode}</span>}
                               {d.responseTime != null && <span>{d.responseTime}ms</span>}
-                              <span>{new Date(d.timestamp).toLocaleString()}</span>
+                              <span>{formatTimestamp(d.timestamp)}</span>
                             </div>
                           </div>
                         ))}

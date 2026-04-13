@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,7 +9,14 @@ import { SiGoogle } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   CheckCircle2,
   Shield,
@@ -27,6 +34,12 @@ import {
   FileText,
   UserPlus,
   Loader2,
+  Building2,
+  Upload,
+  TrendingUp,
+  Send,
+  Eye,
+  BadgeDollarSign,
 } from "lucide-react";
 
 interface OnboardingStep {
@@ -121,7 +134,15 @@ const BROKER_DEFAULT_STEPS: OnboardingStep[] = [
     },
   },
   {
-    id: 3, name: "agreement", label: "Agreement", enabled: true, order: 3,
+    id: 3, name: "profile", label: "Profile", enabled: true, order: 3,
+    content: {
+      title: "Your Company Profile",
+      subtitle: "Help us know your business",
+      description: "Tell us about your brokerage so we can match you with the right programs.",
+    },
+  },
+  {
+    id: 4, name: "agreement", label: "Agreement", enabled: true, order: 4,
     content: {
       title: "Partnership Agreement",
       body: "By signing this agreement, you acknowledge that you have read and agree to the terms and conditions of our partnership program.",
@@ -130,28 +151,31 @@ const BROKER_DEFAULT_STEPS: OnboardingStep[] = [
     },
   },
   {
-    id: 4, name: "tour", label: "Tour", enabled: true, order: 4,
+    id: 5, name: "tour", label: "Tour", enabled: true, order: 5,
     content: {
       title: "Your Broker Portal",
-      description: "Here's what you can do:",
+      description: "Here's how to get started:",
       cards: [
-        { id: "inbox", icon: "Inbox", title: "Inbox", description: "View messages and notifications about your deals.", enabled: true },
-        { id: "loans", icon: "FileText", title: "Loans", description: "Track deals, upload documents, and monitor progress.", enabled: true },
-        { id: "commissions", icon: "DollarSign", title: "Commissions", description: "Track your earnings and commission payments.", enabled: true },
+        { id: "submit-deal", icon: "Send", title: "Submit a Deal", description: "Fill out a quick form with your deal details. Our AI instantly analyzes it and matches it to our lending programs.", enabled: true },
+        { id: "track-status", icon: "Eye", title: "Track Deal Status", description: "See real-time updates on every deal — from submission through approval, with AI analysis results included.", enabled: true },
+        { id: "upload-docs", icon: "Upload", title: "Upload Documents", description: "Securely upload required documents for each deal. We'll tell you exactly what's needed based on the deal type.", enabled: true },
+        { id: "commissions", icon: "BadgeDollarSign", title: "View Commissions", description: "Track your earnings and broker points for every closed deal.", enabled: true },
+        { id: "messaging", icon: "MessageSquare", title: "Message Our Team", description: "Communicate directly with loan officers and processors through your portal inbox.", enabled: true },
       ],
     },
   },
   {
-    id: 5, name: "start", label: "Start", enabled: true, order: 5,
+    id: 6, name: "start", label: "Start", enabled: true, order: 6,
     content: {
       title: "You're All Set!",
-      message: "Your portal is ready. Let's get started.",
+      message: "Your portal is ready. Submit your first deal to get started!",
     },
   },
 ];
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BarChart3, FolderKanban, Zap, MessageSquare, Target, Inbox, DollarSign, FileText, BookOpen, Shield,
+  Send, Eye, Upload, BadgeDollarSign, Building2, TrendingUp,
 };
 
 function getIcon(iconName: string) {
@@ -161,10 +185,24 @@ function getIcon(iconName: string) {
 const STEP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   welcome: CheckCircle2,
   account: UserPlus,
+  profile: Building2,
   agreement: Shield,
   tour: BookOpen,
   start: Rocket,
 };
+
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+  "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
+];
+
+const LOAN_TYPES = [
+  "Bridge", "Construction", "DSCR", "A&D", "Fix & Flip",
+  "Long-Term Financing", "Land Development",
+];
 
 interface PortalOnboardingProps {
   config?: OnboardingConfig | null;
@@ -190,7 +228,7 @@ function AccountStep({ portalType, token, returnPath }: { portalType: "broker" |
   const [regPassword, setRegPassword] = useState("");
 
   const portalPath = returnPath || (portalType === "broker" ? `/broker-portal/${token}` : `/portal/${token}`);
-  const googleAuthUrl = `/api/auth/google?userType=${portalType}&returnTo=${encodeURIComponent(portalPath)}`;
+  const googleAuthUrl = `/api/auth/google?userType=${portalType}&returnTo=${encodeURIComponent(portalPath)}&magicLinkToken=${encodeURIComponent(token)}`;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +268,7 @@ function AccountStep({ portalType, token, returnPath }: { portalType: "broker" |
         firstName: regFirstName,
         lastName: regLastName,
         userType: portalType,
+        magicLinkToken: token,
       });
       if (!res.ok) {
         const data = await res.json();
@@ -405,15 +444,171 @@ function AccountStep({ portalType, token, returnPath }: { portalType: "broker" |
   );
 }
 
+function ProfileStep({ onSaved }: { onSaved: () => void }) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [companyName, setCompanyName] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [yearsExperience, setYearsExperience] = useState("");
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
+  const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const toggleState = (st: string) => {
+    setSelectedStates(prev => prev.includes(st) ? prev.filter(s => s !== st) : [...prev, st]);
+  };
+
+  const toggleLoanType = (lt: string) => {
+    setSelectedLoanTypes(prev => prev.includes(lt) ? prev.filter(l => l !== lt) : [...prev, lt]);
+  };
+
+  const handleSave = async () => {
+    if (!companyName.trim()) {
+      toast({ title: "Company name is required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await apiRequest("PATCH", "/api/auth/profile", {
+        brokerCompanyName: companyName,
+        brokerLicenseNumber: licenseNumber || null,
+        brokerOperatingStates: selectedStates.length > 0 ? selectedStates : null,
+        brokerYearsExperience: yearsExperience ? parseInt(yearsExperience) : null,
+        brokerPreferredLoanTypes: selectedLoanTypes.length > 0 ? selectedLoanTypes : null,
+      });
+      if (!res.ok) throw new Error("Failed to save profile");
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "Failed to save profile", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="py-3 space-y-4 max-h-[400px] overflow-y-auto">
+      <div className="space-y-1.5">
+        <Label htmlFor="company-name" className="text-xs font-medium">Company Name *</Label>
+        <Input
+          id="company-name"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+          placeholder="e.g., ABC Mortgage Brokerage"
+          data-testid="input-broker-company-name"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="license-number" className="text-xs font-medium">Broker License # (optional)</Label>
+        <Input
+          id="license-number"
+          value={licenseNumber}
+          onChange={(e) => setLicenseNumber(e.target.value)}
+          placeholder="e.g., NMLS #123456"
+          data-testid="input-broker-license"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium">Years of Experience</Label>
+        <Select value={yearsExperience} onValueChange={setYearsExperience}>
+          <SelectTrigger data-testid="select-broker-experience">
+            <SelectValue placeholder="Select range" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">Less than 1 year</SelectItem>
+            <SelectItem value="3">1-3 years</SelectItem>
+            <SelectItem value="5">3-5 years</SelectItem>
+            <SelectItem value="10">5-10 years</SelectItem>
+            <SelectItem value="15">10+ years</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium">States You Operate In</Label>
+        <div className="grid grid-cols-5 gap-1.5 max-h-32 overflow-y-auto border rounded-md p-2">
+          {US_STATES.map(st => (
+            <label key={st} className="flex items-center gap-1 text-xs cursor-pointer">
+              <Checkbox
+                checked={selectedStates.includes(st)}
+                onCheckedChange={() => toggleState(st)}
+                data-testid={`checkbox-state-${st}`}
+              />
+              {st}
+            </label>
+          ))}
+        </div>
+        {selectedStates.length > 0 && (
+          <p className="text-xs text-muted-foreground">{selectedStates.length} state(s) selected</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium">Preferred Loan Types</Label>
+        <div className="flex flex-wrap gap-2">
+          {LOAN_TYPES.map(lt => (
+            <button
+              key={lt}
+              type="button"
+              onClick={() => toggleLoanType(lt)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                selectedLoanTypes.includes(lt)
+                  ? "bg-blue-100 border-blue-300 text-blue-700"
+                  : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+              }`}
+              data-testid={`chip-loan-type-${lt.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+            >
+              {lt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Button onClick={handleSave} className="w-full" disabled={saving} data-testid="button-save-broker-profile">
+        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        Save & Continue
+      </Button>
+    </div>
+  );
+}
+
 export function PortalOnboarding({ config, portalType, token, onComplete, magicLinkMode, lenderCompanyName, returnPath }: PortalOnboardingProps) {
   const { user } = useAuth();
+
+  const { data: tourConfigData } = useQuery<{ settings: Array<{ settingKey: string; settingValue: string }> }>({
+    queryKey: ['/api/onboarding/tour-config'],
+    enabled: portalType === "broker",
+  });
+
   const defaultSteps = portalType === "broker" ? BROKER_DEFAULT_STEPS : BORROWER_DEFAULT_STEPS;
-  const steps = (config?.steps || defaultSteps)
-    .filter(s => s.enabled)
-    .sort((a, b) => a.order - b.order);
+
+  const steps = (() => {
+    let baseSteps = config?.steps || defaultSteps;
+
+    if (portalType === "broker" && tourConfigData?.settings) {
+      const tourSetting = tourConfigData.settings.find(s => s.settingKey === 'broker_onboarding_tour_cards');
+      if (tourSetting?.settingValue) {
+        try {
+          const customCards = JSON.parse(tourSetting.settingValue);
+          if (Array.isArray(customCards) && customCards.length > 0) {
+            baseSteps = baseSteps.map(step => {
+              if (step.name === "tour") {
+                return { ...step, content: { ...step.content, cards: customCards } };
+              }
+              return step;
+            });
+          }
+        } catch {}
+      }
+    }
+
+    return baseSteps.filter(s => s.enabled).sort((a, b) => a.order - b.order);
+  })();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   const currentStep = steps[currentStepIndex];
   if (!currentStep) return null;
@@ -422,9 +617,19 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
   const isFirstStep = currentStepIndex === 0;
   const StepIcon = STEP_ICONS[currentStep.name] || CheckCircle2;
 
+  const trackStepCompletion = (stepName: string) => {
+    if (user) {
+      apiRequest("POST", "/api/onboarding/track-step", { stepName, portalType }).catch(() => {});
+    }
+  };
+
   const handleNext = () => {
+    trackStepCompletion(currentStep.name);
     if (isLastStep) {
       localStorage.setItem(`portal_onboarding_${portalType}_${token}`, "completed");
+      if (user) {
+        apiRequest("POST", "/api/auth/complete-onboarding", {}).catch(() => {});
+      }
       onComplete();
     } else {
       setCurrentStepIndex(prev => prev + 1);
@@ -440,6 +645,9 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
   const canProceed = () => {
     if (currentStep.name === "account") {
       return !!user;
+    }
+    if (currentStep.name === "profile") {
+      return profileSaved;
     }
     if (currentStep.name === "agreement" && currentStep.content.required) {
       return agreedToTerms;
@@ -499,6 +707,10 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
               <AccountStep portalType={portalType} token={token} returnPath={returnPath} />
             )}
 
+            {currentStep.name === "profile" && (
+              <ProfileStep onSaved={() => { setProfileSaved(true); handleNext(); }} />
+            )}
+
             {currentStep.name === "agreement" && (
               <div className="py-4 space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
@@ -545,7 +757,25 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
                 <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                   <Rocket className="h-8 w-8 text-green-600" />
                 </div>
-                <p className="text-sm text-gray-600">{currentStep.content.message}</p>
+                <p className="text-sm text-gray-600 mb-4">{currentStep.content.message}</p>
+                {portalType === "broker" && (
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      trackStepCompletion(currentStep.name);
+                      localStorage.setItem(`portal_onboarding_${portalType}_${token}`, "completed");
+                      if (user) {
+                        apiRequest("POST", "/api/auth/complete-onboarding", {}).catch(() => {});
+                      }
+                      window.location.href = "/commercial-deals/new";
+                    }}
+                    data-testid="button-submit-first-deal"
+                  >
+                    <Send className="h-4 w-4" />
+                    Submit Your First Deal
+                  </Button>
+                )}
               </div>
             )}
 
@@ -562,6 +792,16 @@ export function PortalOnboarding({ config, portalType, token, onComplete, magicL
               </Button>
 
               <div className="flex items-center gap-2">
+                {currentStep.name === "profile" && !profileSaved && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setProfileSaved(true); handleNext(); }}
+                    className="text-xs text-muted-foreground"
+                    data-testid="button-skip-profile"
+                  >
+                    Skip for now
+                  </Button>
+                )}
                 <Button
                   onClick={handleNext}
                   disabled={!canProceed()}

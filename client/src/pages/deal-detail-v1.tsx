@@ -458,11 +458,15 @@ export default function ProjectDetail() {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US', { 
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-US', { 
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
     });
   };

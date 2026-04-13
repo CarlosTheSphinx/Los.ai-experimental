@@ -49,7 +49,7 @@ import {
 import { useState, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { Document as PDFDocument, Page as PDFPage, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -392,7 +392,7 @@ export default function DocumentTemplatesPage() {
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground">
-                        {format(new Date(template.createdAt), "MMM d, yyyy")}
+                        {safeFormat(template.createdAt, "MMM d, yyyy")}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">

@@ -62,15 +62,8 @@ import {
   type Message
 } from "@/lib/messagesApi";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, safeFormat } from "@/lib/utils";
 import { format } from "date-fns";
-
-function safeFormat(dateVal: any, fmt: string): string {
-  if (!dateVal) return '';
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return '';
-  return format(d, fmt);
-}
 import {
   Dialog,
   DialogContent,
@@ -120,7 +113,7 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState("");
   const [isNewThreadDialogOpen, setIsNewThreadDialogOpen] = useState(false);
   const [newThreadSubject, setNewThreadSubject] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string>("");
   const [initialMessage, setInitialMessage] = useState("");
   const [starredThreadIds, setStarredThreadIds] = useState<Set<number>>(new Set());
@@ -159,6 +152,7 @@ export default function MessagesPage() {
   
   const isAdmin = user?.role && ['admin', 'staff', 'super_admin'].includes(user.role);
   const isBorrower = user?.role === 'borrower';
+  const isBroker = user?.role === 'broker';
 
   const toggleStarred = (threadId: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -281,14 +275,32 @@ export default function MessagesPage() {
     enabled: !!isAdmin,
   });
 
+  const firstSelectedUserId = selectedUserIds.length > 0 ? selectedUserIds[0] : null;
+
   const { data: quotesData } = useQuery<{ quotes: any[] }>({
-    queryKey: ["/api/quotes"],
-    enabled: !isBorrower,
+    queryKey: ["/api/quotes", isAdmin && firstSelectedUserId ? firstSelectedUserId : "all"],
+    queryFn: async () => {
+      const url = isAdmin && firstSelectedUserId 
+        ? `/api/quotes?userId=${firstSelectedUserId}` 
+        : "/api/quotes";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch quotes");
+      return res.json();
+    },
+    enabled: !isBorrower && (!isAdmin || selectedUserIds.length > 0),
   });
 
   const { data: projectsData } = useQuery<{ projects: any[] }>({
-    queryKey: ["/api/projects"],
-    enabled: !!isBorrower,
+    queryKey: ["/api/projects", isAdmin && firstSelectedUserId ? firstSelectedUserId : "all"],
+    queryFn: async () => {
+      const url = isAdmin && firstSelectedUserId 
+        ? `/api/projects?userId=${firstSelectedUserId}` 
+        : "/api/projects";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch projects");
+      return res.json();
+    },
+    enabled: (!!isBorrower || !!isBroker) || (!!isAdmin && selectedUserIds.length > 0),
   });
 
   const { data: emailThreadsData, isLoading: emailThreadsLoading } = useQuery<{ threads: any[]; total: number }>({
@@ -449,7 +461,9 @@ export default function MessagesPage() {
 
   // Handle URL params for opening new thread with pre-selected deal
   // Wait for the appropriate deals data to be loaded before opening dialog
-  const dealsReady = isBorrower ? !!projectsData?.projects : !!quotesData?.quotes;
+  const dealsReady = isAdmin 
+    ? (selectedUserIds.length > 0 && (!!quotesData?.quotes || !!projectsData?.projects))
+    : ((isBorrower || isBroker) ? !!projectsData?.projects : !!quotesData?.quotes);
   useEffect(() => {
     if (urlDealId && openNew && dealsReady) {
       setSelectedDealId(urlDealId);
@@ -553,10 +567,10 @@ export default function MessagesPage() {
 
   const createThreadMutation = useMutation({
     mutationFn: async () => {
-      const targetUserId = isAdmin ? parseInt(selectedUserId) : user!.id;
-      if (!targetUserId || !selectedDealId) return;
+      const targetUserIds = isAdmin ? selectedUserIds.map(id => parseInt(id)) : [user!.id];
+      if (targetUserIds.length === 0 || !selectedDealId) return;
       const dealId = parseInt(selectedDealId);
-      const result = await createThread(targetUserId, dealId, newThreadSubject || undefined);
+      const result = await createThread(targetUserIds, dealId, newThreadSubject || undefined);
       
       if (result?.thread && initialMessage.trim()) {
         await sendMessage(result.thread.id, initialMessage.trim(), "message");
@@ -571,7 +585,7 @@ export default function MessagesPage() {
       }
       setIsNewThreadDialogOpen(false);
       setNewThreadSubject("");
-      setSelectedUserId("");
+      setSelectedUserIds([]);
       setSelectedDealId("");
       setInitialMessage("");
     },
@@ -680,32 +694,110 @@ export default function MessagesPage() {
             <div className="grid gap-4 py-4">
               {isAdmin && (
                 <div className="grid gap-2">
-                  <Label htmlFor="user">Select User</Label>
-                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                    <SelectTrigger data-testid="select-user">
-                      <SelectValue placeholder="Choose a user..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {usersData?.users?.map((u) => (
-                        <SelectItem key={u.id} value={u.id.toString()}>
-                          {u.fullName || u.email} {u.role === 'user' ? '(Broker)' : `(${u.role})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Select Participants</Label>
+                  {selectedUserIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1" data-testid="selected-users-list">
+                      {selectedUserIds.map(uid => {
+                        const u = usersData?.users?.find((u: any) => u.id.toString() === uid);
+                        return (
+                          <Badge key={uid} variant="secondary" className="gap-1 pr-1">
+                            {u?.fullName || u?.email || `User #${uid}`}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newIds = selectedUserIds.filter(id => id !== uid);
+                                setSelectedUserIds(newIds);
+                                setSelectedDealId("");
+                              }}
+                              className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                              data-testid={`remove-user-${uid}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="justify-start font-normal" data-testid="select-user">
+                        <Users className="h-4 w-4 mr-2" />
+                        {selectedUserIds.length === 0 
+                          ? "Add participants..." 
+                          : `${selectedUserIds.length} selected`}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="start">
+                      <div className="p-2">
+                        <Input 
+                          placeholder="Search users..." 
+                          className="h-8 text-xs"
+                          data-testid="input-user-search"
+                          onChange={(e) => {
+                            const searchEl = e.target;
+                            searchEl.dataset.search = e.target.value.toLowerCase();
+                            const items = searchEl.closest('[data-radix-popper-content-wrapper]')
+                              ?.querySelectorAll('[data-user-item]');
+                            items?.forEach((item: any) => {
+                              const name = item.dataset.userName?.toLowerCase() || '';
+                              item.style.display = name.includes(searchEl.dataset.search || '') ? '' : 'none';
+                            });
+                          }}
+                        />
+                      </div>
+                      <ScrollArea className="h-[200px]">
+                        <div className="p-1">
+                          {usersData?.users?.map((u: any) => {
+                            const isSelected = selectedUserIds.includes(u.id.toString());
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                data-user-item
+                                data-user-name={u.fullName || u.email}
+                                className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-muted cursor-pointer ${isSelected ? 'bg-primary/10' : ''}`}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedUserIds(selectedUserIds.filter(id => id !== u.id.toString()));
+                                  } else {
+                                    setSelectedUserIds([...selectedUserIds, u.id.toString()]);
+                                  }
+                                  setSelectedDealId("");
+                                }}
+                                data-testid={`user-option-${u.id}`}
+                              >
+                                <div className={`h-4 w-4 rounded border flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'}`}>
+                                  {isSelected && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+                                </div>
+                                <span className="truncate">{u.fullName || u.email}</span>
+                                <span className="text-xs text-muted-foreground ml-auto">
+                                  {u.role === 'user' ? 'Broker' : u.role}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
               
               <div className="grid gap-2">
                 <Label htmlFor="deal">Related Deal <span className="text-destructive">*</span></Label>
-                <Select value={selectedDealId} onValueChange={setSelectedDealId}>
+                <Select 
+                  value={selectedDealId} 
+                  onValueChange={setSelectedDealId}
+                  disabled={isAdmin && selectedUserIds.length === 0}
+                >
                   <SelectTrigger data-testid="select-deal">
-                    <SelectValue placeholder="Select a deal..." />
+                    <SelectValue placeholder={isAdmin && selectedUserIds.length === 0 ? "Select participants first..." : "Select a deal..."} />
                   </SelectTrigger>
                   <SelectContent>
-                    {isBorrower ? (
+                    {(isBorrower || isBroker) ? (
                       <>
-                        {projectsData?.projects?.map((p) => (
+                        {projectsData?.projects?.map((p: any) => (
                           <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-deal-option-${p.id}`}>
                             {p.loanNumber ? `${p.loanNumber} — ` : ''}{p.propertyAddress || p.projectName || `Deal #${p.id}`}
                           </SelectItem>
@@ -714,9 +806,25 @@ export default function MessagesPage() {
                           <div className="p-2 text-sm text-muted-foreground">No deals available</div>
                         )}
                       </>
+                    ) : isAdmin ? (
+                      <>
+                        {projectsData?.projects?.map((p: any) => (
+                          <SelectItem key={`project-${p.id}`} value={p.id.toString()} data-testid={`select-deal-option-${p.id}`}>
+                            {p.loanNumber ? `${p.loanNumber} — ` : ''}{p.propertyAddress || p.projectName || `Deal #${p.id}`}
+                          </SelectItem>
+                        ))}
+                        {quotesData?.quotes?.map((q: any) => (
+                          <SelectItem key={`quote-${q.id}`} value={q.id.toString()}>
+                            {q.loanNumber ? `${q.loanNumber} — ` : ''}{q.propertyAddress || q.borrowerName || `Quote #${q.id}`}
+                          </SelectItem>
+                        ))}
+                        {(!projectsData?.projects?.length && !quotesData?.quotes?.length) && (
+                          <div className="p-2 text-sm text-muted-foreground">No deals found for this user</div>
+                        )}
+                      </>
                     ) : (
                       <>
-                        {quotesData?.quotes?.map((q) => (
+                        {quotesData?.quotes?.map((q: any) => (
                           <SelectItem key={q.id} value={q.id.toString()}>
                             {q.borrowerName || q.propertyAddress || `Quote #${q.id}`}
                           </SelectItem>
@@ -728,7 +836,13 @@ export default function MessagesPage() {
                     )}
                   </SelectContent>
                 </Select>
-                {!selectedDealId && (
+                {isAdmin && selectedUserIds.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Select participants first to see their deals</p>
+                )}
+                {isAdmin && selectedUserIds.length > 1 && (
+                  <p className="text-xs text-muted-foreground">Showing deals for the first selected participant</p>
+                )}
+                {!selectedDealId && (isAdmin ? selectedUserIds.length > 0 : true) && (
                   <p className="text-xs text-muted-foreground">All conversations must be linked to a deal</p>
                 )}
               </div>
@@ -759,7 +873,7 @@ export default function MessagesPage() {
             <DialogFooter>
               <Button
                 onClick={() => createThreadMutation.mutate()}
-                disabled={(isAdmin && !selectedUserId) || !selectedDealId || !initialMessage.trim() || createThreadMutation.isPending}
+                disabled={(isAdmin && selectedUserIds.length === 0) || !selectedDealId || !initialMessage.trim() || createThreadMutation.isPending}
                 data-testid="button-create-thread"
               >
                 Send Message
@@ -1172,14 +1286,25 @@ export default function MessagesPage() {
                             {t.dealIdentifier && (
                               <span className="text-[12px] font-medium text-muted-foreground">{t.dealIdentifier}</span>
                             )}
-                            {t.userType && (
-                              <Badge variant="secondary" className={`text-[10px] h-[18px] px-1.5 shrink-0 border-0 ${t.userType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
-                                {t.userType === 'borrower' ? 'Borrower' : 'Broker'}
-                              </Badge>
+                            {t.participants && t.participants.length > 1 ? (
+                              <>
+                                <Users className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] text-muted-foreground truncate">
+                                  {t.participants.map((p: any) => p.fullName || p.email).join(', ')}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {t.userType && (
+                                  <Badge variant="secondary" className={`text-[10px] h-[18px] px-1.5 shrink-0 border-0 ${t.userType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
+                                    {t.userType === 'borrower' ? 'Borrower' : 'Broker'}
+                                  </Badge>
+                                )}
+                                <span className="text-[12px] text-muted-foreground truncate">
+                                  {t.userName || "User"}
+                                </span>
+                              </>
                             )}
-                            <span className="text-[12px] text-muted-foreground truncate">
-                              {t.userName || "User"}
-                            </span>
                             {t.unreadCount > 0 && (
                               <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ml-auto shrink-0">
                                 {t.unreadCount}
@@ -1399,12 +1524,23 @@ export default function MessagesPage() {
                         {headerIdentifier && (
                           <span className="text-[12px] font-medium text-muted-foreground">{headerIdentifier}</span>
                         )}
-                        {headerUserType && (
-                          <Badge variant="secondary" className={`text-[10px] h-4 px-1.5 shrink-0 ${headerUserType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
-                            {headerUserType === 'borrower' ? 'Borrower' : 'Broker'}
-                          </Badge>
+                        {activeThreadMeta?.participants && activeThreadMeta.participants.length > 1 ? (
+                          <>
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-[12px] text-muted-foreground">
+                              {activeThreadMeta.participants.map((p: any) => p.fullName || p.email).join(', ')}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {headerUserType && (
+                              <Badge variant="secondary" className={`text-[10px] h-4 px-1.5 shrink-0 ${headerUserType === 'borrower' ? 'bg-blue-500 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-500 text-white'}`}>
+                                {headerUserType === 'borrower' ? 'Borrower' : 'Broker'}
+                              </Badge>
+                            )}
+                            <span className="text-[12px] text-muted-foreground">{headerUserName}</span>
+                          </>
                         )}
-                        <span className="text-[12px] text-muted-foreground">{headerUserName}</span>
                         {headerStage && (
                           <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
                             <span className={`w-2 h-2 rounded-full ${STAGE_COLORS[headerStage] || 'bg-slate-400'}`} />

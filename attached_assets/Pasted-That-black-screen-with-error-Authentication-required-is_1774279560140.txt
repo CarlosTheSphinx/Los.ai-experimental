@@ -1,0 +1,93 @@
+That black screen with:
+
+{"error":"Authentication required"}
+
+is actually a very good clue 🔍 — your app is running, but your frontend is hitting a protected backend route without auth.
+
+So this isn’t a “Replit preview is broken” problem… it’s a routing / auth middleware issue.
+
+🧠 What’s actually happening
+
+Your preview loads → browser hits your server → server responds:
+
+“No token? No entry.”
+
+So instead of your UI, you’re seeing raw JSON.
+
+⚡ Quick fixes (try in this order)
+1. Check your root route (/)
+
+Your server is probably doing something like:
+
+app.use(authMiddleware);
+
+which protects everything, including /.
+
+👉 Fix:
+
+app.use('/api', authMiddleware); // only protect API routes
+
+or:
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist/public/index.html'));
+});
+2. Make sure frontend is being served
+
+You mentioned:
+
+dist/public/index.html is generated
+
+Good. Now confirm you're actually serving it:
+
+app.use(express.static('dist/public'));
+
+AND this fallback (critical for React apps):
+
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve('dist/public/index.html'));
+});
+3. Check if your frontend is calling / as API
+
+If your React app does something like:
+
+fetch('/')
+
+…it will hit your backend root and trigger auth.
+
+👉 Instead:
+
+fetch('/api/...')
+4. Auth middleware might be too aggressive
+
+Look for something like:
+
+if (!req.headers.authorization) {
+  return res.status(401).json({ error: "Authentication required" });
+}
+
+👉 Modify to skip public routes:
+
+if (req.path.startsWith('/api') && !req.headers.authorization) {
+  return res.status(401).json({ error: "Authentication required" });
+}
+5. Replit-specific check
+
+Make sure:
+
+Your run command is correct (npm run dev or node server.js)
+Your app is listening on:
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0');
+🧪 Fast Debug Move (do this now)
+
+Open your preview URL and try:
+
+https://your-replit-url/
+
+Then try:
+
+https://your-replit-url/api
+
+If /api shows the error but / should show UI → your routing is wrong
+If both show error → auth middleware is global

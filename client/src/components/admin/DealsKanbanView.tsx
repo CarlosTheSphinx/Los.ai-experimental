@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useMemo, createContext, useContext } from "react";
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -65,6 +65,8 @@ interface PipelineData {
   programs: PipelineProgram[];
   unassigned: PipelineProject[];
 }
+
+const PendingReviewContext = createContext<Record<number, number>>({});
 
 function formatCurrency(value: number | null) {
   if (!value) return "-";
@@ -175,28 +177,36 @@ function DealCardContent({
   dragHandleProps?: Record<string, any>;
   isDragOverlay?: boolean;
 }) {
+  const [, navigate] = useLocation();
+  const pendingReviewByDeal = useContext(PendingReviewContext);
+  const reviewCount = pendingReviewByDeal[project.id] || 0;
   const nameParts = (project.borrowerName || project.projectName || "").split(" - ");
   const displayName = project.borrowerName || nameParts[0] || "Unknown";
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("[data-drag-handle]")) return;
+    navigate(`/admin/deals/${project.id}`);
+  };
+
   return (
     <Card
-      className={cn("overflow-visible", isDragOverlay && "shadow-lg opacity-90")}
+      className={cn("overflow-visible cursor-pointer hover:border-primary/40 transition-colors", isDragOverlay && "shadow-lg opacity-90")}
       data-testid={`kanban-deal-${project.id}`}
+      onClick={handleCardClick}
     >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-1">
-          <Link
-            href={`/admin/deals/${project.id}`}
+          <span
+            className="text-sm font-medium leading-tight line-clamp-2"
             data-testid={`link-kanban-deal-${project.id}`}
           >
-            <span className="text-sm font-medium hover:underline leading-tight line-clamp-2">
-              {displayName}
-            </span>
-          </Link>
+            {displayName}
+          </span>
           <div className="flex items-center gap-1 flex-shrink-0">
             {dragHandleProps && (
               <div
                 {...dragHandleProps}
+                data-drag-handle
                 className="cursor-grab active:cursor-grabbing p-0.5 rounded hover-elevate"
                 data-testid={`drag-handle-deal-${project.id}`}
               >
@@ -240,11 +250,19 @@ function DealCardContent({
           </div>
         </div>
 
-        {(project.loanNumber || project.projectNumber) && (
-          <span className="text-[10px] font-mono text-muted-foreground">
-            {project.loanNumber || project.projectNumber}
-          </span>
-        )}
+        <div className="flex items-center justify-between gap-2">
+          {(project.loanNumber || project.projectNumber) && (
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {project.loanNumber || project.projectNumber}
+            </span>
+          )}
+          {reviewCount > 0 && (
+            <Badge className="bg-blue-500/15 text-blue-600 border-blue-200 text-[9px] font-medium gap-0.5 px-1.5 py-0 h-4 animate-pulse" data-testid={`badge-kanban-review-${project.id}`}>
+              <span className="w-1 h-1 rounded-full bg-blue-500 inline-block" />
+              {reviewCount} Review
+            </Badge>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -293,6 +311,18 @@ export default function DealsKanbanView() {
     queryKey: ["/api/admin/pipeline"],
     refetchInterval: 15000,
   });
+
+  const { data: pendingReviewData } = useQuery<{ documents: Array<{ id: number; dealId: number }> }>({
+    queryKey: ["/api/documents/pending-review"],
+  });
+
+  const pendingReviewByDeal = useMemo(() => {
+    const map: Record<number, number> = {};
+    (pendingReviewData?.documents || []).forEach((doc) => {
+      map[doc.dealId] = (map[doc.dealId] || 0) + 1;
+    });
+    return map;
+  }, [pendingReviewData]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -360,43 +390,41 @@ export default function DealsKanbanView() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="space-y-8" data-testid="deals-kanban-view">
-        {pipelineData?.programs.map((program) => (
-          <ProgramBoard key={program.programId} program={program} />
-        ))}
+    <PendingReviewContext.Provider value={pendingReviewByDeal}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="space-y-8" data-testid="deals-kanban-view">
+          {pipelineData?.programs.map((program) => (
+            <ProgramBoard key={program.programId} program={program} />
+          ))}
 
-        {pipelineData?.unassigned && pipelineData.unassigned.length > 0 && (
-          <div className="space-y-3" data-testid="kanban-unassigned">
-            <h3 className="text-lg font-semibold text-muted-foreground">
-              Unassigned
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {pipelineData.unassigned.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/admin/deals/${project.id}`}
-                  data-testid={`link-unassigned-deal-${project.id}`}
-                >
-                  <DealCardContent project={project} />
-                </Link>
-              ))}
+          {pipelineData?.unassigned && pipelineData.unassigned.length > 0 && (
+            <div className="space-y-3" data-testid="kanban-unassigned">
+              <h3 className="text-lg font-semibold text-muted-foreground">
+                Unassigned
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {pipelineData.unassigned.map((project) => (
+                  <div key={project.id} data-testid={`link-unassigned-deal-${project.id}`}>
+                    <DealCardContent project={project} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <DragOverlay>
-        {activeProject && (
-          <div className="w-[280px]">
-            <DealCardContent project={activeProject} isDragOverlay />
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+        <DragOverlay>
+          {activeProject && (
+            <div className="w-[280px]">
+              <DealCardContent project={activeProject} isDragOverlay />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    </PendingReviewContext.Provider>
   );
 }

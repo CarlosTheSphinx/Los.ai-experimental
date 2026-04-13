@@ -1,8 +1,8 @@
 import type { Express, Response } from 'express';
 import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
-import { eq, desc, and, sql, gt } from 'drizzle-orm';
-import { messageThreads, messages, messageReads, users, projects } from '@shared/schema';
+import { eq, desc, and, sql, gt, inArray } from 'drizzle-orm';
+import { messageThreads, messages, messageReads, messageThreadParticipants, users, projects } from '@shared/schema';
 
 export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
   const { storage, db, authenticateUser, requireAdmin } = deps;
@@ -35,11 +35,33 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
             .limit(100);
         }
       } else {
-        // User sees only their threads
-        threads = await db.select().from(messageThreads)
+        const participantThreadIds = await db.select({ threadId: messageThreadParticipants.threadId })
+          .from(messageThreadParticipants)
+          .where(eq(messageThreadParticipants.userId, userId));
+        const ptIds = participantThreadIds.map(p => p.threadId);
+        
+        const legacyThreads = await db.select().from(messageThreads)
           .where(eq(messageThreads.userId, userId))
           .orderBy(desc(messageThreads.lastMessageAt))
           .limit(100);
+        const legacyIds = new Set(legacyThreads.map(t => t.id));
+        
+        if (ptIds.length > 0) {
+          const participantOnlyIds = ptIds.filter(id => !legacyIds.has(id));
+          if (participantOnlyIds.length > 0) {
+            const additionalThreads = await db.select().from(messageThreads)
+              .where(inArray(messageThreads.id, participantOnlyIds))
+              .orderBy(desc(messageThreads.lastMessageAt))
+              .limit(100);
+            threads = [...legacyThreads, ...additionalThreads]
+              .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+              .slice(0, 100);
+          } else {
+            threads = legacyThreads;
+          }
+        } else {
+          threads = legacyThreads;
+        }
       }
 
       const currentUserId = userId;
@@ -82,15 +104,29 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
             .from(messages)
             .where(and(
               eq(messages.threadId, thread.id),
-              gt(messages.createdAt, readRecord[0].lastReadAt)
+              gt(messages.createdAt, readRecord[0].lastReadAt),
+              sql`(${messages.senderId} IS NULL OR ${messages.senderId} != ${currentUserId})`
             ));
           unreadCount = unreadResult[0]?.count || 0;
         } else {
           const allCount = await db.select({ count: sql<number>`count(*)::int` })
             .from(messages)
-            .where(eq(messages.threadId, thread.id));
+            .where(and(
+              eq(messages.threadId, thread.id),
+              sql`(${messages.senderId} IS NULL OR ${messages.senderId} != ${currentUserId})`
+            ));
           unreadCount = allCount[0]?.count || 0;
         }
+
+        const participants = await db.select({
+          userId: messageThreadParticipants.userId,
+          fullName: users.fullName,
+          email: users.email,
+          role: users.role,
+        })
+          .from(messageThreadParticipants)
+          .innerJoin(users, eq(messageThreadParticipants.userId, users.id))
+          .where(eq(messageThreadParticipants.threadId, thread.id));
 
         return {
           ...thread,
@@ -98,6 +134,12 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
           lastMessageAt: (thread as any).lastMessageAt instanceof Date ? (thread as any).lastMessageAt.toISOString() : (thread as any).lastMessageAt,
           userName: threadUser[0]?.fullName || threadUser[0]?.email || 'Unknown',
           userType: threadUser[0]?.userType || null,
+          participants: participants.map(p => ({
+            userId: p.userId,
+            fullName: p.fullName,
+            email: p.email,
+            role: p.role,
+          })),
           dealName,
           dealIdentifier,
           propertyAddress,
@@ -130,17 +172,32 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         return res.status(404).json({ error: 'Thread not found' });
       }
 
-      // Auth check: user can only view own threads
-      if (!isAdminRole(role) && thread[0].userId !== userId) {
-        return res.status(403).json({ error: 'Not authorized' });
+      if (!isAdminRole(role)) {
+        const isParticipant = await db.select().from(messageThreadParticipants)
+          .where(and(
+            eq(messageThreadParticipants.threadId, threadId),
+            eq(messageThreadParticipants.userId, userId)
+          )).limit(1);
+        if (!isParticipant[0] && thread[0].userId !== userId) {
+          return res.status(403).json({ error: 'Not authorized' });
+        }
       }
+
+      const threadParticipants = await db.select({
+        userId: messageThreadParticipants.userId,
+        fullName: users.fullName,
+        email: users.email,
+        role: users.role,
+      })
+        .from(messageThreadParticipants)
+        .innerJoin(users, eq(messageThreadParticipants.userId, users.id))
+        .where(eq(messageThreadParticipants.threadId, threadId));
 
       const threadMessages = await db.select().from(messages)
         .where(eq(messages.threadId, threadId))
         .orderBy(messages.createdAt)
         .limit(500);
 
-      // Get sender names for messages
       const messagesWithSenders = await Promise.all(threadMessages.map(async (msg) => {
         const serialized = {
           ...msg,
@@ -159,6 +216,12 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         ...thread[0],
         createdAt: thread[0].createdAt instanceof Date ? thread[0].createdAt.toISOString() : thread[0].createdAt,
         lastMessageAt: (thread[0] as any).lastMessageAt instanceof Date ? (thread[0] as any).lastMessageAt.toISOString() : (thread[0] as any).lastMessageAt,
+        participants: threadParticipants.map(p => ({
+          userId: p.userId,
+          fullName: p.fullName,
+          email: p.email,
+          role: p.role,
+        })),
       };
       res.json({ thread: threadSerialized, messages: messagesWithSenders });
     } catch (error) {
@@ -170,7 +233,7 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
   // Create or get thread (by dealId + userId)
   app.post('/api/messages/threads', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
-      const { dealId, userId: targetUserId, subject = null } = req.body;
+      const { dealId, userId: targetUserId, userIds: targetUserIds, subject = null } = req.body;
       const requesterRole = req.user!.role;
       const requesterId = req.user!.id;
 
@@ -178,23 +241,36 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         return res.status(400).json({ error: 'dealId is required' });
       }
 
-      if (!targetUserId) {
-        return res.status(400).json({ error: 'userId is required' });
+      const participantIds: number[] = [];
+      if (targetUserIds && Array.isArray(targetUserIds) && targetUserIds.length > 0) {
+        const parsed = targetUserIds.map((id: any) => parseInt(id));
+        if (parsed.some((id: number) => isNaN(id) || id <= 0)) {
+          return res.status(400).json({ error: 'Invalid userIds provided' });
+        }
+        participantIds.push(...parsed);
+      } else if (targetUserId) {
+        const parsed = parseInt(targetUserId);
+        if (isNaN(parsed) || parsed <= 0) {
+          return res.status(400).json({ error: 'Invalid userId provided' });
+        }
+        participantIds.push(parsed);
+      } else {
+        return res.status(400).json({ error: 'userId or userIds is required' });
       }
 
-      // Users can only create threads for themselves, admins can create for anyone
-      if (!isAdminRole(requesterRole) && parseInt(targetUserId) !== requesterId) {
+      if (!isAdminRole(requesterRole) && !participantIds.every(id => id === requesterId)) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
-      // Check if thread already exists for this user + deal combination
+      const primaryUserId = participantIds[0];
+
       const existing = await db.select().from(messageThreads)
         .where(and(
-          eq(messageThreads.userId, parseInt(targetUserId)),
+          eq(messageThreads.userId, primaryUserId),
           eq(messageThreads.dealId, parseInt(dealId))
         )).limit(1);
 
-      if (existing[0]) {
+      if (existing[0] && participantIds.length === 1) {
         const existingSerialized = {
           ...existing[0],
           createdAt: existing[0].createdAt instanceof Date ? existing[0].createdAt.toISOString() : existing[0].createdAt,
@@ -203,20 +279,25 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         return res.json({ thread: existingSerialized });
       }
 
-      // Create new thread
       const newThread = await db.insert(messageThreads).values({
         dealId: parseInt(dealId),
-        userId: parseInt(targetUserId),
+        userId: primaryUserId,
         createdBy: requesterId,
         subject: subject
       }).returning();
 
-      // Initialize read receipt for the target user
-      await db.insert(messageReads).values({
-        threadId: newThread[0].id,
-        userId: parseInt(targetUserId),
-        lastReadAt: new Date('1970-01-01')
-      }).onConflictDoNothing();
+      for (const uid of participantIds) {
+        await db.insert(messageThreadParticipants).values({
+          threadId: newThread[0].id,
+          userId: uid,
+        }).onConflictDoNothing();
+
+        await db.insert(messageReads).values({
+          threadId: newThread[0].id,
+          userId: uid,
+          lastReadAt: new Date('1970-01-01')
+        }).onConflictDoNothing();
+      }
 
       const threadSerialized = {
         ...newThread[0],
@@ -253,9 +334,15 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         return res.status(404).json({ error: 'Thread not found' });
       }
 
-      // Auth check: user can only post to own thread
-      if (!isAdminRole(role) && thread[0].userId !== userId) {
-        return res.status(403).json({ error: 'Not authorized' });
+      if (!isAdminRole(role)) {
+        const isParticipant = await db.select().from(messageThreadParticipants)
+          .where(and(
+            eq(messageThreadParticipants.threadId, threadId),
+            eq(messageThreadParticipants.userId, userId)
+          )).limit(1);
+        if (!isParticipant[0] && thread[0].userId !== userId) {
+          return res.status(403).json({ error: 'Not authorized' });
+        }
       }
 
       const senderRole = isAdminRole(role) ? 'admin' : 'user';
@@ -300,8 +387,15 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         return res.status(404).json({ error: 'Thread not found' });
       }
 
-      if (!isAdminRole(role) && thread[0].userId !== userId) {
-        return res.status(403).json({ error: 'Not authorized' });
+      if (!isAdminRole(role)) {
+        const isParticipant = await db.select().from(messageThreadParticipants)
+          .where(and(
+            eq(messageThreadParticipants.threadId, threadId),
+            eq(messageThreadParticipants.userId, userId)
+          )).limit(1);
+        if (!isParticipant[0] && thread[0].userId !== userId) {
+          return res.status(403).json({ error: 'Not authorized' });
+        }
       }
 
       // Upsert read receipt
@@ -353,14 +447,15 @@ export function registerMessagingRoutes(app: Express, deps: RouteDeps) {
         `);
         unreadCount = (result.rows[0] as any)?.count || 0;
       } else {
-        // User unread = messages from admins/system after user's last_read_at
         const result = await db.execute(sql`
           SELECT COUNT(*)::int AS count
           FROM messages m
           JOIN message_threads t ON t.id = m.thread_id
           LEFT JOIN message_reads r ON r.thread_id = t.id AND r.user_id = ${userId}
-          WHERE t.user_id = ${userId}
-            AND m.sender_role IN ('admin', 'system')
+          WHERE (t.user_id = ${userId} OR t.id IN (
+            SELECT thread_id FROM message_thread_participants WHERE user_id = ${userId}
+          ))
+            AND (m.sender_id IS NULL OR m.sender_id != ${userId})
             AND m.created_at > COALESCE(r.last_read_at, '1970-01-01')
         `);
         unreadCount = (result.rows[0] as any)?.count || 0;

@@ -501,6 +501,7 @@ export function ProgramCreationWizard({
   const [reviewRules, setReviewRules] = useState<RuleEntry[]>([...dscrDefaultRules]);
 
   const [activationMode, setActivationMode] = useState<'draft' | 'active'>('draft');
+  const [activationModeChanged, setActivationModeChanged] = useState(false);
   const pricingConfigRef = useRef<PricingConfigState | null>(null);
 
   const { data: editProgramData } = useQuery<{
@@ -513,8 +514,14 @@ export function ProgramCreationWizard({
     enabled: !!editProgram?.id,
   });
 
-  const { data: editReviewRulesData } = useQuery<any[]>({
-    queryKey: [`/api/admin/programs/${editProgram?.id}/review-rules`],
+  const { data: editReviewRulesData } = useQuery<any>({
+    queryKey: ['/api/admin/programs', editProgram?.id, 'review-rules'],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/programs/${editProgram?.id}/review-rules`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch review rules');
+      const data = await res.json();
+      return data.rules ?? [];
+    },
     enabled: !!editProgram?.id,
   });
 
@@ -578,24 +585,24 @@ export function ProgramCreationWizard({
     }
 
     setEditDataLoaded(true);
-  }, [editProgram?.id, editProgramData, editDataLoaded]);
+  }, [editProgram?.id, editProgramData]);
 
   const [editRulesLoaded, setEditRulesLoaded] = useState(false);
   useEffect(() => {
     if (!editProgram?.id || editRulesLoaded) return;
     if (editReviewRulesData === undefined) return;
-    if (editReviewRulesData && editReviewRulesData.length > 0) {
+    if (Array.isArray(editReviewRulesData) && editReviewRulesData.length > 0) {
       setReviewRules(editReviewRulesData.map((r: any) => ({
         ruleTitle: r.ruleTitle || '',
         documentType: r.documentType || 'General',
-        severity: 'fail',
+        severity: r.severity || 'fail',
         stepIndex: null,
       })));
     } else {
       setReviewRules([]);
     }
     setEditRulesLoaded(true);
-  }, [editProgram?.id, editReviewRulesData, editRulesLoaded]);
+  }, [editProgram?.id, editReviewRulesData]);
 
   // Fetch credit policies
   const { data: creditPoliciesData } = useQuery<{ policies: any[] }>({
@@ -616,12 +623,20 @@ export function ProgramCreationWizard({
       const res = await apiRequest('POST', '/api/admin/programs', payload);
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/programs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/programs-with-pricing'] });
       const programId = isEditMode ? editProgram?.id : data.program?.id;
       if (reviewRules.length > 0 && programId) {
-        saveReviewRules(programId);
+        try {
+          await saveReviewRules(programId);
+        } catch (err: any) {
+          toast({
+            title: 'Failed to save review rules',
+            description: err?.message || 'Your program was saved but review rules could not be updated.',
+            variant: 'destructive',
+          });
+        }
       }
       toast({ title: isEditMode ? 'Program updated successfully!' : 'Program created successfully!' });
       onComplete();
@@ -636,19 +651,15 @@ export function ProgramCreationWizard({
   });
 
   const saveReviewRules = async (programId: number) => {
-    try {
-      const rules = reviewRules.map((rule, i) => ({
-        ruleTitle: rule.ruleTitle,
-        documentType: rule.documentType || 'General',
-        severity: rule.severity,
-        ruleType: 'general',
-        isActive: true,
-        sortOrder: i,
-      }));
-      await apiRequest('POST', `/api/admin/programs/${programId}/review-rules`, { rules });
-    } catch {
-      // Don't block program creation if rules fail
-    }
+    const rules = reviewRules.map((rule, i) => ({
+      ruleTitle: rule.ruleTitle,
+      documentType: rule.documentType || 'General',
+      severity: rule.severity || 'fail',
+      ruleType: 'general',
+      isActive: true,
+      sortOrder: i,
+    }));
+    await apiRequest('POST', `/api/admin/programs/${programId}/review-rules`, { rules });
   };
 
   // Update quote fields when loan type changes
@@ -696,7 +707,9 @@ export function ProgramCreationWizard({
       eligiblePropertyTypes,
       quoteFormFields,
       creditPolicyId: selectedCreditPolicyId,
-      isActive: forceActive !== undefined ? forceActive : activationMode === 'active',
+      ...(isEditMode && !activationModeChanged && forceActive === undefined
+        ? {}
+        : { isActive: forceActive !== undefined ? forceActive : activationMode === 'active' }),
       ...(pricing ? {
         pricingMode: pricing.pricingMode,
         externalPricingConfig: pricing.externalPricingConfig,
@@ -753,7 +766,7 @@ export function ProgramCreationWizard({
       return;
     }
 
-    createProgramMutation.mutate(buildProgramPayload(false));
+    createProgramMutation.mutate(buildProgramPayload(isEditMode ? undefined : false));
   };
 
   const handleTemplateSelect = (templateId: string) => {
@@ -911,7 +924,7 @@ export function ProgramCreationWizard({
           minDscr={minDscr}
           minFico={minFico}
           activationMode={activationMode}
-          setActivationMode={setActivationMode}
+          setActivationMode={(mode) => { setActivationMode(mode); setActivationModeChanged(true); }}
           onEditStep={setWizardStep}
         />
       )}
@@ -1023,6 +1036,23 @@ export function ProgramCreationWizard({
                 </Button>
               )}
 
+              {wizardStep !== 'summary' && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveAsDraft}
+                  disabled={createProgramMutation.isPending || !programName.trim()}
+                  className="text-[16px]"
+                  data-testid="button-wizard-save-progress"
+                >
+                  {createProgramMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  )}
+                  {isEditMode ? 'Save Changes' : 'Save Progress'}
+                </Button>
+              )}
+
               {wizardStep === 'summary' ? (
                 <div className="flex items-center gap-3">
                   <Button
@@ -1059,7 +1089,7 @@ export function ProgramCreationWizard({
               ) : (
                 <Button
                   onClick={() => {
-                    if (wizardStep === 'template') {
+                    if (wizardStep === 'template' && !isEditMode) {
                       applyTemplateDefaults();
                     }
                     goNext();
@@ -1356,9 +1386,12 @@ function CreditPolicyStep({
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/orchestration`);
     wsRef.current = ws;
+    let wsRulesReceived: any[] | null = null;
+    let wsCompleted = false;
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
+        const raw = JSON.parse(event.data);
+        const data = raw.type === 'orchestration_event' ? raw.data : raw;
         if (data.eventType === 'credit_extraction_progress' && data.metadata) {
           setChunkProgress({
             chunksCompleted: data.metadata.chunksCompleted,
@@ -1368,6 +1401,35 @@ function CreditPolicyStep({
           if (data.rules && Array.isArray(data.rules)) {
             setLiveRules(data.rules);
           }
+        }
+        if (data.eventType === 'credit_rule_extracted' && data.rules) {
+          wsRulesReceived = data.rules.map((r: any) => ({
+            documentType: r.documentType || 'General',
+            ruleTitle: r.rule || r.ruleTitle || '',
+            ruleDescription: r.reasoning || r.ruleDescription || '',
+            category: r.category || null,
+          }));
+        }
+        if (data.eventType === 'agent_complete' && data.agentName === 'creditPolicyExtractor') {
+          wsCompleted = true;
+          if (wsRulesReceived && wsRulesReceived.length > 0) {
+            setExtractedRules(wsRulesReceived);
+            const groups: Record<string, boolean> = {};
+            wsRulesReceived.forEach((r: any) => { groups[r.documentType || 'General'] = true; });
+            setExpandedGroups(groups);
+            toast({ title: `Extracted ${wsRulesReceived.length} rules from ${file.name}` });
+          }
+          extractingLockRef.current = false;
+          setIsExtracting(false);
+          setChunkProgress(null);
+          if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+        }
+        if (data.eventType === 'agent_error' && data.agentName === 'creditPolicyExtractor') {
+          wsCompleted = true;
+          extractingLockRef.current = false;
+          setIsExtracting(false);
+          setChunkProgress(null);
+          if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
         }
       } catch {}
     };
@@ -1400,7 +1462,26 @@ function CreditPolicyStep({
         setExpandedGroups(groups);
         toast({ title: `Extracted ${data.rules.length} rules from ${file.name}` });
       }
+      extractingLockRef.current = false;
+      setIsExtracting(false);
+      setChunkProgress(null);
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     } catch (error: any) {
+      if (wsCompleted) return;
+      if (error.message?.includes('already being extracted')) return;
+      if (wsRulesReceived && wsRulesReceived.length > 0) {
+        setExtractedRules(wsRulesReceived);
+        const groups: Record<string, boolean> = {};
+        wsRulesReceived.forEach((r: any) => { groups[r.documentType || 'General'] = true; });
+        setExpandedGroups(groups);
+        toast({ title: `Extracted ${wsRulesReceived.length} rules from ${file.name}` });
+        setExtractError(null);
+        extractingLockRef.current = false;
+        setIsExtracting(false);
+        setChunkProgress(null);
+        if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+        return;
+      }
       let msg = 'Failed to extract rules';
       try {
         const jsonMatch = error.message?.match(/\{.*\}/s);
@@ -1413,14 +1494,10 @@ function CreditPolicyStep({
       } catch { /* use default msg */ }
       setExtractError(msg);
       toast({ title: 'Analysis failed', description: msg, variant: 'destructive' });
-    } finally {
       extractingLockRef.current = false;
       setIsExtracting(false);
       setChunkProgress(null);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     }
   }, [newPolicyName, toast]);
 
@@ -2292,6 +2369,7 @@ function QuoteFormBuilderStep({
   const [newFieldType, setNewFieldType] = useState<QuoteFormField['fieldType']>('text');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [configuringIndex, setConfiguringIndex] = useState<string | null>(null);
+  const [addingOptionFor, setAddingOptionFor] = useState<Record<string, string>>({});
 
   const contactFields = quoteFormFields.filter((f) => CONTACT_FIELD_KEYS.has(f.fieldKey));
   const programFieldsUnsorted = quoteFormFields.filter((f) => !CONTACT_FIELD_KEYS.has(f.fieldKey));
@@ -2310,7 +2388,7 @@ function QuoteFormBuilderStep({
     const fieldKey = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
     setQuoteFormFields([
       ...quoteFormFields,
-      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false, displayGroup: 'loan_details' as DisplayGroup },
+      { fieldKey, label: name, fieldType: newFieldType, required: false, visible: true, isDefault: false, displayGroup: newFieldGroup },
     ]);
     setNewFieldName('');
     setNewFieldType('text');
@@ -2406,6 +2484,66 @@ function QuoteFormBuilderStep({
   const requiredCount = allFields.filter((f) => f.required && f.visible).length;
   const optionalCount = allFields.filter((f) => !f.required && f.visible).length;
   const [showAddField, setShowAddField] = useState(false);
+  const [newFieldGroup, setNewFieldGroup] = useState<DisplayGroup>('loan_details');
+
+  const borrowerProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'borrower_details');
+  const loanProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'loan_details');
+  const propertyProgramFields = programFields.filter(f => (f.displayGroup || 'loan_details') === 'property_details');
+
+  const renderGroupCard = (
+    title: string,
+    icon: React.ReactNode,
+    groupFields: QuoteFormField[],
+    includeContacts: boolean,
+  ) => {
+    const requiredF = groupFields.filter(f => f.required && f.visible);
+    const optionalF = groupFields.filter(f => !f.required && f.visible);
+    const hiddenF = groupFields.filter(f => !f.visible);
+    const total = (includeContacts ? contactFields.length : 0) + groupFields.length;
+
+    return (
+      <div className="rounded-[10px] border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b bg-muted/20 flex items-center gap-2">
+          {icon}
+          <span className="text-[15px] font-semibold">{title}</span>
+          <span className="text-[12px] text-muted-foreground ml-auto">{total} fields</span>
+        </div>
+        {includeContacts && contactFields.map((field, cIdx) => renderFieldRow(field, cIdx, false))}
+        {requiredF.length > 0 && (
+          <div className="px-4 py-2 bg-red-50/60 border-b border-red-200/40">
+            <span className="text-[11px] font-semibold text-red-500 uppercase tracking-wider">Required ({requiredF.length})</span>
+          </div>
+        )}
+        {requiredF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {optionalF.length > 0 && (
+          <div className="px-4 py-2 bg-slate-50/80 border-b border-border/40">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Optional ({optionalF.length})</span>
+          </div>
+        )}
+        {optionalF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {hiddenF.length > 0 && (
+          <div className="px-4 py-2 bg-slate-100/60 border-b border-border/40">
+            <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Hidden ({hiddenF.length})</span>
+          </div>
+        )}
+        {hiddenF.map((field) => {
+          const pIdx = programFields.indexOf(field);
+          return renderFieldRow(field, pIdx, true);
+        })}
+        {total === 0 && (
+          <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+            No fields in this group. Change a field's group dropdown to move it here.
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderFieldRow = (field: QuoteFormField, pIdx: number, isDraggable: boolean) => {
     const isConfiguring = configuringIndex === field.fieldKey;
@@ -2522,17 +2660,15 @@ function QuoteFormBuilderStep({
               <Settings2 className="h-3.5 w-3.5" />
             </Button>
 
-            {!field.isDefault && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => removeField(field.fieldKey)}
-                data-testid={`button-remove-field-${field.fieldKey}`}
-              >
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => removeField(field.fieldKey)}
+              data-testid={`button-remove-field-${field.fieldKey}`}
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
           </div>
         </div>
 
@@ -2551,10 +2687,19 @@ function QuoteFormBuilderStep({
                 <Label className="text-xs">Field Type</Label>
                 <Select
                   value={field.fieldType}
-                  onValueChange={(v) => updateField(field.fieldKey, {
-                    fieldType: v as QuoteFormField['fieldType'],
-                    options: v === 'select' ? (field.options?.length ? field.options : ['Option 1']) : undefined,
-                  })}
+                  onValueChange={(v) => {
+                    updateField(field.fieldKey, {
+                      fieldType: v as QuoteFormField['fieldType'],
+                      options: v === 'select' ? (field.options?.length ? field.options : ['Option 1']) : undefined,
+                    });
+                    if (v !== 'select') {
+                      setAddingOptionFor((prev) => {
+                        const next = { ...prev };
+                        delete next[field.fieldKey];
+                        return next;
+                      });
+                    }
+                  }}
                 >
                   <SelectTrigger data-testid={`select-field-type-${field.fieldKey}`}>
                     <SelectValue />
@@ -2569,15 +2714,98 @@ function QuoteFormBuilderStep({
             </div>
 
             {field.fieldType === 'select' && (
-              <div className="space-y-1">
-                <Label className="text-xs">Dropdown Options (one per line)</Label>
-                <Textarea
-                  value={(field.options || []).join('\n')}
-                  onChange={(e) => updateField(field.fieldKey, { options: e.target.value.split('\n').filter(Boolean) })}
-                  rows={3}
-                  placeholder="Option 1&#10;Option 2&#10;Option 3"
-                  data-testid={`textarea-options-${field.fieldKey}`}
-                />
+              <div className="space-y-2">
+                <Label className="text-xs">Dropdown Options</Label>
+                <div className="flex flex-wrap gap-1.5" data-testid={`options-list-${field.fieldKey}`}>
+                  {(field.options || []).map((opt, idx) => (
+                    <Badge
+                      key={`${opt}-${idx}`}
+                      variant="secondary"
+                      className="flex items-center gap-1 px-2 py-1 text-xs"
+                      data-testid={`option-chip-${field.fieldKey}-${idx}`}
+                    >
+                      {opt}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                        onClick={() => updateField(field.fieldKey, { options: (field.options || []).filter((_, i) => i !== idx) })}
+                        data-testid={`btn-remove-option-${field.fieldKey}-${idx}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                {addingOptionFor[field.fieldKey] !== undefined ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={addingOptionFor[field.fieldKey]}
+                      onChange={(e) => setAddingOptionFor((prev) => ({ ...prev, [field.fieldKey]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = addingOptionFor[field.fieldKey].trim();
+                          if (val) {
+                            updateField(field.fieldKey, { options: [...(field.options || []), val] });
+                            setAddingOptionFor((prev) => ({ ...prev, [field.fieldKey]: '' }));
+                          }
+                        } else if (e.key === 'Escape') {
+                          setAddingOptionFor((prev) => {
+                            const next = { ...prev };
+                            delete next[field.fieldKey];
+                            return next;
+                          });
+                        }
+                      }}
+                      placeholder="Type option text…"
+                      className="h-8 text-xs"
+                      data-testid={`input-new-option-${field.fieldKey}`}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        const val = addingOptionFor[field.fieldKey].trim();
+                        if (val) {
+                          updateField(field.fieldKey, { options: [...(field.options || []), val] });
+                          setAddingOptionFor((prev) => ({ ...prev, [field.fieldKey]: '' }));
+                        }
+                      }}
+                      data-testid={`btn-confirm-option-${field.fieldKey}`}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => setAddingOptionFor((prev) => {
+                        const next = { ...prev };
+                        delete next[field.fieldKey];
+                        return next;
+                      })}
+                      data-testid={`btn-cancel-option-${field.fieldKey}`}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => setAddingOptionFor((prev) => ({ ...prev, [field.fieldKey]: '' }))}
+                    data-testid={`btn-add-option-${field.fieldKey}`}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Option
+                  </Button>
+                )}
               </div>
             )}
 
@@ -2665,7 +2893,7 @@ function QuoteFormBuilderStep({
       <div>
         <h2 className="text-[26px] font-bold leading-tight">Quote Form Fields</h2>
         <p className="text-[16px] text-muted-foreground mt-1">
-          Configure which fields brokers see when requesting a quote for this program. Drag to reorder.
+          Configure which fields brokers see when requesting a quote for this program. Use the group dropdown on each field to move it between cards.
         </p>
       </div>
 
@@ -2703,6 +2931,16 @@ function QuoteFormBuilderStep({
               ))}
             </SelectContent>
           </Select>
+          <Select value={newFieldGroup} onValueChange={(v) => setNewFieldGroup(v as DisplayGroup)}>
+            <SelectTrigger className="w-[150px]" data-testid="select-new-field-group">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DISPLAY_GROUP_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="default"
             onClick={() => { addCustomField(); setShowAddField(false); }}
@@ -2715,52 +2953,33 @@ function QuoteFormBuilderStep({
         </div>
       )}
 
-      <div className="rounded-[10px] border bg-white overflow-hidden">
-        {contactFields.map((field, cIdx) => renderFieldRow(field, cIdx, false))}
-        {(() => {
-          const requiredFields = programFields.filter(f => f.required && f.visible);
-          const optionalFields = programFields.filter(f => !f.required && f.visible);
-          const hiddenFields = programFields.filter(f => !f.visible);
-          return (
-            <>
-              {requiredFields.length > 0 && (
-                <div className="px-4 py-2 bg-red-50/60 border-b border-red-200/40">
-                  <span className="text-[11px] font-semibold text-red-500 uppercase tracking-wider">Required Fields ({requiredFields.length})</span>
-                </div>
-              )}
-              {requiredFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-              {optionalFields.length > 0 && (
-                <div className="px-4 py-2 bg-slate-50/80 border-b border-border/40">
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Optional Fields ({optionalFields.length})</span>
-                </div>
-              )}
-              {optionalFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-              {hiddenFields.length > 0 && (
-                <div className="px-4 py-2 bg-slate-100/60 border-b border-border/40">
-                  <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Hidden Fields ({hiddenFields.length})</span>
-                </div>
-              )}
-              {hiddenFields.map((field) => {
-                const pIdx = programFields.indexOf(field);
-                return renderFieldRow(field, pIdx, true);
-              })}
-            </>
-          );
-        })()}
-      </div>
+      {renderGroupCard(
+        "Borrower Details",
+        <Home className="h-4 w-4 text-muted-foreground" />,
+        borrowerProgramFields,
+        true,
+      )}
+
+      {renderGroupCard(
+        "Loan Details",
+        <Landmark className="h-4 w-4 text-muted-foreground" />,
+        loanProgramFields,
+        false,
+      )}
+
+      {renderGroupCard(
+        "Property Details",
+        <Building2 className="h-4 w-4 text-muted-foreground" />,
+        propertyProgramFields,
+        false,
+      )}
 
       <div className="rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
         <Lightbulb className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
         <div>
           <span className="text-[14px] font-semibold text-blue-700">Tip: </span>
           <span className="text-[14px] text-blue-800">
-            The quote form is what brokers fill out to request pricing on a deal. Required fields must be filled before a quote can be generated. Hidden fields won't appear on the form but can still be used in pricing rules.
+            The quote form is what brokers fill out to request pricing on a deal. Required fields must be filled before a quote can be generated. Change the group dropdown on any field to move it between cards.
           </span>
         </div>
       </div>

@@ -1,6 +1,29 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from 'pdf-lib';
 import type { QuotePdfTemplateConfig, QuotePdfSection } from '@shared/schema';
 
+export function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/\u2264/g, '<=')
+    .replace(/\u2265/g, '>=')
+    .replace(/\u2013/g, '-')
+    .replace(/\u2014/g, '--')
+    .replace(/\u2018/g, "'")
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '"')
+    .replace(/\u201D/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00B7/g, '-')
+    .replace(/\u2022/g, '-')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\u2032/g, "'")
+    .replace(/\u2033/g, '"')
+    .replace(/\u00B0/g, 'deg')
+    .replace(/\u00BD/g, '1/2')
+    .replace(/\u00BC/g, '1/4')
+    .replace(/\u00BE/g, '3/4')
+    .replace(/[^\x00-\x7F]/g, '');
+}
+
 function normalizeKey(key: string): string {
   return key.replace(/[-_\s]/g, '').toLowerCase();
 }
@@ -39,13 +62,13 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 
 function formatCurrency(value: any): string {
   const num = safeNumber(value);
-  if (num === 0 && (value === undefined || value === null || value === '')) return '—';
+  if (num === 0 && (value === undefined || value === null || value === '')) return sanitizeForPdf('—');
   return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function formatValue(value: any): string {
-  if (value === undefined || value === null || value === '') return '—';
-  return String(value);
+  if (value === undefined || value === null || value === '') return sanitizeForPdf('—');
+  return sanitizeForPdf(String(value));
 }
 
 export const DEFAULT_TEMPLATE_CONFIG: QuotePdfTemplateConfig = {
@@ -146,7 +169,7 @@ export async function generateQuotePdf(
     color: primaryRgb,
   });
 
-  page.drawText(config.companyName, {
+  page.drawText(sanitizeForPdf(config.companyName), {
     x: margin,
     y: 758,
     size: 18,
@@ -155,8 +178,8 @@ export async function generateQuotePdf(
   });
 
   if (config.tagline) {
-    const companyWidth = helveticaBold.widthOfTextAtSize(config.companyName, 18);
-    page.drawText(config.tagline, {
+    const companyWidth = helveticaBold.widthOfTextAtSize(sanitizeForPdf(config.companyName), 18);
+    page.drawText(sanitizeForPdf(config.tagline), {
       x: margin + companyWidth + 12,
       y: 760,
       size: 9,
@@ -168,7 +191,7 @@ export async function generateQuotePdf(
   if (data.quoteNumber || data.quoteDate) {
     const dateText = data.quoteDate || new Date().toLocaleDateString('en-US');
     const quoteText = data.quoteNumber ? `Quote #${data.quoteNumber}` : '';
-    const rightText = [quoteText, dateText].filter(Boolean).join('  |  ');
+    const rightText = sanitizeForPdf([quoteText, dateText].filter(Boolean).join('  |  '));
     const rightWidth = helvetica.widthOfTextAtSize(rightText, 9);
     page.drawText(rightText, {
       x: pageWidth - margin - rightWidth,
@@ -190,8 +213,8 @@ export async function generateQuotePdf(
 
   y -= 10;
 
-  const headerTextWidth = helveticaBold.widthOfTextAtSize(config.headerText, 22);
-  page.drawText(config.headerText, {
+  const headerTextWidth = helveticaBold.widthOfTextAtSize(sanitizeForPdf(config.headerText), 22);
+  page.drawText(sanitizeForPdf(config.headerText), {
     x: margin + (contentWidth - headerTextWidth) / 2,
     y: y - 10,
     size: 22,
@@ -234,8 +257,8 @@ export async function generateQuotePdf(
       color: lightBgRgb,
     });
 
-    const sectionLabelWidth = helveticaBold.widthOfTextAtSize(section.label, 11);
-    page.drawText(section.label, {
+    const sectionLabelWidth = helveticaBold.widthOfTextAtSize(sanitizeForPdf(section.label), 11);
+    page.drawText(sanitizeForPdf(section.label), {
       x: margin + (contentWidth - sectionLabelWidth) / 2,
       y: y - 14,
       size: 11,
@@ -280,7 +303,7 @@ export async function generateQuotePdf(
 
       if (y < 80) break;
 
-      page.drawText(field.label, {
+      page.drawText(sanitizeForPdf(field.label), {
         x: xPos,
         y: y - 6,
         size: 8,
@@ -327,7 +350,7 @@ export async function generateQuotePdf(
       color: accentRgb,
     });
 
-    const rateStr = String(data.interestRate);
+    const rateStr = sanitizeForPdf(String(data.interestRate));
     page.drawText(rateStr, {
       x: margin + 15,
       y: y - 40,
@@ -367,7 +390,7 @@ export async function generateQuotePdf(
       font: helvetica,
       color: grayRgb,
     });
-    page.drawText(`${data.yspAmount.toFixed(3)}% (${formatCurrency(data.yspDollarAmount)})`, {
+    page.drawText(sanitizeForPdf(`${data.yspAmount.toFixed(3)}% (${formatCurrency(data.yspDollarAmount)})`), {
       x: margin + 8,
       y: y - 18,
       size: 10,
@@ -404,7 +427,7 @@ export async function generateQuotePdf(
     });
 
     const maxWidth = contentWidth;
-    const words = config.footerDisclaimer.split(' ');
+    const words = sanitizeForPdf(config.footerDisclaimer).split(' ');
     let lines: string[] = [];
     let currentLine = '';
     for (const word of words) {

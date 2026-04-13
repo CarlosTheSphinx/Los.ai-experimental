@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings, betaSignups, insertBetaSignupSchema, inquiryFormTemplates, taskFormSubmissions, externalPricingFormSchema } from "@shared/schema";
+import { savedQuotes, users, dealDocuments, dealDocumentFiles, dealTasks, dealProperties, partners, loanPrograms, programDocumentTemplates, programTaskTemplates, pricingRulesets, ruleProposals, guidelineUploads, pricingQuoteLogs, pricingRulesSchema, messageThreads, messages, messageReads, onboardingDocuments, userOnboardingProgress, projects, digestTemplates, documentTemplates, templateFields, fieldBindingKeys, workflowStepDefinitions, programWorkflowSteps, dealProcessors, projectStages, programReviewRules, creditPolicies, documentReviewResults, insertSubmissionCriteriaSchema, insertSubmissionFieldSchema, insertSubmissionDocumentRequirementSchema, insertSubmissionReviewRuleSchema, projectActivity, projectTasks, platformSettings, dealMemoryEntries, dealNotes, insertDealMemoryEntrySchema, insertDealNoteSchema, notifications, dealStatuses, insertDealStatusSchema, insertMessageTemplateSchema, dealThirdParties, systemSettings, betaSignups, insertBetaSignupSchema, inquiryFormTemplates, taskFormSubmissions, externalPricingFormSchema, intakeDealTasks, documents, signers } from "@shared/schema";
 import { priceQuote, validateRuleset, SAMPLE_RTL_RULESET, SAMPLE_DSCR_RULESET, type PricingInputs, analyzeGuidelines, refineProposal } from "./pricing";
 import { getDocumentTemplatesForLoanType } from "./document-templates";
 import { eq, desc, asc, inArray, and, gt, gte, lte, sql, isNull, isNotNull, or } from "drizzle-orm";
@@ -14,7 +14,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { z } from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { sendCompletedDocument, sendVoidNotification, sendPasswordResetEmail, sendTeamInviteEmail } from './email';
+import { sendCompletedDocument, sendVoidNotification, sendPasswordResetEmail, sendTeamInviteEmail, sendMagicLinkEmail, sendBrokerWelcomeEmail } from './email';
 import { sendCommercialNotification, checkExpiredSubmissions } from './services/commercialNotifications';
 import { 
   hashPassword, 
@@ -64,6 +64,7 @@ import { cacheReplayContext, getCreditExtractionDefaultPrompt, getActiveCreditEx
 import { registerEmailRoutes } from './routes/email';
 import { registerGoogleConnectRoutes } from './routes/googleConnect';
 import { registerMicrosoftConnectRoutes } from './routes/microsoftConnect';
+import commercialIntakeRouter from './routes/commercialIntake';
 
 
 /**
@@ -96,14 +97,49 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  async function getProjectWithBorrowerAccess(projectId: number, userId: number, userRole: string): Promise<any> {
+  function isAdminRole(role: string): boolean {
+    return ['super_admin', 'lender', 'processor', 'admin', 'staff'].includes(role);
+  }
+
+  async function verifyTenantOwnership(recordUserId: number | null | undefined, adminTenantId: number): Promise<boolean> {
+    if (!recordUserId) return false;
+    const owner = await storage.getUserById(recordUserId);
+    return owner?.tenantId === adminTenantId;
+  }
+
+  async function getDocumentWithTenantAccess(documentId: number, user: { id: number; role: string; tenantId?: number | null }): Promise<any | null> {
+    const doc = await storage.getDocumentById(documentId, isAdminRole(user.role) ? undefined : user.id);
+    if (!doc) return null;
+    if (isAdminRole(user.role)) {
+      const tenantId = user.tenantId != null ? user.tenantId : undefined;
+      if (!tenantId) return null;
+      if (!doc.userId || !await verifyTenantOwnership(doc.userId, tenantId)) {
+        return null;
+      }
+    }
+    return doc;
+  }
+
+  async function getProjectWithTenantAccess(projectId: number, userId: number, userRole: string, userTenantId?: number | null): Promise<any> {
+    if (isAdminRole(userRole)) {
+      if (!userTenantId) return null;
+      const project = await storage.getProjectByIdInternal(projectId);
+      if (project && project.tenantId === userTenantId) return project;
+      return null;
+    }
     let project = await storage.getProjectById(projectId, userId);
-    if (!project && userRole === 'borrower') {
-      const borrowerUser = await storage.getUserById(userId);
-      if (borrowerUser?.email) {
+    if (!project && (userRole === 'borrower' || userRole === 'broker')) {
+      const portalUser = await storage.getUserById(userId);
+      if (portalUser?.email) {
         const internal = await storage.getProjectByIdInternal(projectId);
-        if (internal && internal.borrowerEmail && internal.borrowerEmail.toLowerCase().trim() === borrowerUser.email.toLowerCase().trim()) {
-          project = internal;
+        if (internal) {
+          const emailLower = portalUser.email.toLowerCase().trim();
+          const tenantMatch = !internal.tenantId || !portalUser.tenantId || internal.tenantId === portalUser.tenantId;
+          if (tenantMatch && userRole === 'borrower' && internal.borrowerEmail && internal.borrowerEmail.toLowerCase().trim() === emailLower) {
+            project = internal;
+          } else if (tenantMatch && userRole === 'broker' && internal.brokerEmail && internal.brokerEmail.toLowerCase().trim() === emailLower) {
+            project = internal;
+          }
         }
       }
     }
@@ -306,6 +342,9 @@ export async function registerRoutes(
   // Register unified Microsoft connect routes (Outlook + OneDrive in one OAuth flow)
   registerMicrosoftConnectRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
+  app.use('/api/commercial', authenticateUser);
+  app.use(commercialIntakeRouter);
+
   // Forgot password
   app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
     try {
@@ -443,21 +482,58 @@ export async function registerRoutes(
         loanDataNormalized[normalizeKey(k)] = v;
       }
 
-      const resolveFieldValue = (fieldKey: string, sourceType?: string, defaultValue?: string, formula?: string, options?: string[]) => {
-        if (sourceType === 'default' && defaultValue) return defaultValue;
+      const matchConditionalRules = (numResult: number, conditionalRules: any[], fallbackOption?: string): string | null => {
+        if (!isFinite(numResult)) return fallbackOption || null;
+        for (const rule of conditionalRules) {
+          const v1 = parseFloat(rule.value);
+          if (isNaN(v1)) continue;
+          switch (rule.operator) {
+            case '<=':
+              if (numResult <= v1) return rule.option;
+              break;
+            case '<':
+              if (numResult < v1) return rule.option;
+              break;
+            case '>=':
+              if (numResult >= v1) return rule.option;
+              break;
+            case '>':
+              if (numResult > v1) return rule.option;
+              break;
+            case '==':
+              if (numResult === v1) return rule.option;
+              break;
+            case 'between': {
+              const v2 = parseFloat(rule.value2);
+              if (!isNaN(v2) && numResult >= v1 && numResult <= v2) return rule.option;
+              break;
+            }
+          }
+        }
+        return fallbackOption || null;
+      };
 
+      const resolveFieldValue = (fieldKey: string, sourceType?: string, defaultValue?: string, formula?: string, options?: string[], conditionalRules?: any[], fallbackOption?: string) => {
         const exactVal = (loanData as any)[fieldKey];
-        if (exactVal !== undefined && exactVal !== null && exactVal !== '') return String(exactVal);
-
         const normalizedVal = loanDataNormalized[normalizeKey(fieldKey)];
-        if (normalizedVal !== undefined && normalizedVal !== null && normalizedVal !== '') return String(normalizedVal);
 
-        if (sourceType === 'calculated') {
+        if (sourceType === 'borrower') {
+          if (exactVal !== undefined && exactVal !== null && exactVal !== '') return String(exactVal);
+          if (normalizedVal !== undefined && normalizedVal !== null && normalizedVal !== '') return String(normalizedVal);
+          return defaultValue || '';
+        }
+
+        if (sourceType === 'calculated' || (options && options.length > 0)) {
           if (!formula && normalizeKey(fieldKey) === 'ltv') {
             const la = Number(loanDataNormalized['loanamount'] || 0);
             const pv = Number(loanDataNormalized['estvaluepurchaseprice'] || loanDataNormalized['propertyvalue'] || loanDataNormalized['asIsvalue'] || loanDataNormalized['purchaseprice'] || 0);
             if (la > 0 && pv > 0) {
               const ltvVal = (la / pv) * 100;
+              const ltvRatio = la / pv;
+              if (conditionalRules && conditionalRules.length > 0) {
+                const matched = matchConditionalRules(ltvRatio, conditionalRules, fallbackOption);
+                if (matched) return matched;
+              }
               if (options && options.length > 0) {
                 for (const opt of options) {
                   const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
@@ -475,44 +551,75 @@ export async function registerRoutes(
             }
           }
         }
-        if (sourceType === 'calculated' && formula) {
+        if (formula) {
           try {
             const evaluated = formula.replace(/\{([^}]+)\}/g, (_: string, varName: string) => {
               const v = (loanData as any)[varName] ?? loanDataNormalized[normalizeKey(varName)] ?? 0;
               return String(Number(v) || 0);
             });
             const result = Function('"use strict"; return (' + evaluated + ')')();
-            if (options && options.length > 0) {
-              const numResult = Number(result);
-              for (const opt of options) {
-                const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
-                if (rangeMatch) {
-                  const low = parseFloat(rangeMatch[1]);
-                  const high = parseFloat(rangeMatch[2]);
-                  if (numResult >= low && numResult <= high) return opt;
-                }
-                const lteMatch = opt.match(/[≤<]=?\s*([\d.]+)%?/);
-                if (lteMatch && numResult <= parseFloat(lteMatch[1])) return opt;
-                const gteMatch = opt.match(/[≥>]=?\s*([\d.]+)%?/);
-                if (gteMatch && numResult >= parseFloat(gteMatch[1])) return opt;
+            const numResult = Number(result);
+            if (!isNaN(numResult) && isFinite(numResult)) {
+              if (conditionalRules && conditionalRules.length > 0) {
+                const matched = matchConditionalRules(numResult, conditionalRules, fallbackOption);
+                if (matched) return matched;
               }
-              const closest = options.reduce((best, opt) => {
-                const nums = opt.match(/[\d.]+/g);
-                if (!nums) return best;
-                const optNum = parseFloat(nums[nums.length - 1]);
-                const bestNums = best.match(/[\d.]+/g);
-                const bestNum = bestNums ? parseFloat(bestNums[bestNums.length - 1]) : Infinity;
-                return Math.abs(optNum - numResult) < Math.abs(bestNum - numResult) ? opt : best;
-              }, options[0]);
-              return closest;
+              if (options && options.length > 0) {
+                for (const opt of options) {
+                  const rangeMatch = opt.match(/([\d.]+)%?\s*[-–]\s*([\d.]+)%?/);
+                  if (rangeMatch) {
+                    const low = parseFloat(rangeMatch[1]);
+                    const high = parseFloat(rangeMatch[2]);
+                    if (numResult >= low && numResult <= high) return opt;
+                  }
+                  const lteMatch = opt.match(/[≤<]=?\s*([\d.]+)%?/);
+                  if (lteMatch && numResult <= parseFloat(lteMatch[1])) return opt;
+                  const gteMatch = opt.match(/[≥>]=?\s*([\d.]+)%?/);
+                  if (gteMatch && numResult >= parseFloat(gteMatch[1])) return opt;
+                }
+                const closest = options.reduce((best, opt) => {
+                  const nums = opt.match(/[\d.]+/g);
+                  if (!nums) return best;
+                  const optNum = parseFloat(nums[nums.length - 1]);
+                  const bestNums = best.match(/[\d.]+/g);
+                  const bestNum = bestNums ? parseFloat(bestNums[bestNums.length - 1]) : Infinity;
+                  return Math.abs(optNum - numResult) < Math.abs(bestNum - numResult) ? opt : best;
+                }, options[0]);
+                return closest;
+              }
+              return String(result);
             }
-            return String(result);
           } catch (e) {
             console.warn('Formula evaluation failed for', fieldKey, ':', e);
           }
         }
 
-        return '';
+        if (exactVal !== undefined && exactVal !== null && exactVal !== '') {
+          if (options && options.length > 0) {
+            const valStr = String(exactVal).toLowerCase().trim();
+            const match = options.find(opt => opt.toLowerCase().trim() === valStr);
+            if (match) return match;
+            const containsMatch = options.find(opt =>
+              opt.toLowerCase().includes(valStr) || valStr.includes(opt.toLowerCase())
+            );
+            if (containsMatch) return containsMatch;
+          }
+          return String(exactVal);
+        }
+        if (normalizedVal !== undefined && normalizedVal !== null && normalizedVal !== '') {
+          if (options && options.length > 0) {
+            const valStr = String(normalizedVal).toLowerCase().trim();
+            const match = options.find(opt => opt.toLowerCase().trim() === valStr);
+            if (match) return match;
+            const containsMatch = options.find(opt =>
+              opt.toLowerCase().includes(valStr) || valStr.includes(opt.toLowerCase())
+            );
+            if (containsMatch) return containsMatch;
+          }
+          return String(normalizedVal);
+        }
+
+        return defaultValue || '';
       };
 
       const dynamicTextInputs = configTextInputs.map((ti: any) => ({
@@ -523,7 +630,7 @@ export async function registerRoutes(
       const dynamicDropdowns = configDropdowns.map((dd: any) => ({
         label: dd.label,
         fieldKey: dd.fieldKey,
-        value: resolveFieldValue(dd.fieldKey, dd.sourceType, dd.defaultValue, dd.formula, dd.options),
+        value: resolveFieldValue(dd.fieldKey, dd.sourceType, dd.defaultValue, dd.formula, dd.options, dd.conditionalRules, dd.fallbackOption),
       }));
 
       const resolvedDropdownValues: Record<string, string> = {};
@@ -564,9 +671,13 @@ export async function registerRoutes(
           
           try {
             log.info('Page loaded, waiting for React to render form...');
-            // Smart wait: Wait for form elements to be ready instead of fixed 12s delay
-            await page.waitForSelector('input[placeholder="LTV"]', { timeout: 15000 });
-            log.info('✅ Form loaded and ready!');
+            // Wait for the form to render by checking for enough interactive elements (inputs, dropdowns, comboboxes)
+            const expectedFieldCount = ${Math.max(2, Math.ceil(((configTextInputs.length || 0) + (configDropdowns.length || 0)) * 0.8))};
+            await page.waitForFunction((minFields) => {
+              const inputs = document.querySelectorAll('input[type="text"], input:not([type]), [role="combobox"], [role="listbox"], .MuiAutocomplete-root, .MuiSelect-select, select');
+              return inputs.length >= minFields;
+            }, { timeout: 20000 }, expectedFieldCount);
+            log.info('✅ Form loaded and ready! Found ' + expectedFieldCount + '+ interactive fields.');
             
             // STEP 1: Fill text inputs using page.type() for proper React event handling
             log.info('Step 1: Filling text inputs...');
@@ -1141,6 +1252,22 @@ export async function registerRoutes(
   app.post(api.quotes.save.path, authenticateUser, async (req: AuthRequest, res) => {
     try {
       const quoteData = api.quotes.save.input.parse(req.body);
+
+      // Enforce per-broker max broker points
+      if (req.user) {
+        const brokerUser = await storage.getUserById(req.user.id);
+        if (brokerUser && brokerUser.role === 'broker' && quoteData.brokerPointsCharged > 0) {
+          const bs = (brokerUser.brokerSettings as any) || {};
+          const programKey = quoteData.programId ? String(quoteData.programId) : null;
+          const override = programKey ? bs.programOverrides?.[programKey] : undefined;
+          const brokerMax = override?.brokerPointsMaxPercent ?? bs.brokerPointsMaxPercent;
+          if (brokerMax != null && quoteData.brokerPointsCharged > brokerMax) {
+            return res.status(400).json({
+              error: `Broker points charged (${quoteData.brokerPointsCharged}) exceeds your maximum allowed (${brokerMax})`,
+            });
+          }
+        }
+      }
       
       // Detect if this is an RTL quote
       const isRTLQuote = quoteData.loanData?.asIsValue || quoteData.loanData?.arv || quoteData.loanData?.rehabBudget !== undefined;
@@ -1263,7 +1390,22 @@ export async function registerRoutes(
 
   app.get(api.quotes.list.path, authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const quotes = await storage.getQuotes(req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const filterUserId = req.query.userId ? parseInt(req.query.userId as string) : null;
+      let quotes;
+      if (isAdminRole(req.user!.role) && filterUserId) {
+        if (tenantId) {
+          const targetUser = await storage.getUserById(filterUserId);
+          if (!targetUser || targetUser.tenantId !== tenantId) {
+            return res.json({ success: true, quotes: [] });
+          }
+        }
+        quotes = await storage.getQuotes(filterUserId);
+      } else if (isAdminRole(req.user!.role) && tenantId) {
+        quotes = await storage.getQuotesByTenant(tenantId);
+      } else {
+        quotes = await storage.getQuotes(req.user!.id);
+      }
       res.json({ success: true, quotes });
     } catch (error) {
       console.error('Error fetching quotes:', error);
@@ -1274,10 +1416,19 @@ export async function registerRoutes(
   app.get('/api/quotes/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const quote = await storage.getQuoteById(id, req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const quote = isAdminRole(req.user!.role)
+        ? await storage.getQuoteByIdInternal(id)
+        : await storage.getQuoteById(id, req.user!.id);
       if (!quote) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
+      }
+      if (isAdminRole(req.user!.role)) {
+        if (!tenantId || (!quote.userId || !await verifyTenantOwnership(quote.userId, tenantId))) {
+          res.status(404).json({ success: false, error: 'Quote not found' });
+          return;
+        }
       }
       res.json({ success: true, quote });
     } catch (error) {
@@ -1289,7 +1440,16 @@ export async function registerRoutes(
   app.delete('/api/quotes/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteQuote(id, req.user!.id);
+      if (isAdminRole(req.user!.role)) {
+        const tenantId = getTenantId(req.user!);
+        const quote = await storage.getQuoteByIdInternal(id);
+        if (!quote || !tenantId || !quote.userId || !await verifyTenantOwnership(quote.userId, tenantId)) {
+          return res.status(404).json({ success: false, error: 'Quote not found' });
+        }
+        await storage.deleteQuoteInternal(id);
+      } else {
+        await storage.deleteQuote(id, req.user!.id);
+      }
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting quote:', error);
@@ -1315,8 +1475,15 @@ export async function registerRoutes(
         return res.status(400).json({ success: false, error: 'Invalid input', details: parsed.error.flatten() });
       }
 
-      const existing = await storage.getQuoteById(id, req.user!.id);
+      const admin = isAdminRole(req.user!.role);
+      const tenantId = getTenantId(req.user!);
+      const existing = admin
+        ? await storage.getQuoteByIdInternal(id)
+        : await storage.getQuoteById(id, req.user!.id);
       if (!existing) {
+        return res.status(404).json({ success: false, error: 'Quote not found' });
+      }
+      if (admin && (!tenantId || !existing.userId || !await verifyTenantOwnership(existing.userId, tenantId))) {
         return res.status(404).json({ success: false, error: 'Quote not found' });
       }
 
@@ -1326,7 +1493,9 @@ export async function registerRoutes(
         updates.loanData = { ...(existing.loanData as Record<string, any>), ...parsed.data.loanData };
       }
 
-      const updated = await storage.updateQuote(id, req.user!.id, updates);
+      const updated = admin
+        ? await storage.updateQuoteInternal(id, updates)
+        : await storage.updateQuote(id, req.user!.id, updates);
       res.json({ success: true, quote: updated });
     } catch (error) {
       console.error('Error updating quote:', error);
@@ -1338,8 +1507,17 @@ export async function registerRoutes(
   app.get('/api/quotes/:id/pdf', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const quote = await storage.getQuoteById(id, req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const quote = isAdminRole(req.user!.role)
+        ? await storage.getQuoteByIdInternal(id)
+        : await storage.getQuoteById(id, req.user!.id);
       if (!quote) {
+        console.warn(`[PDF] Quote not found: quoteId=${id}, userId=${req.user!.id}, role=${req.user!.role}`);
+        res.status(404).json({ success: false, error: 'Quote not found' });
+        return;
+      }
+      if (isAdminRole(req.user!.role) && (!tenantId || !quote.userId || !await verifyTenantOwnership(quote.userId, tenantId))) {
+        console.warn(`[PDF] Tenant ownership check failed: quoteId=${id}, tenantId=${tenantId}, quoteUserId=${quote.userId}`);
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -1348,14 +1526,15 @@ export async function registerRoutes(
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       const templateId = req.query.templateId ? parseInt(req.query.templateId as string) : null;
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+      const userTenantId1 = getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(templateId);
-        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+        if (template && (template.tenantId === null || userTenantId1 === null || template.tenantId === userTenantId1)) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(req.user!.tenantId || undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId1 ?? undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1377,7 +1556,7 @@ export async function registerRoutes(
       };
 
       const pdfBytes = templateConfig.templateType === 'loi'
-        ? await generateLoiPdf(pdfData, templateConfig.loiDefaults)
+        ? (await generateLoiPdf(pdfData, templateConfig.loiDefaults)).pdfBytes
         : await generateQuotePdf(pdfData, templateConfig);
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -1395,8 +1574,15 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const { recipientEmail, recipientName, templateId, resend, existingDocumentId } = req.body;
 
-      const quote = await storage.getQuoteById(id, req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const quote = isAdminRole(req.user!.role)
+        ? await storage.getQuoteByIdInternal(id)
+        : await storage.getQuoteById(id, req.user!.id);
       if (!quote) {
+        res.status(404).json({ success: false, error: 'Quote not found' });
+        return;
+      }
+      if (isAdminRole(req.user!.role) && (!tenantId || !quote.userId || !await verifyTenantOwnership(quote.userId, tenantId))) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -1413,6 +1599,7 @@ export async function registerRoutes(
       let document: any;
       let pageCount: number;
       let signingFields: { fieldType: string; pageNumber: number; x: number; y: number; width: number; height: number }[] = [];
+      let docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
 
       if (resend && existingDocumentId) {
         const existingDoc = await storage.getDocumentById(existingDocumentId);
@@ -1421,8 +1608,10 @@ export async function registerRoutes(
           return;
         }
 
+        docName = existingDoc.name || docName;
+
         document = await storage.createDocument({
-          name: existingDoc.name,
+          name: docName,
           fileName: existingDoc.fileName,
           fileData: existingDoc.fileData,
           pageCount: existingDoc.pageCount,
@@ -1451,7 +1640,8 @@ export async function registerRoutes(
         let templateConfig = DEFAULT_TEMPLATE_CONFIG;
         if (templateId) {
           const template = await storage.getQuotePdfTemplateById(templateId);
-          if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+          const uTid = getTenantId(req.user!);
+          if (template && (template.tenantId === null || uTid === null || template.tenantId === uTid)) {
             templateConfig = template.config;
           }
         }
@@ -1485,7 +1675,6 @@ export async function registerRoutes(
         }
 
         const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
-        const docName = `${quote.loanNumber || `Quote-${quote.id}`} - Term Sheet`;
 
         const pdfDoc = await (await import('pdf-lib')).PDFDocument.load(pdfBytes);
         pageCount = pdfDoc.getPageCount();
@@ -1548,9 +1737,7 @@ export async function registerRoutes(
 
       await storage.updateDocument(document.id, { sentAt: new Date(), status: 'sent' });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : 'http://localhost:5000');
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const signingLink = `${baseUrl}/sign/${token}`;
 
       const { sendSigningInvitation } = await import('./email');
@@ -1590,14 +1777,15 @@ export async function registerRoutes(
       const { generateQuotePdf, DEFAULT_TEMPLATE_CONFIG } = await import('./pdf/quoteGenerator');
       const { generateLoiPdf } = await import('./pdf/loiGenerator');
       let templateConfig = DEFAULT_TEMPLATE_CONFIG;
+      const userTenantId3 = getTenantId(req.user!);
 
       if (templateId) {
         const template = await storage.getQuotePdfTemplateById(parseInt(templateId));
-        if (template && (template.tenantId === null || template.tenantId === req.user!.tenantId)) {
+        if (template && (template.tenantId === null || userTenantId3 === null || template.tenantId === userTenantId3)) {
           templateConfig = template.config;
         }
       } else {
-        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(req.user!.tenantId || undefined);
+        const defaultTemplate = await storage.getDefaultQuotePdfTemplate(userTenantId3 ?? undefined);
         if (defaultTemplate) templateConfig = defaultTemplate.config;
       }
 
@@ -1612,7 +1800,7 @@ export async function registerRoutes(
       };
 
       const pdfBytes = templateConfig.templateType === 'loi'
-        ? await generateLoiPdf(pdfData, templateConfig.loiDefaults)
+        ? (await generateLoiPdf(pdfData, templateConfig.loiDefaults)).pdfBytes
         : await generateQuotePdf(pdfData, templateConfig);
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -1627,7 +1815,8 @@ export async function registerRoutes(
   // ==================== QUOTE PDF TEMPLATES ====================
   app.get('/api/quote-pdf-templates', authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const templates = await storage.getQuotePdfTemplates(req.user!.tenantId || undefined);
+      const tId = getTenantId(req.user!);
+      const templates = await storage.getQuotePdfTemplates(tId ?? undefined);
       res.json(templates);
     } catch (error) {
       console.error('Error fetching quote PDF templates:', error);
@@ -1641,7 +1830,8 @@ export async function registerRoutes(
         res.status(403).json({ success: false, error: 'Admin access required' });
         return;
       }
-      const data = { ...req.body, tenantId: req.user!.tenantId || null };
+      const tId = getTenantId(req.user!);
+      const data = { ...req.body, tenantId: tId };
       const template = await storage.createQuotePdfTemplate(data);
       res.json(template);
     } catch (error) {
@@ -1662,7 +1852,8 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      if (existing.tenantId && existing.tenantId !== (req.user!.tenantId || null)) {
+      const tId = getTenantId(req.user!);
+      if (tId !== null && existing.tenantId && existing.tenantId !== tId) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
       }
@@ -1686,7 +1877,8 @@ export async function registerRoutes(
         res.status(404).json({ success: false, error: 'Template not found' });
         return;
       }
-      if (existing.tenantId && existing.tenantId !== (req.user!.tenantId || null)) {
+      const tId = getTenantId(req.user!);
+      if (tId !== null && existing.tenantId && existing.tenantId !== tId) {
         res.status(403).json({ success: false, error: 'Access denied' });
         return;
       }
@@ -1709,8 +1901,15 @@ export async function registerRoutes(
         return;
       }
 
-      const quote = await storage.getQuoteById(quoteId, userId);
+      const adminTenantId = getTenantId(req.user!);
+      const quote = isAdminRole(req.user!.role)
+        ? await storage.getQuoteByIdInternal(quoteId)
+        : await storage.getQuoteById(quoteId, userId);
       if (!quote) {
+        res.status(404).json({ success: false, error: 'Quote not found' });
+        return;
+      }
+      if (isAdminRole(req.user!.role) && (!adminTenantId || !quote.userId || !await verifyTenantOwnership(quote.userId, adminTenantId))) {
         res.status(404).json({ success: false, error: 'Quote not found' });
         return;
       }
@@ -1902,7 +2101,10 @@ export async function registerRoutes(
   // List all documents
   app.get('/api/documents', authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const docs = await storage.getDocuments(req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const docs = isAdminRole(req.user!.role) && tenantId
+        ? await storage.getDocumentsByTenant(tenantId)
+        : await storage.getDocuments(req.user!.id);
       const documentsWithSigners = await Promise.all(
         docs.map(async (doc) => {
           const signers = await storage.getSignersByDocumentId(doc.id);
@@ -1916,11 +2118,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/documents/pending-review', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.user!.id);
+      const tenantId = user && ['super_admin'].includes(user.role) ? undefined : (user as any)?.tenantId ?? req.user!.id;
+      const docs = await storage.getPendingReviewDocuments(tenantId);
+      res.json({ documents: docs });
+    } catch (error) {
+      console.error('Pending review docs error:', error);
+      res.status(500).json({ error: 'Failed to load pending review documents' });
+    }
+  });
+
   // Get document by ID
   app.get('/api/documents/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const doc = await storage.getDocumentById(id, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(id, req.user!);
       if (!doc) {
         res.status(404).json({ success: false, error: 'Document not found' });
         return;
@@ -1940,7 +2154,17 @@ export async function registerRoutes(
   app.get('/api/quotes/:quoteId/documents', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const quoteId = parseInt(req.params.quoteId);
-      const docs = await storage.getDocumentsByQuoteId(quoteId, req.user!.id);
+      if (isAdminRole(req.user!.role)) {
+        const tenantId = getTenantId(req.user!);
+        if (!tenantId) {
+          return res.status(403).json({ success: false, error: 'Tenant not found' });
+        }
+        const quote = await storage.getQuoteByIdInternal(quoteId);
+        if (!quote || !quote.userId || !await verifyTenantOwnership(quote.userId, tenantId)) {
+          return res.status(404).json({ success: false, error: 'Quote not found' });
+        }
+      }
+      const docs = await storage.getDocumentsByQuoteId(quoteId, isAdminRole(req.user!.role) ? undefined : req.user!.id);
       
       // Fetch signers for each document
       const documentsWithSigners = await Promise.all(
@@ -1961,10 +2185,34 @@ export async function registerRoutes(
   app.delete('/api/documents/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteDocument(id, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(id, req.user!);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+      await storage.deleteDocument(id, doc.userId!);
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting document:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  app.post('/api/documents/:id/unsign', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      if (req.user!.role !== 'super_admin') {
+        return res.status(403).json({ success: false, error: 'Super admin only' });
+      }
+      const id = parseInt(req.params.id);
+      const [doc] = await db.select().from(documents).where(eq(documents.id, id));
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+      await db.update(documents).set({ status: 'sent', completedAt: null }).where(eq(documents.id, id));
+      await db.update(signers).set({ status: 'sent', signedAt: null }).where(eq(signers.documentId, id));
+      const updatedSigners = await db.select().from(signers).where(eq(signers.documentId, id));
+      res.json({ success: true, document: { id, name: doc.name, status: 'sent' }, signers: updatedSigners });
+    } catch (error) {
+      console.error('Error unsigning document:', error);
       res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -1977,7 +2225,7 @@ export async function registerRoutes(
       const { name, email, color, signingOrder } = req.body;
 
       // Verify user owns this document
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2014,7 +2262,7 @@ export async function registerRoutes(
       if (!signer) {
         return res.status(404).json({ success: false, error: 'Signer not found' });
       }
-      const doc = await storage.getDocumentById(signer.documentId, userId);
+      const doc = await getDocumentWithTenantAccess(signer.documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2035,7 +2283,7 @@ export async function registerRoutes(
       const { signerId, pageNumber, fieldType, x, y, width, height, required, label, value } = req.body;
 
       // Verify user owns this document
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2073,7 +2321,7 @@ export async function registerRoutes(
       if (!existingField) {
         return res.status(404).json({ success: false, error: 'Field not found' });
       }
-      const doc = await storage.getDocumentById(existingField.documentId, userId);
+      const doc = await getDocumentWithTenantAccess(existingField.documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2097,7 +2345,7 @@ export async function registerRoutes(
       if (!existingField) {
         return res.status(404).json({ success: false, error: 'Field not found' });
       }
-      const doc = await storage.getDocumentById(existingField.documentId, userId);
+      const doc = await getDocumentWithTenantAccess(existingField.documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2118,7 +2366,7 @@ export async function registerRoutes(
       const { fields } = req.body;
       
       // Verify user owns this document
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2256,7 +2504,7 @@ export async function registerRoutes(
     try {
       const documentId = parseInt(req.params.id);
       const userId = req.user!.id;
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) return res.status(404).json({ error: 'Document not found' });
       
       const docFields = await storage.getFieldsByDocumentId(documentId);
@@ -2311,7 +2559,7 @@ export async function registerRoutes(
         return res.status(400).json({ success: false, error: 'Invalid document ID' });
       }
 
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -2799,15 +3047,19 @@ export async function registerRoutes(
           ipAddress: req.ip
         });
 
-        // Generate signed PDF and send to all parties
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const downloadLink = `${baseUrl}/api/documents/${doc.id}/download`;
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
         
         const signerNames = allSigners.map(s => s.name);
         const allEmails = allSigners.map(s => s.email);
         
-        // Send completion email to all signers
+        // Send completion email to all signers with unique download tokens
+        const cryptoMod = await import('crypto');
         for (const s of allSigners) {
+          const downloadToken = cryptoMod.randomBytes(32).toString('hex');
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+          await storage.createDocumentDownloadToken(doc.id, downloadToken, expiresAt);
+          const downloadLink = `${baseUrl}/api/documents/download/${downloadToken}`;
+
           await sendCompletedDocument(
             s.email,
             s.name,
@@ -2822,14 +3074,17 @@ export async function registerRoutes(
           const borrowerSigner = allSigners[0]; // First signer is typically the borrower
           const projectNumber = await storage.generateProjectNumber();
           const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+          const brokerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
           
           // Get quote data if linked
           let loanData: Record<string, unknown> = {};
           let quoteProgramId: number | null = null;
           let quoteFields: Record<string, any> = {};
+          let quoteRef: any = null;
           if (doc.quoteId) {
             const quote = await storage.getQuoteById(doc.quoteId, doc.userId!);
             if (quote) {
+              quoteRef = quote;
               loanData = {
                 loanAmount: Number(quote.loanAmount),
                 interestRate: Number(quote.interestRate),
@@ -2843,7 +3098,6 @@ export async function registerRoutes(
                 ysp: (quote as any).yspAmount ?? null,
                 lenderOriginationPoints: (quote as any).basePointsCharged ?? null,
                 brokerOriginationPoints: (quote as any).brokerPointsCharged ?? null,
-                brokerName: (quote as any).partnerName || null,
                 prepaymentPenalty: qLoanData?.prepaymentPenalty || null,
                 holdbackAmount: qLoanData?.holdbackAmount ?? null,
               };
@@ -2852,12 +3106,37 @@ export async function registerRoutes(
           
           let quoteLoanNumber: string | undefined;
           if (doc.quoteId) {
-            const quote = await storage.getQuoteById(doc.quoteId, doc.userId!);
+            const quote = quoteRef || await storage.getQuoteById(doc.quoteId, doc.userId!);
             if (quote?.loanNumber) quoteLoanNumber = quote.loanNumber;
+          }
+
+          let brokerEmailAddr: string | null = null;
+          let brokerDisplayName: string | null = (quoteRef as any)?.partnerName || null;
+          if (quoteRef?.partnerId) {
+            const [partner] = await db.select().from(partners).where(eq(partners.id, quoteRef.partnerId));
+            if (partner?.email) brokerEmailAddr = partner.email;
+            if (partner?.name && !brokerDisplayName) brokerDisplayName = partner.name;
+          }
+          if (!brokerEmailAddr) {
+            const fallbackUserId = (quoteRef as any)?.userId || doc.userId;
+            if (fallbackUserId) {
+              const fallbackUser = await storage.getUserById(fallbackUserId);
+              if (fallbackUser?.role === 'broker' && fallbackUser.email) {
+                brokerEmailAddr = fallbackUser.email;
+                if (!brokerDisplayName) brokerDisplayName = fallbackUser.fullName || fallbackUser.email;
+              }
+            }
+          }
+
+          let projectTenantId: number = 1;
+          if (doc.userId) {
+            const docOwner = await storage.getUserById(doc.userId);
+            if (docOwner?.tenantId) projectTenantId = docOwner.tenantId;
           }
 
           const project = await storage.createProject({
             userId: doc.userId!,
+            tenantId: projectTenantId,
             projectName: `${borrowerSigner.name} - ${doc.name}`,
             projectNumber,
             ...(quoteLoanNumber ? { loanNumber: quoteLoanNumber } : {}),
@@ -2876,6 +3155,10 @@ export async function registerRoutes(
             targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
             borrowerPortalToken: borrowerToken,
             borrowerPortalEnabled: true,
+            brokerPortalToken: brokerToken,
+            brokerPortalEnabled: true,
+            brokerEmail: brokerEmailAddr,
+            brokerName: brokerDisplayName,
             agreementId: doc.id,
             quoteId: doc.quoteId || undefined,
             ...quoteFields,
@@ -2922,6 +3205,104 @@ export async function registerRoutes(
           
           console.log(`✓ Project ${projectNumber} auto-created from signed agreement ${doc.id}`);
 
+          // Send notifications (email + in-app) to admins, owner, and broker
+          try {
+            const { isNotificationEnabled } = await import('./services/notificationHelper');
+            const resolvedOwnerId = (quoteRef as any)?.userId || doc.userId;
+            let tenantId: number | null = null;
+            if (resolvedOwnerId) {
+              const ownerUser = await storage.getUserById(resolvedOwnerId);
+              tenantId = ownerUser?.tenantId ?? 1;
+            } else {
+              tenantId = 1;
+            }
+            if (await isNotificationEnabled('term_sheet_signed', tenantId)) {
+              const notifiedUserIds = new Set<number>();
+              const adminUsers = await db.select({ id: users.id, email: users.email, fullName: users.fullName })
+                .from(users)
+                .where(and(
+                  inArray(users.role, ['super_admin', 'lender', 'processor']),
+                  eq(users.isActive, true),
+                  eq(users.tenantId, tenantId!),
+                ));
+
+              for (const admin of adminUsers) {
+                await db.insert(notifications).values({
+                  userId: admin.id,
+                  type: 'term_sheet_signed',
+                  title: 'Term Sheet Signed',
+                  message: `${borrowerSigner.name || 'Borrower'} signed the term sheet. Deal ${projectNumber} has been created.`,
+                  dealId: project.id,
+                  link: `/admin/deals/${project.id}`,
+                });
+                notifiedUserIds.add(admin.id);
+              }
+
+              if (resolvedOwnerId && !notifiedUserIds.has(resolvedOwnerId)) {
+                const ownerUser = await storage.getUserById(resolvedOwnerId);
+                const ownerIsBroker = ownerUser?.role === 'broker';
+                await db.insert(notifications).values({
+                  userId: resolvedOwnerId,
+                  type: 'term_sheet_signed',
+                  title: 'Term Sheet Signed',
+                  message: `${borrowerSigner.name || 'Borrower'} signed the term sheet. Deal ${projectNumber} has been created.`,
+                  dealId: project.id,
+                  link: ownerIsBroker ? `/loans` : `/admin/deals/${project.id}`,
+                });
+                notifiedUserIds.add(resolvedOwnerId);
+              }
+
+              if (brokerEmailAddr) {
+                const brokerUsers = await db.select({ id: users.id }).from(users)
+                  .where(and(eq(users.email, brokerEmailAddr), eq(users.isActive, true), eq(users.tenantId, tenantId!)));
+                for (const bu of brokerUsers) {
+                  if (!notifiedUserIds.has(bu.id)) {
+                    await db.insert(notifications).values({
+                      userId: bu.id,
+                      type: 'term_sheet_signed',
+                      title: 'Term Sheet Signed',
+                      message: `${borrowerSigner.name || 'Borrower'} signed the term sheet for ${loanData.propertyAddress || 'a loan'}. Deal ${projectNumber} is now active.`,
+                      dealId: project.id,
+                      link: `/loans`,
+                    });
+                    notifiedUserIds.add(bu.id);
+                  }
+                }
+              }
+
+              try {
+                const { getResendClient } = await import('./email');
+                const { client: resend, fromEmail } = await getResendClient();
+                const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+                const formattedAmount = loanData.loanAmount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(loanData.loanAmount as number) : 'N/A';
+
+                for (const admin of adminUsers) {
+                  if (admin.email) {
+                    await resend.emails.send({
+                      from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+                      to: admin.email,
+                      subject: `Term Sheet Signed — ${borrowerSigner.name || 'New Deal'} (${projectNumber})`,
+                      html: `<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background-color:#0F1629;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background-color:#f8fafc;padding:30px;border-radius:0 0 8px 8px}.detail-row{padding:8px 0;border-bottom:1px solid #e2e8f0}.detail-label{font-weight:bold;color:#475569}.button{display:inline-block;background-color:#C9A84C;color:#0F1629;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0}.footer{text-align:center;color:#64748b;font-size:12px;margin-top:20px}</style></head><body><div class="container"><div class="header"><h1>Term Sheet Signed</h1></div><div class="content"><p>Great news! <strong>${borrowerSigner.name || 'The borrower'}</strong> has signed the term sheet.</p><div style="background:white;padding:15px;border-radius:6px;margin:15px 0"><div class="detail-row"><span class="detail-label">Deal:</span> ${projectNumber}</div><div class="detail-row"><span class="detail-label">Property:</span> ${loanData.propertyAddress || 'N/A'}</div><div class="detail-row"><span class="detail-label">Loan Amount:</span> ${formattedAmount}</div></div><p>The loan is now active and ready for documentation.</p><a href="${baseUrl}/admin/deals/${project.id}" class="button">View Deal</a></div><div class="footer"><p>Powered by Lendry.AI</p></div></div></body></html>`,
+                    }).catch((e: any) => console.error(`[Internal Signing] Email to admin ${admin.email} failed:`, e.message));
+                  }
+                }
+
+                if (brokerEmailAddr) {
+                  await resend.emails.send({
+                    from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+                    to: brokerEmailAddr,
+                    subject: `Term Sheet Signed — ${borrowerSigner.name || 'Your Deal'} (${projectNumber})`,
+                    html: `<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background-color:#0F1629;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background-color:#f8fafc;padding:30px;border-radius:0 0 8px 8px}.detail-row{padding:8px 0;border-bottom:1px solid #e2e8f0}.detail-label{font-weight:bold;color:#475569}.button{display:inline-block;background-color:#C9A84C;color:#0F1629;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0}.footer{text-align:center;color:#64748b;font-size:12px;margin-top:20px}</style></head><body><div class="container"><div class="header"><h1>Term Sheet Signed</h1></div><div class="content"><p>Great news! <strong>${borrowerSigner.name || 'The borrower'}</strong> has signed the term sheet for your deal.</p><div style="background:white;padding:15px;border-radius:6px;margin:15px 0"><div class="detail-row"><span class="detail-label">Deal:</span> ${projectNumber}</div><div class="detail-row"><span class="detail-label">Property:</span> ${loanData.propertyAddress || 'N/A'}</div><div class="detail-row"><span class="detail-label">Loan Amount:</span> ${formattedAmount}</div></div><p>The loan is now active. You can view it in your portal under My Loans.</p><a href="${baseUrl}/loans" class="button">View My Loans</a></div><div class="footer"><p>Powered by Lendry.AI</p></div></div></body></html>`,
+                  }).catch((e: any) => console.error(`[Internal Signing] Email to broker ${brokerEmailAddr} failed:`, e.message));
+                }
+              } catch (emailErr: any) {
+                console.error('[Internal Signing] Email notification error:', emailErr.message);
+              }
+            }
+          } catch (notifErr: any) {
+            console.error('[Internal Signing] Notification error:', notifErr.message);
+          }
+
           // Google Drive folder creation (non-blocking)
           try {
             const { isDriveIntegrationEnabled, ensureProjectFolder } = await import('./services/googleDrive');
@@ -2958,7 +3339,7 @@ export async function registerRoutes(
       const documentId = parseInt(req.params.id);
       const userId = req.user!.id;
       
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         res.status(404).json({ success: false, error: 'Document not found' });
         return;
@@ -3023,13 +3404,86 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/documents/download/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const result = await storage.getDocumentByDownloadToken(token);
+      if (!result) {
+        res.status(404).json({ success: false, error: 'Download link is invalid or has expired' });
+        return;
+      }
+
+      const doc = await storage.getDocumentById(result.documentId);
+      if (!doc) {
+        res.status(404).json({ success: false, error: 'Document not found' });
+        return;
+      }
+
+      if (doc.status !== 'completed') {
+        res.status(403).json({ success: false, error: 'Document is not yet fully signed' });
+        return;
+      }
+
+      const fields = await storage.getFieldsByDocumentId(doc.id);
+
+      const pdfBytes = Buffer.from(doc.fileData.split(',')[1] || doc.fileData, 'base64');
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const pages = pdfDoc.getPages();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      for (const field of fields) {
+        if (!field.value) continue;
+
+        const pageIndex = field.pageNumber - 1;
+        if (pageIndex >= pages.length) continue;
+
+        const page = pages[pageIndex];
+        const { height: pageHeight } = page.getSize();
+
+        if (field.fieldType === 'signature' || field.fieldType === 'initial') {
+          try {
+            const imgData = field.value.split(',')[1] || field.value;
+            const imgBytes = Buffer.from(imgData, 'base64');
+            const img = await pdfDoc.embedPng(imgBytes);
+
+            page.drawImage(img, {
+              x: field.x,
+              y: pageHeight - field.y - field.height,
+              width: field.width,
+              height: field.height
+            });
+          } catch (imgError) {
+            console.error('Error embedding signature image:', imgError);
+          }
+        } else if (field.fieldType === 'text' || field.fieldType === 'date') {
+          page.drawText(field.value, {
+            x: field.x + 5,
+            y: pageHeight - field.y - field.height + 10,
+            size: 12,
+            font,
+            color: rgb(0, 0, 0)
+          });
+        }
+      }
+
+      const signedPdfBytes = await pdfDoc.save();
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.name}-signed.pdf"`);
+      res.send(Buffer.from(signedPdfBytes));
+    } catch (error) {
+      console.error('Error downloading document via token:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
   // Get audit log for document
   app.get('/api/documents/:id/audit', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
       const userId = req.user!.id;
       // Verify user owns this document before returning audit logs
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
@@ -3046,7 +3500,10 @@ export async function registerRoutes(
   // Get agreements list with signer counts
   app.get('/api/esignature/agreements', authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const docs = await storage.getDocuments(req.user!.id);
+      const tenantId = getTenantId(req.user!);
+      const docs = isAdminRole(req.user!.role) && tenantId
+        ? await storage.getDocumentsByTenant(tenantId)
+        : await storage.getDocuments(req.user!.id);
       
       const agreements = await Promise.all(docs.map(async (doc) => {
         const docSigners = await storage.getSignersByDocumentId(doc.id);
@@ -3075,8 +3532,16 @@ export async function registerRoutes(
         };
       }));
       
+      let envelopeFilter;
+      if (isAdminRole(req.user!.role) && tenantId) {
+        const tenantUserIds = await db.select({ id: users.id }).from(users).where(eq(users.tenantId, tenantId));
+        const ids = tenantUserIds.map(u => u.id);
+        envelopeFilter = ids.length > 0 ? inArray(esignEnvelopes.createdBy, ids) : eq(esignEnvelopes.createdBy, req.user!.id);
+      } else {
+        envelopeFilter = eq(esignEnvelopes.createdBy, req.user!.id);
+      }
       const pandadocEnvelopes = await db.select().from(esignEnvelopes)
-        .where(eq(esignEnvelopes.createdBy, req.user!.id))
+        .where(envelopeFilter)
         .orderBy(desc(esignEnvelopes.createdAt));
       
       const pandadocAgreements = pandadocEnvelopes.map(env => {
@@ -3121,7 +3586,7 @@ export async function registerRoutes(
   app.get('/api/esignature/agreements/:id', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const documentId = parseInt(req.params.id);
-      const doc = await storage.getDocumentById(documentId, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
@@ -3188,7 +3653,7 @@ export async function registerRoutes(
       const documentId = parseInt(req.params.id);
       const { reason } = req.body;
       
-      const doc = await storage.getDocumentById(documentId, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3247,7 +3712,7 @@ export async function registerRoutes(
       const documentId = parseInt(req.params.id);
       const userId = req.user!.id;
       
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3345,7 +3810,7 @@ export async function registerRoutes(
     try {
       const documentId = parseInt(req.params.id);
       
-      const doc = await storage.getDocumentById(documentId, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3392,7 +3857,7 @@ export async function registerRoutes(
       const documentId = parseInt(req.params.id);
       const signerId = parseInt(req.params.signerId);
       
-      const doc = await storage.getDocumentById(documentId, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3448,7 +3913,7 @@ export async function registerRoutes(
     try {
       const documentId = parseInt(req.params.id);
       
-      const doc = await storage.getDocumentById(documentId, req.user!.id);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3495,7 +3960,7 @@ export async function registerRoutes(
       const documentId = parseInt(req.params.id);
       const userId = req.user!.id;
       
-      const doc = await storage.getDocumentById(documentId, userId);
+      const doc = await getDocumentWithTenantAccess(documentId, req.user!);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Agreement not found' });
       }
@@ -3509,7 +3974,7 @@ export async function registerRoutes(
       }
       
       // Delete document (cascades to signers, fields, audit log)
-      await storage.deleteDocument(documentId, userId);
+      await storage.deleteDocument(documentId, doc.userId!);
       
       res.json({ success: true, message: 'Draft deleted successfully' });
     } catch (error) {
@@ -3563,25 +4028,58 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const { status, archived } = req.query;
+      const filterUserId = req.query.userId ? parseInt(req.query.userId as string) : null;
       
-      let projectsList = await storage.getProjects(
-        userId,
-        status as string | undefined,
-        archived !== undefined ? archived === 'true' : undefined
-      );
-
       const currentUser = await storage.getUserById(userId);
-      if (currentUser && currentUser.email && currentUser.role === 'borrower') {
+      const isAdminRole = currentUser && ['super_admin', 'lender', 'admin', 'processor'].includes(currentUser.role);
+
+      let projectsList: any[];
+      if (isAdminRole && filterUserId) {
+        const tenantId = getTenantId(req.user!);
+        if (tenantId) {
+          const targetUser = await storage.getUserById(filterUserId);
+          if (!targetUser || targetUser.tenantId !== tenantId) {
+            return res.json({ success: true, projects: [] });
+          }
+        }
+        projectsList = await storage.getProjects(
+          filterUserId,
+          status as string | undefined,
+          archived !== undefined ? archived === 'true' : undefined
+        );
+      } else if (isAdminRole) {
+        const tenantId = getTenantId(req.user!);
+        projectsList = await storage.getAllProjects({
+          status: status as string | undefined,
+          tenantId,
+        });
+        if (archived !== undefined) {
+          const archivedVal = archived === 'true';
+          projectsList = projectsList.filter((p: any) => p.isArchived === archivedVal);
+        }
+      } else {
+        projectsList = await storage.getProjects(
+          userId,
+          status as string | undefined,
+          archived !== undefined ? archived === 'true' : undefined
+        );
+      }
+
+      if (currentUser && currentUser.email && (currentUser.role === 'borrower' || currentUser.role === 'broker')) {
         const userEmail = currentUser.email.toLowerCase().trim();
+        const emailColumn = currentUser.role === 'broker' ? projects.brokerEmail : projects.borrowerEmail;
         let emailConditions: any[] = [
-          sql`LOWER(TRIM(${projects.borrowerEmail})) = ${userEmail}`
+          sql`LOWER(TRIM(${emailColumn})) = ${userEmail}`
         ];
+        if (currentUser.tenantId) {
+          emailConditions.push(eq(projects.tenantId, currentUser.tenantId));
+        }
         if (status) emailConditions.push(eq(projects.status, status as string));
         if (archived !== undefined) emailConditions.push(eq(projects.isArchived, archived === 'true'));
         const emailMatched = await db.select().from(projects)
           .where(and(...emailConditions))
           .orderBy(desc(projects.lastUpdated));
-        const existingIds = new Set(projectsList.map(p => p.id));
+        const existingIds = new Set(projectsList.map((p: any) => p.id));
         for (const p of emailMatched) {
           if (!existingIds.has(p.id)) {
             projectsList.push(p);
@@ -3619,6 +4117,17 @@ export async function registerRoutes(
         }
       }
 
+      const programIdsSet = new Set(projectsList.map(p => p.programId).filter((id): id is number => id != null));
+      const programNameMap = new Map<number, string>();
+      if (programIdsSet.size > 0) {
+        const programs = await db.select({ id: loanPrograms.id, name: loanPrograms.name })
+          .from(loanPrograms)
+          .where(inArray(loanPrograms.id, Array.from(programIdsSet)));
+        for (const prog of programs) {
+          programNameMap.set(prog.id, prog.name);
+        }
+      }
+
       const projectsWithStats = projectsList.map(project => {
         const serialized: Record<string, any> = {};
         for (const [k, v] of Object.entries(project)) {
@@ -3628,6 +4137,11 @@ export async function registerRoutes(
         serialized.totalTasks = taskStatsMap.get(project.id)?.total || 0;
         serialized.completedDocs = docStatsMap.get(project.id)?.completed || 0;
         serialized.totalDocs = docStatsMap.get(project.id)?.total || 0;
+        if (project.programId != null) {
+          serialized.programName = programNameMap.get(project.programId) || null;
+        } else {
+          serialized.programName = null;
+        }
         return serialized;
       });
 
@@ -3682,7 +4196,7 @@ export async function registerRoutes(
       const projectNumber = await storage.generateProjectNumber();
       const borrowerToken = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
       
-      const userTenantId = await getTenantId(req.user!);
+      const userTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId,
         projectName,
@@ -3783,7 +4297,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
       
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -3870,7 +4384,7 @@ export async function registerRoutes(
       const tId = parseInt(req.params.taskId);
       const userId = req.user!.id;
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) return res.status(404).json({ error: 'Deal not found' });
 
       const [task] = await db.select().from(projectTasks)
@@ -3981,13 +4495,13 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
       
-      const existingProject = await storage.getProjectById(projectId, userId);
+      const existingProject = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!existingProject) {
         return res.status(404).json({ error: 'Project not found' });
       }
       
       const userRole = req.user!.role;
-      const isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'staff';
+      const isAdminUser = isAdminRole(userRole);
       const baseFields = [
         'projectName', 'status', 'loanAmount', 'interestRate', 'loanTermMonths',
         'loanType', 'propertyAddress', 'propertyType', 'borrowerName',
@@ -4009,7 +4523,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'No valid fields to update' });
       }
       
-      const updated = await storage.updateProject(projectId, userId, updates);
+      const updated = isAdminUser
+        ? await storage.updateProjectInternal(projectId, updates)
+        : await storage.updateProject(projectId, userId, updates);
       
       // Log activity
       await storage.createProjectActivity({
@@ -4049,7 +4565,7 @@ export async function registerRoutes(
       const taskId = parseInt(req.params.taskId);
       const { status, completedBy, documentUrl } = req.body;
       
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4184,7 +4700,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
       
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4216,6 +4732,7 @@ export async function registerRoutes(
           emailVerified: true,
           inviteToken,
           inviteStatus: 'none',
+          tenantId: project.tenantId || req.user!.tenantId || 1,
         } as any);
       } else {
         await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
@@ -4228,20 +4745,91 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/projects/:id/send-borrower-invite', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const projectId = parseInt(req.params.id);
+
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const borrowerEmail = project.borrowerEmail || (project as any).customerEmail;
+      if (!borrowerEmail) {
+        return res.status(400).json({ error: 'No borrower email on this deal' });
+      }
+
+      if (!project.borrowerEmail && borrowerEmail) {
+        await db.update(projects).set({ borrowerEmail: borrowerEmail }).where(eq(projects.id, projectId));
+      }
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      let user = await storage.getUserByEmail(borrowerEmail.toLowerCase().trim());
+      let inviteToken: string;
+
+      if (user && user.inviteToken) {
+        inviteToken = user.inviteToken;
+      } else {
+        inviteToken = generateRandomToken();
+        const fullNameForUser = project.borrowerName || `${(project as any).customerFirstName || ''} ${(project as any).customerLastName || ''}`.trim() || null;
+        if (!user) {
+          user = await storage.createUser({
+            email: borrowerEmail.toLowerCase().trim(),
+            fullName: fullNameForUser,
+            phone: project.borrowerPhone || (project as any).customerPhone || null,
+            role: 'borrower',
+            userType: 'borrower',
+            isActive: true,
+            emailVerified: true,
+            inviteToken,
+            inviteStatus: 'none',
+            tenantId: project.tenantId || req.user!.tenantId || 1,
+          } as any);
+        } else {
+          await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
+        }
+      }
+
+      if (!project.borrowerPortalEnabled) {
+        await db.update(projects).set({ borrowerPortalEnabled: true }).where(eq(projects.id, projectId));
+      }
+
+      const portalLink = `${baseUrl}/join/personal/${inviteToken}`;
+      const borrowerName = project.borrowerName || `${(project as any).customerFirstName || ''} ${(project as any).customerLastName || ''}`.trim() || 'Borrower';
+
+      const emailResult = await sendMagicLinkEmail(borrowerEmail, borrowerName, portalLink);
+
+      if (user) {
+        await db.update(users).set({ inviteStatus: 'sent', inviteTokenSentAt: new Date() }).where(eq(users.id, user.id));
+      }
+
+      res.json({
+        success: true,
+        borrowerLink: portalLink,
+        emailSent: emailResult.success,
+        borrowerEmail,
+      });
+    } catch (error) {
+      console.error('Send borrower invite error:', error);
+      res.status(500).json({ error: 'Failed to send borrower invite' });
+    }
+  });
+
   // Toggle borrower portal
   app.patch('/api/projects/:id/toggle-portal', authenticateUser, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
       
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
       
-      const updated = await storage.updateProject(projectId, userId, {
-        borrowerPortalEnabled: !project.borrowerPortalEnabled,
-      });
+      const updated = isAdminRole(req.user!.role)
+        ? await storage.updateProjectInternal(projectId, { borrowerPortalEnabled: !project.borrowerPortalEnabled })
+        : await storage.updateProject(projectId, userId, { borrowerPortalEnabled: !project.borrowerPortalEnabled });
       
       res.json({ borrowerPortalEnabled: updated?.borrowerPortalEnabled });
     } catch (error) {
@@ -4257,7 +4845,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const { name, size, contentType, documentType, documentCategory } = req.body;
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4322,7 +4910,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const { objectPath, fileName, fileSize, mimeType, documentType, documentCategory } = req.body;
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4343,11 +4931,12 @@ export async function registerRoutes(
         visibleToBorrower: true,
       });
 
+      const uploaderDisplayName = req.user!.fullName || req.user!.email || 'Unknown user';
       await storage.createProjectActivity({
         projectId,
         userId,
         activityType: 'document_uploaded',
-        activityDescription: `Document uploaded: ${fileName || 'New document'}`,
+        activityDescription: `"${fileName || 'New document'}" uploaded by ${uploaderDisplayName}`,
         visibleToBorrower: true,
       });
 
@@ -4370,9 +4959,10 @@ export async function registerRoutes(
       notifyDealAdmins(
         projectId,
         'document_uploaded',
-        'New Document Uploaded',
-        `${uploaderName} uploaded "${fileName || 'a document'}" to ${dealLabel}`,
-        userId
+        'Document Ready for Review',
+        `${uploaderName} uploaded "${fileName || 'a document'}" to ${dealLabel} — ready for your review`,
+        userId,
+        `/admin/deals/${projectId}?tab=documents`
       ).catch(err => console.error('Notification error:', err));
 
       // Google Drive sync (non-blocking)
@@ -4403,7 +4993,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
 
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4422,7 +5012,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4444,7 +5034,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const docId = parseInt(req.params.docId);
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) return res.status(404).json({ error: 'Project not found' });
 
       const { objectPath, fileName, fileSize, mimeType } = req.body;
@@ -4485,10 +5075,11 @@ export async function registerRoutes(
       const updated = (updateResult as any).rows?.[0] ?? null;
 
       const docLabel = updated?.document_name || fileName || 'Document';
+      const uploaderActorName = req.user!.fullName || req.user!.email || 'Unknown user';
 
       await db.execute(
         sql`INSERT INTO project_activity (project_id, user_id, activity_type, activity_description, visible_to_borrower)
-            VALUES (${projectId}, ${userId}, 'document_uploaded', ${`Document uploaded: ${docLabel}`}, true)`
+            VALUES (${projectId}, ${userId}, 'document_uploaded', ${`"${docLabel}" uploaded by ${uploaderActorName}`}, true)`
       );
 
       try {
@@ -4514,9 +5105,10 @@ export async function registerRoutes(
       notifyDealAdmins(
         projectId,
         'document_uploaded',
-        'New Document Uploaded',
-        `${uploaderName} uploaded "${updated?.document_name || fileName || 'a document'}" to ${dealLabel}`,
-        userId
+        'Document Ready for Review',
+        `${uploaderName} uploaded "${updated?.document_name || fileName || 'a document'}" to ${dealLabel} — ready for your review`,
+        userId,
+        `/admin/deals/${projectId}?tab=documents`
       ).catch(err => console.error('Notification error:', err));
 
       maybeAutoTriggerPipeline(projectId, userId);
@@ -4607,7 +5199,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const docId = parseInt(req.params.docId);
 
-      const project = await getProjectWithBorrowerAccess(projectId, userId, req.user!.role);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4621,7 +5213,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Document file not found' });
       }
 
-      const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
+      const currentUser = await storage.getUserById(userId);
+      if (currentUser && (currentUser.role === 'broker' || currentUser.role === 'borrower')) {
+        const allowedVisibility = ['all', currentUser.role];
+        if (doc.visibility && !allowedVisibility.includes(doc.visibility)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
+      let filePath = doc.filePath;
+      if (!filePath.startsWith('/objects/') && filePath.startsWith('https://')) {
+        filePath = objectStorageService.normalizeObjectEntityPath(filePath);
+      }
+
+      const objectFile = await objectStorageService.getObjectEntityFile(filePath);
 
       res.set('X-Frame-Options', 'SAMEORIGIN');
       res.removeHeader('Content-Security-Policy');
@@ -4638,8 +5243,12 @@ export async function registerRoutes(
       }
 
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
-      console.error('Borrower document download error:', error);
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Document file not found in storage: docId=${req.params.docId}, projectId=${req.params.id}`);
+        return res.status(404).json({ error: 'Document file not found in storage. The file may not have been uploaded successfully.' });
+      }
+      console.error('Document download error:', error);
       res.status(500).json({ error: 'Failed to download document' });
     }
   });
@@ -4673,12 +5282,43 @@ export async function registerRoutes(
   app.post('/api/admin/deals/:dealId/documents/:docId/drive/retry', authenticateUser, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const docId = parseInt(req.params.docId);
-      const { syncDealDocumentToDrive } = await import('./services/googleDrive');
+      const dealId = parseInt(req.params.dealId);
+
+      const { getParentFolderId, getAdminWithDriveTokens, syncDealDocumentToDrive } = await import('./services/googleDrive');
+      const parentFolderId = await getParentFolderId();
+      if (!parentFolderId) {
+        return res.status(400).json({ error: 'Google Drive integration is not configured. Please set the parent folder ID in Admin Settings > Integrations.' });
+      }
+      const adminWithDrive = await getAdminWithDriveTokens();
+      if (!adminWithDrive) {
+        return res.status(400).json({ error: 'No admin has connected Google Drive yet. Please connect via Admin Settings > Integrations.' });
+      }
+
+      const [doc] = await db.select().from(dealDocuments).where(
+        and(eq(dealDocuments.id, docId), eq(dealDocuments.dealId, dealId))
+      ).limit(1);
+      if (!doc) {
+        return res.status(404).json({ error: 'Document not found for this deal' });
+      }
+
+      const hasDirectFile = !!doc.filePath;
+      const fileRows = await db.select({ id: dealDocumentFiles.id }).from(dealDocumentFiles).where(eq(dealDocumentFiles.documentId, docId));
+      if (!hasDirectFile && fileRows.length === 0) {
+        return res.status(400).json({ error: 'No files to push — this document has no uploaded files yet.' });
+      }
+
       await syncDealDocumentToDrive(docId);
       res.json({ success: true });
     } catch (error: any) {
       console.error('Drive deal doc retry error:', error);
-      res.status(500).json({ error: error.message || 'Failed to upload to Drive' });
+      const msg = error.message || 'Failed to upload to Drive';
+      if (msg.includes('GOOGLE_DRIVE_NOT_CONNECTED')) {
+        return res.status(400).json({ error: 'No admin has connected Google Drive. Please connect via Admin Settings > Integrations.' });
+      }
+      if (msg.includes('Object not found') || msg.includes('not found')) {
+        return res.status(400).json({ error: 'The uploaded file could not be found in storage. The borrower may need to re-upload it.' });
+      }
+      res.status(500).json({ error: msg });
     }
   });
 
@@ -4817,7 +5457,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const { eventType, data } = req.body;
       
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4838,7 +5478,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const projectId = parseInt(req.params.id);
       
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -4928,8 +5568,16 @@ export async function registerRoutes(
 
       const updates = req.body;
       delete updates.id;
-      delete updates.email; // can't change email
+      delete updates.email;
       delete updates.createdAt;
+      delete updates.updatedAt;
+      delete updates.profileData;
+      if (updates.annualIncome === '' || updates.annualIncome === undefined) {
+        updates.annualIncome = null;
+      } else if (updates.annualIncome != null) {
+        const parsed = parseFloat(updates.annualIncome);
+        updates.annualIncome = Number.isNaN(parsed) ? null : parsed;
+      }
       updates.updatedAt = new Date();
 
       const [updated] = await db.update(borrowerProfiles)
@@ -4962,7 +5610,12 @@ export async function registerRoutes(
         .where(and(eq(borrowerDocuments.borrowerProfileId, profile.id), eq(borrowerDocuments.isActive, true)))
         .orderBy(borrowerDocuments.uploadedAt);
 
-      res.json({ documents: docs });
+      const serialized = docs.map(d => ({
+        ...d,
+        uploadedAt: d.uploadedAt ? d.uploadedAt.toISOString() : null,
+        updatedAt: d.updatedAt ? d.updatedAt.toISOString() : null,
+      }));
+      res.json({ documents: serialized });
     } catch (error) {
       console.error('Get borrower documents error:', error);
       res.status(500).json({ error: 'Failed to load borrower documents' });
@@ -5109,6 +5762,14 @@ export async function registerRoutes(
       delete updates.id;
       delete updates.email;
       delete updates.createdAt;
+      delete updates.updatedAt;
+      delete updates.profileData;
+      if (updates.annualIncome === '' || updates.annualIncome === undefined) {
+        updates.annualIncome = null;
+      } else if (updates.annualIncome != null) {
+        const parsed = parseFloat(updates.annualIncome);
+        updates.annualIncome = Number.isNaN(parsed) ? null : parsed;
+      }
       updates.updatedAt = new Date();
 
       let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
@@ -5136,7 +5797,7 @@ export async function registerRoutes(
   app.get('/api/borrower/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
-      if (user.role !== 'borrower') return res.status(403).json({ error: 'Borrower access only' });
+      if (user.role !== 'borrower' && user.role !== 'super_admin' && user.role !== 'admin') return res.status(403).json({ error: 'Borrower access only' });
 
       const email = user.email.toLowerCase();
       const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
@@ -5146,7 +5807,12 @@ export async function registerRoutes(
         .where(and(eq(borrowerDocuments.borrowerProfileId, profile.id), eq(borrowerDocuments.isActive, true)))
         .orderBy(borrowerDocuments.uploadedAt);
 
-      res.json(docs);
+      const serialized = docs.map(d => ({
+        ...d,
+        uploadedAt: d.uploadedAt ? d.uploadedAt.toISOString() : new Date().toISOString(),
+        updatedAt: d.updatedAt ? d.updatedAt.toISOString() : null,
+      }));
+      res.json(serialized);
     } catch (error) {
       console.error('Get borrower documents error:', error);
       res.status(500).json({ error: 'Failed to load documents' });
@@ -5156,7 +5822,7 @@ export async function registerRoutes(
   app.post('/api/borrower/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
-      if (user.role !== 'borrower') return res.status(403).json({ error: 'Borrower access only' });
+      if (user.role !== 'borrower' && user.role !== 'super_admin' && user.role !== 'admin') return res.status(403).json({ error: 'Borrower access only' });
 
       const email = user.email.toLowerCase();
       let [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
@@ -5166,6 +5832,7 @@ export async function registerRoutes(
       }
 
       const { fileName, fileType, fileSize, storagePath, category, description, expirationDate } = req.body;
+      const now = new Date();
       const [doc] = await db.insert(borrowerDocuments).values({
         borrowerProfileId: profile.id,
         fileName: fileName || 'Untitled',
@@ -5175,9 +5842,12 @@ export async function registerRoutes(
         category: category || 'general',
         description: description || null,
         expirationDate: expirationDate || null,
+        uploadedAt: now,
+        updatedAt: now,
       }).returning();
 
-      res.json(doc);
+      const serialized = { ...doc, uploadedAt: doc.uploadedAt?.toISOString() || now.toISOString(), updatedAt: doc.updatedAt?.toISOString() || now.toISOString() };
+      res.json(serialized);
     } catch (error) {
       console.error('Create borrower document error:', error);
       res.status(500).json({ error: 'Failed to create document' });
@@ -5187,7 +5857,7 @@ export async function registerRoutes(
   app.delete('/api/borrower/documents/:docId', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
-      if (user.role !== 'borrower') return res.status(403).json({ error: 'Borrower access only' });
+      if (user.role !== 'borrower' && user.role !== 'super_admin' && user.role !== 'admin') return res.status(403).json({ error: 'Borrower access only' });
 
       const email = user.email.toLowerCase();
       const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
@@ -5208,7 +5878,7 @@ export async function registerRoutes(
   app.patch('/api/borrower/documents/:docId/classification', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
-      if (user.role !== 'borrower') return res.status(403).json({ error: 'Borrower access only' });
+      if (user.role !== 'borrower' && user.role !== 'super_admin' && user.role !== 'admin') return res.status(403).json({ error: 'Borrower access only' });
 
       const email = user.email.toLowerCase();
       const [profile] = await db.select().from(borrowerProfiles).where(eq(borrowerProfiles.email, email));
@@ -5312,8 +5982,6 @@ export async function registerRoutes(
   registerAdminProgramsRoutes(app, { storage, db, authenticateUser, requireAdmin, requireOnboarding, requirePermission, objectStorageService });
 
   // Note: Old messaging routes code has been moved to routes/messaging.ts
-
-  const isAdminRole = (role: string | undefined) => ['admin', 'super_admin', 'staff', 'lender', 'processor'].includes(role || '');
 
   // Get single thread with messages
   app.get('/api/messages/threads/:id', authenticateUser, async (req: AuthRequest, res: Response) => {
@@ -5684,7 +6352,7 @@ export async function registerRoutes(
   // Admin Dashboard Stats
   app.get('/api/admin/dashboard', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const stats = await storage.getAdminDashboardStats(tenantId);
       const recentActivity = await storage.getRecentAdminActivity(10);
       
@@ -5705,17 +6373,18 @@ export async function registerRoutes(
       const user = await storage.getUserById(req.user!.id);
       const isFullAccess = user && ['admin', 'super_admin'].includes(user.role);
       const filterUserId = isFullAccess ? undefined : req.user!.id;
+      const tenantId = user?.role === 'super_admin' ? null : (user?.tenantId || null);
 
-      const tasks = await storage.getTaskBoardTasks({ date, status, userId: filterUserId });
+      const tasks = await storage.getTaskBoardTasks({ date, status, userId: filterUserId, tenantId });
       
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
       let dateCounts: Record<string, number> = {};
       if (startDate && endDate) {
-        dateCounts = await storage.getTaskBoardDateCounts(startDate, endDate, filterUserId);
+        dateCounts = await storage.getTaskBoardDateCounts(startDate, endDate, filterUserId, tenantId);
       }
 
-      const pendingCount = await storage.getPendingProjectTasksCount(filterUserId);
+      const pendingCount = await storage.getPendingProjectTasksCount(filterUserId, tenantId);
       
       res.json({ tasks, dateCounts, pendingCount });
     } catch (error) {
@@ -5728,7 +6397,7 @@ export async function registerRoutes(
   app.patch('/api/admin/task-board/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, taskTitle, taskDescription, dueDate, priority, assignedTo } = req.body;
+      const { status, taskTitle, taskDescription, dueDate, priority, assignedTo, source } = req.body;
       
       const updates: any = {};
       if (status !== undefined) updates.status = status;
@@ -5741,6 +6410,23 @@ export async function registerRoutes(
       if (status === 'completed') {
         updates.completedAt = new Date();
         updates.completedBy = req.user?.fullName || req.user?.email || 'Admin';
+      }
+
+      if (source === 'commercial') {
+        const [task] = await db.select().from(intakeDealTasks).where(eq(intakeDealTasks.id, id));
+        if (!task) return res.status(404).json({ error: 'Commercial task not found' });
+        const { intakeDeals } = await import('@shared/schema');
+        const [deal] = await db.select().from(intakeDeals).where(eq(intakeDeals.id, task.dealId));
+        if (!deal) return res.status(404).json({ error: 'Deal not found' });
+        const userTenantId = req.user?.tenantId;
+        if (req.user?.role !== 'super_admin' && userTenantId && deal.tenantId && deal.tenantId !== userTenantId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        const [updated] = await db.update(intakeDealTasks)
+          .set(updates)
+          .where(eq(intakeDealTasks.id, id))
+          .returning();
+        return res.json({ ...updated, source: 'commercial' });
       }
       
       const existingTask = await storage.getTaskById(id);
@@ -5828,6 +6514,8 @@ export async function registerRoutes(
 
       const inviteToken = generateRandomToken();
       
+      const adminTenantId = req.user!.tenantId || 1;
+
       const newUser = await storage.createUser({
         email,
         passwordHash: null,
@@ -5843,6 +6531,8 @@ export async function registerRoutes(
         inviteToken,
         inviteStatus: 'sent',
         inviteTokenSentAt: new Date(),
+        tenantId: adminTenantId,
+        invitedBy: req.user!.id,
       });
 
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -5927,6 +6617,7 @@ export async function registerRoutes(
           fullName: user.fullName,
           companyName: user.companyName,
           phone: user.phone,
+          title: user.title,
           role: user.role,
           userType: user.role,
           isActive: user.isActive,
@@ -6047,7 +6738,11 @@ export async function registerRoutes(
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       const resetUrl = `${baseUrl}/reset-password/${resetToken}`;
 
-      await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
+      const emailResult = await sendPasswordResetEmail(user.email, user.fullName || 'User', resetUrl);
+      if (!emailResult.success) {
+        console.error('Password reset email failed:', emailResult.error);
+        return res.status(500).json({ error: emailResult.error || 'Failed to send password reset email' });
+      }
 
       await storage.createAdminActivity({
         userId: req.user!.id,
@@ -6057,9 +6752,100 @@ export async function registerRoutes(
       });
 
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin reset password error:', error);
-      res.status(500).json({ error: 'Failed to send password reset email' });
+      res.status(500).json({ error: error.message || 'Failed to send password reset email' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/magic-link', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const magicToken = generateRandomToken();
+      const magicExpires = new Date(Date.now() + 30 * 60 * 1000);
+      const crypto = await import('crypto');
+      const tokenHash = crypto.createHash('sha256').update(magicToken).digest('hex');
+
+      await db.update(users).set({
+        magicLinkToken: tokenHash,
+        magicLinkExpires: magicExpires,
+      }).where(eq(users.id, userId));
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const magicUrl = `${baseUrl}/auth/magic/${magicToken}`;
+
+      const emailResult = await sendMagicLinkEmail(user.email, user.fullName || 'User', magicUrl);
+      if (!emailResult.success) {
+        console.error('Magic link email failed:', emailResult.error);
+        return res.status(500).json({ error: emailResult.error || 'Failed to send magic link email' });
+      }
+
+      try {
+        await storage.createAdminActivity({
+          userId: req.user!.id,
+          actionType: 'magic_link_sent',
+          actionDescription: `Admin sent magic login link to ${user.email}`,
+          metadata: { targetUserId: userId },
+          projectId: 0
+        });
+      } catch (activityErr) {
+        console.warn('Failed to log magic link activity:', activityErr);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Magic link error:', error);
+      res.status(500).json({ error: error.message || 'Failed to send magic link' });
+    }
+  });
+
+  app.post('/api/auth/magic/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const crypto = await import('crypto');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const [user] = await db.select().from(users).where(eq(users.magicLinkToken, tokenHash));
+
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired magic link' });
+      }
+
+      if (!user.magicLinkExpires || user.magicLinkExpires < new Date()) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(400).json({ error: 'This magic link has expired. Please request a new one.' });
+      }
+
+      if (!user.isActive) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(403).json({ error: 'This account has been deactivated.' });
+      }
+
+      if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
+        await db.update(users).set({ magicLinkToken: null, magicLinkExpires: null }).where(eq(users.id, user.id));
+        return res.status(403).json({ error: 'This account is temporarily locked. Please try again later.' });
+      }
+
+      await db.update(users).set({
+        magicLinkToken: null,
+        magicLinkExpires: null,
+        lastLoginAt: new Date(),
+        emailVerified: true,
+      }).where(eq(users.id, user.id));
+
+      const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
+      setAuthCookie(res, authToken);
+
+      let redirectTo = '/';
+      if (user.role === 'broker') redirectTo = '/commercial-deals';
+      else if (['admin', 'lender', 'super_admin', 'processor'].includes(user.role)) redirectTo = '/admin/dashboard';
+
+      res.json({ success: true, redirectTo, role: user.role });
+    } catch (error: any) {
+      console.error('Magic link verification error:', error);
+      res.status(500).json({ error: 'Failed to verify magic link' });
     }
   });
 
@@ -6098,6 +6884,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/join/personal/:token/auto-login', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
+      if (!user) return res.status(404).json({ error: 'Invalid invite link' });
+
+      if (!user.passwordHash) {
+        return res.status(400).json({ error: 'Account not set up yet', needsSetup: true });
+      }
+
+      const newToken = generateRandomToken();
+      await db.update(users).set({ inviteToken: newToken, lastLoginAt: new Date() }).where(eq(users.id, user.id));
+
+      const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
+      setAuthCookie(res, authToken);
+
+      res.json({ success: true, userType: user.role, newToken: newToken });
+    } catch (error) {
+      console.error('Personal invite auto-login error:', error);
+      res.status(500).json({ error: 'Auto-login failed' });
+    }
+  });
+
   // Public - Complete personal invite registration
   app.post('/api/join/personal/:token/register', async (req: Request, res: Response) => {
     try {
@@ -6125,6 +6934,7 @@ export async function registerRoutes(
         inviteStatus: 'joined',
         emailVerified: true,
         onboardingCompleted: true,
+        lastLoginAt: new Date(),
       }).where(eq(users.id, user.id));
 
       const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
@@ -6162,6 +6972,8 @@ export async function registerRoutes(
       const primaryRole = getPrimaryRole(userRoles);
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
       
+      const adminTenantId = req.user!.tenantId || 1;
+
       const newUser = await storage.createUser({
         email: email.toLowerCase().trim(),
         passwordHash: null,
@@ -6178,6 +6990,7 @@ export async function registerRoutes(
         inviteTokenExpires: inviteExpires,
         invitedBy: req.user!.id,
         inviteStatus: 'pending',
+        tenantId: adminTenantId,
       });
       
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -6256,9 +7069,20 @@ export async function registerRoutes(
         inviteStatus: 'accepted',
         emailVerified: true,
         onboardingCompleted: true,
+        lastLoginAt: new Date(),
       });
+
+      if (user.role === 'broker') {
+        const portalLink = `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/broker-portal`;
+        sendBrokerWelcomeEmail(user.email, user.fullName || user.email, portalLink, user.tenantId, user.companyName).catch(err => {
+          console.error('Failed to send broker welcome email (invite accept):', err);
+        });
+      }
+
+      const authToken = generateToken(user.id, user.email, user.tokenVersion ?? 0);
+      setAuthCookie(res, authToken);
       
-      res.json({ success: true, message: 'Account setup complete. You can now sign in.' });
+      res.json({ success: true, redirectTo: '/quotes' });
     } catch (error) {
       console.error('Accept invite error:', error);
       res.status(500).json({ error: 'Failed to set up account' });
@@ -6360,10 +7184,20 @@ export async function registerRoutes(
       const { getPrimaryRole } = await import('@shared/schema');
       const updates: Record<string, any> = {};
       
+      const callerRole = req.user!.role;
+      const privilegedRoles = ['super_admin', 'admin', 'lender'];
+      const canSetPrivilegedRole = callerRole === 'super_admin';
+
       if (rolesInput !== undefined && Array.isArray(rolesInput)) {
+        if (rolesInput.some((r: string) => privilegedRoles.includes(r)) && !canSetPrivilegedRole) {
+          return res.status(403).json({ error: 'Only super admins can assign privileged roles' });
+        }
         updates.roles = rolesInput;
         updates.role = getPrimaryRole(rolesInput);
       } else if (role !== undefined && ['super_admin', 'lender', 'processor', 'broker', 'borrower', 'admin', 'staff', 'user'].includes(role)) {
+        if (privilegedRoles.includes(role) && !canSetPrivilegedRole) {
+          return res.status(403).json({ error: 'Only super admins can assign privileged roles' });
+        }
         updates.role = role;
         updates.roles = [role];
       }
@@ -6518,6 +7352,128 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/admin/users/broadcast', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const broadcastSchema = z.object({
+        userIds: z.array(z.number().int().positive()).min(1, 'At least one user must be selected'),
+        subject: z.string().optional().default(''),
+        body: z.string().min(1, 'Message body is required'),
+        channels: z.enum(['email', 'inapp', 'both']),
+      });
+
+      const parsed = broadcastSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0]?.message || 'Invalid request' });
+      }
+
+      const { userIds, subject, body, channels } = parsed.data;
+
+      const sendEmail = channels === 'email' || channels === 'both';
+      const sendInApp = channels === 'inapp' || channels === 'both';
+
+      if (sendEmail && (!subject || !subject.trim())) {
+        return res.status(400).json({ error: 'Subject is required for email delivery' });
+      }
+
+      const adminTenantId = getTenantId(req.user!);
+      let tenantFilter = inArray(users.id, userIds);
+      if (adminTenantId) {
+        tenantFilter = and(inArray(users.id, userIds), eq(users.tenantId, adminTenantId))!;
+      }
+      const targetUsers = await db.select().from(users).where(tenantFilter);
+      if (targetUsers.length === 0) {
+        return res.status(400).json({ error: 'No valid users found' });
+      }
+
+      const stats = { emailsSent: 0, emailsFailed: 0, inAppSent: 0, inAppFailed: 0 };
+
+      function parseName(fullName: string): { firstName: string; lastName: string } {
+        const parts = fullName.trim().split(' ');
+        if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+        return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+      }
+
+      function personalizeText(template: string, data: { firstName: string; lastName: string; companyName: string; email: string; role: string }): string {
+        return template
+          .replace(/\{\{firstName\}\}/gi, data.firstName)
+          .replace(/\{\{lastName\}\}/gi, data.lastName)
+          .replace(/\{\{companyName\}\}/gi, data.companyName)
+          .replace(/\{\{email\}\}/gi, data.email)
+          .replace(/\{\{role\}\}/gi, data.role);
+      }
+
+      if (sendEmail) {
+        const { getResendClient } = await import('./email');
+        const { client: resend, fromEmail } = await getResendClient();
+
+        for (const user of targetUsers) {
+          const { firstName, lastName } = parseName(user.fullName || user.email);
+          const mergeData = {
+            firstName,
+            lastName,
+            companyName: user.companyName || '',
+            email: user.email,
+            role: user.role || 'user'
+          };
+
+          const personalizedSubject = personalizeText(subject, mergeData);
+          const personalizedBody = personalizeText(body, mergeData);
+
+          try {
+            await resend.emails.send({
+              from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+              to: user.email,
+              subject: personalizedSubject,
+              html: `<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background-color:#1e40af;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background-color:#f8fafc;padding:30px;border-radius:0 0 8px 8px}.footer{text-align:center;color:#64748b;font-size:12px;margin-top:20px;padding:20px}</style></head><body><div class="container"><div class="header"><h1>Lendry.AI</h1></div><div class="content">${personalizedBody.replace(/\n/g, '<br/>')}</div><div class="footer"><p>Lendry.AI</p></div></div></body></html>`
+            });
+            stats.emailsSent++;
+          } catch (error: any) {
+            console.error(`Failed to send broadcast email to ${user.email}:`, error);
+            stats.emailsFailed++;
+          }
+        }
+      }
+
+      if (sendInApp) {
+        for (const user of targetUsers) {
+          const { firstName, lastName } = parseName(user.fullName || user.email);
+          const mergeData = {
+            firstName,
+            lastName,
+            companyName: user.companyName || '',
+            email: user.email,
+            role: user.role || 'user'
+          };
+
+          const personalizedBody = personalizeText(body, mergeData);
+
+          try {
+            await db.insert(notifications).values({
+              userId: user.id,
+              type: 'admin_broadcast',
+              title: subject ? personalizeText(subject, mergeData) : 'Message from Admin',
+              message: personalizedBody,
+              isRead: false
+            });
+            stats.inAppSent++;
+          } catch (error: any) {
+            console.error(`Failed to create in-app notification for user ${user.id}:`, error);
+            stats.inAppFailed++;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        stats,
+        message: `Message sent to ${targetUsers.length} user(s)`
+      });
+    } catch (error) {
+      console.error('User broadcast error:', error);
+      res.status(500).json({ error: 'Failed to send broadcast' });
+    }
+  });
+
   // Team Permissions - Get all permissions (super_admin only)
   app.get('/api/admin/permissions', authenticateUser, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
     try {
@@ -6664,7 +7620,7 @@ export async function registerRoutes(
   // Admin - Pipeline grouped by program (for Kanban + pipeline summary views)
   app.get('/api/admin/pipeline', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const allProjects = await storage.getAllProjects({ status: 'active', tenantId });
 
       const projectsWithStages = await Promise.all(allProjects.map(async (p) => {
@@ -6721,6 +7677,35 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Admin pipeline error:', error);
       res.status(500).json({ error: 'Failed to load pipeline data' });
+    }
+  });
+
+  // Admin - Get all programs with their workflow stages (for stage filter dropdown)
+  app.get('/api/admin/program-stages', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const allPrograms = await db.select({ id: loanPrograms.id, name: loanPrograms.name })
+        .from(loanPrograms)
+        .where(eq(loanPrograms.isActive, true))
+        .orderBy(asc(loanPrograms.name));
+
+      const result = await Promise.all(allPrograms.map(async (prog) => {
+        const steps = await db.select({
+          stepOrder: programWorkflowSteps.stepOrder,
+          stepName: workflowStepDefinitions.name,
+          stepKey: workflowStepDefinitions.key,
+        })
+        .from(programWorkflowSteps)
+        .innerJoin(workflowStepDefinitions, eq(programWorkflowSteps.stepDefinitionId, workflowStepDefinitions.id))
+        .where(eq(programWorkflowSteps.programId, prog.id))
+        .orderBy(asc(programWorkflowSteps.stepOrder));
+
+        return { programId: prog.id, programName: prog.name, steps };
+      }));
+
+      res.json(result.filter(p => p.steps.length > 0));
+    } catch (error) {
+      console.error('Admin get program stages error:', error);
+      res.status(500).json({ error: 'Failed to load program stages' });
     }
   });
 
@@ -6845,7 +7830,7 @@ export async function registerRoutes(
               .join(', ');
 
             const portalUrl = stageProj.borrowerPortalToken
-              ? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ''}/portal/${stageProj.borrowerPortalToken}`
+              ? `${process.env.BASE_URL || `${req.protocol}://${req.get('host')}`}/portal/${stageProj.borrowerPortalToken}`
               : null;
 
             const [borrowerUser] = await db.select({ id: users.id }).from(users)
@@ -6907,7 +7892,7 @@ export async function registerRoutes(
       const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const projectsList = await storage.getAllProjects({ status, stage, userId, tenantId });
 
       // Batch-fetch all unique owner IDs to avoid N+1 queries
@@ -6940,7 +7925,7 @@ export async function registerRoutes(
 
   app.get('/api/admin/portal-preview-deals', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const deals = await db.select({
         id: projects.id,
         dealName: projects.projectName,
@@ -6954,7 +7939,7 @@ export async function registerRoutes(
         .from(projects)
         .where(
           and(
-            eq(projects.tenantId, tenantId),
+            ...(tenantId != null ? [eq(projects.tenantId, tenantId)] : []),
             isNotNull(projects.borrowerPortalToken),
           )
         )
@@ -7048,6 +8033,7 @@ export async function registerRoutes(
         propertyAddress: (v) => v || null,
         propertyType: (v) => v || null,
         currentStage: (v) => v || null,
+        appraisalStatus: (v) => v || null,
         brokerName: (v) => v || null,
         prepaymentPenalty: (v) => v || null,
         holdbackAmount: (v) => v !== null && v !== '' ? Number(v) : null,
@@ -7110,7 +8096,7 @@ export async function registerRoutes(
   app.patch('/api/admin/deals/:dealId/people', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { borrowerName, borrowerEmail, borrowerPhone, brokerId } = req.body;
+      const { borrowerName, borrowerEmail, borrowerPhone, brokerId, brokerName, brokerEmail, brokerPhone, brokerCompany } = req.body;
 
       const updateData: Record<string, any> = {};
 
@@ -7118,6 +8104,39 @@ export async function registerRoutes(
       if (borrowerEmail !== undefined) updateData.borrowerEmail = borrowerEmail || null;
       if (borrowerPhone !== undefined) updateData.borrowerPhone = borrowerPhone || null;
       if (brokerId !== undefined) updateData.userId = brokerId;
+      if (brokerName !== undefined) updateData.brokerName = brokerName || null;
+      if (brokerEmail !== undefined) updateData.brokerEmail = brokerEmail || null;
+      if (brokerPhone !== undefined) updateData.brokerPhone = brokerPhone || null;
+      if (brokerCompany !== undefined) updateData.brokerCompany = brokerCompany || null;
+
+      if (brokerEmail !== undefined && brokerEmail) {
+        const existingProject = await storage.getProjectByIdInternal(dealId);
+        const oldBrokerEmail = existingProject?.brokerEmail?.toLowerCase().trim();
+        const newBrokerEmail = brokerEmail.toLowerCase().trim();
+
+        if (oldBrokerEmail !== newBrokerEmail) {
+          let brokerUser = await storage.getUserByEmail(newBrokerEmail);
+          if (!brokerUser) {
+            const inviteToken = generateRandomToken();
+            brokerUser = await storage.createUser({
+              email: newBrokerEmail,
+              passwordHash: null,
+              fullName: brokerName || null,
+              companyName: brokerCompany || null,
+              phone: brokerPhone || null,
+              role: 'broker',
+              roles: ['broker'],
+              userType: 'broker',
+              isActive: true,
+              emailVerified: false,
+              inviteToken,
+              inviteStatus: 'none',
+              tenantId: existingProject?.tenantId || req.user!.tenantId || 1,
+            });
+          }
+          updateData.userId = brokerUser.id;
+        }
+      }
 
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
@@ -7149,8 +8168,10 @@ export async function registerRoutes(
         borrowerEmail: updated.borrowerEmail,
         borrowerPhone: updated.borrowerPhone,
         brokerId: updated.userId,
-        brokerName: userName,
-        brokerEmail: userEmail,
+        brokerName: updated.brokerName || userName,
+        brokerEmail: updated.brokerEmail || userEmail,
+        brokerPhone: updated.brokerPhone,
+        brokerCompany: updated.brokerCompany,
       });
     } catch (error) {
       console.error('Admin update deal people error:', error);
@@ -7266,7 +8287,7 @@ export async function registerRoutes(
     }
   });
 
-  // Admin - Convert deal to a different loan program (preserves uploaded documents)
+  // Admin - Convert deal to a different loan program (additive merge — preserves all existing data)
   app.post('/api/admin/projects/:id/convert-program', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
@@ -7296,7 +8317,7 @@ export async function registerRoutes(
         projectId,
         userId: req.user!.id,
         activityType: 'program_converted',
-        activityDescription: `Loan program changed to "${result.programName || 'Unknown'}". ${result.documentsPreserved} uploaded documents preserved. ${result.stagesCreated} stages, ${result.tasksCreated} tasks, ${result.documentsCreated} document requirements created.`,
+        activityDescription: `Loan program changed to "${result.programName || 'Unknown'}". Pipeline additively synced — existing data preserved. ${result.documentsPreserved} uploaded document(s) retained.`,
         visibleToBorrower: false,
       });
 
@@ -7311,6 +8332,44 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Convert program error:', error);
       res.status(500).json({ error: 'Failed to convert loan program' });
+    }
+  });
+
+  // Admin - Re-sync deal pipeline to its currently assigned program (additive, no data loss)
+  app.post('/api/admin/projects/:id/sync-program', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProjectByIdInternal(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      if (!project.programId) {
+        return res.status(400).json({ error: 'No program linked to this project. Please assign a program first.' });
+      }
+
+      const { syncDealToCurrentProgram } = await import('./services/projectPipeline');
+      const result = await syncDealToCurrentProgram(projectId);
+
+      await storage.createProjectActivity({
+        projectId,
+        userId: req.user!.id,
+        activityType: 'program_synced',
+        activityDescription: `Pipeline re-synced to program "${result.programName || 'Unknown'}". Existing data preserved. ${result.documentsPreserved} uploaded document(s) retained.`,
+        visibleToBorrower: false,
+      });
+
+      res.json({
+        success: true,
+        stagesCreated: result.stagesCreated,
+        tasksCreated: result.tasksCreated,
+        documentsCreated: result.documentsCreated,
+        documentsPreserved: result.documentsPreserved,
+        programName: result.programName,
+      });
+    } catch (error) {
+      console.error('Sync program error:', error);
+      res.status(500).json({ error: 'Failed to sync loan program' });
     }
   });
 
@@ -7576,7 +8635,7 @@ export async function registerRoutes(
   // Admin - System settings
   app.get('/api/admin/settings', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const settings = await storage.getAllSettings(tenantId);
       res.json({ settings });
     } catch (error) {
@@ -7599,7 +8658,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Value is required' });
       }
 
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const setting = await storage.upsertSetting(key, value, description || null, req.user!.id, tenantId);
       
       res.json({ setting });
@@ -7612,7 +8671,7 @@ export async function registerRoutes(
   app.delete('/api/admin/settings/:key', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const { key } = req.params;
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       await storage.deleteSetting(key, tenantId);
       res.json({ success: true });
     } catch (error) {
@@ -8273,7 +9332,7 @@ export async function registerRoutes(
         ? new Date(targetCloseDate) 
         : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
       
-      const adminTenantId = await getTenantId(req.user!);
+      const adminTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId: req.user!.id,
         projectName: `${borrowerName} - ${propertyAddress}`,
@@ -8354,11 +9413,15 @@ export async function registerRoutes(
         lenderOriginationPoints: projects.lenderOriginationPoints,
         brokerOriginationPoints: projects.brokerOriginationPoints,
         brokerName: projects.brokerName,
+        brokerEmail: projects.brokerEmail,
+        brokerPhone: projects.brokerPhone,
+        brokerCompany: projects.brokerCompany,
         prepaymentPenalty: projects.prepaymentPenalty,
         holdbackAmount: projects.holdbackAmount,
         googleDriveFolderId: projects.googleDriveFolderId,
         loanNumber: projects.loanNumber,
         googleDriveFolderUrl: projects.googleDriveFolderUrl,
+        appraisalStatus: projects.appraisalStatus,
         userName: users.fullName,
         userEmail: users.email,
       })
@@ -8492,6 +9555,9 @@ export async function registerRoutes(
         lenderOriginationPoints: project.lenderOriginationPoints,
         brokerOriginationPoints: project.brokerOriginationPoints,
         brokerName: project.brokerName,
+        brokerEmail: project.brokerEmail || project.userEmail,
+        brokerPhone: project.brokerPhone,
+        brokerCompany: project.brokerCompany,
         prepaymentPenalty: project.prepaymentPenalty,
         holdbackAmount: project.holdbackAmount,
         loanAmount: project.loanAmount,
@@ -8499,7 +9565,23 @@ export async function registerRoutes(
         loanNumber: project.loanNumber,
         googleDriveFolderId: project.googleDriveFolderId,
         googleDriveFolderUrl: project.googleDriveFolderUrl,
+        appraisalStatus: project.appraisalStatus,
+        brokerProfile: null as { brokerCompanyName: string | null; brokerLicenseNumber: string | null; brokerOperatingStates: string[] | null; brokerYearsExperience: number | null; brokerPreferredLoanTypes: string[] | null } | null,
       };
+
+      const brokerLookupEmail = project.brokerEmail || project.userEmail;
+      if (brokerLookupEmail) {
+        const [brokerUser] = await db.select({
+          brokerCompanyName: users.brokerCompanyName,
+          brokerLicenseNumber: users.brokerLicenseNumber,
+          brokerOperatingStates: users.brokerOperatingStates,
+          brokerYearsExperience: users.brokerYearsExperience,
+          brokerPreferredLoanTypes: users.brokerPreferredLoanTypes,
+        }).from(users).where(eq(users.email, brokerLookupEmail)).limit(1);
+        if (brokerUser && (brokerUser.brokerCompanyName || brokerUser.brokerLicenseNumber || brokerUser.brokerOperatingStates || brokerUser.brokerYearsExperience || brokerUser.brokerPreferredLoanTypes)) {
+          deal.brokerProfile = brokerUser;
+        }
+      }
       
       const docs = await db.select()
         .from(dealDocuments)
@@ -8547,7 +9629,31 @@ export async function registerRoutes(
         dealStages = filtered;
       }
 
-      res.json({ deal, documents: docs, project, properties: props, stages: dealStages });
+      const rawActivity = await db.select({
+        id: projectActivity.id,
+        projectId: projectActivity.projectId,
+        userId: projectActivity.userId,
+        activityType: projectActivity.activityType,
+        activityDescription: projectActivity.activityDescription,
+        oldValue: projectActivity.oldValue,
+        newValue: projectActivity.newValue,
+        metadata: projectActivity.metadata,
+        visibleToBorrower: projectActivity.visibleToBorrower,
+        isInternal: projectActivity.isInternal,
+        createdAt: projectActivity.createdAt,
+        actorName: sql<string | null>`COALESCE(${users.fullName}, ${users.email})`,
+      })
+        .from(projectActivity)
+        .leftJoin(users, eq(projectActivity.userId, users.id))
+        .where(eq(projectActivity.projectId, projectId))
+        .orderBy(desc(projectActivity.createdAt));
+
+      const activity = rawActivity.map(a => ({
+        ...a,
+        createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
+      }));
+
+      res.json({ deal, documents: docs, project, properties: props, stages: dealStages, activity });
     } catch (error) {
       console.error('Admin get deal error:', error);
       res.status(500).json({ error: 'Failed to load deal' });
@@ -8645,7 +9751,7 @@ export async function registerRoutes(
   app.post('/api/admin/deals/:dealId/properties', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const dealId = parseInt(req.params.dealId);
-      const { address, city, state, zip, propertyType, estimatedValue, isPrimary } = req.body;
+      const { address, city, state, zip, propertyType, estimatedValue, isPrimary, units, monthlyRent, annualTaxes, annualInsurance, metadata } = req.body;
       if (!address || !address.trim()) {
         return res.status(400).json({ error: 'Address is required' });
       }
@@ -8662,6 +9768,11 @@ export async function registerRoutes(
         zip: zip || null,
         propertyType: propertyType || null,
         estimatedValue: estimatedValue || null,
+        units: units != null ? Number(units) : null,
+        monthlyRent: monthlyRent != null ? Number(monthlyRent) : null,
+        annualTaxes: annualTaxes != null ? Number(annualTaxes) : null,
+        annualInsurance: annualInsurance != null ? Number(annualInsurance) : null,
+        metadata: metadata || null,
         isPrimary: isPrimary || count === 0,
         sortOrder: count,
       }).returning();
@@ -8677,7 +9788,7 @@ export async function registerRoutes(
     try {
       const dealId = parseInt(req.params.dealId);
       const propId = parseInt(req.params.propId);
-      const { address, city, state, zip, propertyType, estimatedValue, isPrimary } = req.body;
+      const { address, city, state, zip, propertyType, estimatedValue, isPrimary, units, monthlyRent, annualTaxes, annualInsurance, metadata } = req.body;
       const updateData: Record<string, any> = {};
       if (address !== undefined) updateData.address = address.trim();
       if (city !== undefined) updateData.city = city;
@@ -8685,6 +9796,11 @@ export async function registerRoutes(
       if (zip !== undefined) updateData.zip = zip;
       if (propertyType !== undefined) updateData.propertyType = propertyType;
       if (estimatedValue !== undefined) updateData.estimatedValue = estimatedValue;
+      if (units !== undefined) updateData.units = units != null ? Number(units) : null;
+      if (monthlyRent !== undefined) updateData.monthlyRent = monthlyRent != null ? Number(monthlyRent) : null;
+      if (annualTaxes !== undefined) updateData.annualTaxes = annualTaxes != null ? Number(annualTaxes) : null;
+      if (annualInsurance !== undefined) updateData.annualInsurance = annualInsurance != null ? Number(annualInsurance) : null;
+      if (metadata !== undefined) updateData.metadata = metadata;
       if (isPrimary !== undefined) {
         updateData.isPrimary = isPrimary;
         if (isPrimary) {
@@ -8728,7 +9844,7 @@ export async function registerRoutes(
       const viewerRole = ['super_admin', 'lender', 'admin', 'staff', 'processor'].includes(req.user!.role) ? 'admin' : 
                          req.user!.role === 'borrower' ? 'borrower' : 'broker';
 
-      const project = await storage.getProjectById(projectId, userId);
+      const project = await getProjectWithTenantAccess(projectId, userId, req.user!.role, req.user!.tenantId);
       if (!project) return res.status(404).json({ error: 'Deal not found' });
 
       const docs = await db.select().from(dealDocuments)
@@ -9217,9 +10333,26 @@ export async function registerRoutes(
             .orderBy(dealDocumentFiles.sortOrder, dealDocumentFiles.createdAt)
         : [];
 
+      const reviewerIds = [...new Set(docs.map(d => d.reviewedBy).filter(Boolean))] as number[];
+      const reviewerMap = new Map<number, string>();
+      if (reviewerIds.length > 0) {
+        const reviewers = await db.select({ id: users.id, fullName: users.fullName, email: users.email })
+          .from(users)
+          .where(inArray(users.id, reviewerIds));
+        reviewers.forEach(r => reviewerMap.set(r.id, r.fullName || r.email || `User #${r.id}`));
+      }
+
       const documents = docs.map(doc => ({
         ...doc,
-        files: allFiles.filter(f => f.documentId === doc.id),
+        reviewedAt: doc.reviewedAt ? doc.reviewedAt.toISOString() : null,
+        uploadedAt: doc.uploadedAt ? doc.uploadedAt.toISOString() : null,
+        createdAt: doc.createdAt ? doc.createdAt.toISOString() : null,
+        reviewerName: doc.reviewedBy ? reviewerMap.get(doc.reviewedBy) || null : null,
+        files: allFiles.filter(f => f.documentId === doc.id).map(f => ({
+          ...f,
+          uploadedAt: f.uploadedAt ? f.uploadedAt.toISOString() : null,
+          createdAt: f.createdAt ? f.createdAt.toISOString() : null,
+        })),
         fileCount: allFiles.filter(f => f.documentId === doc.id).length,
       }));
       
@@ -9237,16 +10370,20 @@ export async function registerRoutes(
       const docId = parseInt(req.params.docId);
       const { status, reviewNotes } = req.body;
       
-      const validStatuses = ['pending', 'uploaded', 'ai_reviewed', 'approved', 'rejected', 'not_applicable'];
+      const validStatuses = ['pending', 'uploaded', 'ai_reviewed', 'approved', 'rejected', 'not_applicable', 'conditional', 'at_risk', 'denied', 'update_needed'];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
+      }
+      if (status === 'update_needed' && (!reviewNotes || !reviewNotes.trim())) {
+        return res.status(400).json({ error: 'A reason/note is required when setting status to Update Needed' });
       }
       
       const updateData: Record<string, any> = {};
       if (status) updateData.status = status;
       if (reviewNotes !== undefined) updateData.reviewNotes = reviewNotes;
       
-      if (status === 'approved' || status === 'rejected') {
+      const decisionStatuses = ['approved', 'rejected', 'conditional', 'at_risk', 'denied', 'update_needed'];
+      if (decisionStatuses.includes(status)) {
         updateData.reviewedAt = new Date();
         updateData.reviewedBy = req.user!.id;
       }
@@ -9260,16 +10397,16 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Document not found' });
       }
       
-      // Log activity, digest, and deal memory when document is approved or rejected
-      if (status === 'approved' || status === 'rejected') {
-        const actionText = status === 'approved' ? 'approved' : 'rejected';
+      if (decisionStatuses.includes(status)) {
+        const actionText = status === 'at_risk' ? 'marked at risk' : status;
 
         try {
+          const reviewerActorName = req.user!.fullName || req.user!.email || 'Admin';
           await storage.createProjectActivity({
             projectId: dealId,
             userId: req.user!.id,
             activityType: `document_${status}`,
-            activityDescription: `Document "${updated.documentName}" ${actionText}${reviewNotes ? ` — ${reviewNotes}` : ''}`,
+            activityDescription: `"${updated.documentName}" ${actionText} by ${reviewerActorName}${reviewNotes ? ` — ${reviewNotes}` : ''}`,
             visibleToBorrower: true,
           });
         } catch (activityError) {
@@ -9306,8 +10443,8 @@ export async function registerRoutes(
                   type: status === 'approved' ? 'document_approved' : 'document_rejected',
                   title: status === 'approved' ? `Document Approved: ${docName}` : `Document Rejected: ${docName}`,
                   message: status === 'approved'
-                    ? `Your document "${docName}" for ${dealLabel} has been approved by ${reviewerName}.`
-                    : `Your document "${docName}" for ${dealLabel} was rejected by ${reviewerName}.${reviewNotes ? ` Reason: ${reviewNotes}` : ' Please re-upload a corrected version.'}`,
+                    ? `Your document "${docName}" for ${dealLabel} has been approved.`
+                    : `Your document "${docName}" for ${dealLabel} was rejected.${reviewNotes ? ` Reason: ${reviewNotes}` : ' Please re-upload a corrected version.'}`,
                   dealId,
                   link: `/portal/${dealProject.borrowerPortalToken}`,
                 });
@@ -9695,8 +10832,12 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Document file not found' });
       }
       
-      // Get the file and stream it
-      const objectFile = await objectStorageService.getObjectEntityFile(doc.filePath);
+      let filePath = doc.filePath;
+      if (!filePath.startsWith('/objects/') && filePath.startsWith('https://')) {
+        filePath = objectStorageService.normalizeObjectEntityPath(filePath);
+      }
+
+      const objectFile = await objectStorageService.getObjectEntityFile(filePath);
       
       res.set('X-Frame-Options', 'SAMEORIGIN');
       res.removeHeader('Content-Security-Policy');
@@ -9713,7 +10854,11 @@ export async function registerRoutes(
       }
       
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Admin document file not found in storage: docId=${req.params.docId}`);
+        return res.status(404).json({ error: 'Document file not found in storage. The file may not have been uploaded successfully.' });
+      }
       console.error('Admin document download error:', error);
       res.status(500).json({ error: 'Failed to download document' });
     }
@@ -9727,7 +10872,11 @@ export async function registerRoutes(
       if (!file || !file.filePath) {
         return res.status(404).json({ error: 'File not found' });
       }
-      const objectFile = await objectStorageService.getObjectEntityFile(file.filePath);
+      let filePath = file.filePath;
+      if (!filePath.startsWith('/objects/') && filePath.startsWith('https://')) {
+        filePath = objectStorageService.normalizeObjectEntityPath(filePath);
+      }
+      const objectFile = await objectStorageService.getObjectEntityFile(filePath);
       res.set('X-Frame-Options', 'SAMEORIGIN');
       res.removeHeader('Content-Security-Policy');
       const safeFileName = file.fileName ? file.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/\\/g, '_').replace(/"/g, "'") : null;
@@ -9740,7 +10889,11 @@ export async function registerRoutes(
         res.set('Content-Type', file.mimeType);
       }
       await objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ObjectNotFoundError') {
+        console.error(`Admin file not found in storage: fileId=${req.params.fileId}`);
+        return res.status(404).json({ error: 'File not found in storage. The file may not have been uploaded successfully.' });
+      }
       console.error('Admin file download error:', error);
       res.status(500).json({ error: 'Failed to download file' });
     }
@@ -10516,6 +11669,7 @@ export async function registerRoutes(
             priority: priority || 'medium',
             assignedTo: assignedTo ? parseInt(assignedTo) : null,
             dueDate: dueDate ? new Date(dueDate) : null,
+            stageId: stageId ? parseInt(stageId) : null,
             createdBy: req.user!.id,
           })
           .returning();
@@ -10589,6 +11743,24 @@ export async function registerRoutes(
         }
         
         const updatedPt = await storage.updateTask(taskId, ptUpdates);
+
+        const ptTaskLabel = resolvedTitle || existingPt.taskTitle || 'Task';
+        let ptActivityDesc = '';
+        if (status) {
+          ptActivityDesc = `Task "${ptTaskLabel}" marked as ${status}`;
+        } else if (assignedTo !== undefined) {
+          ptActivityDesc = `Task "${ptTaskLabel}" ${assignedTo ? `assigned to ${assignedTo}` : 'unassigned'}`;
+        } else {
+          ptActivityDesc = `Task "${ptTaskLabel}" updated`;
+        }
+        await storage.createProjectActivity({
+          projectId: dealId,
+          userId: req.user!.id,
+          activityType: status === 'completed' ? 'task_completed' : 'task_updated',
+          activityDescription: ptActivityDesc,
+          visibleToBorrower: existingPt.visibleToBorrower ?? false,
+        });
+
         return res.json({ task: { ...updatedPt, taskName: updatedPt?.taskTitle, _type: 'project_task' } });
       }
 
@@ -10606,6 +11778,7 @@ export async function registerRoutes(
       if (priority !== undefined) updateData.priority = priority;
       if (assignedTo !== undefined) updateData.assignedTo = assignedTo ? parseInt(assignedTo) : null;
       if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+      if (stageId !== undefined) updateData.stageId = stageId ? parseInt(stageId) : null;
       
       if (status === 'completed') {
         updateData.completedAt = new Date();
@@ -10634,6 +11807,24 @@ export async function registerRoutes(
           });
         }
       }
+
+      const dtTaskLabel = updated.taskName || existingTask.taskName || 'Task';
+      let dtActivityDesc = '';
+      if (status) {
+        dtActivityDesc = `Task "${dtTaskLabel}" marked as ${status}`;
+      } else if (assignedTo !== undefined) {
+        const assigneeName = assignedTo ? (await storage.getUserById(parseInt(assignedTo)))?.fullName || 'someone' : 'unassigned';
+        dtActivityDesc = `Task "${dtTaskLabel}" assigned to ${assigneeName}`;
+      } else {
+        dtActivityDesc = `Task "${dtTaskLabel}" updated`;
+      }
+      await storage.createProjectActivity({
+        projectId: dealId,
+        userId: req.user!.id,
+        activityType: status === 'completed' ? 'task_completed' : 'task_updated',
+        activityDescription: dtActivityDesc,
+        visibleToBorrower: false,
+      });
 
       // Send notification if task was just completed
       if (status === 'completed' && !wasCompleted) {
@@ -10738,7 +11929,7 @@ export async function registerRoutes(
     try {
       const search = req.query.search as string | undefined;
       
-      const tenantId = await getTenantId(req.user!);
+      const tenantId = getTenantId(req.user!);
       const partnerConditions = [];
       if (tenantId != null) {
         partnerConditions.push(eq(partners.tenantId, tenantId));
@@ -11062,7 +12253,7 @@ export async function registerRoutes(
 
       let scopeFilter;
       if (!isSuperAdmin) {
-        const userTenantId = req.user!.tenantId;
+        const userTenantId = getTenantId(req.user!);
         if (userTenantId) {
           scopeFilter = or(
             eq(loanPrograms.tenantId, userTenantId),
@@ -12073,73 +13264,6 @@ export async function registerRoutes(
 
   // ==================== PROGRAM REVIEW RULES ROUTES ====================
 
-  app.get('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const programId = parseInt(req.params.programId);
-      const rules = await storage.getReviewRulesByProgramId(programId);
-      res.json({ rules });
-    } catch (error: any) {
-      console.error('Get review rules error:', error);
-      res.status(500).json({ error: 'Failed to fetch review rules' });
-    }
-  });
-
-  app.post('/api/admin/programs/:programId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const programId = parseInt(req.params.programId);
-      const { rules } = req.body;
-      if (!Array.isArray(rules)) {
-        return res.status(400).json({ error: 'rules must be an array' });
-      }
-      await storage.deleteReviewRulesByProgramId(programId);
-      const created = await storage.createReviewRules(
-        rules.map((r: any, idx: number) => ({
-          programId,
-          documentType: r.documentType || 'General',
-          ruleTitle: r.ruleTitle,
-          ruleDescription: r.ruleDescription || null,
-          category: r.category || null,
-          isActive: r.isActive !== false,
-          sortOrder: idx,
-        }))
-      );
-      const guidelinesText = created.map(r => `[${r.documentType}] ${r.ruleTitle}: ${r.ruleDescription || ''}`).join('\n');
-      await db.update(loanPrograms).set({ reviewGuidelines: guidelinesText }).where(eq(loanPrograms.id, programId));
-      res.json({ rules: created });
-    } catch (error: any) {
-      console.error('Save review rules error:', error);
-      res.status(500).json({ error: 'Failed to save review rules' });
-    }
-  });
-
-  app.put('/api/admin/programs/:programId/review-rules/:ruleId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const ruleId = parseInt(req.params.ruleId);
-      const { ruleTitle, ruleDescription, documentType, category, isActive } = req.body;
-      const updated = await storage.updateReviewRule(ruleId, {
-        ...(ruleTitle !== undefined && { ruleTitle }),
-        ...(ruleDescription !== undefined && { ruleDescription }),
-        ...(documentType !== undefined && { documentType }),
-        ...(category !== undefined && { category }),
-        ...(isActive !== undefined && { isActive }),
-      });
-      res.json(updated);
-    } catch (error: any) {
-      console.error('Update review rule error:', error);
-      res.status(500).json({ error: 'Failed to update review rule' });
-    }
-  });
-
-  app.delete('/api/admin/programs/:programId/review-rules/:ruleId', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const ruleId = parseInt(req.params.ruleId);
-      await storage.deleteReviewRule(ruleId);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('Delete review rule error:', error);
-      res.status(500).json({ error: 'Failed to delete review rule' });
-    }
-  });
 
   // Per-document-template review rules
   app.get('/api/admin/document-templates/:templateId/review-rules', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -13626,7 +14750,7 @@ If the user provides specific criteria, extract as many rules as you can from th
       const isBroker = user?.role === 'broker';
 
       if (!isSuperAdmin) {
-        const resolvedTenantId = await getTenantId({ id: user!.id, role: user!.role, invitedBy: user!.invitedBy ?? undefined });
+        const resolvedTenantId = getTenantId({ id: user!.id, role: user!.role, tenantId: user!.tenantId ?? null });
 
         if (isBorrower) {
           const collectedTenantIds = new Set<number>();
@@ -13729,7 +14853,17 @@ If the user provides specific criteria, extract as many rules as you can from th
         };
       }));
       
-      res.json({ programs: programsWithStatus });
+      const normalizedPrograms = programsWithStatus.map(p => {
+        let qff = p.quoteFormFields;
+        if (typeof qff === 'string') {
+          try {
+            qff = JSON.parse(qff);
+            if (typeof qff === 'string') qff = JSON.parse(qff);
+          } catch {}
+        }
+        return { ...p, quoteFormFields: qff };
+      });
+      res.json({ programs: normalizedPrograms });
     } catch (error) {
       console.error('Get programs with pricing error:', error);
       res.status(500).json({ error: 'Failed to get programs' });
@@ -14170,6 +15304,74 @@ If the user provides specific criteria, extract as many rules as you can from th
   });
 
   // ==================== ONBOARDING SYSTEM ====================
+
+  app.get('/api/onboarding/tour-config', async (_req: Request, res: Response) => {
+    try {
+      const settings = await db.select().from(systemSettings)
+        .where(eq(systemSettings.settingKey, 'broker_onboarding_tour_cards'));
+      res.json({ settings });
+    } catch (error) {
+      console.error('Get tour config error:', error);
+      res.json({ settings: [] });
+    }
+  });
+
+  const ALLOWED_ONBOARDING_STEPS = ['welcome', 'account', 'profile', 'agreement', 'tour', 'start'];
+
+  app.post('/api/onboarding/track-step', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { stepName, portalType: pType } = req.body;
+      if (!stepName || !ALLOWED_ONBOARDING_STEPS.includes(stepName)) {
+        return res.status(400).json({ error: 'Invalid stepName' });
+      }
+      const userType = pType === 'borrower' ? 'borrower' : 'broker';
+
+      const existingDoc = await db.select().from(onboardingDocuments)
+        .where(and(
+          eq(onboardingDocuments.title, `onboarding_step_${stepName}`),
+          eq(onboardingDocuments.type, 'onboarding_step'),
+          eq(onboardingDocuments.targetUserType, userType),
+        ))
+        .limit(1);
+
+      let docId: number;
+      if (existingDoc.length > 0) {
+        docId = existingDoc[0].id;
+      } else {
+        const [newDoc] = await db.insert(onboardingDocuments).values({
+          title: `onboarding_step_${stepName}`,
+          type: 'onboarding_step',
+          targetUserType: userType,
+          isRequired: false,
+          isActive: true,
+          sortOrder: 0,
+        }).returning();
+        docId = newDoc.id;
+      }
+
+      const existing = await db.select().from(userOnboardingProgress)
+        .where(and(
+          eq(userOnboardingProgress.userId, userId),
+          eq(userOnboardingProgress.documentId, docId),
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(userOnboardingProgress).values({
+          userId,
+          documentId: docId,
+          status: 'completed',
+          completedAt: new Date(),
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Track onboarding step error:', error);
+      res.status(500).json({ error: 'Failed to track step' });
+    }
+  });
 
   // Get user's onboarding status and documents
   app.get('/api/onboarding/status', authenticateUser, async (req: AuthRequest, res: Response) => {
@@ -14984,7 +16186,7 @@ If the user provides specific criteria, extract as many rules as you can from th
       let documentsSection = '';
       let updatesSection = '';
       let documentsCount = 0;
-      let portalLink = process.env.BASE_URL || 'https://app.lendry.ai';
+      let portalLink = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       
       // Try to get real data from project or deal
       if (projectId) {
@@ -14994,7 +16196,7 @@ If the user provides specific criteria, extract as many rules as you can from th
           .limit(1);
         
         if (project) {
-          portalLink = `${process.env.BASE_URL || 'https://app.lendry.ai'}/portal/${project.borrowerToken}`;
+          portalLink = `${portalLink}/portal/${project.borrowerToken}`;
           
           // Get quote for property info
           if (project.quoteId) {
@@ -17817,7 +19019,7 @@ If the user provides specific criteria, extract as many rules as you can from th
         if (quoteUser?.phone) borrowerPhone = quoteUser.phone;
       }
 
-      const envelopeTenantId = await getTenantId(req.user!);
+      const envelopeTenantId = getTenantId(req.user!);
       const project = await storage.createProject({
         userId: quote.userId || envelope.createdBy!,
         projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
@@ -18022,7 +19224,9 @@ If the user provides specific criteria, extract as many rules as you can from th
                 
                 if (existingProjects.length === 0) {
                   const projectNumber = await storage.generateProjectNumber();
-                  const borrowerToken = (await import('uuid')).v4().replace(/-/g, '') + (await import('uuid')).v4().replace(/-/g, '');
+                  const uuidMod = await import('uuid');
+                  const borrowerToken = uuidMod.v4().replace(/-/g, '') + uuidMod.v4().replace(/-/g, '');
+                  const brokerToken = uuidMod.v4().replace(/-/g, '') + uuidMod.v4().replace(/-/g, '');
                   const loanData = (quote.loanData || {}) as Record<string, any>;
                   const recipientsData = typeof envelope.recipients === 'string' 
                     ? JSON.parse(envelope.recipients) 
@@ -18047,9 +19251,32 @@ If the user provides specific criteria, extract as many rules as you can from th
                     const quoteUser = await storage.getUserById(quote.userId);
                     if (quoteUser?.phone) borrowerPhone = quoteUser.phone;
                   }
+
+                  let brokerEmailAddr: string | null = null;
+                  let brokerDisplayName: string | null = quote.partnerName || null;
+                  if (quote.partnerId) {
+                    const [partner] = await db.select().from(partners).where(eq(partners.id, quote.partnerId));
+                    if (partner?.email) brokerEmailAddr = partner.email;
+                    if (partner?.name && !brokerDisplayName) brokerDisplayName = partner.name;
+                  }
+                  if (!brokerEmailAddr && quote.userId) {
+                    const quoteCreator = await storage.getUserById(quote.userId);
+                    if (quoteCreator?.role === 'broker' && quoteCreator.email) {
+                      brokerEmailAddr = quoteCreator.email;
+                      if (!brokerDisplayName) brokerDisplayName = quoteCreator.fullName || quoteCreator.email;
+                    }
+                  }
+
+                  let projectTenantId: number = 1;
+                  const projOwnerId = quote.userId || envelope.createdBy;
+                  if (projOwnerId) {
+                    const projOwner = await storage.getUserById(projOwnerId);
+                    if (projOwner?.tenantId) projectTenantId = projOwner.tenantId;
+                  }
                   
                   const project = await storage.createProject({
                     userId: quote.userId || envelope.createdBy!,
+                    tenantId: projectTenantId,
                     projectName: `${borrowerName} — ${quote.propertyAddress || envelope.documentName || 'New Loan'}`,
                     projectNumber,
                     ...(quote.loanNumber ? { loanNumber: quote.loanNumber } : {}),
@@ -18070,11 +19297,14 @@ If the user provides specific criteria, extract as many rules as you can from th
                     targetCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
                     borrowerPortalToken: borrowerToken,
                     borrowerPortalEnabled: true,
+                    brokerPortalToken: brokerToken,
+                    brokerPortalEnabled: true,
+                    brokerEmail: brokerEmailAddr,
+                    brokerName: brokerDisplayName,
                     quoteId: quote.id,
                     ysp: quote.yspAmount ?? null,
                     lenderOriginationPoints: quote.basePointsCharged ?? null,
                     brokerOriginationPoints: quote.brokerPointsCharged ?? null,
-                    brokerName: quote.partnerName || null,
                     prepaymentPenalty: loanData?.prepaymentPenalty || null,
                     holdbackAmount: loanData?.holdbackAmount ?? null,
                     notes: `Auto-created from signed PandaDoc term sheet (Quote #${quote.id})`,
@@ -18152,6 +19382,101 @@ If the user provides specific criteria, extract as many rules as you can from th
                   });
                   
                   console.log(`[PandaDoc Webhook] Project ${projectNumber} auto-created from signed term sheet (envelope ${envelope.id}, quote ${quote.id})`);
+
+                  try {
+                    const { isNotificationEnabled } = await import('./services/notificationHelper');
+                    const ownerId = quote.userId || envelope.createdBy;
+                    let tenantId: number | null = null;
+                    if (ownerId) {
+                      const ownerUser = await storage.getUserById(ownerId);
+                      tenantId = ownerUser?.tenantId ?? 1;
+                    } else {
+                      tenantId = 1;
+                    }
+                    if (await isNotificationEnabled('term_sheet_signed', tenantId)) {
+                      const notifiedUserIds = new Set<number>();
+                      const adminUsers = await db.select({ id: users.id, email: users.email, fullName: users.fullName })
+                        .from(users)
+                        .where(and(
+                          inArray(users.role, ['super_admin', 'lender', 'processor']),
+                          eq(users.isActive, true),
+                          eq(users.tenantId, tenantId!),
+                        ));
+
+                      for (const admin of adminUsers) {
+                        await db.insert(notifications).values({
+                          userId: admin.id,
+                          type: 'term_sheet_signed',
+                          title: 'Term Sheet Signed',
+                          message: `${borrowerName || 'Borrower'} signed the term sheet. Deal ${projectNumber} has been created.`,
+                          dealId: project.id,
+                          link: `/admin/deals/${project.id}`,
+                        });
+                        notifiedUserIds.add(admin.id);
+                      }
+
+                      const notifOwnerId = quote.userId || envelope.createdBy;
+                      if (notifOwnerId && !notifiedUserIds.has(notifOwnerId)) {
+                        await db.insert(notifications).values({
+                          userId: notifOwnerId,
+                          type: 'term_sheet_signed',
+                          title: 'Term Sheet Signed',
+                          message: `${borrowerName || 'Borrower'} signed the term sheet. Deal ${projectNumber} has been created.`,
+                          dealId: project.id,
+                          link: `/admin/deals/${project.id}`,
+                        });
+                        notifiedUserIds.add(notifOwnerId);
+                      }
+
+                      if (brokerEmailAddr) {
+                        const brokerUsers = await db.select({ id: users.id }).from(users)
+                          .where(and(eq(users.email, brokerEmailAddr), eq(users.isActive, true), eq(users.tenantId, tenantId!)));
+                        for (const bu of brokerUsers) {
+                          if (!notifiedUserIds.has(bu.id)) {
+                            await db.insert(notifications).values({
+                              userId: bu.id,
+                              type: 'term_sheet_signed',
+                              title: 'Term Sheet Signed',
+                              message: `${borrowerName || 'Borrower'} signed the term sheet for ${quote.propertyAddress || 'a loan'}. Deal ${projectNumber} is now active.`,
+                              dealId: project.id,
+                              link: `/loans`,
+                            });
+                            notifiedUserIds.add(bu.id);
+                          }
+                        }
+                      }
+
+                      try {
+                        const { getResendClient } = await import('./email');
+                        const { client: resend, fromEmail } = await getResendClient();
+                        const baseUrl = process.env.BASE_URL || 'https://lendry.ai';
+
+                        for (const admin of adminUsers) {
+                          if (admin.email) {
+                            await resend.emails.send({
+                              from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+                              to: admin.email,
+                              subject: `Term Sheet Signed — ${borrowerName || 'New Deal'} (${projectNumber})`,
+                              html: `<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background-color:#0F1629;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background-color:#f8fafc;padding:30px;border-radius:0 0 8px 8px}.detail-row{padding:8px 0;border-bottom:1px solid #e2e8f0}.detail-label{font-weight:bold;color:#475569}.button{display:inline-block;background-color:#C9A84C;color:#0F1629;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0}.footer{text-align:center;color:#64748b;font-size:12px;margin-top:20px}</style></head><body><div class="container"><div class="header"><h1>Term Sheet Signed</h1></div><div class="content"><p>Great news! <strong>${borrowerName || 'The borrower'}</strong> has signed the term sheet.</p><div style="background:white;padding:15px;border-radius:6px;margin:15px 0"><div class="detail-row"><span class="detail-label">Deal:</span> ${projectNumber}</div><div class="detail-row"><span class="detail-label">Property:</span> ${quote.propertyAddress || 'N/A'}</div><div class="detail-row"><span class="detail-label">Loan Amount:</span> ${loanAmount ? new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(loanAmount) : 'N/A'}</div></div><p>The loan is now active and ready for documentation.</p><a href="${baseUrl}/admin/deals/${project.id}" class="button">View Deal</a></div><div class="footer"><p>Powered by Lendry.AI</p></div></div></body></html>`,
+                            }).catch((e: any) => console.error(`[PandaDoc Webhook] Email to admin ${admin.email} failed:`, e.message));
+                          }
+                        }
+
+                        if (brokerEmailAddr) {
+                          await resend.emails.send({
+                            from: fromEmail || 'Lendry.AI <info@lendry.ai>',
+                            to: brokerEmailAddr,
+                            subject: `Term Sheet Signed — ${borrowerName || 'Your Deal'} (${projectNumber})`,
+                            html: `<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background-color:#0F1629;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background-color:#f8fafc;padding:30px;border-radius:0 0 8px 8px}.detail-row{padding:8px 0;border-bottom:1px solid #e2e8f0}.detail-label{font-weight:bold;color:#475569}.button{display:inline-block;background-color:#C9A84C;color:#0F1629;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0}.footer{text-align:center;color:#64748b;font-size:12px;margin-top:20px}</style></head><body><div class="container"><div class="header"><h1>Term Sheet Signed</h1></div><div class="content"><p>Great news! <strong>${borrowerName || 'The borrower'}</strong> has signed the term sheet for your deal.</p><div style="background:white;padding:15px;border-radius:6px;margin:15px 0"><div class="detail-row"><span class="detail-label">Deal:</span> ${projectNumber}</div><div class="detail-row"><span class="detail-label">Property:</span> ${quote.propertyAddress || 'N/A'}</div><div class="detail-row"><span class="detail-label">Loan Amount:</span> ${loanAmount ? new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(loanAmount) : 'N/A'}</div></div><p>The loan is now active. You can view it in your portal under My Loans.</p><a href="${baseUrl}/loans" class="button">View My Loans</a></div><div class="footer"><p>Powered by Lendry.AI</p></div></div></body></html>`,
+                          }).catch((e: any) => console.error(`[PandaDoc Webhook] Email to broker ${brokerEmailAddr} failed:`, e.message));
+                        }
+                      } catch (emailErr: any) {
+                        console.error('[PandaDoc Webhook] Email notification error:', emailErr.message);
+                      }
+                    }
+                  } catch (notifErr: any) {
+                    console.error('[PandaDoc Webhook] Notification error:', notifErr.message);
+                  }
                   
                   // Store signed PDF as deal document (Stage 1 "Signed Agreement") and sync to cloud
                   if (signedPdfPath && signedPdfSize > 0) {
@@ -19206,6 +20531,7 @@ Return JSON only:
           phone: phone || null,
           userType: 'borrower',
           role: 'borrower',
+          tenantId: program.tenantId || 1,
         });
       }
 
@@ -19219,7 +20545,7 @@ Return JSON only:
         currentStage: 1,
         programId: program.id,
         propertyAddress,
-        tenantId: program.createdBy,
+        tenantId: program.tenantId || 1,
       }).returning();
 
       await db.insert(activities).values({
@@ -19263,6 +20589,7 @@ Return JSON only:
   // Helper: validate a magic link token and return lender info
   async function validateMagicLinkToken(token: string): Promise<{
     lenderId: number;
+    tenantId: number | null;
     type: 'borrower' | 'broker';
     lenderName: string;
     companyName: string;
@@ -19272,12 +20599,14 @@ Return JSON only:
       id: users.id,
       fullName: users.fullName,
       companyName: users.companyName,
+      tenantId: users.tenantId,
       borrowerMagicLinkEnabled: users.borrowerMagicLinkEnabled,
     }).from(users).where(eq(users.borrowerMagicLink, token));
 
     if (borrowerMatch && borrowerMatch.borrowerMagicLinkEnabled) {
       return {
         lenderId: borrowerMatch.id,
+        tenantId: borrowerMatch.tenantId,
         type: 'borrower',
         lenderName: borrowerMatch.fullName || 'Lender',
         companyName: borrowerMatch.companyName || 'Lendry',
@@ -19289,12 +20618,14 @@ Return JSON only:
       id: users.id,
       fullName: users.fullName,
       companyName: users.companyName,
+      tenantId: users.tenantId,
       brokerMagicLinkEnabled: users.brokerMagicLinkEnabled,
     }).from(users).where(eq(users.brokerMagicLink, token));
 
     if (brokerMatch && brokerMatch.brokerMagicLinkEnabled) {
       return {
         lenderId: brokerMatch.id,
+        tenantId: brokerMatch.tenantId,
         type: 'broker',
         lenderName: brokerMatch.fullName || 'Lender',
         companyName: brokerMatch.companyName || 'Lendry',
@@ -19326,6 +20657,10 @@ Return JSON only:
         return res.status(404).json({ error: 'Invalid or disabled magic link' });
       }
 
+      const programFilter = linkData.tenantId
+        ? eq(loanPrograms.tenantId, linkData.tenantId)
+        : eq(loanPrograms.createdBy, linkData.lenderId);
+
       const programs = await db
         .select({
           id: loanPrograms.id,
@@ -19334,6 +20669,13 @@ Return JSON only:
           loanType: loanPrograms.loanType,
           minLoanAmount: loanPrograms.minLoanAmount,
           maxLoanAmount: loanPrograms.maxLoanAmount,
+          minLtv: loanPrograms.minLtv,
+          maxLtv: loanPrograms.maxLtv,
+          minInterestRate: loanPrograms.minInterestRate,
+          maxInterestRate: loanPrograms.maxInterestRate,
+          minDscr: loanPrograms.minDscr,
+          minFico: loanPrograms.minFico,
+          termOptions: loanPrograms.termOptions,
           eligiblePropertyTypes: loanPrograms.eligiblePropertyTypes,
           quoteFormFields: loanPrograms.quoteFormFields,
           yspEnabled: loanPrograms.yspEnabled,
@@ -19349,7 +20691,7 @@ Return JSON only:
         })
         .from(loanPrograms)
         .where(and(
-          eq(loanPrograms.createdBy, linkData.lenderId),
+          programFilter,
           eq(loanPrograms.isActive, true)
         ))
         .orderBy(loanPrograms.sortOrder);
@@ -19374,9 +20716,10 @@ Return JSON only:
         return res.status(400).json({ error: 'programId and inputs are required' });
       }
 
-      // Verify program belongs to this lender
-      const [program] = await db.select().from(loanPrograms)
-        .where(and(eq(loanPrograms.id, programId), eq(loanPrograms.createdBy, linkData.lenderId)));
+      const pricingProgramFilter = linkData.tenantId
+        ? and(eq(loanPrograms.id, programId), eq(loanPrograms.tenantId, linkData.tenantId))
+        : and(eq(loanPrograms.id, programId), eq(loanPrograms.createdBy, linkData.lenderId));
+      const [program] = await db.select().from(loanPrograms).where(pricingProgramFilter);
       if (!program) {
         return res.status(404).json({ error: 'Program not found' });
       }
@@ -19403,6 +20746,17 @@ Return JSON only:
       const linkData = await validateMagicLinkToken(req.params.token);
       if (!linkData) {
         return res.status(404).json({ error: 'Invalid or disabled magic link' });
+      }
+
+      const { programId } = req.body;
+      if (programId) {
+        const rtlProgramFilter = linkData.tenantId
+          ? and(eq(loanPrograms.id, programId), eq(loanPrograms.tenantId, linkData.tenantId))
+          : and(eq(loanPrograms.id, programId), eq(loanPrograms.createdBy, linkData.lenderId));
+        const [rtlProgram] = await db.select().from(loanPrograms).where(rtlProgramFilter);
+        if (!rtlProgram) {
+          return res.status(404).json({ error: 'Program not found' });
+        }
       }
 
       const { rtlPricingFormSchema } = await import('@shared/schema');
@@ -19795,6 +21149,7 @@ Return JSON only:
           emailVerified: true,
           inviteToken,
           inviteStatus: 'none',
+          tenantId: project.tenantId || req.user!.tenantId || 1,
         } as any);
       } else {
         await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
@@ -19820,16 +21175,31 @@ Return JSON only:
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      const brokerId = project.userId;
-      let user = brokerId ? await storage.getUserById(brokerId) : null;
+      let user = project.userId ? await storage.getUserById(project.userId) : null;
 
-      if (user && user.inviteToken) {
-        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        return res.json({ token: user.inviteToken, url: `${baseUrl}/join/personal/${user.inviteToken}` });
+      if (user && user.email?.toLowerCase() !== project.brokerEmail?.toLowerCase() && project.brokerEmail) {
+        const brokerByEmail = await storage.getUserByEmail(project.brokerEmail);
+        if (brokerByEmail) {
+          user = brokerByEmail;
+          await db.update(projects).set({ userId: brokerByEmail.id }).where(eq(projects.id, projectId));
+        }
+      }
+
+      if (!user && project.brokerEmail) {
+        const brokerByEmail = await storage.getUserByEmail(project.brokerEmail);
+        if (brokerByEmail) {
+          user = brokerByEmail;
+          await db.update(projects).set({ userId: brokerByEmail.id }).where(eq(projects.id, projectId));
+        }
       }
 
       if (!user) {
         return res.status(400).json({ error: 'Deal has no broker assigned' });
+      }
+
+      if (user.inviteToken) {
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        return res.json({ token: user.inviteToken, url: `${baseUrl}/join/personal/${user.inviteToken}` });
       }
 
       const inviteToken = generateRandomToken();
@@ -20328,7 +21698,7 @@ Return JSON only:
       const dealId = parseInt(req.params.dealId);
       if (isNaN(dealId)) return res.status(400).json({ error: 'Invalid deal ID' });
 
-      const notes = await db
+      const rawNotes = await db
         .select({
           id: dealNotes.id,
           dealId: dealNotes.dealId,
@@ -20349,6 +21719,12 @@ Return JSON only:
         .leftJoin(users, eq(dealNotes.userId, users.id))
         .where(eq(dealNotes.dealId, dealId))
         .orderBy(asc(dealNotes.createdAt));
+
+      const notes = rawNotes.map(n => ({
+        ...n,
+        createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : n.createdAt,
+        updatedAt: n.updatedAt instanceof Date ? n.updatedAt.toISOString() : n.updatedAt,
+      }));
 
       res.json({ notes });
     } catch (error) {
@@ -20649,7 +22025,7 @@ Return JSON only:
     }
   }
 
-  async function notifyDealAdmins(dealId: number, type: string, title: string, message: string, excludeUserId?: number) {
+  async function notifyDealAdmins(dealId: number, type: string, title: string, message: string, excludeUserId?: number, customLink?: string) {
     try {
       const deal = await db.select().from(projects).where(eq(projects.id, dealId)).limit(1);
       if (!deal[0]) return;
@@ -20672,7 +22048,7 @@ Return JSON only:
           title,
           message,
           dealId,
-          link: `/admin/deals/${dealId}`,
+          link: customLink || `/admin/deals/${dealId}`,
         });
       }
     } catch (err) {
@@ -20842,6 +22218,7 @@ Return JSON only:
             emailVerified: true,
             inviteToken,
             inviteStatus: 'none',
+            tenantId: project.tenantId || req.user!.tenantId || 1,
           } as any);
         } else {
           await db.update(users).set({ inviteToken, inviteStatus: user.inviteStatus || 'none' }).where(eq(users.id, user.id));
@@ -21145,6 +22522,146 @@ Return JSON only:
     } catch (error) {
       console.error('Error updating deal review mode:', error);
       res.status(500).json({ error: 'Failed to update review mode' });
+    }
+  });
+
+  app.get('/api/broker/programs', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const currentUser = await storage.getUserById(userId);
+      if (!currentUser || currentUser.role !== 'broker') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const brokerTenantId = currentUser.tenantId;
+      if (!brokerTenantId) {
+        return res.json({ programs: [] });
+      }
+
+      const programs = await db
+        .select({
+          id: loanPrograms.id,
+          name: loanPrograms.name,
+          description: loanPrograms.description,
+          loanType: loanPrograms.loanType,
+          minLoanAmount: loanPrograms.minLoanAmount,
+          maxLoanAmount: loanPrograms.maxLoanAmount,
+          minLtv: loanPrograms.minLtv,
+          maxLtv: loanPrograms.maxLtv,
+          minInterestRate: loanPrograms.minInterestRate,
+          maxInterestRate: loanPrograms.maxInterestRate,
+          minDscr: loanPrograms.minDscr,
+          minFico: loanPrograms.minFico,
+          termOptions: loanPrograms.termOptions,
+          eligiblePropertyTypes: loanPrograms.eligiblePropertyTypes,
+          isActive: loanPrograms.isActive,
+          updatedAt: loanPrograms.updatedAt,
+        })
+        .from(loanPrograms)
+        .where(and(
+          eq(loanPrograms.tenantId, brokerTenantId),
+          eq(loanPrograms.isActive, true)
+        ))
+        .orderBy(loanPrograms.sortOrder);
+
+      res.json({ programs });
+    } catch (error) {
+      console.error('Broker programs error:', error);
+      res.status(500).json({ error: 'Failed to fetch programs' });
+    }
+  });
+
+  app.get('/api/broker/documents', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const currentUser = await storage.getUserById(userId);
+      if (!currentUser?.email || currentUser.role !== 'broker') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const userEmail = currentUser.email.toLowerCase().trim();
+      const { category, search } = req.query;
+
+      let conditions: any[] = [
+        sql`LOWER(TRIM(${projects.brokerEmail})) = ${userEmail}`,
+      ];
+      if (currentUser.tenantId) {
+        conditions.push(eq(projects.tenantId, currentUser.tenantId));
+      }
+
+      const brokerProjects = await db.select({
+        id: projects.id,
+        projectName: projects.projectName,
+        propertyAddress: projects.propertyAddress,
+        status: projects.status,
+        loanNumber: projects.loanNumber,
+      }).from(projects).where(and(...conditions));
+
+      if (brokerProjects.length === 0) {
+        return res.json({ documents: [] });
+      }
+
+      const projectIds = brokerProjects.map(p => p.id);
+      const projectMap = new Map(brokerProjects.map(p => [p.id, p]));
+
+      let docConditions: any[] = [
+        inArray(dealDocuments.dealId, projectIds),
+      ];
+
+      if (category && typeof category === 'string' && category !== 'all') {
+        docConditions.push(eq(dealDocuments.documentCategory, category));
+      }
+
+      if (search && typeof search === 'string') {
+        docConditions.push(
+          sql`LOWER(${dealDocuments.documentName}) LIKE ${`%${search.toLowerCase()}%`}`
+        );
+      }
+
+      const docs = await db.select({
+        id: dealDocuments.id,
+        dealId: dealDocuments.dealId,
+        documentName: dealDocuments.documentName,
+        documentCategory: dealDocuments.documentCategory,
+        status: dealDocuments.status,
+        isRequired: dealDocuments.isRequired,
+        fileName: dealDocuments.fileName,
+        fileSize: dealDocuments.fileSize,
+        filePath: dealDocuments.filePath,
+        uploadedAt: dealDocuments.uploadedAt,
+        visibility: dealDocuments.visibility,
+      }).from(dealDocuments)
+        .where(and(...docConditions))
+        .orderBy(desc(dealDocuments.uploadedAt));
+
+      const visibleDocs = docs.filter(d =>
+        !d.visibility || d.visibility === 'all' || d.visibility === 'broker'
+      );
+
+      const result = visibleDocs.map(doc => {
+        const project = projectMap.get(doc.dealId);
+        return {
+          id: doc.id,
+          dealId: doc.dealId,
+          dealName: project?.projectName || `Deal #${doc.dealId}`,
+          loanNumber: project?.loanNumber || null,
+          propertyAddress: project?.propertyAddress || null,
+          dealStatus: project?.status || null,
+          documentName: doc.documentName,
+          documentCategory: doc.documentCategory,
+          status: doc.status,
+          isRequired: doc.isRequired,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          hasFile: !!doc.filePath,
+          uploadedAt: doc.uploadedAt,
+        };
+      });
+
+      res.json({ documents: result });
+    } catch (error) {
+      console.error('Error fetching broker documents:', error);
+      res.status(500).json({ error: 'Failed to fetch documents' });
     }
   });
 

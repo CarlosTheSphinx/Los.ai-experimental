@@ -1,111 +1,60 @@
 import { db } from "../db";
-import { projects, loanPrograms, partners, adminTasks, systemSettings, users } from "@shared/schema";
-import { eq, isNull, and, sql } from "drizzle-orm";
-import { getTenantId } from "./tenant";
+import {
+  projects, loanPrograms, partners, adminTasks, systemSettings, users,
+  funds, pricingRequests, quotePdfTemplates, intakeDeals, intakeDocumentRules,
+  commercialFormConfig, teamChats, tenants
+} from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 
 export async function backfillTenantIds(): Promise<void> {
-  await db.execute(sql`ALTER TABLE loan_programs ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+  const SPHINX_CAPITAL_TENANT_ID = 1;
 
-  const [check] = await db.select({ count: sql<number>`count(*)` })
-    .from(projects)
-    .where(sql`${projects.tenantId} IS NOT NULL`);
-
-  if (check && Number(check.count) > 0) {
-    console.log("[Tenant Backfill] Already has tenant data, skipping backfill");
-    await backfillLoanProgramTenantIds();
-    return;
+  const [existingTenant] = await db.select().from(tenants).where(eq(tenants.id, SPHINX_CAPITAL_TENANT_ID));
+  if (!existingTenant) {
+    await db.insert(tenants).values({
+      id: SPHINX_CAPITAL_TENANT_ID,
+      name: "Sphinx Capital",
+      slug: "sphinx-capital",
+      isActive: true,
+    });
+    await db.execute(sql`SELECT setval('tenants_id_seq', GREATEST((SELECT MAX(id) FROM tenants), 1))`);
+    console.log("[Tenant Backfill] Created Sphinx Capital tenant (id=1)");
   }
 
-  console.log("[Tenant Backfill] Starting tenant ID backfill...");
+  let totalUpdated = 0;
 
-  const projectsWithPrograms = await db
-    .select({
-      projectId: projects.id,
-      programId: projects.programId,
-    })
-    .from(projects)
-    .where(isNull(projects.tenantId));
+  totalUpdated += await normalizeTable(users, "users", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(funds, "funds", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(projects, "projects", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(intakeDeals, "intake_deals", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(loanPrograms, "loan_programs", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(partners, "partners", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(pricingRequests, "pricing_requests", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(adminTasks, "admin_tasks", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(commercialFormConfig, "commercial_form_config", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(intakeDocumentRules, "intake_document_rules", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(quotePdfTemplates, "quote_pdf_templates", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(systemSettings, "system_settings", SPHINX_CAPITAL_TENANT_ID);
+  totalUpdated += await normalizeTable(teamChats, "team_chats", SPHINX_CAPITAL_TENANT_ID);
 
-  let updatedCount = 0;
-
-  for (const proj of projectsWithPrograms) {
-    let tenantId: number | null = null;
-
-    if (proj.programId) {
-      const [program] = await db
-        .select({ createdBy: loanPrograms.createdBy })
-        .from(loanPrograms)
-        .where(eq(loanPrograms.id, proj.programId))
-        .limit(1);
-      if (program?.createdBy) {
-        tenantId = program.createdBy;
-      }
-    }
-
-    if (!tenantId) {
-      const [firstAdmin] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.role, "super_admin"))
-        .limit(1);
-      if (firstAdmin) {
-        tenantId = firstAdmin.id;
-      }
-    }
-
-    if (tenantId) {
-      await db.update(projects)
-        .set({ tenantId })
-        .where(eq(projects.id, proj.projectId));
-      updatedCount++;
-    }
+  if (totalUpdated > 0) {
+    console.log(`[Tenant Backfill] Total: ${totalUpdated} rows normalized to tenant ${SPHINX_CAPITAL_TENANT_ID}`);
+  } else {
+    console.log("[Tenant Backfill] All rows already correctly assigned to tenant 1");
   }
-
-  console.log(`[Tenant Backfill] Updated ${updatedCount} projects with tenant IDs`);
-
-  const [firstAdmin] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.role, "super_admin"))
-    .limit(1);
-
-  if (firstAdmin) {
-    await db.update(partners)
-      .set({ tenantId: firstAdmin.id })
-      .where(isNull(partners.tenantId));
-
-    await db.update(adminTasks)
-      .set({ tenantId: firstAdmin.id })
-      .where(isNull(adminTasks.tenantId));
-
-    console.log("[Tenant Backfill] Backfilled partners and admin tasks");
-  }
-
-  await backfillLoanProgramTenantIds();
-
-  console.log("[Tenant Backfill] Backfill complete");
 }
 
-async function backfillLoanProgramTenantIds(): Promise<void> {
-  const programsToBackfill = await db.select({ id: loanPrograms.id, createdBy: loanPrograms.createdBy })
-    .from(loanPrograms)
-    .where(and(isNull(loanPrograms.tenantId), sql`${loanPrograms.createdBy} IS NOT NULL`));
-
-  if (programsToBackfill.length === 0) return;
-
-  let count = 0;
-  for (const prog of programsToBackfill) {
-    if (!prog.createdBy) continue;
-    const [creator] = await db.select({ id: users.id, role: users.role, invitedBy: users.invitedBy })
-      .from(users).where(eq(users.id, prog.createdBy)).limit(1);
-    if (!creator) continue;
-    const tenantId = await getTenantId(creator);
-    if (tenantId != null) {
-      await db.update(loanPrograms).set({ tenantId }).where(eq(loanPrograms.id, prog.id));
-      count++;
-    }
-  }
+async function normalizeTable(
+  table: { [key: string]: any },
+  tableName: string,
+  targetTenantId: number
+): Promise<number> {
+  const result = await db.execute(
+    sql`UPDATE ${table} SET tenant_id = ${targetTenantId} WHERE tenant_id IS NULL OR tenant_id != ${targetTenantId}`
+  );
+  const count = Number(result.rowCount ?? 0);
   if (count > 0) {
-    console.log(`[Tenant Backfill] Backfilled ${count} loan programs with tenant IDs`);
+    console.log(`[Tenant Backfill] Normalized ${count} ${tableName} rows to tenant ${targetTenantId}`);
   }
+  return count;
 }

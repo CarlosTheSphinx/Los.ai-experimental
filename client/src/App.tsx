@@ -70,10 +70,18 @@ import OnboardingConfigPage from "@/pages/admin/onboarding-config";
 
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
+import CommercialPipelinePage from "@/pages/admin/commercial-pipeline";
+import CommercialFormConfigPage from "@/pages/admin/commercial-form-config";
+import CommercialPipelineDetailPage from "@/pages/admin/commercial-pipeline-detail";
+import FundManagementPage from "@/pages/admin/fund-management";
+import DocumentRulesPage from "@/pages/admin/document-rules";
+import BrokerCommercialDeals, { DealForm as BrokerDealForm, DealDetail as BrokerDealDetail } from "@/pages/broker-commercial-deals";
 import SettingsPage from "@/pages/settings";
 import BorrowerDocumentsPage from "@/pages/borrower-documents";
+import BrokerDocumentsPage from "@/pages/broker-documents";
 import QuoteDocuments from "@/pages/quote-documents";
 import BorrowerPreview from "@/pages/borrower-preview";
+import AuthMagicPage from "@/pages/auth-magic";
 
 import { AppLayout } from "@/components/AppLayout";
 import PublicHomePage from "@/pages/public/home";
@@ -283,7 +291,14 @@ function MainRoutes() {
           <Route path="/commercial-submission/:id/confirmation" component={() => <ProtectedRoute component={CommercialSubmissionConfirmation} />} />
           <Route path="/commercial-submission/:id" component={() => <ProtectedRoute component={CommercialSubmissionDetail} />} />
 
-          {/* Broker CRM Routes */}
+          {/* Broker Commercial Deals */}
+          <Route path="/commercial-deals/new" component={() => <ProtectedRoute component={BrokerDealForm} />} />
+          <Route path="/commercial-deals/:id/edit" component={() => <ProtectedRoute component={BrokerDealForm} />} />
+          <Route path="/commercial-deals/:id" component={() => <ProtectedRoute component={BrokerDealDetail} />} />
+          <Route path="/commercial-deals" component={() => <ProtectedRoute component={BrokerCommercialDeals} />} />
+
+          {/* Broker Routes */}
+          <Route path="/broker/documents" component={() => <ProtectedRoute component={BrokerDocumentsPage} />} />
           <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
           <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
           <Route path="/borrower-preview" component={() => <AdminProtectedRoute component={BorrowerPreview} />} />
@@ -310,6 +325,11 @@ function MainRoutes() {
           <Route path="/admin/document-templates" component={() => <AdminProtectedRoute component={AdminDocumentTemplates} />} />
           <Route path="/admin/document-templates/:id" component={() => <AdminProtectedRoute component={AdminTemplateEditor} />} />
 
+          <Route path="/admin/commercial-form-config" component={() => <AdminProtectedRoute component={CommercialFormConfigPage} />} />
+          <Route path="/admin/commercial-pipeline" component={() => <AdminProtectedRoute component={CommercialPipelinePage} />} />
+          <Route path="/admin/commercial-pipeline/:id" component={() => <AdminProtectedRoute component={CommercialPipelineDetailPage} />} />
+          <Route path="/admin/commercial/funds" component={() => <AdminProtectedRoute component={FundManagementPage} />} />
+          <Route path="/admin/commercial/document-rules" component={() => <AdminProtectedRoute component={DocumentRulesPage} />} />
           <Route path="/admin/commercial-submissions" component={() => <AdminProtectedRoute component={AdminCommercialSubmissions} />} />
           <Route path="/admin/commercial/submissions/:id" component={() => <AdminProtectedRoute component={AdminCommercialDealDetail} />} />
           <Route path="/admin/commercial/config" component={() => <AdminProtectedRoute component={AdminCommercialConfig} />} />
@@ -344,11 +364,15 @@ function LandingModeContent() {
   const [isJoinPersonalPage] = useRoute("/join/personal/:token");
   const [isApplyPage] = useRoute("/apply");
   const [isApplyProgramPage] = useRoute("/apply/:programId");
+  const [isMagicLinkPage] = useRoute("/auth/magic/:token");
 
   const { isAuthenticated, isLoading } = useAuth();
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
 
+  if (isMagicLinkPage) {
+    return <Switch><Route path="/auth/magic/:token" component={AuthMagicPage} /></Switch>;
+  }
   if (isResetPasswordPage) {
     return <Switch><Route path="/reset-password/:token" component={ResetPasswordPage} /></Switch>;
   }
@@ -431,6 +455,7 @@ function FullAppContent() {
   const [isForgotPasswordPage] = useRoute("/forgot-password");
   const [isResetPasswordPage] = useRoute("/reset-password/:token");
   const [isAcceptInvitePage] = useRoute("/accept-invite/:token");
+  const [isMagicLinkPage] = useRoute("/auth/magic/:token");
   const [isOnboardingPage] = useRoute("/onboarding");
   const [isSelectRolePage] = useRoute("/select-role");
   const [isPublicPricingPage] = useRoute("/pricing");
@@ -443,9 +468,11 @@ function FullAppContent() {
   const { isAuthenticated, isLoading } = useAuth();
 
   const isPublicAuthPage = isLoginPage || isRegisterPage || isForgotPasswordPage || isResetPasswordPage || isAcceptInvitePage;
-  // Only show public marketing pages for NON-authenticated users
-  // The "/" route must fall through to MainRoutes for authenticated users (their dashboard)
   const isPublicMarketingPage = !isLoading && !isAuthenticated && (isHomePage || isPublicPricingPage || isPublicUseCasesPage || isPublicContactPage);
+
+  if (isMagicLinkPage) {
+    return <Switch><Route path="/auth/magic/:token" component={AuthMagicPage} /></Switch>;
+  }
 
   if (isResetPasswordPage) {
     return (

@@ -1,0 +1,281 @@
+================================================================================
+LENDRY AI REFERENCE KEY - LENDER LIST DATA INTERPRETATION GUIDE
+================================================================================
+
+This reference guide enables the Lendry AI matching system to understand and 
+interpret the standardized lender data for accurate deal-to-fund matching.
+
+================================================================================
+SECTION 1: LOAN TYPES (STANDARDIZED CATEGORIES)
+================================================================================
+
+The "Loan Type" column indicates the types of financing a lender provides.
+Each lender may offer MULTIPLE loan types (separated by semicolons).
+
+1. BRIDGE
+   Definition: Short-term financing that "bridges" the gap between closing on 
+               one property and selling another, or between acquisition and 
+               permanent financing
+   Use Case: Interim financing during real estate transitions
+   Typical Duration: 6-24 months
+   Related Property Types: Any (Commercial, Residential, Mixed Use, etc.)
+   AI Matching Note: Usually for time-sensitive deals needing quick capital
+   
+2. CONSTRUCTION
+   Definition: Financing for ground-up development, renovations, or significant 
+               improvements to properties
+   Use Case: New construction projects, major rehabs, fix-and-flip projects
+   Typical Duration: Duration of construction phase + holdover
+   Related Property Types: Multifamily, Office, Retail, Industrial, Hospitality
+   AI Matching Note: Requires detailed construction plans and timeline
+   
+3. DSCR (Debt Service Coverage Ratio)
+   Definition: Financing based on the property's Net Operating Income (NOI) 
+               rather than borrower's personal income
+   Use Case: Investment properties with existing income streams
+   Requirements: NOI must be 1.0x+ or higher (varies by lender)
+   Related Property Types: Multifamily, Office, Retail, Industrial
+   AI Matching Note: Asset-based lending; good for investor-owned properties
+   
+4. A&D (Acquisition & Development)
+   Definition: Financing for land acquisition and infrastructure development 
+               before vertical construction
+   Use Case: Land development, site preparation, entitlement projects
+   Typical Duration: 12-36 months
+   Related Property Types: Land, Development, Residential Development
+   AI Matching Note: Focuses on site control, entitlements, and master planning
+   
+5. FIX & FLIP
+   Definition: Short-term financing for purchase and renovation of single-family 
+               or small multi-unit properties for resale
+   Use Case: Residential real estate investing/rehabbing
+   Typical Duration: 6-18 months
+   Related Property Types: Residential
+   AI Matching Note: Exit strategy is critical; based on after-repair value (ARV)
+   
+6. LONG-TERM FINANCING
+   Definition: Permanent, traditional mortgage financing (agency or portfolio)
+   Subtypes: Fannie Mae, Freddie Mac, FHA, CMBS, portfolio mortgages
+   Use Case: Stabilized, income-producing properties
+   Typical Duration: 5-30 years
+   Related Property Types: Residential, Multifamily, Office, Retail, Industrial
+   AI Matching Note: Strictest underwriting; best rates; longer approval timeline
+   
+7. LAND DEVELOPMENT
+   Definition: Financing for raw land or development projects including 
+               infrastructure, entitlements, and vertical construction
+   Use Case: Master-planned communities, lot development, site development
+   Typical Duration: 18-48 months (varies greatly)
+   Related Property Types: Land, Development, Residential, Commercial
+   AI Matching Note: Highest risk category; requires detailed feasibility study
+
+================================================================================
+SECTION 2: PROPERTY TYPES (STANDARDIZED CATEGORIES)
+================================================================================
+
+The "Property Types" column indicates what types of real estate a lender focuses on.
+Each lender may specialize in MULTIPLE property types (separated by semicolons).
+
+1. RESIDENTIAL
+   Definition: Single-family homes, townhomes, condominiums (owner-occupied 
+               or investment)
+   Examples: Houses, single-family rentals, small residential development
+   Financing Types Often Available: Long-term financing, Fix & Flip, DSCR
+   AI Matching Note: May distinguish between owner-occupied vs. investment
+   
+2. MULTIFAMILY
+   Definition: 2-unit to high-rise apartment buildings
+   Examples: Duplexes, triplexes, garden apartments, mid-rise, high-rise
+   Unit Range: 2+ units
+   Financing Types Often Available: Construction, Long-term, DSCR, Bridge
+   AI Matching Note: Most lenders have strong multifamily products
+   
+3. OFFICE
+   Definition: Commercial office buildings (Class A, B, C)
+   Examples: Office towers, suburban office parks, flex office
+   Financing Types Often Available: DSCR, Long-term, Bridge, Construction
+   AI Matching Note: Post-pandemic; supply/demand varies by market
+   
+4. RETAIL
+   Definition: Ground-floor commercial space for retail, food, entertainment
+   Examples: Shopping centers, standalone retail, strip malls, lifestyle centers
+   Financing Types Often Available: DSCR, Long-term, Bridge
+   AI Matching Note: Tenant quality and lease strength critical
+   
+5. INDUSTRIAL
+   Definition: Warehouse, distribution, manufacturing, flex space
+   Examples: Fulfillment centers, data centers, light manufacturing, logistics
+   Financing Types Often Available: DSCR, Long-term, Bridge, Construction
+   AI Matching Note: Strong demand; quality tenants drive financing approval
+   
+6. LAND
+   Definition: Raw, undeveloped, or development-ready land
+   Examples: Vacant land, entitled land, master-planned communities, lot banking
+   Financing Types Often Available: A&D, Land Development, Bridge
+   AI Matching Note: Highest risk; requires clear path to development
+   
+7. DEVELOPMENT
+   Definition: Properties under development or redevelopment phase
+   Examples: Vertical construction, master-planned communities, major renovations
+   Financing Types Often Available: Construction, Land Development, A&D
+   AI Matching Note: Focused on execution risk and developer experience
+   
+8. MIXED USE
+   Definition: Properties combining multiple use types in one structure
+   Examples: Retail + Residential, Office + Retail, Hotel + Residential
+   Financing Types Often Available: Construction, Bridge, DSCR, Long-term
+   AI Matching Note: More complex underwriting; requires detailed pro forma
+   
+9. HOSPITALITY
+   Definition: Hotels, motels, resorts, and short-term rental properties
+   Examples: Full-service hotels, select-service, boutique, Airbnb portfolios
+   Financing Types Often Available: DSCR, Long-term, Bridge, Construction
+   AI Matching Note: Highly volatile segment; occupancy and rate critical
+   
+10. STUDENT HOUSING
+    Definition: Purpose-built or adapted housing near universities
+    Examples: On-campus facilities, off-campus student apartments
+    Financing Types Often Available: DSCR, Long-term, Construction
+    AI Matching Note: Demographic-sensitive; school strength matters
+    
+11. SELF-STORAGE
+    Definition: Climate-controlled or open storage facilities
+    Examples: Mini storage, climate-controlled storage, car storage
+    Financing Types Often Available: DSCR, Long-term, Bridge, Construction
+    AI Matching Note: Stable, defensive asset class; strong operating metrics
+
+================================================================================
+SECTION 3: LOAN AMOUNT FORMATS
+================================================================================
+
+All loan amounts are standardized to one of these formats:
+
+FORMAT 1: Range Format ($XM-$YM)
+Example: $1M-$10M
+Meaning: Lender will finance deals from $1 million to $10 million
+AI Matching: Use this range to filter eligible lenders for deal size
+
+FORMAT 2: Less Than (<$XM)
+Example: <$5M
+Meaning: Lender specializes in smaller deals, up to $5 million maximum
+AI Matching: Indicates lender's sweet spot is in the small deal market
+
+FORMAT 3: Up To (Up to $XM)
+Example: Up to $30M
+Meaning: Lender can do deals up to the specified amount
+AI Matching: Indicates maximum but not minimum; may do smaller deals
+
+================================================================================
+SECTION 4: LOAN AMOUNT CONVERSION REFERENCE
+================================================================================
+
+M  = Million (1M = $1,000,000)
+K  = Thousand (1K = $1,000)
+MM = Million (same as M)
+
+Examples for AI:
+- $0.5M = $500,000
+- $1M = $1,000,000
+- $25M = $25,000,000
+- $100M = $100,000,000
+
+================================================================================
+SECTION 5: AI MATCHING ALGORITHM INPUTS
+================================================================================
+
+When the Lendry AI evaluates a deal against the lender list:
+
+REQUIRED INPUTS (from deal data):
+1. Loan Amount: $X (must fall within lender's range)
+2. Loan Type: Which type of financing is needed (Bridge, Construction, DSCR, etc.)
+3. Property Type: What type of property (Residential, Office, Retail, etc.)
+4. Geographic Region: Which region the deal is in
+
+MATCHING LOGIC:
+✓ MATCH: Loan amount falls within lender's range
+✓ MATCH: Loan type appears in lender's list
+✓ MATCH: Property type appears in lender's list
+✓ MATCH: Geographic region matches lender's focus area
+
+⚠ POTENTIAL MATCH: If property type is blank/missing (leave open for interpretation)
+⚠ POTENTIAL MATCH: If loan type is blank/missing (may need contextual inference)
+✗ NO MATCH: Deal size is outside lender's range
+✗ NO MATCH: Loan type not offered by lender
+✗ NO MATCH: Property type not served by lender
+✗ NO MATCH: Geographic region excluded by lender
+
+================================================================================
+SECTION 6: SPECIAL NOTES & CONSIDERATIONS
+================================================================================
+
+Some lenders in the database have special notes preserved that provide context:
+
+Churchill: Long introductory note about matching system logic
+Archway Capital: "Will do equity" - offers equity financing in addition to debt
+Greystone: Fannie Mae, Freddie Mac, FHA, CMBS acquisition lender
+PMF Partners: "Tough scenarios" specialist - handles challenging deals
+E2MV Capital: "All asset classes including land at low LTV" - broader appetite
+Visio: "STR DSCR properties" - specializes in short-term rental DSCR financing
+
+AI Note: These special notes should enhance matching confidence scores where applicable.
+
+================================================================================
+SECTION 7: COMMON MATCHING SCENARIOS
+================================================================================
+
+SCENARIO 1: Residential Fix & Flip
+Loan Type: Fix & Flip
+Property Type: Residential
+Deal Size: $500K-$2M
+→ Filter lenders with "Fix & Flip" in Loan Type and "Residential" in Property Types
+→ Check if deal size falls within their Loan Amount range
+
+SCENARIO 2: Multifamily Construction
+Loan Type: Construction
+Property Type: Multifamily
+Deal Size: $15M-$30M
+→ Filter lenders with "Construction" in Loan Type and "Multifamily" in Property Types
+→ Check if deal size falls within their Loan Amount range
+→ Prioritize lenders with higher loan amount ceilings
+
+SCENARIO 3: Stabilized Office Building DSCR
+Loan Type: DSCR
+Property Type: Office
+Deal Size: $5M-$10M
+→ Filter lenders with "DSCR" in Loan Type and "Office" in Property Types
+→ Verify loan amount range compatibility
+→ Consider geographic region constraints
+
+SCENARIO 4: Land Development Bridge
+Loan Type: Land Development; Bridge
+Property Type: Land; Development
+Deal Size: $2M-$8M
+→ Filter lenders offering BOTH Land Development OR Bridge financing
+→ Filter lenders serving BOTH Land OR Development property types
+→ Check loan amount range compatibility
+
+================================================================================
+SECTION 8: DATA QUALITY NOTES FOR AI
+================================================================================
+
+BLANK FIELDS IN LOAN TYPE:
+- Indicates data was not clearly specified in source material
+- AI should NOT assume missing loan types mean "all types"
+- AI should flag these as "need clarification" in confidence scoring
+- May need manual research or direct lender contact
+
+BLANK FIELDS IN PROPERTY TYPES:
+- Indicates lender focus was not specified in source material
+- May indicate generalist lenders or incomplete data capture
+- AI should treat as "potentially broader than stated"
+- Consider requesting additional information from lender
+
+GENERIC "COMMERCIAL" PROPERTY TYPE:
+- Some lenders only show "Commercial" without Office/Retail/Industrial breakdown
+- AI should inquire with lender for property subtype focus
+- Conservative approach: assume can do most commercial subtypes
+- Aggressive approach: match any commercial deal to these lenders
+
+================================================================================
+END OF REFERENCE KEY
+================================================================================

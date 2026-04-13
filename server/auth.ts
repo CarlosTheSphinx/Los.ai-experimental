@@ -25,6 +25,8 @@ export interface AuthRequest extends Request {
     id: number;
     email: string;
     role?: string;
+    tenantId?: number | null;
+    invitedBy?: number | null;
   };
 }
 
@@ -71,7 +73,7 @@ export const authenticateUser = async (
         const { authenticateAPIKey } = await import('./middleware/apiKeyAuth');
         return authenticateAPIKey(req, res, async () => {
           if (req.apiKey) {
-            const [apiKeyUser] = await db.select({ role: users.role, email: users.email })
+            const [apiKeyUser] = await db.select({ role: users.role, email: users.email, tenantId: users.tenantId, invitedBy: users.invitedBy })
               .from(users)
               .where(eq(users.id, req.apiKey!.userId))
               .limit(1);
@@ -79,7 +81,9 @@ export const authenticateUser = async (
               req.user = {
                 id: req.apiKey!.userId,
                 email: apiKeyUser.email,
-                role: apiKeyUser.role || 'user'
+                role: apiKeyUser.role || 'user',
+                tenantId: apiKeyUser.tenantId,
+                invitedBy: apiKeyUser.invitedBy,
               };
             }
             const { enforceAPIKeyRateLimit } = await import('./middleware/apiKeyRateLimiter');
@@ -106,7 +110,7 @@ export const authenticateUser = async (
       return;
     }
     
-    const [user] = await db.select({ role: users.role, tokenVersion: users.tokenVersion })
+    const [user] = await db.select({ role: users.role, tokenVersion: users.tokenVersion, tenantId: users.tenantId, invitedBy: users.invitedBy })
       .from(users)
       .where(eq(users.id, decoded.userId))
       .limit(1);
@@ -125,7 +129,9 @@ export const authenticateUser = async (
     req.user = {
       id: decoded.userId,
       email: decoded.email,
-      role: user.role || 'user'
+      role: user.role || 'user',
+      tenantId: user.tenantId,
+      invitedBy: user.invitedBy,
     };
     
     next();
@@ -146,12 +152,12 @@ export const optionalAuth = async (
   if (token) {
     const decoded = verifyToken(token);
     if (decoded) {
-      const [user] = await db.select({ role: users.role, tokenVersion: users.tokenVersion })
+      const [user] = await db.select({ role: users.role, tokenVersion: users.tokenVersion, tenantId: users.tenantId, invitedBy: users.invitedBy })
         .from(users)
         .where(eq(users.id, decoded.userId))
         .limit(1);
       if (user && (decoded.tokenVersion ?? 0) === user.tokenVersion) {
-        req.user = { id: decoded.userId, email: decoded.email, role: user.role || 'user' };
+        req.user = { id: decoded.userId, email: decoded.email, role: user.role || 'user', tenantId: user.tenantId, invitedBy: user.invitedBy };
       }
     }
   }

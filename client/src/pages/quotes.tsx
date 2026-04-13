@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -228,7 +229,7 @@ function QuoteEsignStatus({ quoteId }: { quoteId: number }) {
             <div className="flex items-center gap-2">
               {envelope.sentAt && (
                 <span className="text-xs text-muted-foreground">
-                  Sent: {new Date(envelope.sentAt).toLocaleDateString()}
+                  Sent: {formatDate(envelope.sentAt)}
                 </span>
               )}
               {envelope.status === 'draft' && envelope.signingUrl && (
@@ -347,7 +348,7 @@ export default function Quotes() {
           <div className="space-y-4">
             {quotes.map((quote) => {
               const loanData = quote.loanData as Record<string, any>;
-              const createdAt = quote.createdAt ? new Date(quote.createdAt).toLocaleDateString() : 'N/A';
+              const createdAt = formatDate(quote.createdAt, 'N/A');
               
               // Detect if this is an RTL quote (has asIsValue or arv in loanData)
               const isRTLQuote = loanData?.asIsValue || loanData?.arv || loanData?.rehabBudget !== undefined;

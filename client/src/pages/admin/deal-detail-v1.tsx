@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,7 +84,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, safeFormat } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DigestConfigPanel } from "@/components/DigestConfigPanel";
@@ -1476,7 +1475,9 @@ export default function AdminDealDetail() {
   };
 
   const formatDateTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US', { 
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-US', { 
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
     });
   };
@@ -1936,7 +1937,7 @@ export default function AdminDealDetail() {
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Target Close</span>
                 <span className="font-semibold text-sm" data-testid="text-target-close-date">
-                  {deal.targetCloseDate ? format(new Date(deal.targetCloseDate), 'MMM d, yyyy') : '\u2014'}
+                  {safeFormat(deal.targetCloseDate, 'MMM d, yyyy')}
                 </span>
                 <Button
                   variant="ghost"
@@ -3182,7 +3183,7 @@ export default function AdminDealDetail() {
                                     {(!doc.files || doc.files.length === 0) && doc.fileName && doc.uploadedAt && (
                                       <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                                         <Paperclip className="h-3 w-3" />
-                                        {doc.fileName} <span className="mx-1">-</span> {new Date(doc.uploadedAt).toLocaleDateString()}
+                                        {doc.fileName} <span className="mx-1">-</span> {formatDate(doc.uploadedAt)}
                                       </div>
                                     )}
                                     {doc.status === 'rejected' && doc.reviewNotes && (
@@ -3282,7 +3283,7 @@ export default function AdminDealDetail() {
                                       <Paperclip className="h-3 w-3 flex-shrink-0" />
                                       <span className="truncate flex-1 min-w-0">{file.fileName || 'Unnamed file'}</span>
                                       {file.fileSize && <span className="flex-shrink-0">{(file.fileSize / 1024).toFixed(0)} KB</span>}
-                                      {file.uploadedAt && <span className="flex-shrink-0">{new Date(file.uploadedAt).toLocaleDateString()}</span>}
+                                      {file.uploadedAt && <span className="flex-shrink-0">{formatDate(file.uploadedAt)}</span>}
                                       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handleViewFile(file.id, file.fileName, file.mimeType); }} data-testid={`button-view-file-${file.id}`} title="View">
                                         <Eye className="h-3 w-3" />
                                       </Button>

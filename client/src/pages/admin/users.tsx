@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,17 +15,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, MoreHorizontal, UserCog, Shield, User as UserIcon, Plus, Users, Briefcase, Pencil, Mail, CheckCircle, Clock, Link2, Send, Phone, Copy, ChevronDown, ChevronRight, ExternalLink, MessageSquare, Check, X, KeyRound, Trash2 } from "lucide-react";
+import { Search, MoreHorizontal, UserCog, Shield, User as UserIcon, Plus, Users, Briefcase, Pencil, Mail, CheckCircle, Clock, Link2, Send, Phone, Copy, ChevronDown, ChevronRight, ExternalLink, MessageSquare, Check, X, KeyRound, Trash2, Wand2, AlertCircle, Bell, Eye, Tags } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
-
-function safeFormat(dateVal: any, fmt: string): string {
-  if (!dateVal) return '';
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return '';
-  return format(d, fmt);
-}
+import { safeFormat } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -132,10 +125,10 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<"email" | "phone" | "fullName" | "companyName" | null>(null);
+  const [editingField, setEditingField] = useState<"email" | "phone" | "fullName" | "companyName" | "title" | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const { data, isLoading, refetch } = useQuery<{
+  const { data, isLoading, error, refetch } = useQuery<{
     user: AdminUser;
     deals: UserDeal[];
     programs: LoanProgram[];
@@ -185,8 +178,20 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     onSuccess: () => {
       toast({ title: "Password reset email sent" });
     },
-    onError: () => {
-      toast({ title: "Failed to send password reset email", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: err?.message || "Failed to send password reset email", variant: "destructive" });
+    },
+  });
+
+  const magicLinkMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/admin/users/${userId}/magic-link`, {});
+    },
+    onSuccess: () => {
+      toast({ title: "Magic login link sent" });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Failed to send magic link", variant: "destructive" });
     },
   });
 
@@ -205,12 +210,13 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     },
   });
 
-  const startEditing = (field: "email" | "phone" | "fullName" | "companyName") => {
+  const startEditing = (field: "email" | "phone" | "fullName" | "companyName" | "title") => {
     setEditingField(field);
     if (field === "email") setEditValue(user?.email || "");
     else if (field === "phone") setEditValue(user?.phone || "");
     else if (field === "fullName") setEditValue(user?.fullName || "");
     else if (field === "companyName") setEditValue(user?.companyName || "");
+    else if (field === "title") setEditValue(user?.title || "");
   };
 
   const saveEdit = () => {
@@ -239,7 +245,7 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   const user = data?.user;
   const deals = data?.deals || [];
   const programs = data?.programs || [];
-  const settings: BrokerSettings = (user?.brokerSettings as BrokerSettings) || {};
+  const settings: BrokerSettings = (user?.brokerSettings as BrokerSettings) || { brokerPointsEnabled: true };
 
   const siteBaseUrl = import.meta.env.VITE_BASE_URL || window.location.origin;
   const inviteLink = generatedLink || (user?.inviteToken ? `${siteBaseUrl}/join/personal/${user.inviteToken}` : null);
@@ -316,7 +322,22 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
     );
   }
 
-  if (!user) return null;
+  if (error || !user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 px-4 text-center space-y-4" data-testid="user-detail-error">
+        <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+          <AlertCircle className="h-6 w-6 text-destructive" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Unable to load user details</p>
+          <p className="text-xs text-muted-foreground">This may be due to a network issue or expired session.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-user-details">
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   const status = inviteStatusConfig[user.inviteStatus || "none"] || inviteStatusConfig.none;
 
@@ -355,9 +376,18 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
               </div>
             )}
           </div>
-          <Badge variant="secondary" className="capitalize shrink-0" data-testid="badge-detail-type">
-            {user.role || "broker"}
-          </Badge>
+          <Select
+            value={user.role || "broker"}
+            onValueChange={(val) => updateFieldMutation.mutate({ role: val })}
+          >
+            <SelectTrigger className="h-7 w-auto text-xs capitalize shrink-0" data-testid="select-detail-role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="borrower">Borrower</SelectItem>
+              <SelectItem value="broker">Broker</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex items-center gap-1.5">
           {editingField === "companyName" ? (
@@ -382,6 +412,35 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
             <>
               <p className="text-sm text-muted-foreground">{user.companyName || "No company"}</p>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("companyName")} data-testid="button-edit-company">
+                <Pencil className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {editingField === "title" ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Input
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="h-7 text-sm flex-1"
+                autoFocus
+                placeholder="Job title"
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingField(null); }}
+                data-testid="input-edit-title"
+              />
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={saveEdit} disabled={updateFieldMutation.isPending} data-testid="button-save-title">
+                <Check className="h-3.5 w-3.5 text-green-600" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingField(null)} data-testid="button-cancel-edit-title">
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Briefcase className="h-3 w-3 text-muted-foreground shrink-0" />
+              <p className="text-xs text-muted-foreground">{user.title || "No title"}</p>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => startEditing("title")} data-testid="button-edit-title">
                 <Pencil className="h-3 w-3 text-muted-foreground" />
               </Button>
             </>
@@ -589,6 +648,27 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
         </Button>
       </div>
 
+      <div className="border rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold flex items-center gap-1.5">
+            <Wand2 className="h-4 w-4" /> Magic Link Login
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Send a one-click login link via email. The link expires in 30 minutes and can only be used once.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => magicLinkMutation.mutate()}
+          disabled={magicLinkMutation.isPending}
+          data-testid="button-send-magic-link"
+        >
+          <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+          {magicLinkMutation.isPending ? "Sending..." : "Send Magic Link"}
+        </Button>
+      </div>
+
       {user.role === "broker" && (
         <Collapsible open={brokerPermsOpen} onOpenChange={setBrokerPermsOpen}>
           <CollapsibleTrigger asChild>
@@ -750,6 +830,13 @@ function UsersTab() {
   const [draftSubject, setDraftSubject] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [pendingInvite, setPendingInvite] = useState<{ subject: string; body: string } | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set());
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeChannel, setComposeChannel] = useState<"email" | "inapp" | "both">("email");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const composeBodyRef = useRef<HTMLTextAreaElement>(null);
   const [newUser, setNewUser] = useState({
     email: "",
     fullName: "",
@@ -762,6 +849,8 @@ function UsersTab() {
 
   const { data, isLoading, refetch } = useQuery<{ users: AdminUser[] }>({
     queryKey: ["/api/admin/users"],
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const getDefaultDraft = (name: string, email: string) => ({
@@ -838,6 +927,90 @@ function UsersTab() {
 
   const handleActiveToggle = (userId: number, isActive: boolean) => {
     updateUserMutation.mutate({ id: userId, updates: { isActive } });
+  };
+
+  const broadcastMutation = useMutation({
+    mutationFn: async (payload: { userIds: number[]; subject: string; body: string; channels: string }) => {
+      const res = await apiRequest("POST", "/api/admin/users/broadcast", payload);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const stats = data.stats || {};
+      const totalSent = (stats.emailsSent || 0) + (stats.inAppSent || 0);
+      const totalFailed = (stats.emailsFailed || 0) + (stats.inAppFailed || 0);
+      if (totalSent === 0 && totalFailed > 0) {
+        toast({ title: "Message delivery failed", description: `${totalFailed} message(s) failed to send`, variant: "destructive" });
+        return;
+      }
+      const parts: string[] = [];
+      if (stats.emailsSent) parts.push(`${stats.emailsSent} email(s)`);
+      if (stats.inAppSent) parts.push(`${stats.inAppSent} notification(s)`);
+      const failPart = totalFailed > 0 ? ` (${totalFailed} failed)` : '';
+      toast({ title: `Sent ${parts.join(" and ")} successfully${failPart}` });
+      setIsComposeOpen(false);
+      setComposeSubject("");
+      setComposeBody("");
+      setShowPreview(false);
+      setSelectedUserIds(new Set());
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send message", description: error?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
+  const toggleUserSelection = useCallback((userId: number) => {
+    setSelectedUserIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }, []);
+
+  const insertMergeField = useCallback((field: string) => {
+    const textarea = composeBodyRef.current;
+    if (!textarea) {
+      setComposeBody(prev => prev + `{{${field}}}`);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const tag = `{{${field}}}`;
+    const newVal = composeBody.substring(0, start) + tag + composeBody.substring(end);
+    setComposeBody(newVal);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+    }, 0);
+  }, [composeBody]);
+
+  const getPreviewMessage = useCallback((user: AdminUser) => {
+    const parts = (user.fullName || user.email).trim().split(' ');
+    const firstName = parts[0];
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    return composeBody
+      .replace(/\{\{firstName\}\}/gi, firstName)
+      .replace(/\{\{lastName\}\}/gi, lastName)
+      .replace(/\{\{companyName\}\}/gi, user.companyName || '')
+      .replace(/\{\{email\}\}/gi, user.email)
+      .replace(/\{\{role\}\}/gi, user.role || 'user');
+  }, [composeBody]);
+
+  const handleSendBroadcast = () => {
+    if (!composeBody.trim()) {
+      toast({ title: "Message body is required", variant: "destructive" });
+      return;
+    }
+    if ((composeChannel === 'email' || composeChannel === 'both') && !composeSubject.trim()) {
+      toast({ title: "Subject is required for email delivery", variant: "destructive" });
+      return;
+    }
+    broadcastMutation.mutate({
+      userIds: Array.from(selectedUserIds),
+      subject: composeSubject,
+      body: composeBody,
+      channels: composeChannel,
+    });
   };
 
   const allUsers = data?.users || [];
@@ -1072,6 +1245,19 @@ function UsersTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.has(u.id))}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedUserIds(new Set(filteredUsers.map(u => u.id)));
+                          } else {
+                            setSelectedUserIds(new Set());
+                          }
+                        }}
+                        data-testid="checkbox-select-all-users"
+                      />
+                    </TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Type</TableHead>
@@ -1088,10 +1274,18 @@ function UsersTab() {
                     return (
                       <TableRow
                         key={user.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${selectedUserIds.has(user.id) ? "bg-primary/5" : ""}`}
                         onClick={() => setSelectedUserId(user.id)}
                         data-testid={`row-user-${user.id}`}
                       >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedUserIds.has(user.id)}
+                            onCheckedChange={() => toggleUserSelection(user.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`checkbox-user-${user.id}`}
+                          />
+                        </TableCell>
                         <TableCell>
                           <p className="font-medium">{user.fullName || "No name"}</p>
                         </TableCell>
@@ -1112,7 +1306,7 @@ function UsersTab() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {safeFormat(user.lastLoginAt, "MMM d, yyyy") || "Never"}
+                          {safeFormat(user.lastLoginAt, "MMM d, yyyy", "Never")}
                         </TableCell>
                         <TableCell>
                           <Switch
@@ -1144,6 +1338,187 @@ function UsersTab() {
           )}
         </CardContent>
       </Card>
+
+      {selectedUserIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-primary text-primary-foreground px-5 py-3 rounded-full shadow-lg" data-testid="floating-action-bar">
+          <span className="text-sm font-medium" data-testid="text-selected-count">{selectedUserIds.size} user{selectedUserIds.size > 1 ? "s" : ""} selected</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setIsComposeOpen(true)}
+            data-testid="button-send-message"
+          >
+            <Send className="h-3.5 w-3.5 mr-1.5" />
+            Send Message
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-primary-foreground hover:text-primary-foreground/80 hover:bg-primary/80 h-7 w-7 p-0"
+            onClick={() => setSelectedUserIds(new Set())}
+            data-testid="button-clear-selection"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={isComposeOpen} onOpenChange={(open) => { if (!open) { setIsComposeOpen(false); setShowPreview(false); } }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Send Message to {selectedUserIds.size} User{selectedUserIds.size > 1 ? "s" : ""}</DialogTitle>
+            <DialogDescription>Compose a personalized message using merge fields</DialogDescription>
+          </DialogHeader>
+
+          {!showPreview ? (
+            <div className="space-y-4 mt-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Delivery Channel</Label>
+                <Select value={composeChannel} onValueChange={(v) => setComposeChannel(v as "email" | "inapp" | "both")}>
+                  <SelectTrigger data-testid="select-compose-channel">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">
+                      <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Email</span>
+                    </SelectItem>
+                    <SelectItem value="inapp">
+                      <span className="flex items-center gap-1.5"><Bell className="h-3.5 w-3.5" /> In-App Notification</span>
+                    </SelectItem>
+                    <SelectItem value="both">
+                      <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Email + In-App</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(composeChannel === "email" || composeChannel === "both") && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Subject</Label>
+                  <Input
+                    value={composeSubject}
+                    onChange={(e) => setComposeSubject(e.target.value)}
+                    placeholder="Message subject..."
+                    data-testid="input-compose-subject"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Message Body</Label>
+                <Textarea
+                  ref={composeBodyRef}
+                  value={composeBody}
+                  onChange={(e) => setComposeBody(e.target.value)}
+                  placeholder="Write your message here..."
+                  rows={8}
+                  className="resize-none"
+                  data-testid="input-compose-body"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium flex items-center gap-1.5">
+                  <Tags className="h-3.5 w-3.5" />
+                  Insert Merge Field
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: "firstName", field: "firstName" },
+                    { label: "lastName", field: "lastName" },
+                    { label: "companyName", field: "companyName" },
+                    { label: "email", field: "email" },
+                    { label: "role", field: "role" },
+                  ].map(({ label, field }) => (
+                    <Button
+                      key={field}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs font-mono"
+                      onClick={() => insertMergeField(field)}
+                      data-testid={`button-merge-${field}`}
+                    >
+                      {`{{${label}}}`}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowPreview(true)}
+                  disabled={!composeBody.trim()}
+                  data-testid="button-preview-message"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1.5" />
+                  Preview
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSendBroadcast}
+                  disabled={broadcastMutation.isPending || !composeBody.trim()}
+                  data-testid="button-send-broadcast"
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  {broadcastMutation.isPending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 mt-2">
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Preview for: {(() => {
+                  const previewUser = externalUsers.find(u => selectedUserIds.has(u.id));
+                  return previewUser ? (previewUser.fullName || previewUser.email) : "Selected User";
+                })()}</p>
+                {(composeChannel === "email" || composeChannel === "both") && composeSubject && (
+                  <p className="text-sm font-semibold mb-2" data-testid="text-preview-subject">
+                    Subject: {(() => {
+                      const previewUser = externalUsers.find(u => selectedUserIds.has(u.id));
+                      if (!previewUser) return composeSubject;
+                      const parts = (previewUser.fullName || previewUser.email).trim().split(' ');
+                      return composeSubject
+                        .replace(/\{\{firstName\}\}/gi, parts[0])
+                        .replace(/\{\{lastName\}\}/gi, parts.length > 1 ? parts.slice(1).join(' ') : '')
+                        .replace(/\{\{companyName\}\}/gi, previewUser.companyName || '')
+                        .replace(/\{\{email\}\}/gi, previewUser.email)
+                        .replace(/\{\{role\}\}/gi, previewUser.role || 'user');
+                    })()}
+                  </p>
+                )}
+                <div className="text-sm whitespace-pre-wrap" data-testid="text-preview-body">
+                  {(() => {
+                    const previewUser = externalUsers.find(u => selectedUserIds.has(u.id));
+                    return previewUser ? getPreviewMessage(previewUser) : composeBody;
+                  })()}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowPreview(false)}
+                  data-testid="button-back-to-compose"
+                >
+                  Back to Edit
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSendBroadcast}
+                  disabled={broadcastMutation.isPending}
+                  data-testid="button-send-broadcast-preview"
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  {broadcastMutation.isPending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={selectedUserId !== null} onOpenChange={(open) => { if (!open) setSelectedUserId(null); }}>
         <SheetContent side="right" className="sm:max-w-md w-full overflow-y-auto">
@@ -1177,6 +1552,8 @@ function TeamTab() {
 
   const { data, isLoading, refetch } = useQuery<{ users: AdminUser[] }>({
     queryKey: ["/api/admin/users"],
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const inviteMemberMutation = useMutation({
@@ -1725,7 +2102,7 @@ function BetaWaitlistTab() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {safeFormat(signup.createdAt, "MMM d, yyyy") || "-"}
+                        {safeFormat(signup.createdAt, "MMM d, yyyy", "-")}
                       </TableCell>
                       <TableCell>
                         <Button

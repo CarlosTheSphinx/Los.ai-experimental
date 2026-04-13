@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
+import { STANDARD_LOAN_TYPES, STANDARD_PROPERTY_TYPES, LOAN_TYPE_VALUES, PROPERTY_TYPE_VALUES } from "@shared/loanConstants";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -147,7 +148,7 @@ const formSchema = z.object({
   phone: z.string().min(1, "Phone number is required"),
   roleOnDeal: z.string().min(1, "Role on deal is required"),
 
-  loanType: z.enum(["BRIDGE", "LONG_TERM"], { required_error: "Select a loan type" }),
+  loanType: z.enum(LOAN_TYPE_VALUES as [string, ...string[]], { required_error: "Select a loan type" }),
   requestedLoanAmount: z.coerce.number().min(1, "Loan amount is required"),
   requestedLTV: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
   requestedLTC: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
@@ -164,7 +165,7 @@ const formSchema = z.object({
   city: z.string().min(1, "City is required"),
   state: z.string().length(2, "Select a state"),
   zip: z.string().min(5, "ZIP code is required"),
-  propertyType: z.enum(["SINGLE_FAMILY_RESIDENCE", "TWO_FOUR_UNIT", "MULTIFAMILY", "RENTAL_PORTFOLIO", "MIXED_USE", "INFILL_LOT", "LAND", "OFFICE", "RETAIL", "HOSPITALITY", "INDUSTRIAL", "MEDICAL", "AGRICULTURAL", "SPECIAL_PURPOSE"], { required_error: "Select property type" }),
+  propertyType: z.enum(PROPERTY_TYPE_VALUES as [string, ...string[]], { required_error: "Select property type" }),
   occupancyType: z.enum(["STABILIZED", "VALUE_ADD", "LEASE_UP", "GROUND_UP", "OTHER"], { required_error: "Select occupancy type" }),
   unitsOrSqft: z.coerce.number().min(1, "Units/Sq Ft is required"),
   yearBuilt: z.coerce.number().optional().or(z.literal("")),
@@ -256,7 +257,7 @@ const formSchema = z.object({
       path: ["requestedLTV"],
     });
   }
-  if (data.loanType === "BRIDGE") {
+  if (["Bridge", "Fix & Flip", "Construction", "A&D", "Land Development"].includes(data.loanType)) {
     if (!data.exitStrategyType) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -428,35 +429,47 @@ export default function CommercialSubmissionPage() {
 
       if (preScreenAssetClass) {
         const mapping: Record<string, string> = {
-          "single-family-residence": "SINGLE_FAMILY_RESIDENCE",
-          "2-4-unit": "TWO_FOUR_UNIT",
-          "multifamily-5-plus": "MULTIFAMILY",
-          "rental-portfolio": "RENTAL_PORTFOLIO",
-          "mixed-use": "MIXED_USE",
-          "infill-lot": "INFILL_LOT",
-          land: "LAND",
-          office: "OFFICE",
-          retail: "RETAIL",
-          hospitality: "HOSPITALITY",
-          industrial: "INDUSTRIAL",
-          medical: "MEDICAL",
-          agricultural: "AGRICULTURAL",
-          "special-purpose": "SPECIAL_PURPOSE",
-          multifamily: "MULTIFAMILY",
+          "single-family-residence": "Residential",
+          "2-4-unit": "Multifamily",
+          "multifamily-5-plus": "Multifamily",
+          "rental-portfolio": "Residential",
+          "mixed-use": "Mixed Use",
+          "infill-lot": "Land",
+          land: "Land",
+          office: "Office",
+          retail: "Retail",
+          hospitality: "Hospitality",
+          industrial: "Industrial",
+          medical: "Office",
+          agricultural: "Land",
+          "special-purpose": "Industrial",
+          multifamily: "Multifamily",
+          residential: "Residential",
+          development: "Development",
+          "student-housing": "Student Housing",
+          "self-storage": "Self-Storage",
         };
-        const mapped = mapping[preScreenAssetClass.toLowerCase()] || preScreenAssetClass.toUpperCase();
-        if (["SINGLE_FAMILY_RESIDENCE", "TWO_FOUR_UNIT", "MULTIFAMILY", "RENTAL_PORTFOLIO", "MIXED_USE", "INFILL_LOT", "LAND", "OFFICE", "RETAIL", "HOSPITALITY", "INDUSTRIAL", "MEDICAL", "AGRICULTURAL", "SPECIAL_PURPOSE"].includes(mapped)) {
+        const mapped = mapping[preScreenAssetClass.toLowerCase()] || preScreenAssetClass;
+        if (PROPERTY_TYPE_VALUES.includes(mapped)) {
           form.setValue("propertyType", mapped as any);
         }
       }
       if (preScreenDealType) {
         const dtMapping: Record<string, string> = {
-          bridge: "BRIDGE",
-          long_term: "LONG_TERM",
-          longterm: "LONG_TERM",
+          bridge: "Bridge",
+          construction: "Construction",
+          dscr: "DSCR",
+          "a&d": "A&D",
+          "fix-and-flip": "Fix & Flip",
+          "fix_and_flip": "Fix & Flip",
+          long_term: "Long-Term Financing",
+          longterm: "Long-Term Financing",
+          permanent: "Long-Term Financing",
+          "land-development": "Land Development",
+          "land_development": "Land Development",
         };
-        const mapped = dtMapping[preScreenDealType.toLowerCase()] || preScreenDealType.toUpperCase();
-        if (["BRIDGE", "LONG_TERM"].includes(mapped)) {
+        const mapped = dtMapping[preScreenDealType.toLowerCase()] || preScreenDealType;
+        if (LOAN_TYPE_VALUES.includes(mapped)) {
           form.setValue("loanType", mapped as any);
         }
       }
@@ -483,13 +496,14 @@ export default function CommercialSubmissionPage() {
   const watchedCurrentLitigation = form.watch("currentLitigation");
   const watchedBankruptcyLast7Years = form.watch("bankruptcyLast7Years");
 
-  const unitsLabel = watchedPropertyType === "MULTIFAMILY" ? "Units" : "Sq Ft";
+  const unitsLabel = watchedPropertyType === "Multifamily" ? "Units" : "Sq Ft";
+  const shortTermLoanTypes = ["Bridge", "Fix & Flip", "Construction", "A&D", "Land Development"];
 
-  const isConstructionStep = watchedOccupancyType === "GROUND_UP" || watchedLoanType === "BRIDGE";
+  const isConstructionStep = watchedOccupancyType === "GROUND_UP" || shortTermLoanTypes.includes(watchedLoanType);
 
   const getRequiredDocTypes = (): DocType[] => {
     const required: DocType[] = ["SREO", "PFS", "BUDGET"];
-    if (watchedLoanType === "BRIDGE") {
+    if (shortTermLoanTypes.includes(watchedLoanType)) {
       required.push("TRACK_RECORD");
     }
     return required;
@@ -651,8 +665,8 @@ export default function CommercialSubmissionPage() {
         requestedLTC: toNum(values.requestedLTC),
         interestOnly: values.interestOnly,
         desiredCloseDate: new Date(values.desiredCloseDate).toISOString(),
-        exitStrategyType: values.loanType === "BRIDGE" ? toStr(values.exitStrategyType) : null,
-        exitStrategyDetails: values.loanType === "BRIDGE" ? toStr(values.exitStrategyDetails) : null,
+        exitStrategyType: ["Bridge", "Fix & Flip", "Construction", "A&D", "Land Development"].includes(values.loanType) ? toStr(values.exitStrategyType) : null,
+        exitStrategyDetails: ["Bridge", "Fix & Flip", "Construction", "A&D", "Land Development"].includes(values.loanType) ? toStr(values.exitStrategyDetails) : null,
         loanPurpose: toStr(values.loanPurpose),
         requestedLoanTerm: toStr(values.requestedLoanTerm),
         closingTimeline: toStr(values.closingTimeline),
@@ -927,8 +941,9 @@ export default function CommercialSubmissionPage() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="BRIDGE">Bridge</SelectItem>
-                  <SelectItem value="LONG_TERM">Long Term</SelectItem>
+                  {STANDARD_LOAN_TYPES.map(lt => (
+                    <SelectItem key={lt.value} value={lt.value}>{lt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -1112,7 +1127,7 @@ export default function CommercialSubmissionPage() {
         />
       </div>
 
-      {watchedLoanType === "BRIDGE" && (
+      {shortTermLoanTypes.includes(watchedLoanType) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
           <FormField
             control={form.control}
@@ -1267,20 +1282,9 @@ export default function CommercialSubmissionPage() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="SINGLE_FAMILY_RESIDENCE">Single Family Residence</SelectItem>
-                  <SelectItem value="TWO_FOUR_UNIT">2-4 Unit</SelectItem>
-                  <SelectItem value="MULTIFAMILY">Multifamily (5+ Units)</SelectItem>
-                  <SelectItem value="RENTAL_PORTFOLIO">Rental Portfolio</SelectItem>
-                  <SelectItem value="MIXED_USE">Mixed-Use</SelectItem>
-                  <SelectItem value="INFILL_LOT">Infill Lot</SelectItem>
-                  <SelectItem value="LAND">Land</SelectItem>
-                  <SelectItem value="OFFICE">Office</SelectItem>
-                  <SelectItem value="RETAIL">Retail</SelectItem>
-                  <SelectItem value="HOSPITALITY">Hospitality</SelectItem>
-                  <SelectItem value="INDUSTRIAL">Industrial</SelectItem>
-                  <SelectItem value="MEDICAL">Medical</SelectItem>
-                  <SelectItem value="AGRICULTURAL">Agricultural</SelectItem>
-                  <SelectItem value="SPECIAL_PURPOSE">Special Purpose</SelectItem>
+                  {STANDARD_PROPERTY_TYPES.map(pt => (
+                    <SelectItem key={pt.value} value={pt.value}>{pt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -1817,7 +1821,7 @@ export default function CommercialSubmissionPage() {
         </div>
       </div>
 
-      {watchedPropertyType === "MULTIFAMILY" && (
+      {watchedPropertyType === "Multifamily" && (
         <div className="pt-4 border-t">
           <h3 className="text-sm font-semibold mb-3 text-foreground">Unit Mix</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3156,7 +3160,7 @@ export default function CommercialSubmissionPage() {
                 <span data-testid="review-closing-timeline">{values.closingTimeline}</span>
               </div>
             )}
-            {values.loanType === "BRIDGE" && (
+            {["Bridge", "Fix & Flip", "Construction", "A&D", "Land Development"].includes(values.loanType) && (
               <>
                 <div>
                   <span className="text-muted-foreground">Exit Strategy:</span>{" "}
@@ -3201,7 +3205,7 @@ export default function CommercialSubmissionPage() {
               <span data-testid="review-occupancy-type">{values.occupancyType}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">{values.propertyType === "MULTIFAMILY" ? "Units" : "Sq Ft"}:</span>{" "}
+              <span className="text-muted-foreground">{values.propertyType === "Multifamily" ? "Units" : "Sq Ft"}:</span>{" "}
               <span data-testid="review-units-sqft">{values.unitsOrSqft}</span>
             </div>
             <div>

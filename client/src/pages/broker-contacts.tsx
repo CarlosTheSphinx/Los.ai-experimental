@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDate } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -515,7 +516,7 @@ export default function BrokerContactsPage() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {contact.lastContactedAt
-                            ? new Date(contact.lastContactedAt).toLocaleDateString()
+                            ? formatDate(contact.lastContactedAt)
                             : 'Never'}
                         </TableCell>
                         <TableCell className="text-right">
