@@ -217,6 +217,43 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
+  // Ensure users table has all required columns before seeding
+  try {
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS borrower_magic_link VARCHAR(255) UNIQUE`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS borrower_magic_link_enabled BOOLEAN DEFAULT false`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS broker_magic_link VARCHAR(255) UNIQUE`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS broker_magic_link_enabled BOOLEAN DEFAULT false`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS magic_link_token VARCHAR(255)`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS magic_link_expires TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS account_locked_until TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_expires_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0 NOT NULL`);
+  } catch (e) {
+    // Columns may already exist
+  }
+
+  // Ensure commercial_form_config table exists before seeding or backfill
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS commercial_form_config (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      field_key VARCHAR(100) NOT NULL,
+      field_label VARCHAR(255) NOT NULL,
+      section VARCHAR(100) NOT NULL,
+      field_type VARCHAR(50) NOT NULL,
+      display_format VARCHAR(50) DEFAULT 'plain',
+      is_visible BOOLEAN NOT NULL DEFAULT true,
+      is_required BOOLEAN NOT NULL DEFAULT false,
+      is_custom BOOLEAN NOT NULL DEFAULT false,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      options JSONB,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`);
+  } catch (e) {
+    // Table may already exist
+  }
+
   await seedSuperAdmins();
 
   try {
@@ -253,8 +290,12 @@ app.use((req, res, next) => {
     // Table may already exist
   }
 
-  const { backfillTenantIds } = await import('./utils/backfill-tenants');
-  await backfillTenantIds();
+  try {
+    const { backfillTenantIds } = await import('./utils/backfill-tenants');
+    await backfillTenantIds();
+  } catch (e) {
+    console.error('⚠️ Failed to backfill tenant IDs:', e);
+  }
 
   setTimeout(async () => {
     try {
