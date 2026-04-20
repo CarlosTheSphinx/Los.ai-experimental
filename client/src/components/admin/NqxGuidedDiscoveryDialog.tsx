@@ -87,11 +87,10 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
     '<div id="__lendry_status" style="color:#C9A84C;margin-bottom:8px;">Open each dropdown on the pricer once.</div>' +
     '<div id="__lendry_list" style="max-height:180px;overflow:auto;font-size:11px;margin-bottom:10px;background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
-      '<button id="__lendry_send" style="background:#C9A84C;color:#0F1629;border:0;padding:7px 14px;border-radius:5px;font:700 12px system-ui,-apple-system,sans-serif;cursor:pointer;">Submit to Lendry</button>' +
       '<button id="__lendry_reset" style="background:transparent;color:#C9A84C;border:1px solid #C9A84C;padding:6px 10px;border-radius:5px;cursor:pointer;font:600 11px system-ui,-apple-system,sans-serif;">Reset</button>' +
       '<button id="__lendry_export" style="background:transparent;color:#888;border:1px solid #444;padding:6px 10px;border-radius:5px;cursor:pointer;font:600 11px system-ui,-apple-system,sans-serif;" title="Download the captured map as JSON (for debugging)">Export JSON</button>' +
     '</div>' +
-    '<div style="color:#666;margin-top:8px;font-size:10px;">Clicking Calculate Rate on the pricer also auto-submits.</div>';
+    '<div style="color:#666;margin-top:8px;font-size:10px;">Submission happens automatically when you click Calculate Rate on the pricer.</div>';
   function attachOverlay(){ if (!document.getElementById('__lendry_overlay')) document.body.appendChild(overlay); }
   if (document.body) attachOverlay(); else document.addEventListener('DOMContentLoaded', attachOverlay);
 
@@ -329,7 +328,6 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
   }
 
   function bindButtons(){
-    var s = document.getElementById('__lendry_send');   if (s) s.onclick = submit;
     var e = document.getElementById('__lendry_export'); if (e) e.onclick = exportJson;
     var r = document.getElementById('__lendry_reset'); if (r) r.onclick = function(){
       if (!confirm('Clear every captured field?')) return;

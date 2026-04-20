@@ -51,19 +51,12 @@ interface AdditionalCapture {
   body: unknown;
 }
 
-interface CapturedFieldMapEntry {
-  label: string;
-  fieldId?: string | null;
-  optionsByLabel?: Record<string, string>;
-}
-
 interface CapturePayload {
   calculateRateUrl: string;
   requestBody: unknown;
   responseBody: unknown;
   domFields: DomFieldSnapshot[];
   additionalCaptures?: AdditionalCapture[];
-  fieldMap?: CapturedFieldMapEntry[];
   pageTitle?: string;
 }
 
@@ -167,45 +160,6 @@ function harvestFieldsFromAdditional(
   return { fields: fieldsById, productName };
 }
 
-const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
-
-function fieldsFromFieldMap(
-  entries: CapturedFieldMapEntry[],
-  reqBody: Record<string, unknown>,
-): NqxField[] {
-  const out: NqxField[] = [];
-  for (const entry of entries) {
-    if (!entry?.label) continue;
-    const optionsByLabel = entry.optionsByLabel ?? {};
-    const options: NqxFieldOption[] = Object.keys(optionsByLabel)
-      .map((label) => ({ id: String(optionsByLabel[label]), label }))
-      .filter((o) => o.id);
-
-    let fieldId: string | null =
-      entry.fieldId && OBJECT_ID_RE.test(entry.fieldId) ? entry.fieldId : null;
-    if (!fieldId && options.length > 0) {
-      const optIds = new Set(options.map((o) => o.id));
-      for (const [k, v] of Object.entries(reqBody)) {
-        if (!isUsableOpaqueId(k)) continue;
-        if (typeof v === "string" && optIds.has(v)) { fieldId = k; break; }
-        if (Array.isArray(v) && v.some((x) => typeof x === "string" && optIds.has(x))) {
-          fieldId = k;
-          break;
-        }
-      }
-    }
-    if (!fieldId) continue;
-
-    out.push({
-      id: fieldId,
-      label: entry.label,
-      type: "select",
-      options: options.length ? options : undefined,
-    });
-  }
-  return out;
-}
-
 function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
   const ids = parseCalculateRateUrl(capture.calculateRateUrl);
   if (!ids) {
@@ -216,27 +170,27 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
       ? (capture.requestBody as Record<string, unknown>)
       : {};
   const additional = capture.additionalCaptures ?? [];
-  const fieldMapEntries = capture.fieldMap ?? [];
 
-  const fiberFields = fieldsFromFieldMap(fieldMapEntries, reqBody);
+  // 1. Pull every real field/option definition out of the page-load config
+  //    responses. This is where the proper labels and option lists live.
   const { fields: configFields, productName } = harvestFieldsFromAdditional(
     additional,
     ids.productId,
   );
 
+  // 2. Build the final field list from the calculate_rate request body.
+  //    For each opaqueId actually sent to /calculate_rate, prefer the
+  //    config-derived field; otherwise fall back to the DOM snapshot;
+  //    otherwise emit a plain text placeholder.
   const domFieldsById = new Map<string, DomFieldSnapshot>();
   for (const dom of capture.domFields) {
     if (!dom.opaqueId || !isUsableOpaqueId(dom.opaqueId)) continue;
     if (!domFieldsById.has(dom.opaqueId)) domFieldsById.set(dom.opaqueId, dom);
   }
 
-  // Precedence: fiber-walk > config > DOM > plain-text placeholder.
   const fieldsById = new Map<string, NqxField>();
-  for (const f of fiberFields) fieldsById.set(f.id, f);
-
   const reqKeys = Object.keys(reqBody).filter(isUsableOpaqueId);
   for (const key of reqKeys) {
-    if (fieldsById.has(key)) continue;
     const fromConfig = configFields.get(key);
     if (fromConfig) {
       fieldsById.set(key, fromConfig);
@@ -260,6 +214,8 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
     fieldsById.set(key, { id: key, label: key, type: "text" });
   }
 
+  // 3. Also include any config-derived fields that aren't currently in the
+  //    request body — they're real fields the user just didn't touch.
   for (const [id, f] of Array.from(configFields.entries())) {
     if (!fieldsById.has(id)) fieldsById.set(id, f);
   }
@@ -390,31 +346,13 @@ export function registerNqxGuidedDiscoveryRoutes(
         return res.status(413).json({ error: "Capture payload too large" });
       }
 
-      const additionalRaw: unknown[] = Array.isArray(body.additionalCaptures) ? body.additionalCaptures : [];
+      const additionalRaw = Array.isArray(body.additionalCaptures) ? body.additionalCaptures : [];
       const additionalCaptures: AdditionalCapture[] = [];
       for (const c of additionalRaw) {
         if (!c || typeof c !== "object") continue;
-        const rec = c as Record<string, unknown>;
-        const url = typeof rec.url === "string" ? rec.url : "";
+        const url = typeof (c as any).url === "string" ? (c as any).url : "";
         if (!url || !/nqxpricer\.com/.test(url)) continue;
-        additionalCaptures.push({ url, body: rec.body });
-      }
-
-      const fieldMap: CapturedFieldMapEntry[] = [];
-      const fieldMapRaw: unknown[] = Array.isArray(body.fieldMap) ? body.fieldMap : [];
-      for (const e of fieldMapRaw) {
-        if (!e || typeof e !== "object") continue;
-        const rec = e as Record<string, unknown>;
-        const label = typeof rec.label === "string" ? rec.label.trim() : "";
-        if (!label) continue;
-        const fid = typeof rec.fieldId === "string" ? rec.fieldId : null;
-        const safeOpts: Record<string, string> = {};
-        if (rec.optionsByLabel && typeof rec.optionsByLabel === "object") {
-          for (const [k, v] of Object.entries(rec.optionsByLabel as Record<string, unknown>)) {
-            if (typeof k === "string" && typeof v === "string") safeOpts[k] = v;
-          }
-        }
-        fieldMap.push({ label, fieldId: fid, optionsByLabel: safeOpts });
+        additionalCaptures.push({ url, body: (c as any).body });
       }
 
       const capture: CapturePayload = {
@@ -423,7 +361,6 @@ export function registerNqxGuidedDiscoveryRoutes(
         responseBody: body.responseBody ?? null,
         domFields: Array.isArray(body.domFields) ? (body.domFields as DomFieldSnapshot[]) : [],
         additionalCaptures,
-        fieldMap,
         pageTitle: typeof body.pageTitle === "string" ? body.pageTitle : undefined,
       };
 
