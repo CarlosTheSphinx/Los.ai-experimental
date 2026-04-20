@@ -258,7 +258,7 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
   pricingNormalizedKeys: Set<string>;
   keyAliases: Record<string, string>;
 } {
-  if (program.pricingMode !== 'external' || !program.externalPricingConfig) {
+  if ((program.pricingMode !== 'external' && program.pricingMode !== 'external-api') || !program.externalPricingConfig) {
     return { pricingFields: [], pricingNormalizedKeys: new Set(), keyAliases: {} };
   }
   const cfg = program.externalPricingConfig;
