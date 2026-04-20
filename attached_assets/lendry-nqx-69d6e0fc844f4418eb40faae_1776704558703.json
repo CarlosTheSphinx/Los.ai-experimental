@@ -1,0 +1,318 @@
+{
+  "pricerId": "69d6e0fc844f4418eb40faae",
+  "productId": "69d6e0fcc15353ac14e79477",
+  "capturedAt": "2026-04-20T16:59:19.308Z",
+  "fields": {
+    "LTV *": {
+      "fieldId": "69d6e0fcc15353ac14e7948a",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e7948b",
+          "label": "≤ 50%",
+          "order": 1
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7948c",
+          "label": "50.01% - 55%",
+          "order": 2
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7948d",
+          "label": "55.01% - 60%",
+          "order": 3
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7948e",
+          "label": "60.01% - 65%",
+          "order": 4
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7948f",
+          "label": "65.01% - 70%",
+          "order": 5
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79490",
+          "label": "70.01% - 75%",
+          "order": 6
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79491",
+          "label": "75.01% - 80%",
+          "order": 7
+        }
+      ]
+    },
+    "Loan Type": {
+      "fieldId": "69d6e0fcc15353ac14e79485",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e79486",
+          "label": "30 YR Fixed Rate",
+          "order": 1
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79487",
+          "label": "10/6 ARM (30 YR)",
+          "order": 2
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79488",
+          "label": "7/6 ARM (30 YR)",
+          "order": 3
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79489",
+          "label": "5/6 ARM (30 YR)",
+          "order": 4
+        }
+      ]
+    },
+    "Interest Only *": {
+      "fieldId": "69d6e0fcc15353ac14e79479",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e7947a",
+          "label": "Yes",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7947b",
+          "label": "No",
+          "order": 0
+        }
+      ]
+    },
+    "Loan Purpose *": {
+      "fieldId": "69d6e0fcc15353ac14e79481",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e79482",
+          "label": "Purchase",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79483",
+          "label": "Rate / Term Refinance",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79484",
+          "label": "Cash Out Refinance",
+          "order": 0
+        }
+      ]
+    },
+    "Property Type *": {
+      "fieldId": "69d6e0fcc15353ac14e794a3",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e794a4",
+          "label": "Single Family",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a5",
+          "label": "2-4 Unit",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a6",
+          "label": "Portfolio (1-4 Unit)",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a7",
+          "label": "Warrantable Condo",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a8",
+          "label": "Non-Warrantable Condo",
+          "order": 0
+        }
+      ]
+    },
+    "Est. DSCR": {
+      "fieldId": "69d6e0fcc15353ac14e7947c",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e7947d",
+          "label": "1.0x - 1.19x",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7947e",
+          "label": "1.20x+",
+          "order": 0
+        }
+      ]
+    },
+    "Stated FICO Score *": {
+      "fieldId": "69d6e0fcc15353ac14e794a9",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e794aa",
+          "label": "780+",
+          "order": 1
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794ab",
+          "label": "760 - 779",
+          "order": 2
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794ac",
+          "label": "740 - 759",
+          "order": 3
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794ad",
+          "label": "720 - 739",
+          "order": 4
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794ae",
+          "label": "700 - 719",
+          "order": 5
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794af",
+          "label": "680 - 699",
+          "order": 6
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794b0",
+          "label": "660 - 679",
+          "order": 7
+        }
+      ]
+    },
+    "Prepayment Penalty *": {
+      "fieldId": "69d6e0fcc15353ac14e79492",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e79493",
+          "label": "5-Year (54321)",
+          "order": 1
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79494",
+          "label": "3-Year (321)",
+          "order": 2
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79495",
+          "label": "2-Year (320)",
+          "order": 3
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79496",
+          "label": "1-Year (300",
+          "order": 4
+        }
+      ]
+    },
+    "TPO Premium *": {
+      "fieldId": "69d6e0fcc15353ac14e79497",
+      "type": "dropdown",
+      "options": [
+        {
+          "id": "69d6e0fcc15353ac14e79498",
+          "label": "No TPO Premium",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e79499",
+          "label": "0.25%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949a",
+          "label": "0.50%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949b",
+          "label": "0.75%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949c",
+          "label": "1.00%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949d",
+          "label": "1.25%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949e",
+          "label": "1.5%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e7949f",
+          "label": "1.75%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a0",
+          "label": "2.0%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a1",
+          "label": "2.25%",
+          "order": 0
+        },
+        {
+          "id": "69d6e0fcc15353ac14e794a2",
+          "label": "2.5%",
+          "order": 0
+        }
+      ]
+    }
+  },
+  "numericFields": {},
+  "baselinePayload": {
+    "69d6e0fcc15353ac14e79480": 400000,
+    "69d6e0fcc15353ac14e7947f": 500000,
+    "69d6e0fcc15353ac14e7948a": [
+      "69d6e0fcc15353ac14e79491"
+    ],
+    "69d6e0fcc15353ac14e79479": [
+      "69d6e0fcc15353ac14e7947a"
+    ],
+    "69d6e0fcc15353ac14e79481": [
+      "69d6e0fcc15353ac14e79482"
+    ],
+    "69d6e0fcc15353ac14e794a3": [
+      "69d6e0fcc15353ac14e794a4"
+    ],
+    "69d6e0fcc15353ac14e7947c": [
+      "69d6e0fcc15353ac14e7947d"
+    ],
+    "69d6e0fcc15353ac14e794a9": [
+      "69d6e0fcc15353ac14e794aa"
+    ],
+    "69d6e0fcc15353ac14e79492": [
+      "69d6e0fcc15353ac14e79493"
+    ],
+    "69d6e0fcc15353ac14e79485": [
+      "69d6e0fcc15353ac14e79486"
+    ],
+    "69d6e0fcc15353ac14e79497": [
+      "69d6e0fcc15353ac14e7949c"
+    ]
+  }
+}
