@@ -30,7 +30,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 
 // ─── Types ──────────────────────────────────────────────────────
 
-type PricingMode = 'none' | 'rule-based' | 'ai-upload' | 'external';
+type PricingMode = 'none' | 'rule-based' | 'ai-upload' | 'external' | 'external-api';
+
+interface NqxFieldOption { id: string; label: string }
+interface NqxField { id: string; label: string; type: 'text' | 'number' | 'select' | 'unknown'; options?: NqxFieldOption[] }
+interface NqxProduct { id: string; name: string; fields: NqxField[] }
+interface FieldMapping { internalKey: string; internalLabel: string; fieldId: string | null; fieldLabel: string | null; confidence: number }
+interface OptionMapping { fieldId: string; internalValue: string; optionId: string; optionLabel: string; confidence: number }
+interface ApiModeConfig {
+  computeId: string;
+  computeName?: string;
+  selectedProductId: string | null;
+  products: NqxProduct[];
+  fieldMappings: FieldMapping[];
+  optionMappings: OptionMapping[];
+  discoveredAt: string;
+}
 
 interface TierEntry {
   id: string;
@@ -245,6 +260,15 @@ export function PricingConfiguration({
   const [extScraperUrl, setExtScraperUrl] = useState('');
   const [extTextInputs, setExtTextInputs] = useState<ExternalTextInput[]>([]);
   const [extDropdowns, setExtDropdowns] = useState<ExternalDropdown[]>([]);
+
+  // ─── External-API (Direct NQX) state ──────────────────────────
+  const [apiUrl, setApiUrl] = useState('');
+  const [apiConfig, setApiConfig] = useState<ApiModeConfig | null>(null);
+  const [apiTestSample, setApiTestSample] = useState<string>(
+    JSON.stringify({ loanAmount: 500000, propertyValue: 700000, ficoScore: '720', loanType: '30 yr fixed rate', loanPurpose: 'purchase', propertyType: 'single family residence', dscr: '1.25', interestOnly: 'no', prepaymentPenalty: '5 years' }, null, 2)
+  );
+  const [apiTestResult, setApiTestResult] = useState<any>(null);
+  const [showApiRawDebug, setShowApiRawDebug] = useState(false);
   const [extExpandedDropdown, setExtExpandedDropdown] = useState<number | null>(null);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [templateName, setTemplateName] = useState('');
@@ -415,14 +439,18 @@ export function PricingConfiguration({
       setPointsStep(String(prog.brokerPointsStep ?? '0.25'));
 
       if (prog.pricingMode) {
-        const modeMap: Record<string, PricingMode> = { rule_based: 'rule-based', external: 'external', none: 'none' };
+        const modeMap: Record<string, PricingMode> = { rule_based: 'rule-based', external: 'external', 'external-api': 'external-api', none: 'none' };
         setPricingMode(modeMap[prog.pricingMode] || (prog.pricingMode as PricingMode));
       }
       if (prog.externalPricingConfig) {
-        const cfg = prog.externalPricingConfig as ExternalPricingConfig;
+        const cfg = prog.externalPricingConfig as ExternalPricingConfig & { apiMode?: ApiModeConfig };
         setExtScraperUrl(cfg.scraperUrl || '');
         setExtTextInputs((cfg.textInputs || []).map(ti => ({ ...ti, sourceType: ti.sourceType || 'borrower' })));
         setExtDropdowns((cfg.dropdowns || []).map(dd => ({ ...dd, sourceType: dd.sourceType || 'borrower' })));
+        if (cfg.apiMode) {
+          setApiConfig(cfg.apiMode);
+          setApiUrl(cfg.scraperUrl || '');
+        }
       }
     }
 
@@ -473,9 +501,12 @@ export function PricingConfiguration({
   useEffect(() => {
     if (!onChange) return;
     const pricingModeDb = pricingMode === 'rule-based' ? 'rule_based' : pricingMode;
-    const extConfig: ExternalPricingConfig | null = pricingMode === 'external'
-      ? { scraperUrl: extScraperUrl, textInputs: extTextInputs, dropdowns: extDropdowns }
-      : null;
+    let extConfig: (ExternalPricingConfig & { apiMode?: ApiModeConfig }) | null = null;
+    if (pricingMode === 'external') {
+      extConfig = { scraperUrl: extScraperUrl, textInputs: extTextInputs, dropdowns: extDropdowns };
+    } else if (pricingMode === 'external-api' && apiConfig) {
+      extConfig = { scraperUrl: apiUrl, textInputs: [], dropdowns: [], apiMode: apiConfig };
+    }
     onChange({
       pricingMode: pricingModeDb,
       externalPricingConfig: extConfig,
@@ -738,9 +769,18 @@ export function PricingConfiguration({
           <ModeCard
             icon={<Globe className="h-5 w-5" />}
             title="External URL"
-            subtitle="Link to pricing API"
+            subtitle="Scrape via headless browser"
             selected={pricingMode === 'external'}
             onClick={() => setPricingMode('external')}
+          />
+        </div>
+        <div className="grid grid-cols-4 gap-3 mt-3">
+          <ModeCard
+            icon={<Calculator className="h-5 w-5" />}
+            title="Direct API (NQX)"
+            subtitle="Fast direct API calls (~1–2s)"
+            selected={pricingMode === 'external-api'}
+            onClick={() => setPricingMode('external-api')}
           />
         </div>
       </div>
@@ -945,6 +985,21 @@ export function PricingConfiguration({
             </p>
           </div>
         </div>
+      )}
+
+      {pricingMode === 'external-api' && (
+        <ExternalApiSection
+          apiUrl={apiUrl}
+          setApiUrl={setApiUrl}
+          apiConfig={apiConfig}
+          setApiConfig={setApiConfig}
+          apiTestSample={apiTestSample}
+          setApiTestSample={setApiTestSample}
+          apiTestResult={apiTestResult}
+          setApiTestResult={setApiTestResult}
+          showApiRawDebug={showApiRawDebug}
+          setShowApiRawDebug={setShowApiRawDebug}
+        />
       )}
 
       {pricingMode === 'external' && (
@@ -1687,5 +1742,267 @@ function ModeCard({
       <span className="text-[14px] font-semibold">{title}</span>
       <span className="text-[12px] text-muted-foreground leading-tight">{subtitle}</span>
     </button>
+  );
+}
+
+// ─── External API (Direct NQX) Section ──────────────────────────
+
+function ExternalApiSection({
+  apiUrl, setApiUrl, apiConfig, setApiConfig,
+  apiTestSample, setApiTestSample, apiTestResult, setApiTestResult,
+  showApiRawDebug, setShowApiRawDebug,
+}: {
+  apiUrl: string; setApiUrl: (v: string) => void;
+  apiConfig: ApiModeConfig | null; setApiConfig: (c: ApiModeConfig | null) => void;
+  apiTestSample: string; setApiTestSample: (v: string) => void;
+  apiTestResult: any; setApiTestResult: (r: any) => void;
+  showApiRawDebug: boolean; setShowApiRawDebug: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+
+  const discoverMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const res = await apiRequest('POST', '/api/admin/programs/discover-api-schema', { url });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (!data?.success) {
+        toast({ title: 'Discovery failed', description: data?.error || 'Unknown error', variant: 'destructive' });
+        return;
+      }
+      const cfg: ApiModeConfig = {
+        computeId: data.schema.computeId,
+        computeName: data.schema.computeName,
+        selectedProductId: data.suggested.selectedProductId,
+        products: data.schema.products,
+        fieldMappings: data.suggested.fieldMappings,
+        optionMappings: data.suggested.optionMappings,
+        discoveredAt: data.schema.discoveredAt,
+      };
+      setApiConfig(cfg);
+      toast({
+        title: 'Schema discovered',
+        description: `Found ${data.schema.products.length} product(s), ${cfg.fieldMappings.filter(f => f.fieldId).length}/${cfg.fieldMappings.length} fields auto-mapped.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Discovery failed', description: err?.message || 'Could not discover schema.', variant: 'destructive' });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      let sample: any = {};
+      try { sample = JSON.parse(apiTestSample); } catch { throw new Error('Sample loan data is not valid JSON.'); }
+      const res = await apiRequest('POST', '/api/admin/programs/test-api-quote', {
+        apiConfig,
+        sampleLoanData: sample,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setApiTestResult(data);
+      if (data?.result?.success) {
+        toast({ title: `Got rate ${data.result.rate}% in ${data.result.durationMs}ms` });
+      } else {
+        toast({ title: 'Test returned no rate', description: data?.result?.message || 'See debug output', variant: 'destructive' });
+      }
+    },
+    onError: (err: any) => {
+      setApiTestResult({ error: err?.message });
+      toast({ title: 'Test failed', description: err?.message || 'Network or server error', variant: 'destructive' });
+    },
+  });
+
+  const product = apiConfig?.products.find(p => p.id === apiConfig?.selectedProductId);
+
+  const updateFieldMapping = (internalKey: string, fieldId: string | null) => {
+    if (!apiConfig) return;
+    const field = product?.fields.find(f => f.id === fieldId) || null;
+    setApiConfig({
+      ...apiConfig,
+      fieldMappings: apiConfig.fieldMappings.map(fm =>
+        fm.internalKey === internalKey
+          ? { ...fm, fieldId, fieldLabel: field?.label || null, confidence: 1 }
+          : fm
+      ),
+    });
+  };
+
+  const mappedCount = apiConfig?.fieldMappings.filter(f => f.fieldId).length || 0;
+  const totalCount = apiConfig?.fieldMappings.length || 0;
+
+  return (
+    <div className="border-t pt-5 space-y-5">
+      <div>
+        <h3 className="text-[13px] uppercase tracking-wider font-semibold text-muted-foreground" data-testid="section-external-api-config">
+          Direct API Configuration (NQX)
+        </h3>
+        <p className="text-[13px] text-muted-foreground mt-1">
+          Calls the NQX <code className="text-[12px] bg-muted/40 px-1 rounded">calculate_rate</code> API directly for ~1–2s quotes (vs 20–60s for the headless scraper).
+          Run discovery once per URL to capture the field schema; the URL rotates roughly once a month.
+        </p>
+      </div>
+
+      <div className="rounded-[10px] border bg-white p-5 space-y-4">
+        <h4 className="text-[16px] font-bold">1. Pricer URL</h4>
+        <Input
+          placeholder="https://www.b-diya.nqxpricer.com/<24-hex-id>"
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          data-testid="input-api-url"
+        />
+        <Button
+          size="sm"
+          disabled={discoverMutation.isPending}
+          onClick={() => {
+            const trimmed = apiUrl.trim();
+            if (!trimmed) {
+              toast({ title: 'Enter a URL first', variant: 'destructive' });
+              return;
+            }
+            discoverMutation.mutate(trimmed);
+          }}
+          className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white font-semibold shadow-md"
+          data-testid="button-discover-api"
+        >
+          {discoverMutation.isPending ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Discovering schema (≈30s)...</>
+          ) : (
+            <><Search className="h-4 w-4 mr-2" />Discover API Schema</>
+          )}
+        </Button>
+        {apiConfig && (
+          <div className="flex items-center gap-2 text-[13px] text-green-700">
+            <CheckCircle2 className="h-4 w-4" />
+            Schema captured {new Date(apiConfig.discoveredAt).toLocaleString()} — compute <code className="text-[11px] bg-green-50 px-1 rounded">{apiConfig.computeId}</code>
+          </div>
+        )}
+      </div>
+
+      {apiConfig && (
+        <div className="rounded-[10px] border bg-white p-5 space-y-4">
+          <h4 className="text-[16px] font-bold">2. Select Product</h4>
+          <Select
+            value={apiConfig.selectedProductId || ''}
+            onValueChange={(val) => setApiConfig({ ...apiConfig, selectedProductId: val })}
+          >
+            <SelectTrigger data-testid="select-api-product">
+              <SelectValue placeholder="Select a product..." />
+            </SelectTrigger>
+            <SelectContent>
+              {apiConfig.products.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name} ({p.fields.length} fields)</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {apiConfig && product && (
+        <div className="rounded-[10px] border bg-white p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[16px] font-bold">3. Field Mappings</h4>
+            <span className="text-[12px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full">
+              {mappedCount} / {totalCount} mapped
+            </span>
+          </div>
+          <p className="text-[13px] text-muted-foreground">
+            Map each internal loan field to an NQX field. Auto-mapped by label similarity — review and adjust as needed.
+          </p>
+          <div className="divide-y divide-border/30">
+            {apiConfig.fieldMappings.map((fm) => {
+              const lowConfidence = fm.fieldId && fm.confidence < 0.7;
+              return (
+                <div key={fm.internalKey} className="flex items-center gap-3 py-2.5" data-testid={`row-field-mapping-${fm.internalKey}`}>
+                  <div className="w-44 shrink-0">
+                    <div className="text-[14px] font-medium">{fm.internalLabel}</div>
+                    <div className="text-[11px] text-muted-foreground font-mono">{fm.internalKey}</div>
+                  </div>
+                  <span className="text-muted-foreground">→</span>
+                  <Select
+                    value={fm.fieldId || '__none__'}
+                    onValueChange={(val) => updateFieldMapping(fm.internalKey, val === '__none__' ? null : val)}
+                  >
+                    <SelectTrigger className="flex-1" data-testid={`select-field-${fm.internalKey}`}>
+                      <SelectValue placeholder="(unmapped)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">(unmapped)</SelectItem>
+                      {product.fields.map(f => (
+                        <SelectItem key={f.id} value={f.id}>{f.label} <span className="opacity-60">[{f.type}]</span></SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fm.fieldId && (
+                    <span className={cn(
+                      'text-[11px] px-2 py-0.5 rounded',
+                      lowConfidence ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                    )}>
+                      {Math.round(fm.confidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {apiConfig && product && (
+        <div className="rounded-[10px] border bg-white p-5 space-y-4">
+          <h4 className="text-[16px] font-bold">4. Test Quote</h4>
+          <p className="text-[13px] text-muted-foreground">
+            Submit a sample loan payload through the direct API and confirm it returns a rate.
+          </p>
+          <textarea
+            value={apiTestSample}
+            onChange={(e) => setApiTestSample(e.target.value)}
+            className="w-full h-44 font-mono text-[12px] rounded border p-2"
+            data-testid="textarea-api-test-sample"
+          />
+          <Button
+            size="sm"
+            disabled={testMutation.isPending}
+            onClick={() => testMutation.mutate()}
+            data-testid="button-test-api-quote"
+          >
+            {testMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Calling API...</> : <>Run Test Quote</>}
+          </Button>
+
+          {apiTestResult && (
+            <div className="space-y-2">
+              {apiTestResult.result?.success ? (
+                <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+                  <div className="flex items-center gap-2 text-green-800 font-semibold">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Rate: {apiTestResult.result.rate}% &nbsp;·&nbsp; {apiTestResult.result.durationMs}ms
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <div className="flex items-center gap-2 text-amber-800 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    {apiTestResult.result?.message || apiTestResult.error || 'No rate returned'}
+                  </div>
+                </div>
+              )}
+              <button
+                className="text-[12px] text-primary hover:underline"
+                onClick={() => setShowApiRawDebug(!showApiRawDebug)}
+                data-testid="button-toggle-api-debug"
+              >
+                {showApiRawDebug ? 'Hide' : 'Show'} raw debug
+              </button>
+              {showApiRawDebug && (
+                <pre className="text-[11px] bg-muted/40 p-3 rounded overflow-auto max-h-96">
+                  {JSON.stringify(apiTestResult, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

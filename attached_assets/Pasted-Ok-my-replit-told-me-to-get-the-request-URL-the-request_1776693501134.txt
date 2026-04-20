@@ -1,0 +1,124 @@
+Ok my replit told me to get the request URL, the request headers, the request payload, and the repsonse. 
+
+Can you tell me what I should give to my replit agent here to do the job?
+
+This is under Headers. 
+
+Request URL
+https://prod-ecs-gateway.nqxpricer.com/pricer-public/api/v1/compute/69d6e0fc844f4418eb40faae/products/69d6e0fcc15353ac14e79477/calculate_rate
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+3.227.132.209:443
+Referrer Policy
+strict-origin-when-cross-origin
+__Start AI assistance chats without prior context__
+AI assistance chats can now be started from anywhere in DevTools and AI assistance will find required context based on the initial prompt.
+__MCP server & CLI__
+Optionally expose DevTools and automation capabilities through CLI, enabling coding agents to batch tool calls and improve token efficiency.
+__Code generation in the Console & Sources panels__
+Generate entire code blocks directly in the Console and Sources panels by typing natural language comments.
+
+Request Payload:
+
+{"69d6e0fcc15353ac14e79480":400000,"69d6e0fcc15353ac14e7947f":500000,"69d6e0fcc15353ac14e7948a":["69d6e0fcc15353ac14e79491"],"69d6e0fcc15353ac14e79485":["69d6e0fcc15353ac14e79486"],"69d6e0fcc15353ac14e79479":["69d6e0fcc15353ac14e7947b"],"69d6e0fcc15353ac14e79481":["69d6e0fcc15353ac14e79482"],"69d6e0fcc15353ac14e794a3":["69d6e0fcc15353ac14e794a4"],"69d6e0fcc15353ac14e7947c":["69d6e0fcc15353ac14e7947e"],"69d6e0fcc15353ac14e794a9":["69d6e0fcc15353ac14e794aa"],"69d6e0fcc15353ac14e79492":["69d6e0fcc15353ac14e79493"],"69d6e0fcc15353ac14e79497":["69d6e0fcc15353ac14e7949c"]}
+
+RESPONSE:
+
+{
+    "eligible_cases": [
+        {
+            "rates": {
+                "name": "30 YR & 10/6 ARM Base Rates",
+                "base_rate": 6.375,
+                "raw_rate": 6.375,
+                "margin": 0.0,
+                "origination_point": 0,
+                "category_options_data": "30 YR Fixed Rate",
+                "conditions": [],
+                "total_adjustments": 0.28500000000000003,
+                "rate": 6.66
+            },
+            "adjustments_results": {
+                "ficoltv_adj": {
+                    "name": "FICO / LTV",
+                    "adjustment_value": 0.25,
+                    "addToPriceCap": false
+                },
+                "IO_adj": {
+                    "name": "Interest Only Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "propertytype_adj": {
+                    "name": "Property Type Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "loanamt_adj": {
+                    "name": "Loan Amount Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "dscr_adj": {
+                    "name": "DSCR Adj",
+                    "adjustment_value": -0.125,
+                    "addToPriceCap": false
+                },
+                "ppp_adj": {
+                    "name": "PPP Type Adj",
+                    "adjustment_value": -0.1,
+                    "addToPriceCap": false
+                },
+                "ltv_max": {
+                    "name": "LTV MAX",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "premium_adj": {
+                    "name": "TPO Premium Adj",
+                    "adjustment_value": 0.26,
+                    "addToPriceCap": false
+                },
+                "cashout_adj": {
+                    "name": "Cash Out Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "cap_adj": {
+                    "name": "Price Cap Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "30frm_noio": {
+                    "name": "30 YR FRM No IO",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "MaxLoan_PropType": {
+                    "name": "Max Loan Amt by Property Type",
+                    "adjustment_value": 0.0,
+                    "addToPriceCap": false
+                },
+                "sale_adj": {
+                    "name": "Loan Sale Adj",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                },
+                "DSCR/Property": {
+                    "name": "DSCR/Property",
+                    "adjustment_value": 0,
+                    "addToPriceCap": false
+                }
+            }
+        }
+    ],
+    "ineligible_cases": [],
+    "calculated_variables_data": {},
+    "calculated_variables_errors": {}
+}
+
+Request URL: 
+https://prod-ecs-gateway.nqxpricer.com/pricer-public/api/v1/compute/69d6e0fc844f4418eb40faae/products/69d6e0fcc15353ac14e79477/calculate_rate

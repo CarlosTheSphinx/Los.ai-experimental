@@ -1621,6 +1621,64 @@ export function registerAdminProgramsRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // ─── NQX Direct-API discovery & test ────────────────────────────────────────
+  app.post('/api/admin/programs/discover-api-schema', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { url } = req.body || {};
+      if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL is required' });
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'https:') return res.status(400).json({ error: 'Only HTTPS URLs are allowed' });
+        if (['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254'].includes(u.hostname)) {
+          return res.status(400).json({ error: 'Invalid host' });
+        }
+        if (u.hostname !== 'nqxpricer.com' && !u.hostname.endsWith('.nqxpricer.com')) {
+          return res.status(400).json({ error: 'Only nqxpricer.com URLs are supported in Direct-API mode' });
+        }
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL format' });
+      }
+      const { discoverNqxSchema, autoMapFields, autoMapOptions } = await import('../services/nqxPricer');
+      const schema = await discoverNqxSchema(url);
+      // Default to first product
+      const firstProduct = schema.products[0];
+      const fieldMappings = autoMapFields(firstProduct);
+      const optionMappings = autoMapOptions(firstProduct, fieldMappings);
+      res.json({
+        success: true,
+        schema,
+        suggested: {
+          selectedProductId: firstProduct.id,
+          fieldMappings,
+          optionMappings,
+        },
+      });
+    } catch (e: any) {
+      console.error('discover-api-schema error:', e);
+      res.status(500).json({ success: false, error: e?.message || 'Discovery failed' });
+    }
+  });
+
+  app.post('/api/admin/programs/test-api-quote', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { apiConfig, sampleLoanData } = req.body || {};
+      if (!apiConfig?.computeId || !apiConfig?.selectedProductId) {
+        return res.status(400).json({ error: 'apiConfig.computeId and selectedProductId are required' });
+      }
+      const { buildFieldValuesFromLoanData, executeNqxQuote } = await import('../services/nqxPricer');
+      const fieldValues = buildFieldValuesFromLoanData(apiConfig, sampleLoanData || {});
+      const result = await executeNqxQuote({
+        computeId: apiConfig.computeId,
+        productId: apiConfig.selectedProductId,
+        fieldValues,
+      });
+      res.json({ success: result.success, result, fieldValues });
+    } catch (e: any) {
+      console.error('test-api-quote error:', e);
+      res.status(500).json({ success: false, error: e?.message || 'Test failed' });
+    }
+  });
+
   app.delete('/api/admin/pricing-templates/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const templateId = parseInt(req.params.id);

@@ -415,7 +415,7 @@ export async function registerRoutes(
 
   app.post(api.pricing.submit.path, async (req, res) => {
     try {
-      console.log('\n🚀 Starting Apify scrape request...');
+      console.log('\n🚀 Starting pricing request...');
       
       let loanData: any;
       let extConfig: any = null;
@@ -423,6 +423,68 @@ export async function registerRoutes(
       let isExternalPricing = false;
 
       const rawProgramId = req.body?.programId;
+
+      // ─── Direct-API mode (NQX calculate_rate) ──────────────────────────────
+      if (rawProgramId) {
+        const [progApi] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, Number(rawProgramId)));
+        if (progApi?.pricingMode === 'external-api' && progApi?.externalPricingConfig) {
+          const apiCfg = (progApi.externalPricingConfig as any)?.apiMode;
+          if (apiCfg?.computeId && apiCfg?.selectedProductId) {
+            try {
+              loanData = externalPricingFormSchema.parse(req.body);
+              await storage.logPricingRequest({ requestData: loanData, status: 'pending' });
+              const { buildFieldValuesFromLoanData, executeNqxQuote } = await import('./services/nqxPricer');
+              const fieldValues = buildFieldValuesFromLoanData(apiCfg, loanData);
+              console.log('[external-api] computeId=', apiCfg.computeId, 'productId=', apiCfg.selectedProductId);
+              console.log('[external-api] fieldValues=', JSON.stringify(fieldValues));
+              const result = await executeNqxQuote({
+                computeId: apiCfg.computeId,
+                productId: apiCfg.selectedProductId,
+                fieldValues,
+              });
+              console.log(`[external-api] done in ${result.durationMs}ms success=${result.success}`);
+              await storage.logPricingRequest({
+                requestData: loanData,
+                responseData: { mode: 'external-api', ...result },
+                status: result.success ? 'success' : 'error',
+              });
+              if (result.success) {
+                return res.json({
+                  success: true,
+                  mode: 'external-api',
+                  interestRate: result.rate,
+                  durationMs: result.durationMs,
+                  loanData,
+                  debug: { request: result.request, response: result.response },
+                });
+              }
+              if (result.ineligible) {
+                return res.json({
+                  success: false,
+                  mode: 'external-api',
+                  isIneligible: true,
+                  message: result.message || 'Loan is ineligible',
+                  loanData,
+                  debug: { request: result.request, response: result.response },
+                });
+              }
+              return res.status(400).json({
+                success: false,
+                mode: 'external-api',
+                error: result.message || 'Direct-API call failed',
+                debug: { request: result.request, response: result.response },
+              });
+            } catch (apiErr: any) {
+              if (apiErr instanceof z.ZodError) {
+                return res.status(400).json({ success: false, error: 'Validation error', message: apiErr.errors[0].message });
+              }
+              console.error('[external-api] error:', apiErr);
+              return res.status(500).json({ success: false, mode: 'external-api', error: apiErr?.message || 'Direct-API call failed' });
+            }
+          }
+        }
+      }
+
       if (rawProgramId) {
         const [program] = await db.select().from(loanPrograms).where(eq(loanPrograms.id, Number(rawProgramId)));
         if (program?.pricingMode === 'external' && program?.externalPricingConfig) {
