@@ -1628,16 +1628,27 @@ export function PricingConfiguration({
           </div>
 
           <div className="rounded-[10px] border bg-white p-5 space-y-4">
-            <h4 className="text-[16px] font-bold">Points</h4>
+            <h4 className="text-[16px] font-bold">Lender Points</h4>
+            <p className="text-[13px] text-muted-foreground -mt-2">
+              Set the lender origination points included in every quote. Brokers see this as a read-only line item.
+            </p>
             <div className="flex items-center gap-2">
-              <Label className="text-[14px] w-24">Base Points</Label>
+              <Label className="text-[14px] w-40">Lender Points Included</Label>
               <Input
                 value={basePoints}
                 onChange={(e) => setBasePoints(e.target.value)}
                 className="w-20 text-center"
                 data-testid="input-base-points"
               />
+              <span className="text-[13px] text-muted-foreground">pts</span>
             </div>
+          </div>
+
+          <div className="rounded-[10px] border bg-white p-5 space-y-4">
+            <h4 className="text-[16px] font-bold">Broker Points</h4>
+            <p className="text-[13px] text-muted-foreground -mt-2">
+              Configure how much additional broker compensation can be added on top of lender points.
+            </p>
             <div className="flex items-center gap-2">
               <Label className="text-[14px] w-24">Range</Label>
               <Input
