@@ -47,6 +47,10 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
   var TOKEN = ${JSON.stringify(token)};
   var ENDPOINT = ${JSON.stringify(captureEndpoint)};
   var sent = false;
+  var NQX_HOST_RE = /(?:^|\\.)nqxpricer\\.com$/i;
+  var MAX_BUFFER = 30;            // at most 30 NQX responses kept
+  var MAX_BODY_BYTES = 500000;     // skip any single response > 500 KB
+  var buffer = [];                 // [{url, body}] for non-calculate_rate NQX responses
 
   function showToast(msg, color){
     try {
@@ -93,10 +97,34 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
     return fields;
   }
 
+  function isNqxApiUrl(u){
+    try {
+      var parsed = new URL(u, window.location.origin);
+      return NQX_HOST_RE.test(parsed.hostname);
+    } catch(e){ return false; }
+  }
+
+  function bufferResponse(url, text){
+    try {
+      if (!text || text.length > MAX_BODY_BYTES) return;
+      // Only buffer JSON-looking responses; ignore HTML/scripts.
+      var trimmed = text.trim();
+      if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) return;
+      var parsed;
+      try { parsed = JSON.parse(trimmed); } catch(e){ return; }
+      // De-dupe by URL — keep the most recent body for each endpoint.
+      for (var i = 0; i < buffer.length; i++) {
+        if (buffer[i].url === url) { buffer[i].body = parsed; return; }
+      }
+      buffer.push({ url: url, body: parsed });
+      if (buffer.length > MAX_BUFFER) buffer.shift();
+    } catch(e){}
+  }
+
   function send(payload){
     if (sent) return;
     sent = true;
-    console.info('[Lendry] sending capture for', payload.calculateRateUrl);
+    console.info('[Lendry] sending capture for', payload.calculateRateUrl, 'with', (payload.additionalCaptures || []).length, 'extra responses');
     fetch(ENDPOINT, {
       method: 'POST', mode: 'cors',
       headers: { 'Content-Type': 'application/json' },
@@ -129,8 +157,16 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
       requestBody: requestBody,
       responseBody: responseBody,
       domFields: snapshotDom(),
+      additionalCaptures: buffer.slice(),
       pageTitle: document.title
     });
+  }
+
+  function handleNqxResponse(url, text){
+    if (!isNqxApiUrl(url)) return;
+    if (url.indexOf('calculate_rate') === -1) {
+      bufferResponse(url, text);
+    }
   }
 
   // Hook fetch
@@ -141,8 +177,11 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
     var p = origFetch.apply(this, arguments);
     p.then(function(res){
       try {
+        if (!isNqxApiUrl(url)) return;
         if (url.indexOf('calculate_rate') !== -1) {
           res.clone().text().then(function(text){ maybeCapture(url, bodyForCapture, text); }).catch(function(){});
+        } else {
+          res.clone().text().then(function(text){ handleNqxResponse(url, text); }).catch(function(){});
         }
       } catch(e){}
     }).catch(function(){});
@@ -157,8 +196,12 @@ function buildCaptureScript(captureEndpoint: string, token: string): string {
     var self = this;
     self.addEventListener('load', function(){
       try {
-        if (self.__lendryUrl && self.__lendryUrl.indexOf('calculate_rate') !== -1) {
-          maybeCapture(self.__lendryUrl, body, self.responseText);
+        var u = self.__lendryUrl || '';
+        if (!isNqxApiUrl(u)) return;
+        if (u.indexOf('calculate_rate') !== -1) {
+          maybeCapture(u, body, self.responseText);
+        } else {
+          handleNqxResponse(u, self.responseText);
         }
       } catch(e){}
     });
@@ -403,8 +446,12 @@ export function NqxGuidedDiscoveryDialog({
               />
             </div>
 
+            <div className="rounded-md border border-[#C9A84C]/40 bg-[#C9A84C]/5 px-3 py-2 text-[12px]">
+              <strong>Step 3.</strong> Once you see the gold "capture armed" toast, <strong>refresh the pricer tab one time</strong>. This lets the script catch the page-load API calls that contain real field labels and dropdown options — without it, your dropdowns will be unlabeled.
+            </div>
+
             <div className="text-[13px] pt-1">
-              <strong>Step 3.</strong> On the pricer tab, fill in any realistic scenario — every required field — and click <strong>Calculate Rate</strong>. A green toast confirms the capture was sent.
+              <strong>Step 4.</strong> Fill in any realistic scenario — every required field — and click <strong>Calculate Rate</strong>. A green toast confirms the capture was sent.
             </div>
 
             <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2 text-[13px]">

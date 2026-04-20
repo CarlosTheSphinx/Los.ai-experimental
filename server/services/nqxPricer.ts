@@ -128,7 +128,7 @@ function normalizeField(raw: any): NqxField | null {
  * Walk an arbitrary JSON object looking for arrays of field-like objects.
  * Returns the first array that yields >= 2 normalized fields.
  */
-function findFieldsArray(obj: any, path = ''): NqxField[] | null {
+export function findFieldsArray(obj: any, path = ''): NqxField[] | null {
   if (!obj) return null;
   if (Array.isArray(obj)) {
     const fields = obj.map(normalizeField).filter(Boolean) as NqxField[];
@@ -146,7 +146,7 @@ function findFieldsArray(obj: any, path = ''): NqxField[] | null {
 /**
  * Look for a "products" array in the JSON: items that have an ObjectId _id and a name.
  */
-function findProductsArray(obj: any): NqxProduct[] | null {
+export function findProductsArray(obj: any): NqxProduct[] | null {
   if (!obj) return null;
   if (Array.isArray(obj) && obj.length > 0) {
     const looksLikeProducts = obj.every((p: any) => {
