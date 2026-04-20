@@ -28,11 +28,34 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { NqxGuidedDiscoveryDialog } from '@/components/admin/NqxGuidedDiscoveryDialog';
-import { NqxImportCapturedMapDialog } from '@/components/admin/NqxImportCapturedMapDialog';
+import { NqxImportCapturedMapDialog, seedProductFieldConfigs, type ProductFieldConfig, type DirectApiSourceType, type DirectApiConditionalRule } from '@/components/admin/NqxImportCapturedMapDialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 
 type PricingMode = 'none' | 'rule-based' | 'ai-upload' | 'external' | 'external-api';
+
+const INTERNAL_FIELD_KEYS: { key: string; label: string }[] = [
+  { key: 'loanAmount', label: 'Loan Amount' },
+  { key: 'propertyValue', label: 'Property Value' },
+  { key: 'purchasePrice', label: 'Purchase Price' },
+  { key: 'asIsValue', label: 'As-Is Value' },
+  { key: 'arv', label: 'After Repair Value (ARV)' },
+  { key: 'rehabBudget', label: 'Rehab Budget' },
+  { key: 'ltv', label: 'LTV (%)' },
+  { key: 'ltc', label: 'LTC (%)' },
+  { key: 'dscr', label: 'DSCR' },
+  { key: 'ficoScore', label: 'FICO Score' },
+  { key: 'units', label: 'Units' },
+  { key: 'experience', label: 'Investor Experience' },
+  { key: 'loanType', label: 'Loan Type' },
+  { key: 'loanPurpose', label: 'Loan Purpose' },
+  { key: 'propertyType', label: 'Property Type' },
+  { key: 'occupancy', label: 'Occupancy' },
+  { key: 'state', label: 'State' },
+  { key: 'citizenship', label: 'Citizenship' },
+  { key: 'prepaymentPenalty', label: 'Prepayment Penalty' },
+  { key: 'interestOnly', label: 'Interest Only' },
+];
 
 interface NqxFieldOption { id: string; label: string }
 interface NqxField { id: string; label: string; type: 'text' | 'number' | 'select' | 'unknown'; options?: NqxFieldOption[] }
@@ -46,6 +69,7 @@ interface ApiModeConfig {
   products: NqxProduct[];
   fieldMappings: FieldMapping[];
   optionMappings: OptionMapping[];
+  productFieldConfigs?: ProductFieldConfig[];
   discoveredAt: string;
 }
 
@@ -450,7 +474,10 @@ export function PricingConfiguration({
         setExtTextInputs((cfg.textInputs || []).map(ti => ({ ...ti, sourceType: ti.sourceType || 'borrower' })));
         setExtDropdowns((cfg.dropdowns || []).map(dd => ({ ...dd, sourceType: dd.sourceType || 'borrower' })));
         if (cfg.apiMode) {
-          setApiConfig(cfg.apiMode);
+          const seeded = (cfg.apiMode.productFieldConfigs && cfg.apiMode.productFieldConfigs.length > 0)
+            ? cfg.apiMode
+            : { ...cfg.apiMode, productFieldConfigs: seedProductFieldConfigs(cfg.apiMode) };
+          setApiConfig(seeded);
           setApiUrl(cfg.scraperUrl || '');
         }
       }
@@ -1833,8 +1860,26 @@ function ExternalApiSection({
     });
   };
 
-  const mappedCount = apiConfig?.fieldMappings.filter(f => f.fieldId).length || 0;
-  const totalCount = apiConfig?.fieldMappings.length || 0;
+  const updateFieldConfig = (fieldId: string, patch: Partial<ProductFieldConfig>) => {
+    if (!apiConfig) return;
+    const list = apiConfig.productFieldConfigs && apiConfig.productFieldConfigs.length > 0
+      ? apiConfig.productFieldConfigs
+      : seedProductFieldConfigs(apiConfig);
+    setApiConfig({
+      ...apiConfig,
+      productFieldConfigs: list.map(pfc => pfc.fieldId === fieldId ? { ...pfc, ...patch } : pfc),
+    });
+  };
+
+  const productFieldConfigs: ProductFieldConfig[] = apiConfig
+    ? (apiConfig.productFieldConfigs && apiConfig.productFieldConfigs.length > 0
+        ? apiConfig.productFieldConfigs
+        : seedProductFieldConfigs(apiConfig))
+    : [];
+
+  const borrowerCount = productFieldConfigs.filter(p => p.sourceType === 'borrower').length;
+  const defaultCount = productFieldConfigs.filter(p => p.sourceType === 'default').length;
+  const calcCount = productFieldConfigs.filter(p => p.sourceType === 'calculated').length;
 
   return (
     <div className="border-t pt-5 space-y-5">
@@ -1917,7 +1962,10 @@ function ExternalApiSection({
           onOpenChange={setImportOpen}
           currentPricerUrl={apiUrl}
           onApply={({ config, pricerUrl }) => {
-            setApiConfig(config);
+            const seeded = (config.productFieldConfigs && config.productFieldConfigs.length > 0)
+              ? config
+              : { ...config, productFieldConfigs: seedProductFieldConfigs(config) };
+            setApiConfig(seeded);
             setApiUrl(pricerUrl);
             setApiTestResult(null);
           }}
@@ -1935,7 +1983,11 @@ function ExternalApiSection({
           <h4 className="text-[16px] font-bold">2. Select Product</h4>
           <Select
             value={apiConfig.selectedProductId || ''}
-            onValueChange={(val) => setApiConfig({ ...apiConfig, selectedProductId: val })}
+            onValueChange={(val) => {
+              const next = { ...apiConfig, selectedProductId: val };
+              next.productFieldConfigs = seedProductFieldConfigs(next);
+              setApiConfig(next);
+            }}
           >
             <SelectTrigger data-testid="select-api-product">
               <SelectValue placeholder="Select a product..." />
@@ -1952,45 +2004,221 @@ function ExternalApiSection({
       {apiConfig && product && (
         <div className="rounded-[10px] border bg-white p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-[16px] font-bold">3. Field Mappings</h4>
+            <h4 className="text-[16px] font-bold">3. Field Configuration</h4>
             <span className="text-[12px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full">
-              {mappedCount} / {totalCount} mapped
+              {borrowerCount} borrower · {defaultCount} fixed · {calcCount} calculated
             </span>
           </div>
           <p className="text-[13px] text-muted-foreground">
-            Map each internal loan field to an NQX field. Auto-mapped by label similarity — review and adjust as needed.
+            Choose how each pricer field gets its value when running a quote. Borrower fields show on the quote form;
+            Fixed locks a value; Calculated derives it from a formula.
           </p>
           <div className="divide-y divide-border/30">
-            {apiConfig.fieldMappings.map((fm) => {
-              const lowConfidence = fm.fieldId && fm.confidence < 0.7;
+            {productFieldConfigs.map((pfc) => {
+              const field = product.fields.find(f => f.id === pfc.fieldId);
+              if (!field) return null;
+              const isSelect = pfc.fieldType === 'select';
               return (
-                <div key={fm.internalKey} className="flex items-center gap-3 py-2.5" data-testid={`row-field-mapping-${fm.internalKey}`}>
-                  <div className="w-44 shrink-0">
-                    <div className="text-[14px] font-medium">{fm.internalLabel}</div>
-                    <div className="text-[11px] text-muted-foreground font-mono">{fm.internalKey}</div>
+                <div key={pfc.fieldId} className="py-3 space-y-2" data-testid={`row-field-config-${pfc.fieldId}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-56 shrink-0">
+                      <div className="text-[14px] font-medium">{pfc.fieldLabel}</div>
+                      <div className="text-[11px] text-muted-foreground font-mono">
+                        {pfc.fieldType} · …{pfc.fieldId.slice(-6)}
+                      </div>
+                    </div>
+                    <Select
+                      value={pfc.sourceType}
+                      onValueChange={(val) => updateFieldConfig(pfc.fieldId, { sourceType: val as DirectApiSourceType })}
+                    >
+                      <SelectTrigger className="w-44" data-testid={`select-source-${pfc.fieldId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="borrower">Borrower Input</SelectItem>
+                        <SelectItem value="default">Fixed Default</SelectItem>
+                        <SelectItem value="calculated">Calculated</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {pfc.sourceType === 'borrower' && (
+                      <Select
+                        value={pfc.internalKey || '__fieldid__'}
+                        onValueChange={(val) => updateFieldConfig(pfc.fieldId, { internalKey: val === '__fieldid__' ? undefined : val })}
+                      >
+                        <SelectTrigger className="flex-1" data-testid={`select-internal-key-${pfc.fieldId}`}>
+                          <SelectValue placeholder="Use NQX field ID as form key" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__fieldid__">(Use NQX field ID as form key)</SelectItem>
+                          {INTERNAL_FIELD_KEYS.map(k => (
+                            <SelectItem key={k.key} value={k.key}>{k.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {pfc.sourceType === 'default' && isSelect && (
+                      <Select
+                        value={pfc.defaultOptionId || ''}
+                        onValueChange={(val) => updateFieldConfig(pfc.fieldId, { defaultOptionId: val })}
+                      >
+                        <SelectTrigger className="flex-1" data-testid={`select-default-option-${pfc.fieldId}`}>
+                          <SelectValue placeholder="Choose option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options || []).map((o: any) => (
+                            <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {pfc.sourceType === 'default' && !isSelect && (
+                      <Input
+                        type="number"
+                        className="flex-1"
+                        value={pfc.defaultNumber ?? ''}
+                        onChange={(e) => updateFieldConfig(pfc.fieldId, { defaultNumber: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        placeholder="Fixed numeric value"
+                        data-testid={`input-default-number-${pfc.fieldId}`}
+                      />
+                    )}
+
+                    {pfc.sourceType === 'calculated' && (
+                      <Input
+                        className="flex-1 font-mono text-[12px]"
+                        value={pfc.formula || ''}
+                        onChange={(e) => updateFieldConfig(pfc.fieldId, { formula: e.target.value })}
+                        placeholder="e.g. loanAmount / propertyValue * 100"
+                        data-testid={`input-formula-${pfc.fieldId}`}
+                      />
+                    )}
                   </div>
-                  <span className="text-muted-foreground">→</span>
-                  <Select
-                    value={fm.fieldId || '__none__'}
-                    onValueChange={(val) => updateFieldMapping(fm.internalKey, val === '__none__' ? null : val)}
-                  >
-                    <SelectTrigger className="flex-1" data-testid={`select-field-${fm.internalKey}`}>
-                      <SelectValue placeholder="(unmapped)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">(unmapped)</SelectItem>
-                      {product.fields.map(f => (
-                        <SelectItem key={f.id} value={f.id}>{f.label} <span className="opacity-60">[{f.type}]</span></SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {fm.fieldId && (
-                    <span className={cn(
-                      'text-[11px] px-2 py-0.5 rounded',
-                      lowConfidence ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                    )}>
-                      {Math.round(fm.confidence * 100)}%
-                    </span>
+
+                  {pfc.sourceType === 'calculated' && (
+                    <div className="ml-[14.5rem] space-y-2 rounded-md bg-muted/30 p-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-[11px] text-muted-foreground mr-1 self-center">Insert:</span>
+                        {INTERNAL_FIELD_KEYS.map(v => (
+                          <button
+                            type="button"
+                            key={v.key}
+                            className="text-[11px] px-2 py-0.5 rounded border bg-background hover:bg-accent font-mono"
+                            onClick={() => updateFieldConfig(pfc.fieldId, { formula: (pfc.formula || '') + v.key })}
+                            data-testid={`chip-var-${pfc.fieldId}-${v.key}`}
+                          >
+                            {v.key}
+                          </button>
+                        ))}
+                      </div>
+
+                      {isSelect && (
+                        <div className="space-y-2">
+                          <div className="text-[12px] font-semibold">Conditional Rules → Option</div>
+                          {(pfc.conditionalRules || []).map((rule, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <span className="text-[12px] text-muted-foreground">If result</span>
+                              <Select
+                                value={rule.operator}
+                                onValueChange={(val) => {
+                                  const rules = [...(pfc.conditionalRules || [])];
+                                  rules[idx] = { ...rule, operator: val as DirectApiConditionalRule['operator'] };
+                                  updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                                }}
+                              >
+                                <SelectTrigger className="w-28" data-testid={`select-rule-op-${pfc.fieldId}-${idx}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="<">&lt;</SelectItem>
+                                  <SelectItem value="<=">≤</SelectItem>
+                                  <SelectItem value="==">=</SelectItem>
+                                  <SelectItem value=">=">≥</SelectItem>
+                                  <SelectItem value=">">&gt;</SelectItem>
+                                  <SelectItem value="between">between</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                type="number"
+                                className="w-24"
+                                value={rule.value ?? ''}
+                                onChange={(e) => {
+                                  const rules: DirectApiConditionalRule[] = (pfc.conditionalRules || []).map((r, i) =>
+                                    i === idx ? { ...r, value: e.target.value } : r,
+                                  );
+                                  updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                                }}
+                                data-testid={`input-rule-value-${pfc.fieldId}-${idx}`}
+                              />
+                              {rule.operator === 'between' && (
+                                <>
+                                  <span className="text-[12px] text-muted-foreground">and</span>
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={rule.value2 ?? ''}
+                                    onChange={(e) => {
+                                      const rules: DirectApiConditionalRule[] = (pfc.conditionalRules || []).map((r, i) =>
+                                        i === idx ? { ...r, value2: e.target.value } : r,
+                                      );
+                                      updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                                    }}
+                                    data-testid={`input-rule-value2-${pfc.fieldId}-${idx}`}
+                                  />
+                                </>
+                              )}
+                              <span className="text-[12px] text-muted-foreground">then</span>
+                              <Select
+                                value={rule.optionId}
+                                onValueChange={(val) => {
+                                  const rules = [...(pfc.conditionalRules || [])];
+                                  rules[idx] = { ...rule, optionId: val };
+                                  updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                                }}
+                              >
+                                <SelectTrigger className="flex-1" data-testid={`select-rule-option-${pfc.fieldId}-${idx}`}>
+                                  <SelectValue placeholder="Choose option" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(field.options || []).map((o: any) => (
+                                    <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  const rules = (pfc.conditionalRules || []).filter((_, i) => i !== idx);
+                                  updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                                }}
+                                data-testid={`button-remove-rule-${pfc.fieldId}-${idx}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const rules: DirectApiConditionalRule[] = [
+                                ...(pfc.conditionalRules || []),
+                                { operator: '<=', value: '', optionId: '' },
+                              ];
+                              updateFieldConfig(pfc.fieldId, { conditionalRules: rules });
+                            }}
+                            data-testid={`button-add-rule-${pfc.fieldId}`}
+                          >
+                            + Add Rule
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground">
+                            First matching rule wins. Falls back to the field's first option if none match.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );

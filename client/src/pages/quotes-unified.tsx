@@ -314,6 +314,84 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
     }
   });
 
+  // Direct API (NQX) mode — when productFieldConfigs is present, only surface
+  // fields explicitly marked sourceType='borrower'. Otherwise (legacy configs),
+  // fall back to surfacing every captured product field with no internal-key
+  // mapping. The form key is internalKey when set, else the NQX fieldId.
+  const apiCfg: any = (cfg as any).apiMode;
+  if (apiCfg && Array.isArray(apiCfg.products)) {
+    const product = apiCfg.products.find((p: any) => p.id === apiCfg.selectedProductId);
+    const pfcList: any[] = Array.isArray(apiCfg.productFieldConfigs) ? apiCfg.productFieldConfigs : [];
+
+    if (product && Array.isArray(product.fields) && pfcList.length > 0) {
+      for (const pfc of pfcList) {
+        if (pfc.sourceType !== 'borrower') continue;
+        const f = product.fields.find((x: any) => x.id === pfc.fieldId);
+        if (!f) continue;
+        const formKey: string = pfc.internalKey || f.id;
+        const normalized = normalizeFieldKey(formKey);
+        if (pricingNormalizedKeys.has(normalized)) continue;
+        if (f.type === 'select' && Array.isArray(f.options) && f.options.length > 0) {
+          pricingFields.push({
+            fieldKey: formKey,
+            label: f.label || 'Pricing question',
+            fieldType: 'select',
+            options: f.options.map((o: any) => ({ value: o.id, label: o.label })),
+            required: false,
+            visible: true,
+            displayGroup: 'pricing_questions',
+          });
+          pricingNormalizedKeys.add(normalized);
+        } else if (f.type === 'number') {
+          pricingFields.push({
+            fieldKey: formKey,
+            label: f.label || 'Pricing value',
+            fieldType: 'currency',
+            required: false,
+            visible: true,
+            displayGroup: 'pricing_questions',
+          });
+          pricingNormalizedKeys.add(normalized);
+        }
+        const origKey = baseKeysByNormalized[normalized];
+        if (origKey && origKey !== formKey) {
+          keyAliases[formKey] = origKey;
+        }
+      }
+    } else if (product && Array.isArray(product.fields)) {
+      // Legacy fallback: surface every product field that has no internal-key mapping
+      const mappedFieldIds = new Set<string>(
+        (apiCfg.fieldMappings || []).filter((f: any) => f.fieldId).map((f: any) => f.fieldId),
+      );
+      for (const f of product.fields) {
+        if (!f?.id || mappedFieldIds.has(f.id)) continue;
+        if (pricingNormalizedKeys.has(f.id)) continue;
+        if (f.type === 'select' && Array.isArray(f.options) && f.options.length > 0) {
+          pricingFields.push({
+            fieldKey: f.id,
+            label: f.label || 'Pricing question',
+            fieldType: 'select',
+            options: f.options.map((o: any) => ({ value: o.id, label: o.label })),
+            required: false,
+            visible: true,
+            displayGroup: 'pricing_questions',
+          });
+          pricingNormalizedKeys.add(f.id);
+        } else if (f.type === 'number') {
+          pricingFields.push({
+            fieldKey: f.id,
+            label: f.label || 'Pricing value',
+            fieldType: 'currency',
+            required: false,
+            visible: true,
+            displayGroup: 'pricing_questions',
+          });
+          pricingNormalizedKeys.add(f.id);
+        }
+      }
+    }
+  }
+
   return { pricingFields, pricingNormalizedKeys, keyAliases };
 }
 

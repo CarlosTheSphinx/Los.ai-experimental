@@ -129,9 +129,12 @@ function renderInput(field: QuoteFormField, formField: any, testId: string) {
             <SelectValue placeholder={`Select ${field.label.toLowerCase()}`} />
           </SelectTrigger>
           <SelectContent>
-            {(field.options || []).map((opt) => (
-              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-            ))}
+            {(field.options || []).map((opt: any) => {
+              const value = typeof opt === 'string' ? opt : opt?.value;
+              const label = typeof opt === 'string' ? opt : (opt?.label ?? String(opt?.value ?? ''));
+              if (!value) return null;
+              return <SelectItem key={value} value={value}>{label}</SelectItem>;
+            })}
           </SelectContent>
         </Select>
       );

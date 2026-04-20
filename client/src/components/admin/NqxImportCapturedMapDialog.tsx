@@ -26,6 +26,24 @@ interface NqxField { id: string; label: string; type: 'text' | 'number' | 'selec
 interface NqxProduct { id: string; name: string; fields: NqxField[] }
 interface FieldMapping { internalKey: string; internalLabel: string; fieldId: string | null; fieldLabel: string | null; confidence: number }
 interface OptionMapping { fieldId: string; internalValue: string; optionId: string; optionLabel: string; confidence: number }
+export type DirectApiSourceType = 'borrower' | 'default' | 'calculated';
+export interface DirectApiConditionalRule {
+  operator: '>=' | '>' | '<=' | '<' | '==' | 'between';
+  value: string;
+  value2?: string;
+  optionId: string;
+}
+export interface ProductFieldConfig {
+  fieldId: string;
+  fieldLabel: string;
+  fieldType: 'select' | 'number' | 'text' | 'unknown';
+  sourceType: DirectApiSourceType;
+  internalKey?: string;
+  defaultOptionId?: string;
+  defaultNumber?: number;
+  formula?: string;
+  conditionalRules?: DirectApiConditionalRule[];
+}
 export interface ApiModeConfig {
   computeId: string;
   computeName?: string;
@@ -34,6 +52,32 @@ export interface ApiModeConfig {
   fieldMappings: FieldMapping[];
   optionMappings: OptionMapping[];
   discoveredAt: string;
+  baselinePayload?: Record<string, unknown>;
+  productFieldConfigs?: ProductFieldConfig[];
+}
+
+/**
+ * Seed productFieldConfigs from the selected product's fields + existing
+ * fieldMappings. Each captured field becomes one entry, default sourceType
+ * 'borrower'. If an internalKey already maps to a fieldId, it's preserved.
+ */
+export function seedProductFieldConfigs(config: ApiModeConfig): ProductFieldConfig[] {
+  const product = config.products.find((p) => p.id === config.selectedProductId);
+  if (!product) return [];
+  const fmByFieldId = new Map<string, FieldMapping>();
+  for (const fm of config.fieldMappings) {
+    if (fm.fieldId) fmByFieldId.set(fm.fieldId, fm);
+  }
+  return product.fields.map((f) => {
+    const fm = fmByFieldId.get(f.id);
+    return {
+      fieldId: f.id,
+      fieldLabel: f.label,
+      fieldType: f.type,
+      sourceType: 'borrower' as DirectApiSourceType,
+      internalKey: fm?.internalKey,
+    };
+  });
 }
 
 interface CapturedMap {
@@ -248,6 +292,9 @@ function adaptCapturedMap(captured: CapturedMap, numerics: NumericChoice[]): Api
     fieldMappings,
     optionMappings,
     discoveredAt: captured.capturedAt || new Date().toISOString(),
+    baselinePayload: captured.baselinePayload && typeof captured.baselinePayload === 'object'
+      ? { ...captured.baselinePayload }
+      : undefined,
   };
 }
 

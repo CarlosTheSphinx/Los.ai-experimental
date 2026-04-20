@@ -1,4 +1,5 @@
 import { ApifyClient } from 'apify-client';
+import { evaluateFormula, matchConditionalRules } from './fieldResolver';
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN || '' });
@@ -51,6 +52,38 @@ export interface OptionMapping {
   confidence: number;
 }
 
+export type DirectApiSourceType = 'borrower' | 'default' | 'calculated';
+
+export interface DirectApiConditionalRule {
+  operator: '>=' | '>' | '<=' | '<' | '==' | 'between';
+  value: string;
+  value2?: string;
+  /** NQX optionId (24-hex) — what the rule resolves to when matched. */
+  optionId: string;
+}
+
+/**
+ * Per-NQX-product-field configuration. One entry per captured product field.
+ * Mirrors the External-URL "Borrower Input / Fixed Default / Calculated"
+ * model so admins can lock fields, compute them, or expose them to borrowers.
+ */
+export interface ProductFieldConfig {
+  fieldId: string;
+  fieldLabel: string;
+  fieldType: 'select' | 'number' | 'text' | 'unknown';
+  sourceType: DirectApiSourceType;
+  /** When sourceType=borrower, the form key the value is read from (falls back to fieldId if unset). */
+  internalKey?: string;
+  /** sourceType=default, fieldType=select → the locked optionId. */
+  defaultOptionId?: string;
+  /** sourceType=default, fieldType=number → the locked numeric value. */
+  defaultNumber?: number;
+  /** sourceType=calculated → expression with `{varName}` placeholders. */
+  formula?: string;
+  /** sourceType=calculated, fieldType=select → rules that pick an optionId from the formula's numeric result. */
+  conditionalRules?: DirectApiConditionalRule[];
+}
+
 export interface ApiModeConfig {
   computeId: string;
   computeName?: string;
@@ -59,6 +92,15 @@ export interface ApiModeConfig {
   fieldMappings: FieldMapping[];
   optionMappings: OptionMapping[];
   discoveredAt: string;
+  /**
+   * Lender's snapshot of fieldId → value(s) at the time the captured map was
+   * exported. Used as defaults so unmapped/unanswered fields reproduce the
+   * displayed pricer-URL rate instead of falling back to NQX server defaults.
+   * For select fields the value is `[optionId]`; for numeric fields it's a number.
+   */
+  baselinePayload?: Record<string, unknown>;
+  /** Per-NQX-field source-type configuration (Borrower / Default / Calculated). */
+  productFieldConfigs?: ProductFieldConfig[];
 }
 
 export function isAllowedNqxHost(hostname: string): boolean {
@@ -361,10 +403,10 @@ function fuzzyScore(a: string, b: string): number {
   if (!na || !nb) return 0;
   if (na === nb) return 1;
   if (na.includes(nb) || nb.includes(na)) return 0.85;
-  const aw = new Set(na.split(' '));
+  const aw = na.split(' ');
   const bw = new Set(nb.split(' '));
-  const inter = [...aw].filter((w) => bw.has(w)).length;
-  const union = new Set([...aw, ...bw]).size;
+  const inter = aw.filter((w) => bw.has(w)).length;
+  const union = new Set(aw.concat(nb.split(' '))).size;
   return union === 0 ? 0 : inter / union;
 }
 
@@ -562,49 +604,122 @@ function pickNumber(...vals: any[]): number | undefined {
  * Given a saved ApiModeConfig and the raw loanData submitted by the borrower,
  * build the fieldId -> value map that calculate_rate expects.
  */
+export function seedProductFieldConfigs(config: ApiModeConfig): ProductFieldConfig[] {
+  const product = config.products.find((p) => p.id === config.selectedProductId);
+  if (!product) return [];
+  const fmByFieldId = new Map<string, FieldMapping>();
+  for (const fm of config.fieldMappings) {
+    if (fm.fieldId) fmByFieldId.set(fm.fieldId, fm);
+  }
+  return product.fields.map((f) => {
+    const fm = fmByFieldId.get(f.id);
+    return {
+      fieldId: f.id,
+      fieldLabel: f.label,
+      fieldType: f.type,
+      sourceType: 'borrower' as DirectApiSourceType,
+      internalKey: fm?.internalKey,
+    };
+  });
+}
+
+/**
+ * Resolve a select field's optionId given a raw borrower-supplied value
+ * (which may be an optionId already, an internal label, or arbitrary text).
+ */
+function resolveSelectOptionId(
+  config: ApiModeConfig,
+  field: NqxField,
+  raw: any,
+): string | null {
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Already an optionId
+  if (/^[a-f0-9]{24}$/i.test(s) && field.options?.some((o) => o.id === s)) return s;
+  // Try optionMappings
+  const om = config.optionMappings.find(
+    (o) => o.fieldId === field.id && normalizeStr(o.internalValue) === normalizeStr(s),
+  );
+  if (om) return om.optionId;
+  // Fuzzy fallback against option labels
+  let best: { id: string; score: number } | null = null;
+  for (const opt of field.options || []) {
+    const score = fuzzyScore(s, opt.label);
+    if (!best || score > best.score) best = { id: opt.id, score };
+  }
+  if (best && best.score >= 0.5) return best.id;
+  return null;
+}
+
 export function buildFieldValuesFromLoanData(
   config: ApiModeConfig,
   loanData: Record<string, any>,
 ): Record<string, any> {
   const fieldValues: Record<string, any> = {};
-  for (const fm of config.fieldMappings) {
-    if (!fm.fieldId) continue;
-    const raw = loanData[fm.internalKey];
-    if (raw === undefined || raw === null || raw === '') continue;
-
-    // For select fields, look up the option ID
-    const product = config.products.find((p) => p.id === config.selectedProductId);
-    const field = product?.fields.find((f) => f.id === fm.fieldId);
-    if (field?.type === 'select' && field.options) {
-      // NQX expects select values as single-item arrays of optionIds.
-      // Try optionMappings first
-      const om = config.optionMappings.find(
-        (o) => o.fieldId === fm.fieldId && normalizeStr(o.internalValue) === normalizeStr(String(raw)),
-      );
-      if (om) {
-        fieldValues[fm.fieldId] = [om.optionId];
-        continue;
-      }
-      // Fallback: fuzzy match against option labels
-      let best: { id: string; score: number } | null = null;
-      for (const opt of field.options) {
-        const s = fuzzyScore(String(raw), opt.label);
-        if (!best || s > best.score) best = { id: opt.id, score: s };
-      }
-      if (best && best.score >= 0.5) {
-        fieldValues[fm.fieldId] = [best.id];
-      }
-      continue;
+  // 1. Baseline defaults (lender snapshot)
+  if (config.baselinePayload && typeof config.baselinePayload === 'object') {
+    for (const [fid, val] of Object.entries(config.baselinePayload)) {
+      if (!/^[a-f0-9]{24}$/i.test(fid)) continue;
+      if (val === undefined || val === null) continue;
+      fieldValues[fid] = val;
     }
-
-    // Numeric fields
-    if (field?.type === 'number') {
-      const n = Number(String(raw).replace(/[^0-9.-]/g, ''));
-      if (!isNaN(n)) fieldValues[fm.fieldId] = n;
-      continue;
-    }
-
-    fieldValues[fm.fieldId] = raw;
   }
+
+  const product = config.products.find((p) => p.id === config.selectedProductId);
+  if (!product) return fieldValues;
+
+  // 2. Per-field configs (new model). Falls back to legacy if absent.
+  const configs: ProductFieldConfig[] =
+    config.productFieldConfigs && config.productFieldConfigs.length > 0
+      ? config.productFieldConfigs
+      : seedProductFieldConfigs(config);
+
+  for (const pfc of configs) {
+    const field = product.fields.find((f) => f.id === pfc.fieldId);
+    if (!field) continue;
+
+    if (pfc.sourceType === 'default') {
+      if (field.type === 'select' && pfc.defaultOptionId) {
+        fieldValues[field.id] = [pfc.defaultOptionId];
+      } else if (field.type === 'number' && typeof pfc.defaultNumber === 'number') {
+        fieldValues[field.id] = pfc.defaultNumber;
+      }
+      continue;
+    }
+
+    if (pfc.sourceType === 'calculated') {
+      const num = evaluateFormula(pfc.formula || '', loanData);
+      if (num === null) continue;
+      if (field.type === 'select') {
+        const optId = matchConditionalRules(
+          num,
+          (pfc.conditionalRules || []).map((r) => ({ ...r, option: r.optionId })),
+          undefined,
+        );
+        if (optId && /^[a-f0-9]{24}$/i.test(optId)) {
+          fieldValues[field.id] = [optId];
+        }
+      } else if (field.type === 'number') {
+        fieldValues[field.id] = num;
+      }
+      continue;
+    }
+
+    // sourceType === 'borrower'
+    const raw =
+      (pfc.internalKey ? loanData[pfc.internalKey] : undefined) ??
+      loanData[field.id];
+    if (raw === undefined || raw === null || raw === '') continue;
+    if (field.type === 'select') {
+      const optId = resolveSelectOptionId(config, field, raw);
+      if (optId) fieldValues[field.id] = [optId];
+    } else if (field.type === 'number') {
+      const n = Number(String(raw).replace(/[^0-9.-]/g, ''));
+      if (!isNaN(n)) fieldValues[field.id] = n;
+    } else {
+      fieldValues[field.id] = raw;
+    }
+  }
+
   return fieldValues;
 }
