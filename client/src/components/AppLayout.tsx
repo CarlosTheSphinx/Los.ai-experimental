@@ -630,7 +630,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
 
       {isAdmin && !isPreviewingOtherRole && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
 
-      {(isBroker || effectiveViewAsLender) && <BrokerAssistant />}
+      {isBroker && <BrokerAssistant />}
 
       {isAdmin && !isPreviewingOtherRole && <TrainingChecklist />}
 

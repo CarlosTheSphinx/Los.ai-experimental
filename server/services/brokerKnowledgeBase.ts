@@ -1,13 +1,22 @@
 /**
  * Broker Knowledge Base
  * Compiles a text knowledge pack from active loan programs, program review
- * rules, and credit policies that brokers are allowed to ask the AI assistant
- * about. Cached in-memory for a short TTL to keep latency low.
+ * rules, and broker-shareable fund knowledge entries that brokers are allowed
+ * to ask the AI assistant about. Cached in-memory for a short TTL to keep
+ * latency low.
+ *
+ * Important: Fund / lender names are NEVER included — only generic guidance.
  */
 
 import { db } from "../db";
-import { loanPrograms, programReviewRules, creditPolicies } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  loanPrograms,
+  programReviewRules,
+  fundKnowledgeEntries,
+  funds,
+  type LoanProgram,
+} from "@shared/schema";
+import { eq, and, inArray } from "drizzle-orm";
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -16,32 +25,65 @@ interface KBCacheEntry {
   builtAt: number;
 }
 
+interface ReviewRuleRow {
+  programId: number | null;
+  title: string;
+  description: string | null;
+  severity: string | null;
+  category: string | null;
+}
+
+interface KnowledgeEntryRow {
+  category: string;
+  content: string;
+}
+
 const cache = new Map<number, KBCacheEntry>();
 
-function fmtRange(min: number | null | undefined, max: number | null | undefined, suffix = "") {
+// Categories that are safe to surface to brokers (no internal pricing or
+// lender identification). 'specialty' is intentionally excluded because
+// such notes often reference specific fund niches.
+const BROKER_SHAREABLE_CATEGORIES = new Set(["general", "eligibility"]);
+
+function fmtRange(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  suffix = "",
+): string {
   if (min == null && max == null) return "n/a";
   const lo = min == null ? "—" : `${min}${suffix}`;
   const hi = max == null ? "—" : `${max}${suffix}`;
   return `${lo} to ${hi}`;
 }
 
-export async function buildBrokerKnowledgePack(tenantId: number): Promise<string> {
+function formatTerms(termOptions: string | null): string | null {
+  if (!termOptions) return null;
+  const parts = termOptions
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!parts.length) return null;
+  return `${parts.join(", ")} months`;
+}
+
+export async function buildBrokerKnowledgePack(
+  tenantId: number,
+): Promise<string> {
   const cached = cache.get(tenantId);
   if (cached && Date.now() - cached.builtAt < CACHE_TTL_MS) {
     return cached.text;
   }
 
-  const programs = await db
+  const programs: LoanProgram[] = await db
     .select()
     .from(loanPrograms)
-    .where(and(eq(loanPrograms.isActive, true), eq(loanPrograms.tenantId, tenantId)));
+    .where(
+      and(eq(loanPrograms.isActive, true), eq(loanPrograms.tenantId, tenantId)),
+    );
 
-  const policies = await db
-    .select()
-    .from(creditPolicies)
-    .where(eq(creditPolicies.isActive, true));
+  const programIds = programs.map((p) => p.id);
 
-  const allRules = await db
+  const allRules: ReviewRuleRow[] = await db
     .select({
       programId: programReviewRules.programId,
       title: programReviewRules.ruleTitle,
@@ -53,16 +95,35 @@ export async function buildBrokerKnowledgePack(tenantId: number): Promise<string
     .where(eq(programReviewRules.isActive, true));
 
   // Tenant-scope rules: only include rules attached to this tenant's programs
-  // (or orphan rules with no program attachment — treated as global).
-  const programIds = new Set(programs.map((p) => p.id));
+  // (or orphan rules with no program attachment, which are global).
+  const programIdSet = new Set(programIds);
   const rules = allRules.filter(
-    (r) => r.programId == null || programIds.has(r.programId),
+    (r) => r.programId == null || programIdSet.has(r.programId),
   );
 
-  const programNameById = new Map<number, string>();
-  for (const p of programs) programNameById.set(p.id, p.name);
+  // Tenant-scoped, broker-shareable fund knowledge — fund names are
+  // intentionally NOT selected/exposed.
+  const tenantFunds = await db
+    .select({ id: funds.id })
+    .from(funds)
+    .where(eq(funds.tenantId, tenantId));
+  const fundIds = tenantFunds.map((f) => f.id);
 
-  const rulesByProgram = new Map<number | null, typeof rules>();
+  let knowledge: KnowledgeEntryRow[] = [];
+  if (fundIds.length) {
+    knowledge = await db
+      .select({
+        category: fundKnowledgeEntries.category,
+        content: fundKnowledgeEntries.content,
+      })
+      .from(fundKnowledgeEntries)
+      .where(inArray(fundKnowledgeEntries.fundId, fundIds));
+    knowledge = knowledge.filter((k) =>
+      BROKER_SHAREABLE_CATEGORIES.has(k.category),
+    );
+  }
+
+  const rulesByProgram = new Map<number | null, ReviewRuleRow[]>();
   for (const r of rules) {
     const k = r.programId ?? null;
     const arr = rulesByProgram.get(k) ?? [];
@@ -76,11 +137,19 @@ export async function buildBrokerKnowledgePack(tenantId: number): Promise<string
   for (const p of programs) {
     lines.push(`## ${p.name} (${p.loanType ?? "n/a"})`);
     if (p.description) lines.push(p.description);
-    lines.push(`- Loan amount: ${fmtRange(p.minLoanAmount as any, p.maxLoanAmount as any, "")}`);
-    lines.push(`- LTV: ${fmtRange(p.minLtv as any, p.maxLtv as any, "%")}`);
+    lines.push(`- Loan amount: ${fmtRange(p.minLoanAmount, p.maxLoanAmount)}`);
+    lines.push(`- LTV: ${fmtRange(p.minLtv, p.maxLtv, "%")}`);
+    lines.push(
+      `- Indicative rate range: ${fmtRange(p.minInterestRate, p.maxInterestRate, "%")} (subject to pricing engine)`,
+    );
+    const term = formatTerms(p.termOptions);
+    if (term) lines.push(`- Term options: ${term}`);
     if (p.minDscr != null) lines.push(`- Min DSCR: ${p.minDscr}`);
     if (p.minFico != null) lines.push(`- Min FICO: ${p.minFico}`);
-    const propTypes = (p.eligiblePropertyTypes as any) || [];
+    if (p.minUnits != null || p.maxUnits != null) {
+      lines.push(`- Units: ${fmtRange(p.minUnits, p.maxUnits)}`);
+    }
+    const propTypes = p.eligiblePropertyTypes;
     if (Array.isArray(propTypes) && propTypes.length) {
       lines.push(`- Eligible property types: ${propTypes.join(", ")}`);
     }
@@ -116,11 +185,16 @@ export async function buildBrokerKnowledgePack(tenantId: number): Promise<string
     lines.push("");
   }
 
-  if (policies.length) {
-    lines.push("# CREDIT POLICY DOCUMENTS");
-    for (const cp of policies) {
-      lines.push(`- ${cp.name}${cp.description ? `: ${cp.description}` : ""}`);
+  if (knowledge.length) {
+    lines.push("# GENERAL LENDING-PARTNER GUIDELINES");
+    lines.push(
+      "(Broker-shareable notes; do not attribute to any specific lender or fund.)",
+    );
+    for (const k of knowledge) {
+      const trimmed = k.content.replace(/\s+/g, " ").trim();
+      if (trimmed) lines.push(`- ${trimmed}`);
     }
+    lines.push("");
   }
 
   const text = lines.join("\n");
@@ -128,7 +202,7 @@ export async function buildBrokerKnowledgePack(tenantId: number): Promise<string
   return text;
 }
 
-export function invalidateBrokerKnowledgeCache(tenantId?: number) {
+export function invalidateBrokerKnowledgeCache(tenantId?: number): void {
   if (tenantId == null) cache.clear();
   else cache.delete(tenantId);
 }

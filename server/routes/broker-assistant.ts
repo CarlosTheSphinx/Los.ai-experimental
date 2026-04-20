@@ -14,6 +14,27 @@ import { buildBrokerKnowledgePack } from "../services/brokerKnowledgeBase";
 const MODEL = "gpt-4o-mini";
 const MAX_USER_MESSAGES = 20;
 const MAX_USER_CHARS = 4000;
+// super_admin retained so platform admins can verify behavior end-to-end
+// without reassigning their role. Lender access intentionally excluded.
+const ALLOWED_ROLES = new Set(["broker", "super_admin"]);
+
+interface ChatMessageInput {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function parseMessages(raw: unknown): ChatMessageInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChatMessageInput[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const m = item as { role?: unknown; content?: unknown };
+    if (typeof m.content !== "string") continue;
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    out.push({ role: m.role, content: m.content.slice(0, MAX_USER_CHARS) });
+  }
+  return out.slice(-MAX_USER_MESSAGES);
+}
 
 const SYSTEM_INSTRUCTIONS = `You are Lendry, an AI loan-program assistant for brokers working with Sphinx Capital.
 
@@ -49,7 +70,7 @@ export function registerBrokerAssistantRoutes(app: Express): void {
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
       const role = user.role || "";
-      if (!["broker", "super_admin", "lender"].includes(role)) {
+      if (!ALLOWED_ROLES.has(role)) {
         return res.status(403).json({ error: "Broker assistant is only available to brokers" });
       }
 
@@ -60,19 +81,7 @@ export function registerBrokerAssistantRoutes(app: Express): void {
         return res.status(403).json({ error: "Broker assistant is disabled for this account" });
       }
 
-      const incoming = Array.isArray(req.body?.messages) ? req.body.messages : [];
-      if (!incoming.length) {
-        return res.status(400).json({ error: "messages array is required" });
-      }
-
-      const cleaned = incoming
-        .filter((m: any) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
-        .slice(-MAX_USER_MESSAGES)
-        .map((m: any) => ({
-          role: m.role as "user" | "assistant",
-          content: String(m.content).slice(0, MAX_USER_CHARS),
-        }));
-
+      const cleaned = parseMessages(req.body?.messages);
       if (!cleaned.length || cleaned[cleaned.length - 1].role !== "user") {
         return res.status(400).json({ error: "Last message must come from the user" });
       }
