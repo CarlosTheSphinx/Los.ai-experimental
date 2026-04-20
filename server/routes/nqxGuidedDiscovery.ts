@@ -24,8 +24,6 @@ import { authenticateUser, type AuthRequest } from "../auth";
 import {
   autoMapFields,
   autoMapOptions,
-  findFieldsArray,
-  findProductsArray,
   type NqxDiscoverySchema,
   type NqxField,
   type NqxFieldOption,
@@ -33,11 +31,7 @@ import {
 } from "../services/nqxPricer";
 
 const SESSION_TTL_MS = 15 * 60 * 1000;
-const MAX_CAPTURE_BYTES = 5_000_000; // ~5 MB safety cap (config responses can be large)
-
-// Skip these opaqueIds — they're framework-generated and meaningless
-// (React useId values like `:r2:`, `:r2:-outlined`, etc.).
-const REACT_USEID_RE = /^:r[0-9a-z]+:/i;
+const MAX_CAPTURE_BYTES = 1_500_000; // ~1.5 MB safety cap
 
 interface DomFieldSnapshot {
   opaqueId: string;
@@ -46,17 +40,11 @@ interface DomFieldSnapshot {
   options?: Array<{ label: string; value: string }>;
 }
 
-interface AdditionalCapture {
-  url: string;
-  body: unknown;
-}
-
 interface CapturePayload {
   calculateRateUrl: string;
   requestBody: unknown;
   responseBody: unknown;
   domFields: DomFieldSnapshot[];
-  additionalCaptures?: AdditionalCapture[];
   pageTitle?: string;
 }
 
@@ -104,62 +92,6 @@ function inferFieldType(domType: string): NqxField["type"] {
   return "text";
 }
 
-function isUsableOpaqueId(id: string): boolean {
-  if (!id) return false;
-  if (REACT_USEID_RE.test(id)) return false;
-  return true;
-}
-
-/**
- * Walk every additional capture body, pulling out any field definitions or
- * product definitions we recognize. Returns the merged set of fields keyed
- * by their NQX field _id, plus a product name (if we found one).
- */
-function harvestFieldsFromAdditional(
-  additional: AdditionalCapture[],
-  productId: string,
-): { fields: Map<string, NqxField>; productName?: string } {
-  const fieldsById = new Map<string, NqxField>();
-  let productName: string | undefined;
-
-  const ingestFields = (fs: NqxField[] | null) => {
-    if (!fs) return;
-    for (const f of fs) {
-      if (!f?.id || !isUsableOpaqueId(f.id)) continue;
-      const existing = fieldsById.get(f.id);
-      // Prefer the entry with options + a real label.
-      if (
-        !existing ||
-        ((f.options?.length ?? 0) > (existing.options?.length ?? 0)) ||
-        (!existing.label && f.label)
-      ) {
-        fieldsById.set(f.id, f);
-      }
-    }
-  };
-
-  for (const cap of additional) {
-    if (!cap?.body || typeof cap.body !== "object") continue;
-    // Try to find products first; if our productId is in there, use its fields.
-    const products = findProductsArray(cap.body);
-    if (products) {
-      const matchedByName = products.find((p) => p.id === productId);
-      if (matchedByName) {
-        productName = matchedByName.name || productName;
-        ingestFields(matchedByName.fields);
-      }
-      // Even if not matched, harvest fields from every product (NQX often
-      // keeps the same field IDs across products in a compute).
-      for (const p of products) ingestFields(p.fields);
-      continue;
-    }
-    // Otherwise fall back to a flat field array search.
-    ingestFields(findFieldsArray(cap.body));
-  }
-
-  return { fields: fieldsById, productName };
-}
-
 function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
   const ids = parseCalculateRateUrl(capture.calculateRateUrl);
   if (!ids) {
@@ -169,61 +101,33 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
     capture.requestBody && typeof capture.requestBody === "object"
       ? (capture.requestBody as Record<string, unknown>)
       : {};
-  const additional = capture.additionalCaptures ?? [];
-
-  // 1. Pull every real field/option definition out of the page-load config
-  //    responses. This is where the proper labels and option lists live.
-  const { fields: configFields, productName } = harvestFieldsFromAdditional(
-    additional,
-    ids.productId,
-  );
-
-  // 2. Build the final field list from the calculate_rate request body.
-  //    For each opaqueId actually sent to /calculate_rate, prefer the
-  //    config-derived field; otherwise fall back to the DOM snapshot;
-  //    otherwise emit a plain text placeholder.
-  const domFieldsById = new Map<string, DomFieldSnapshot>();
-  for (const dom of capture.domFields) {
-    if (!dom.opaqueId || !isUsableOpaqueId(dom.opaqueId)) continue;
-    if (!domFieldsById.has(dom.opaqueId)) domFieldsById.set(dom.opaqueId, dom);
-  }
 
   const fieldsById = new Map<string, NqxField>();
-  const reqKeys = Object.keys(reqBody).filter(isUsableOpaqueId);
-  for (const key of reqKeys) {
-    const fromConfig = configFields.get(key);
-    if (fromConfig) {
-      fieldsById.set(key, fromConfig);
-      continue;
-    }
-    const fromDom = domFieldsById.get(key);
-    if (fromDom) {
-      const opts: NqxFieldOption[] | undefined = Array.isArray(fromDom.options)
-        ? fromDom.options
-            .filter((o) => o && typeof o.value === "string" && typeof o.label === "string")
-            .map((o) => ({ id: o.value, label: o.label }))
-        : undefined;
-      fieldsById.set(key, {
-        id: key,
-        label: fromDom.label || key,
-        type: inferFieldType(fromDom.type),
-        options: opts && opts.length ? opts : undefined,
-      });
-      continue;
-    }
-    fieldsById.set(key, { id: key, label: key, type: "text" });
+  for (const dom of capture.domFields) {
+    if (!dom.opaqueId || fieldsById.has(dom.opaqueId)) continue;
+    const opts: NqxFieldOption[] | undefined = Array.isArray(dom.options)
+      ? dom.options
+          .filter((o) => o && typeof o.value === "string" && typeof o.label === "string")
+          .map((o) => ({ id: o.value, label: o.label }))
+      : undefined;
+    fieldsById.set(dom.opaqueId, {
+      id: dom.opaqueId,
+      label: dom.label || dom.opaqueId,
+      type: inferFieldType(dom.type),
+      options: opts && opts.length ? opts : undefined,
+    });
   }
 
-  // 3. Also include any config-derived fields that aren't currently in the
-  //    request body — they're real fields the user just didn't touch.
-  for (const [id, f] of Array.from(configFields.entries())) {
-    if (!fieldsById.has(id)) fieldsById.set(id, f);
+  // Add any fields present in the request body that the DOM walker missed.
+  for (const key of Object.keys(reqBody)) {
+    if (fieldsById.has(key)) continue;
+    fieldsById.set(key, { id: key, label: key, type: "text" });
   }
 
   const fields = Array.from(fieldsById.values());
   const product: NqxProduct = {
     id: ids.productId,
-    name: productName || capture.pageTitle?.trim() || "Captured product",
+    name: capture.pageTitle?.trim() || "Captured product",
     fields,
   };
 
@@ -233,19 +137,16 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
     products: [product],
     discoveredAt: new Date().toISOString(),
     rawResponses: [
-      { url: capture.calculateRateUrl, status: 200, bodyPreview: previewBody(capture.responseBody) },
-      ...additional.map((c) => ({ url: c.url, status: 200, bodyPreview: previewBody(c.body) })),
+      {
+        url: capture.calculateRateUrl,
+        status: 200,
+        bodyPreview:
+          typeof capture.responseBody === "string"
+            ? capture.responseBody.slice(0, 500)
+            : JSON.stringify(capture.responseBody).slice(0, 500),
+      },
     ],
   };
-}
-
-function previewBody(body: unknown): string {
-  if (typeof body === "string") return body.slice(0, 500);
-  try {
-    return JSON.stringify(body).slice(0, 500);
-  } catch {
-    return "";
-  }
 }
 
 export function registerNqxGuidedDiscoveryRoutes(
@@ -346,21 +247,11 @@ export function registerNqxGuidedDiscoveryRoutes(
         return res.status(413).json({ error: "Capture payload too large" });
       }
 
-      const additionalRaw = Array.isArray(body.additionalCaptures) ? body.additionalCaptures : [];
-      const additionalCaptures: AdditionalCapture[] = [];
-      for (const c of additionalRaw) {
-        if (!c || typeof c !== "object") continue;
-        const url = typeof (c as any).url === "string" ? (c as any).url : "";
-        if (!url || !/nqxpricer\.com/.test(url)) continue;
-        additionalCaptures.push({ url, body: (c as any).body });
-      }
-
       const capture: CapturePayload = {
         calculateRateUrl,
         requestBody: body.requestBody ?? {},
         responseBody: body.responseBody ?? null,
         domFields: Array.isArray(body.domFields) ? (body.domFields as DomFieldSnapshot[]) : [],
-        additionalCaptures,
         pageTitle: typeof body.pageTitle === "string" ? body.pageTitle : undefined,
       };
 
