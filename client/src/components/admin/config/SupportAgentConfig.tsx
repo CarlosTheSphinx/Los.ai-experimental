@@ -76,14 +76,18 @@ function settingVal(settings: SystemSetting[], key: string): string | undefined 
   return settings.find((s) => s.settingKey === key)?.settingValue;
 }
 
+function orDefault(val: string | undefined, fallback: string): string {
+  return val?.trim() ? val : fallback;
+}
+
 function buildDraft(settings: SystemSetting[], agent: AgentKey): AgentDraft {
   const defaults = agent === "lender" ? LENDER_DEFAULTS : BROKER_DEFAULTS;
   const enabled = settingVal(settings, `support_agent_${agent}_enabled`);
   return {
     enabled: enabled !== "false",
-    intro: settingVal(settings, `support_agent_${agent}_intro`) ?? defaults.intro,
-    capabilities: settingVal(settings, `support_agent_${agent}_capabilities`) ?? defaults.capabilities,
-    rules: settingVal(settings, `support_agent_${agent}_rules`) ?? defaults.rules,
+    intro: orDefault(settingVal(settings, `support_agent_${agent}_intro`), defaults.intro),
+    capabilities: orDefault(settingVal(settings, `support_agent_${agent}_capabilities`), defaults.capabilities),
+    rules: orDefault(settingVal(settings, `support_agent_${agent}_rules`), defaults.rules),
   };
 }
 
@@ -136,11 +140,11 @@ export default function SupportAgentConfig() {
         },
       ];
       await Promise.all(
-        entries
-          .filter(({ value }) => value.trim().length > 0)
-          .map(({ key, value, description }) =>
-            apiRequest("PUT", `/api/admin/settings/${key}`, { value, description }),
-          ),
+        entries.map(({ key, value, description }) =>
+          value.trim().length > 0
+            ? apiRequest("PUT", `/api/admin/settings/${key}`, { value, description })
+            : apiRequest("DELETE", `/api/admin/settings/${key}`, {}),
+        ),
       );
     },
     onSuccess: (_, { agent }) => {

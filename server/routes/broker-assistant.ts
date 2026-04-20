@@ -106,8 +106,13 @@ export function registerBrokerAssistantRoutes(app: Express): void {
       }
       const tenantId = req.user?.tenantId;
       if (!tenantId) return res.status(401).json({ error: "Not authenticated" });
-      const setting = await storage.getSettingByKey("broker_chatbot_enabled", tenantId);
-      const enabled = setting?.settingValue !== "false";
+      const [legacySetting, agentSetting] = await Promise.all([
+        storage.getSettingByKey("broker_chatbot_enabled", tenantId),
+        storage.getSettingByKey("support_agent_broker_enabled", tenantId),
+      ]);
+      const enabled =
+        legacySetting?.settingValue !== "false" &&
+        agentSetting?.settingValue !== "false";
       res.json({ enabled });
     } catch (error) {
       console.error("broker assistant config error", error);
