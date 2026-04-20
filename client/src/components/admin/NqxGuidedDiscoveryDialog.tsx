@@ -36,311 +36,180 @@ interface PollResponse {
 }
 
 function buildCaptureScript(captureEndpoint: string, token: string): string {
-  // IIFE pasted into DevTools console on the NQX pricer page (CSP blocks
-  // bookmarklets on most NQX tenants). Three things happen here:
-  //   1. An overlay shows capture progress.
-  //   2. A MutationObserver watches for MUI Select popovers (ul[role=listbox])
-  //      opening, and walks React fibers on each <li role=option/menuitem> to
-  //      pull the real option ID (the `value` prop) and label. MUI/Next puts
-  //      these IDs only in React state, never in DOM attributes — that's why
-  //      the previous DOM-scraping approach returned :r2:-outlined garbage.
-  //   3. fetch + XHR hooks catch the calculate_rate round-trip. The captured
-  //      request body tells us which NQX field ObjectId corresponds to which
-  //      option ID we collected via fiber-walk — that's how we glue the two
-  //      together on the server to produce a real field→options schema.
-  // Persistence: window.__lendryMap is mirrored to sessionStorage so an
-  // accidental refresh of the pricer tab is survivable (paste again to resume).
+  // The body of this IIFE runs on the NQX pricer page either via a
+  // bookmarklet click or by being pasted into DevTools. It hooks
+  // fetch + XHR to capture the next calculate_rate round-trip,
+  // snapshots the form fields, and POSTs the result back.
   return `
 (function(){
+  if (window.__lendryNqxCapture) { console.info('[Lendry] capture already armed on this page'); alert('Lendry capture is already armed on this page.'); return; }
+  window.__lendryNqxCapture = true;
   var TOKEN = ${JSON.stringify(token)};
   var ENDPOINT = ${JSON.stringify(captureEndpoint)};
-  var STORAGE_KEY = 'lendryNqxMap_' + TOKEN;
-  if (window.__lendryNqxCapture) {
-    console.info('[Lendry] capture already armed — reattaching overlay');
-    if (typeof window.__lendryRender === 'function') window.__lendryRender();
-    return;
-  }
-  window.__lendryNqxCapture = true;
   var sent = false;
+  var NQX_HOST_RE = /(?:^|\\.)nqxpricer\\.com$/i;
+  var MAX_BUFFER = 30;            // at most 30 NQX responses kept
+  var MAX_BODY_BYTES = 500000;     // skip any single response > 500 KB
+  var buffer = [];                 // [{url, body}] for non-calculate_rate NQX responses
 
-  // ── State ────────────────────────────────────────────────────────────────
-  //  fieldMap: { "FICO Score": { label, fieldId?, optionsByLabel: { "720-739": "<optId>", ... } } }
-  var fieldMap = {};
-  try { var saved = sessionStorage.getItem(STORAGE_KEY); if (saved) fieldMap = JSON.parse(saved) || {}; } catch(e){}
-  window.__lendryMap = fieldMap;
-
-  function persist(){
-    window.__lendryMap = fieldMap;
-    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(fieldMap)); } catch(e){}
-    render();
-  }
-
-  // ── Overlay ──────────────────────────────────────────────────────────────
-  var overlay = document.createElement('div');
-  overlay.id = '__lendry_overlay';
-  overlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:#0F1629;color:#fff;padding:14px 16px;border-radius:10px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:380px;min-width:290px;box-shadow:0 8px 30px rgba(0,0,0,.4);border:1px solid #C9A84C;';
-  overlay.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-      '<div style="font:700 13px system-ui,-apple-system,sans-serif;color:#C9A84C;">⚡ Lendry NQX Capture</div>' +
-      '<button id="__lendry_close" style="background:transparent;border:0;color:#888;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;" title="Hide overlay">×</button>' +
-    '</div>' +
-    '<div id="__lendry_status" style="color:#C9A84C;margin-bottom:8px;">Open each dropdown on the pricer once.</div>' +
-    '<div id="__lendry_list" style="max-height:180px;overflow:auto;font-size:11px;margin-bottom:10px;background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"></div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
-      '<button id="__lendry_reset" style="background:transparent;color:#C9A84C;border:1px solid #C9A84C;padding:6px 10px;border-radius:5px;cursor:pointer;font:600 11px system-ui,-apple-system,sans-serif;">Reset</button>' +
-      '<button id="__lendry_export" style="background:transparent;color:#888;border:1px solid #444;padding:6px 10px;border-radius:5px;cursor:pointer;font:600 11px system-ui,-apple-system,sans-serif;" title="Download the captured map as JSON (for debugging)">Export JSON</button>' +
-    '</div>' +
-    '<div style="color:#666;margin-top:8px;font-size:10px;">Submission happens automatically when you click Calculate Rate on the pricer.</div>';
-  function attachOverlay(){ if (!document.getElementById('__lendry_overlay')) document.body.appendChild(overlay); }
-  if (document.body) attachOverlay(); else document.addEventListener('DOMContentLoaded', attachOverlay);
-
-  function render(){
-    var list = document.getElementById('__lendry_list');
-    if (!list) return;
-    var keys = Object.keys(fieldMap);
-    if (!keys.length) { list.style.color='#888'; list.textContent = '(no dropdowns captured yet — open one to start)'; return; }
-    list.style.color = '#fff';
-    list.innerHTML = keys.map(function(k){
-      var e = fieldMap[k];
-      var n = Object.keys(e.optionsByLabel || {}).length;
-      var idBadge = e.fieldId ? '<span style="color:#4ade80;">✓id</span>' : '<span style="color:#f59e0b;">?id</span>';
-      return '<div style="padding:2px 0;"><span style="color:#C9A84C;">✓</span> <b>'+ escapeHtml(k) +'</b> — '+ n +' opt'+ (n===1?'':'s') +' ' + idBadge +'</div>';
-    }).join('');
-  }
-  window.__lendryRender = render;
-  function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
-
-  function setStatus(msg, color){
-    var el = document.getElementById('__lendry_status');
-    if (el) { el.textContent = msg; if (color) el.style.color = color; }
-  }
-
-  // ── React fiber helpers ─────────────────────────────────────────────────
-  function getFiber(el){
-    for (var k in el){ if (k.indexOf('__reactFiber$')===0 || k.indexOf('__reactInternalInstance$')===0) return el[k]; }
-    return null;
-  }
-  function getReactProps(el){
-    for (var k in el){ if (k.indexOf('__reactProps$')===0) return el[k]; }
-    return null;
-  }
-
-  // Extract the option ID from a <li role=option|menuitem>. MUI stores it as
-  // the MenuItem's \`value\` prop — which lives only on the React fiber.
-  function extractOptionValue(li){
-    // Strategy A — reactProps$ on the <li>
-    var p = getReactProps(li);
-    if (p && p.value !== undefined && p.value !== null && p.value !== '') return p.value;
-    // Strategy B — walk fiber.memoizedProps / parent fiber
-    var f = getFiber(li);
-    var steps = 0;
-    while (f && steps < 6) {
-      var mp = f.memoizedProps || f.pendingProps;
-      if (mp && mp.value !== undefined && mp.value !== null && mp.value !== '') return mp.value;
-      f = f.return;
-      steps++;
-    }
-    // Strategy C — data-value attribute (rare, but some MUI forks add it)
-    var dv = li.getAttribute('data-value');
-    if (dv) return dv;
-    return null;
-  }
-
-  // Try to find the NQX field ObjectId (24 hex) by walking up the fiber
-  // tree from the listbox. The form component may put the field id on a
-  // prop named \`name\`, \`fieldId\`, \`field_id\`, \`id\`, or embed it in
-  // any other prop value.
-  var OBJID_RE = /^[a-f0-9]{24}$/i;
-  function extractFieldIdFromListbox(ul){
-    var f = getFiber(ul);
-    var steps = 0;
-    while (f && steps < 20) {
-      var props = f.memoizedProps || f.pendingProps;
-      if (props && typeof props === 'object') {
-        var named = [props.name, props.fieldId, props.field_id, props.id, props['data-field-id']];
-        for (var i=0;i<named.length;i++){ if (typeof named[i]==='string' && OBJID_RE.test(named[i])) return named[i]; }
-        // Shallow scan of primitive prop values
-        for (var k in props){
-          var v = props[k];
-          if (typeof v === 'string' && OBJID_RE.test(v)) return v;
-        }
-      }
-      f = f.return;
-      steps++;
-    }
-    return null;
-  }
-
-  // Human field name: aria-labelledby on the ul points to a label element.
-  function extractFieldLabel(ul){
+  function showToast(msg, color){
     try {
-      var lb = ul.getAttribute('aria-labelledby');
-      if (lb) {
-        var ids = lb.split(/\\s+/).filter(Boolean);
-        for (var i=0;i<ids.length;i++){
-          var el = document.getElementById(ids[i]);
-          var t = el && (el.textContent || '').trim();
-          if (t) return t;
-        }
-      }
-      // Fallback — aria-label on the ul
-      var al = ul.getAttribute('aria-label');
-      if (al) return al.trim();
+      var el = document.createElement('div');
+      el.textContent = msg;
+      el.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;padding:12px 16px;border-radius:8px;font:600 14px system-ui,-apple-system,sans-serif;color:#fff;background:'+ (color || '#0F1629') +';box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:340px;';
+      document.body.appendChild(el);
+      setTimeout(function(){ el.style.transition='opacity .4s'; el.style.opacity='0'; setTimeout(function(){ el.remove(); }, 450); }, 6000);
     } catch(e){}
-    return null;
   }
 
-  function captureListbox(ul){
+  function snapshotDom(){
+    var fields = [];
+    function labelFor(el){
+      try {
+        if (el.id) {
+          var lab = document.querySelector('label[for="'+CSS.escape(el.id)+'"]');
+          if (lab) return (lab.textContent||'').trim();
+        }
+        var p = el.closest('label');
+        if (p) return (p.textContent||'').trim();
+        var aria = el.getAttribute('aria-label');
+        if (aria) return aria.trim();
+        var ph = el.getAttribute('placeholder');
+        if (ph) return ph.trim();
+      } catch(e){}
+      return el.name || el.id || '';
+    }
+    var seen = {};
+    document.querySelectorAll('input, select, textarea, [role="combobox"]').forEach(function(el){
+      var name = el.getAttribute('name') || el.getAttribute('data-field-id') || el.id || '';
+      if (!name || seen[name]) return;
+      seen[name] = true;
+      var type = (el.tagName === 'SELECT') ? 'select' : (el.getAttribute('type') || el.tagName.toLowerCase());
+      var options;
+      if (el.tagName === 'SELECT') {
+        options = [];
+        Array.prototype.slice.call(el.options).forEach(function(o){
+          if (o.value) options.push({ label: (o.textContent||'').trim(), value: o.value });
+        });
+      }
+      fields.push({ opaqueId: name, label: labelFor(el), type: type, options: options });
+    });
+    return fields;
+  }
+
+  function isNqxApiUrl(u){
     try {
-      var label = extractFieldLabel(ul);
-      if (!label) {
-        console.warn('[Lendry] listbox opened but no field label found', ul);
-        return;
-      }
-      var items = ul.querySelectorAll('li[role="option"], li[role="menuitem"]');
-      if (!items.length) return;
-      var entry = fieldMap[label] || { label: label, optionsByLabel: {} };
-      var captured = 0, failed = 0;
-      items.forEach(function(li){
-        var optLabel = (li.innerText || li.textContent || '').trim();
-        if (!optLabel) return;
-        var val = extractOptionValue(li);
-        if (val === null || val === undefined) { failed++; try { window.__lendryDebug = { li: li, fiber: getFiber(li), props: getReactProps(li) }; } catch(e){} return; }
-        entry.optionsByLabel[optLabel] = String(val);
-        captured++;
-      });
-      if (!entry.fieldId) {
-        var fid = extractFieldIdFromListbox(ul);
-        if (fid) entry.fieldId = fid;
-      }
-      if (captured){
-        fieldMap[label] = entry;
-        console.info('[Lendry] captured "' + label + '" — ' + Object.keys(entry.optionsByLabel).length + ' opts' + (entry.fieldId ? ', fieldId ' + entry.fieldId : ', fieldId unknown (will resolve from calculate_rate)'));
-        persist();
-      }
-      if (failed){
-        console.warn('[Lendry] ' + failed + ' option(s) in "' + label + '" had no extractable value. window.__lendryDebug has the last one.');
-      }
-    } catch(err){
-      console.error('[Lendry] captureListbox failed', err);
-    }
+      var parsed = new URL(u, window.location.origin);
+      return NQX_HOST_RE.test(parsed.hostname);
+    } catch(e){ return false; }
   }
 
-  // ── MutationObserver for MUI listbox portals ────────────────────────────
-  var mo = new MutationObserver(function(muts){
-    for (var i=0;i<muts.length;i++){
-      var added = muts[i].addedNodes;
-      for (var j=0;j<added.length;j++){
-        var n = added[j];
-        if (!n || n.nodeType !== 1) continue;
-        if (n.matches && n.matches('ul[role="listbox"]')) { captureListbox(n); continue; }
-        var inner = n.querySelectorAll && n.querySelectorAll('ul[role="listbox"]');
-        if (inner && inner.length) for (var k=0;k<inner.length;k++) captureListbox(inner[k]);
+  function bufferResponse(url, text){
+    try {
+      if (!text || text.length > MAX_BODY_BYTES) return;
+      // Only buffer JSON-looking responses; ignore HTML/scripts.
+      var trimmed = text.trim();
+      if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) return;
+      var parsed;
+      try { parsed = JSON.parse(trimmed); } catch(e){ return; }
+      // De-dupe by URL — keep the most recent body for each endpoint.
+      for (var i = 0; i < buffer.length; i++) {
+        if (buffer[i].url === url) { buffer[i].body = parsed; return; }
       }
-    }
-  });
-  if (document.body) mo.observe(document.body, { childList:true, subtree:true });
-  // Also capture any listboxes already open at paste time
-  document.querySelectorAll('ul[role="listbox"]').forEach(captureListbox);
+      buffer.push({ url: url, body: parsed });
+      if (buffer.length > MAX_BUFFER) buffer.shift();
+    } catch(e){}
+  }
 
-  // ── calculate_rate network capture (for field-ID cross-reference) ───────
-  var calcCapture = null;
-  function gotCalcRate(url, requestBody, responseBody){
+  function send(payload){
+    if (sent) return;
+    sent = true;
+    console.info('[Lendry] sending capture for', payload.calculateRateUrl, 'with', (payload.additionalCaptures || []).length, 'extra responses');
+    fetch(ENDPOINT, {
+      method: 'POST', mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(r){
+      if (r.ok) {
+        console.info('[Lendry] capture accepted by server');
+        showToast('Capture sent to Lendry. You can close this tab.', '#15803d');
+      } else {
+        sent = false;
+        r.text().then(function(t){
+          console.warn('[Lendry] capture rejected', r.status, t);
+          showToast('Capture failed: ' + (t || r.status), '#b91c1c');
+        });
+      }
+    }).catch(function(err){
+      sent = false;
+      console.error('[Lendry] capture network error', err);
+      showToast('Capture network error: ' + err.message, '#b91c1c');
+    });
+  }
+
+  function maybeCapture(url, requestBody, responseBody){
+    if (!url || url.indexOf('calculate_rate') === -1) return;
     try { if (typeof requestBody === 'string') requestBody = JSON.parse(requestBody); } catch(e){}
-    try { if (typeof responseBody === 'string') { var p = JSON.parse(responseBody); responseBody = p; } } catch(e){}
-    calcCapture = { url: url, requestBody: requestBody, responseBody: responseBody };
-    setStatus('✓ Calculate Rate captured — auto-submitting to Lendry…', '#4ade80');
-    console.info('[Lendry] calculate_rate captured');
-    submit();
+    try { if (typeof responseBody === 'string') { var parsed = JSON.parse(responseBody); responseBody = parsed; } } catch(e){}
+    send({
+      token: TOKEN,
+      calculateRateUrl: url,
+      requestBody: requestBody,
+      responseBody: responseBody,
+      domFields: snapshotDom(),
+      additionalCaptures: buffer.slice(),
+      pageTitle: document.title
+    });
   }
+
+  function handleNqxResponse(url, text){
+    if (!isNqxApiUrl(url)) return;
+    if (url.indexOf('calculate_rate') === -1) {
+      bufferResponse(url, text);
+    }
+  }
+
+  // Hook fetch
   var origFetch = window.fetch;
   window.fetch = function(input, init){
     var url = (typeof input === 'string') ? input : (input && input.url) || '';
-    var body = (init && init.body) ? init.body : null;
+    var bodyForCapture = (init && init.body) ? init.body : null;
     var p = origFetch.apply(this, arguments);
-    try {
-      p.then(function(res){
-        if (!url || url.indexOf('calculate_rate') === -1) return;
-        res.clone().text().then(function(t){ gotCalcRate(url, body, t); }).catch(function(){});
-      }).catch(function(){});
-    } catch(e){}
+    p.then(function(res){
+      try {
+        if (!isNqxApiUrl(url)) return;
+        if (url.indexOf('calculate_rate') !== -1) {
+          res.clone().text().then(function(text){ maybeCapture(url, bodyForCapture, text); }).catch(function(){});
+        } else {
+          res.clone().text().then(function(text){ handleNqxResponse(url, text); }).catch(function(){});
+        }
+      } catch(e){}
+    }).catch(function(){});
     return p;
   };
+
+  // Hook XHR
   var XOpen = XMLHttpRequest.prototype.open;
   var XSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function(m, u){ this.__lendryUrl = u; return XOpen.apply(this, arguments); };
-  XMLHttpRequest.prototype.send = function(b){
+  XMLHttpRequest.prototype.send = function(body){
     var self = this;
     self.addEventListener('load', function(){
-      try { if (self.__lendryUrl && self.__lendryUrl.indexOf('calculate_rate') !== -1) gotCalcRate(self.__lendryUrl, b, self.responseText); } catch(e){}
+      try {
+        var u = self.__lendryUrl || '';
+        if (!isNqxApiUrl(u)) return;
+        if (u.indexOf('calculate_rate') !== -1) {
+          maybeCapture(u, body, self.responseText);
+        } else {
+          handleNqxResponse(u, self.responseText);
+        }
+      } catch(e){}
     });
     return XSend.apply(this, arguments);
   };
 
-  // ── Submit / export / reset ─────────────────────────────────────────────
-  function submit(){
-    if (sent) return;
-    var entries = Object.keys(fieldMap).map(function(k){ return fieldMap[k]; });
-    if (!entries.length && !calcCapture){
-      setStatus('Nothing captured yet. Open a dropdown or hit Calculate Rate.', '#f59e0b');
-      return;
-    }
-    sent = true;
-    setStatus('Sending to Lendry…', '#C9A84C');
-    var payload = {
-      token: TOKEN,
-      calculateRateUrl: calcCapture ? calcCapture.url : null,
-      requestBody: calcCapture ? calcCapture.requestBody : null,
-      responseBody: calcCapture ? calcCapture.responseBody : null,
-      fieldMap: entries,
-      pageUrl: window.location.href,
-      pageTitle: document.title
-    };
-    fetch(ENDPOINT, {
-      method:'POST', mode:'cors',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    }).then(function(r){
-      if (r.ok) {
-        setStatus('✓ Sent to Lendry. You can close this tab.', '#4ade80');
-        try { sessionStorage.removeItem(STORAGE_KEY); } catch(e){}
-        console.info('[Lendry] capture accepted by server');
-      } else {
-        sent = false;
-        r.text().then(function(t){ setStatus('Send failed: ' + (t || r.status), '#f87171'); console.warn('[Lendry] send rejected', r.status, t); });
-      }
-    }).catch(function(err){
-      sent = false;
-      setStatus('Network error: ' + err.message, '#f87171');
-      console.error('[Lendry] send network error', err);
-    });
-  }
-
-  function exportJson(){
-    try {
-      var blob = new Blob([JSON.stringify({ pageUrl: location.href, fieldMap: fieldMap, calcCapture: calcCapture }, null, 2)], { type:'application/json' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'nqx_field_map.json';
-      document.body.appendChild(a); a.click();
-      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    } catch(e){ alert('Export failed: ' + e.message); }
-  }
-
-  function bindButtons(){
-    var e = document.getElementById('__lendry_export'); if (e) e.onclick = exportJson;
-    var r = document.getElementById('__lendry_reset'); if (r) r.onclick = function(){
-      if (!confirm('Clear every captured field?')) return;
-      fieldMap = {};
-      try { sessionStorage.removeItem(STORAGE_KEY); } catch(ee){}
-      persist();
-    };
-    var c = document.getElementById('__lendry_close'); if (c) c.onclick = function(){ overlay.style.display = (overlay.style.display === 'none') ? '' : 'none'; };
-  }
-  bindButtons();
-  render();
-
-  console.info('[Lendry] capture armed. Open each dropdown once; then click Calculate Rate (or Submit to Lendry on the overlay).');
+  console.info('[Lendry] capture armed — fill the form and click Calculate Rate');
+  showToast('Lendry capture armed. Fill out the pricer form and click Calculate Rate.', '#C9A84C');
 })();`;
 }
 
@@ -578,11 +447,11 @@ export function NqxGuidedDiscoveryDialog({
             </div>
 
             <div className="rounded-md border border-[#C9A84C]/40 bg-[#C9A84C]/5 px-3 py-2 text-[12px]">
-              <strong>Step 3.</strong> A small <strong>Lendry overlay</strong> will appear in the top-right of the pricer page. Open <strong>each dropdown once</strong> (FICO, LTV, Property Type, etc.) — you don't have to select anything, just opening it captures every option. The overlay's checkmarks tick up as you go.
+              <strong>Step 3.</strong> Once you see the gold "capture armed" toast, <strong>refresh the pricer tab one time</strong>. This lets the script catch the page-load API calls that contain real field labels and dropdown options — without it, your dropdowns will be unlabeled.
             </div>
 
             <div className="text-[13px] pt-1">
-              <strong>Step 4.</strong> Fill in the rest of the form with a realistic scenario and click <strong>Calculate Rate</strong>. The capture submits automatically and a green status confirms it landed. (You can also click <strong>Submit to Lendry</strong> on the overlay manually.)
+              <strong>Step 4.</strong> Fill in any realistic scenario — every required field — and click <strong>Calculate Rate</strong>. A green toast confirms the capture was sent.
             </div>
 
             <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2 text-[13px]">
