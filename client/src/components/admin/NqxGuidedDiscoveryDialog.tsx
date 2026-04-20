@@ -423,7 +423,7 @@ export function NqxGuidedDiscoveryDialog({
         {status === "idle" && (
           <div className="space-y-4 text-[14px]">
             <p className="text-muted-foreground">
-              The pricer only fires its API call after you fill in every required field and click Calculate. We'll give you a small bookmarklet that watches for that one call and sends the result back here automatically.
+              The pricer only fires its API call after you fill in every required field and click Calculate. We'll give you a small bookmarklet (or paste-able script) that captures that call's payload and the dropdown options on the page. You'll then download the captured JSON and import it back here using <strong>Import captured JSON</strong>.
             </p>
             <Button
               onClick={startSession}

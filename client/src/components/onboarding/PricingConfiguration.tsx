@@ -1915,8 +1915,10 @@ function ExternalApiSection({
         <NqxImportCapturedMapDialog
           open={importOpen}
           onOpenChange={setImportOpen}
-          onApply={(cfg) => {
-            setApiConfig(cfg);
+          currentPricerUrl={apiUrl}
+          onApply={({ config, pricerUrl }) => {
+            setApiConfig(config);
+            setApiUrl(pricerUrl);
             setApiTestResult(null);
           }}
         />

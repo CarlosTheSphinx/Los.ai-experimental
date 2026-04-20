@@ -269,21 +269,38 @@ function validateCaptured(parsed: unknown): { ok: true; map: CapturedMap } | { o
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApply: (config: ApiModeConfig) => void;
+  /** Current Pricer URL value from the parent — used as a fallback default. */
+  currentPricerUrl?: string;
+  onApply: (result: { config: ApiModeConfig; pricerUrl: string }) => void;
 }
 
-export function NqxImportCapturedMapDialog({ open, onOpenChange, onApply }: Props) {
+function defaultPricerUrl(pricerId: string, currentUrl?: string): string {
+  // If the current URL already contains the same pricerId, keep it (preserves
+  // the lender's specific subdomain like `b-diya.nqxpricer.com`).
+  if (currentUrl && currentUrl.includes(pricerId)) return currentUrl;
+  // Otherwise fall back to the canonical host. Admins can edit it freely.
+  return `https://www.nqxpricer.com/${pricerId}`;
+}
+
+export function NqxImportCapturedMapDialog({
+  open,
+  onOpenChange,
+  currentPricerUrl,
+  onApply,
+}: Props) {
   const { toast } = useToast();
   const [rawJson, setRawJson] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const [captured, setCaptured] = useState<CapturedMap | null>(null);
   const [numerics, setNumerics] = useState<NumericChoice[]>([]);
+  const [pricerUrl, setPricerUrl] = useState('');
 
   const reset = () => {
     setRawJson('');
     setParseError(null);
     setCaptured(null);
     setNumerics([]);
+    setPricerUrl('');
   };
 
   const handleClose = (next: boolean) => {
@@ -319,6 +336,7 @@ export function NqxImportCapturedMapDialog({ open, onOpenChange, onApply }: Prop
     setParseError(null);
     setCaptured(v.map);
     setNumerics(detectNumericCandidates(v.map));
+    setPricerUrl(defaultPricerUrl(v.map.pricerId, currentPricerUrl));
   };
 
   const onFile = async (file: File | null) => {
@@ -356,7 +374,8 @@ export function NqxImportCapturedMapDialog({ open, onOpenChange, onApply }: Prop
       return;
     }
     const config = adaptCapturedMap(captured, numerics);
-    onApply(config);
+    const finalUrl = pricerUrl.trim() || defaultPricerUrl(captured.pricerId, currentPricerUrl);
+    onApply({ config, pricerUrl: finalUrl });
     toast({
       title: 'Captured map imported',
       description: `${config.products[0].fields.length} field(s) loaded — ${config.fieldMappings.filter((f) => f.fieldId).length}/${config.fieldMappings.length} internal keys mapped.`,
@@ -419,6 +438,26 @@ export function NqxImportCapturedMapDialog({ open, onOpenChange, onApply }: Prop
               </div>
             )}
           </div>
+
+          {/* Step 1b — Pricer URL (auto-filled from pricerId, editable) */}
+          {captured && (
+            <div className="rounded-md border p-4 space-y-2">
+              <Label className="text-[13px] font-semibold" htmlFor="import-pricer-url">
+                Pricer URL
+              </Label>
+              <Input
+                id="import-pricer-url"
+                value={pricerUrl}
+                onChange={(e) => setPricerUrl(e.target.value)}
+                placeholder="https://www.nqxpricer.com/<pricerId>"
+                className="text-[12px] font-mono"
+                data-testid="input-import-pricer-url"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Pre-filled from the captured <code className="text-[10px] bg-muted/40 px-1 rounded">pricerId</code>. Edit if your lender uses a custom subdomain (e.g. <code className="text-[10px] bg-muted/40 px-1 rounded">b-diya.nqxpricer.com</code>).
+              </p>
+            </div>
+          )}
 
           {/* Step 2 — Numeric mapping */}
           {captured && (
