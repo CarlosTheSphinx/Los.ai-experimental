@@ -94,20 +94,34 @@ export async function buildBrokerKnowledgePack(
     .from(programReviewRules)
     .where(eq(programReviewRules.isActive, true));
 
-  // Tenant-scope rules: only include rules attached to this tenant's programs
-  // (or orphan rules with no program attachment, which are global).
+  // Tenant-scope rules: only include rules attached to this tenant's programs.
+  // Orphan rules (no program attachment) are excluded because the table has
+  // no tenant column, so we cannot prove they are safe to surface here.
   const programIdSet = new Set(programIds);
   const rules = allRules.filter(
-    (r) => r.programId == null || programIdSet.has(r.programId),
+    (r) => r.programId != null && programIdSet.has(r.programId),
   );
 
   // Tenant-scoped, broker-shareable fund knowledge — fund names are
   // intentionally NOT selected/exposed.
   const tenantFunds = await db
-    .select({ id: funds.id })
+    .select({ id: funds.id, allowedStates: funds.allowedStates })
     .from(funds)
     .where(eq(funds.tenantId, tenantId));
   const fundIds = tenantFunds.map((f) => f.id);
+
+  // Aggregate state coverage across all of this tenant's funds (no fund
+  // identification — just the union of states the platform can lend in).
+  const stateSet = new Set<string>();
+  for (const f of tenantFunds) {
+    const arr = f.allowedStates;
+    if (Array.isArray(arr)) {
+      for (const s of arr) {
+        if (typeof s === "string" && s.trim()) stateSet.add(s.trim().toUpperCase());
+      }
+    }
+  }
+  const lendingStates = Array.from(stateSet).sort();
 
   let knowledge: KnowledgeEntryRow[] = [];
   if (fundIds.length) {
@@ -132,6 +146,16 @@ export async function buildBrokerKnowledgePack(
   }
 
   const lines: string[] = [];
+  if (lendingStates.length) {
+    lines.push("# LENDING STATES");
+    lines.push(
+      `Sphinx Capital can place loans in the following states: ${lendingStates.join(", ")}.`,
+    );
+    lines.push(
+      "If a state is not listed, we generally cannot lend there — tell the broker to confirm with their loan officer.",
+    );
+    lines.push("");
+  }
   lines.push("# SPHINX CAPITAL LOAN PROGRAMS");
   lines.push("");
   for (const p of programs) {

@@ -14,9 +14,10 @@ import { buildBrokerKnowledgePack } from "../services/brokerKnowledgeBase";
 const MODEL = "gpt-4o-mini";
 const MAX_USER_MESSAGES = 20;
 const MAX_USER_CHARS = 4000;
-// super_admin retained so platform admins can verify behavior end-to-end
-// without reassigning their role. Lender access intentionally excluded.
-const ALLOWED_ROLES = new Set(["broker", "super_admin"]);
+// Broker-only by design. Other roles (including super_admin and lender) are
+// rejected because the assistant's content policy and prompt are tuned for
+// broker-safe disclosure only.
+const ALLOWED_ROLES = new Set(["broker"]);
 
 interface ChatMessageInput {
   role: "user" | "assistant";
