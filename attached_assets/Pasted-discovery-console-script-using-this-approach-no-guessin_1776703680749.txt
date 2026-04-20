@@ -1,0 +1,50 @@
+discovery console script using this approach — no guessing strategies needed.
+Confirmed extraction path:
+For each <li role="menuitem"> inside an open MUI dropdown, walk up the React fiber tree exactly 6 levels via .return, then read memoizedProps.option. That returns an object shaped like:
+js{ value: "69d6e0fcc15353ac14e794aa", text: "780+", order_num: 1 }
+Reference implementation (tested and verified in the pricer console):
+javascriptfunction extractOptionData(li) {
+  const fiberKey = Object.keys(li).find(k => k.startsWith('__reactFiber$'));
+  if (!fiberKey) return null;
+  let f = li[fiberKey];
+  for (let d = 0; d < 6 && f; d++) f = f.return;
+  const opt = f?.memoizedProps?.option;
+  if (!opt || typeof opt.value !== 'string') return null;
+  // Validate it looks like a MongoDB ObjectId
+  if (!/^[a-f0-9]{24}$/i.test(opt.value)) return null;
+  return { id: opt.value, label: opt.text, order: opt.order_num };
+}
+Rewrite the discovery console script to use this extraction. Keep all the earlier UX (floating overlay, MutationObserver watching for opened dropdowns, sessionStorage persistence, Export JSON button), but:
+
+Replace the broken multi-strategy extraction with the single reliable path above.
+Validate every extracted ID against the 24-char hex regex before storing. Anything that fails validation gets logged as a warning, not silently stored as "[object Object]".
+Remove the "Submit to Lendry" button entirely. It's causing 404 errors and we don't need it — Export JSON is sufficient.
+Final JSON output shape:
+
+json{
+  "pricerId": "69d6e0fc844f4418eb40faae",
+  "productId": "69d6e0fcc15353ac14e79477",
+  "capturedAt": "2026-04-20T...",
+  "fields": {
+    "Stated FICO Score": {
+      "fieldId": "69d6e0fcc15353ac14e7948a",
+      "type": "dropdown",
+      "options": [
+        { "label": "780+", "id": "69d6e0fcc15353ac14e794aa", "order": 1 },
+        { "label": "760 - 779", "id": "69d6e0fcc15353ac14e794ab", "order": 2 }
+      ]
+    }
+  },
+  "numericFields": {
+    "Loan Amount": "69d6e0fcc15353ac14e79480",
+    "Est. Value / Purchase Price": "69d6e0fcc15353ac14e7947f"
+  },
+  "baselinePayload": { ... keep the existing baseline capture ... }
+}
+Use arrays (sorted by order) instead of objects keyed by label, since order_num gives us stable sort order from the source.
+
+Field-to-fieldId mapping: when a dropdown opens, read the aria-labelledby attribute on the <ul role="listbox"> to get the human-readable field label. To get the fieldId (e.g. 69d6e0fcc15353ac14e7948a for "Stated FICO Score"), cross-reference against the baselinePayload already captured in sessionStorage — the field ID is one of the top-level keys in that payload. If there are multiple dropdown fields and we haven't associated them yet, fall back to walking the fiber up further to find the parent Select's field ID (look for props named field, fieldId, name, or similar on ancestor fibers).
+Also: expose window.__lendryMap globally so I can inspect it live from the console at any point to verify progress.
+
+Test it yourself before handing it back: after pasting the revised script and opening the FICO dropdown, window.__lendryMap.fields["Stated FICO Score"].options[0].id should return the string "69d6e0fcc15353ac14e794aa". If it doesn't, the script is still broken.
+Also start sketching (but don't finalize) the production getNqxRate(userInputs) function that consumes the final JSON map. Show me the function signature and input-to-ID translation logic so I can review before we wire it in.

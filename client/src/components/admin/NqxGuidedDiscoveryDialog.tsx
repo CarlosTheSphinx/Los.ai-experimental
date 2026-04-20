@@ -35,138 +35,311 @@ interface PollResponse {
   suggested?: unknown;
 }
 
-function buildCaptureScript(captureEndpoint: string, token: string): string {
-  // The body of this IIFE runs on the NQX pricer page either via a
-  // bookmarklet click or by being pasted into DevTools. It hooks
-  // fetch + XHR to capture the next calculate_rate round-trip,
-  // snapshots the form fields, and POSTs the result back.
+function buildCaptureScript(_captureEndpoint: string, token: string): string {
+  // IIFE pasted into DevTools (or run via bookmarklet) on the NQX pricer page.
+  // Captures dropdown options via React fiber walk, captures the calculate_rate
+  // request body as a baseline, and exposes window.__lendryMap for live
+  // inspection. The Export JSON button on the overlay produces the final map.
   return `
 (function(){
-  if (window.__lendryNqxCapture) { console.info('[Lendry] capture already armed on this page'); alert('Lendry capture is already armed on this page.'); return; }
+  if (window.__lendryNqxCapture) { console.info('[Lendry] capture already armed on this page'); return; }
   window.__lendryNqxCapture = true;
   var TOKEN = ${JSON.stringify(token)};
-  var ENDPOINT = ${JSON.stringify(captureEndpoint)};
-  var sent = false;
+  var STORAGE_KEY = 'lendryNqxMap_' + TOKEN;
+  var OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 
-  function showToast(msg, color){
-    try {
-      var el = document.createElement('div');
-      el.textContent = msg;
-      el.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;padding:12px 16px;border-radius:8px;font:600 14px system-ui,-apple-system,sans-serif;color:#fff;background:'+ (color || '#0F1629') +';box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:340px;';
-      document.body.appendChild(el);
-      setTimeout(function(){ el.style.transition='opacity .4s'; el.style.opacity='0'; setTimeout(function(){ el.remove(); }, 450); }, 6000);
-    } catch(e){}
+  // ── Persistent map (survives refresh via sessionStorage) ──────────────
+  var map;
+  try { var saved = sessionStorage.getItem(STORAGE_KEY); map = saved ? JSON.parse(saved) : null; } catch(e){ map = null; }
+  if (!map) map = { pricerId: null, productId: null, capturedAt: null, fields: {}, numericFields: {}, baselinePayload: null };
+  window.__lendryMap = map;
+
+  try {
+    var pmatch = window.location.pathname.match(/\\/([a-f0-9]{24})/i);
+    if (pmatch) map.pricerId = pmatch[1];
+  } catch(e){}
+
+  function persist(){
+    map.capturedAt = new Date().toISOString();
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch(e){}
+    render();
   }
 
-  function snapshotDom(){
-    var fields = [];
-    function labelFor(el){
-      try {
-        if (el.id) {
-          var lab = document.querySelector('label[for="'+CSS.escape(el.id)+'"]');
-          if (lab) return (lab.textContent||'').trim();
-        }
-        var p = el.closest('label');
-        if (p) return (p.textContent||'').trim();
-        var aria = el.getAttribute('aria-label');
-        if (aria) return aria.trim();
-        var ph = el.getAttribute('placeholder');
-        if (ph) return ph.trim();
-      } catch(e){}
-      return el.name || el.id || '';
+  // ── Proven extraction path: walk fiber up exactly 6 levels ────────────
+  function extractOptionData(li){
+    var fiberKey = Object.keys(li).find(function(k){ return k.indexOf('__reactFiber$') === 0; });
+    if (!fiberKey) return null;
+    var f = li[fiberKey];
+    for (var d = 0; d < 6 && f; d++) f = f.return;
+    var opt = f && f.memoizedProps && f.memoizedProps.option;
+    if (!opt || typeof opt.value !== 'string') return null;
+    if (!OBJECT_ID_RE.test(opt.value)) {
+      console.warn('[Lendry] discarded option, value is not a 24-hex ObjectId:', opt);
+      return null;
     }
-    var seen = {};
-    document.querySelectorAll('input, select, textarea, [role="combobox"]').forEach(function(el){
-      var name = el.getAttribute('name') || el.getAttribute('data-field-id') || el.id || '';
-      if (!name || seen[name]) return;
-      seen[name] = true;
-      var type = (el.tagName === 'SELECT') ? 'select' : (el.getAttribute('type') || el.tagName.toLowerCase());
-      var options;
-      if (el.tagName === 'SELECT') {
-        options = [];
-        Array.prototype.slice.call(el.options).forEach(function(o){
-          if (o.value) options.push({ label: (o.textContent||'').trim(), value: o.value });
-        });
-      }
-      fields.push({ opaqueId: name, label: labelFor(el), type: type, options: options });
-    });
-    return fields;
+    return {
+      id: opt.value,
+      label: typeof opt.text === 'string' ? opt.text : String(opt.value),
+      order: typeof opt.order_num === 'number' ? opt.order_num : 0
+    };
   }
 
-  function send(payload){
-    if (sent) return;
-    sent = true;
-    console.info('[Lendry] sending capture for', payload.calculateRateUrl);
-    fetch(ENDPOINT, {
-      method: 'POST', mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function(r){
-      if (r.ok) {
-        console.info('[Lendry] capture accepted by server');
-        showToast('Capture sent to Lendry. You can close this tab.', '#15803d');
-      } else {
-        sent = false;
-        r.text().then(function(t){
-          console.warn('[Lendry] capture rejected', r.status, t);
-          showToast('Capture failed: ' + (t || r.status), '#b91c1c');
-        });
+  function fieldLabelFromListbox(ul){
+    try {
+      var labelledBy = ul.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        var parts = labelledBy.split(/\\s+/).map(function(id){
+          var el = document.getElementById(id);
+          return el ? (el.textContent || '').trim() : '';
+        }).filter(Boolean);
+        if (parts.length) return parts.join(' ');
       }
-    }).catch(function(err){
-      sent = false;
-      console.error('[Lendry] capture network error', err);
-      showToast('Capture network error: ' + err.message, '#b91c1c');
-    });
+      var aria = ul.getAttribute('aria-label');
+      if (aria) return aria.trim();
+    } catch(e){}
+    return null;
   }
 
-  function maybeCapture(url, requestBody, responseBody){
+  function resolveFieldIdFromBaseline(options){
+    if (!map.baselinePayload || !options || !options.length) return null;
+    var optIds = Object.create(null);
+    for (var i = 0; i < options.length; i++) optIds[options[i].id] = true;
+    for (var k in map.baselinePayload) {
+      if (!Object.prototype.hasOwnProperty.call(map.baselinePayload, k)) continue;
+      if (!OBJECT_ID_RE.test(k)) continue;
+      var v = map.baselinePayload[k];
+      if (typeof v === 'string' && optIds[v]) return k;
+      if (Array.isArray(v) && v.some(function(x){ return typeof x === 'string' && optIds[x]; })) return k;
+    }
+    return null;
+  }
+
+  function captureDropdown(ul){
+    var label = fieldLabelFromListbox(ul);
+    if (!label) { console.warn('[Lendry] dropdown opened but aria-labelledby missing — cannot label'); return; }
+    var lis = ul.querySelectorAll('li[role="menuitem"], li[role="option"]');
+    if (!lis.length) return;
+    var seen = Object.create(null);
+    var options = [];
+    Array.prototype.forEach.call(lis, function(li){
+      var d = extractOptionData(li);
+      if (d && !seen[d.id]) { seen[d.id] = true; options.push(d); }
+    });
+    if (!options.length) {
+      console.warn('[Lendry] no valid options extracted for', label);
+      return;
+    }
+    options.sort(function(a, b){ return a.order - b.order; });
+    var existing = map.fields[label];
+    var fieldId = (existing && existing.fieldId) || resolveFieldIdFromBaseline(options);
+    map.fields[label] = { fieldId: fieldId, type: 'dropdown', options: options };
+    persist();
+    console.info('[Lendry] captured', options.length, 'options for "' + label + '"', fieldId ? '→ ' + fieldId : '(fieldId pending)');
+  }
+
+  function reconcileFieldIds(){
+    var resolved = 0;
+    for (var label in map.fields) {
+      var f = map.fields[label];
+      if (f.fieldId) continue;
+      var fid = resolveFieldIdFromBaseline(f.options || []);
+      if (fid) { f.fieldId = fid; resolved++; }
+    }
+    if (resolved) console.info('[Lendry] resolved', resolved, 'pending fieldId(s) from baseline payload');
+  }
+
+  // ── Numeric field discovery: walk every <input> fiber, find any prop ──
+  // whose value matches a baseline-payload fieldId, then label via DOM.
+  function inputLabel(el){
+    try {
+      if (el.id) {
+        var lab = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        if (lab) return (lab.textContent || '').trim();
+      }
+      var lblId = el.getAttribute('aria-labelledby');
+      if (lblId) {
+        var first = document.getElementById(lblId.split(/\\s+/)[0]);
+        if (first) return (first.textContent || '').trim();
+      }
+      var p = el.closest('label');
+      if (p) return (p.textContent || '').trim();
+      var aria = el.getAttribute('aria-label');
+      if (aria) return aria.trim();
+    } catch(e){}
+    return null;
+  }
+
+  function captureNumericFields(){
+    if (!map.baselinePayload) return;
+    var dropdownIds = Object.create(null);
+    for (var lbl in map.fields) {
+      var f = map.fields[lbl];
+      if (f && f.fieldId) dropdownIds[f.fieldId] = true;
+    }
+    var numericFieldIds = [];
+    for (var k in map.baselinePayload) {
+      if (!Object.prototype.hasOwnProperty.call(map.baselinePayload, k)) continue;
+      if (!OBJECT_ID_RE.test(k) || dropdownIds[k]) continue;
+      var v = map.baselinePayload[k];
+      if (typeof v === 'number') { numericFieldIds.push(k); continue; }
+      if (typeof v === 'string' && v && /^[\\d.,\\-]+$/.test(v)) numericFieldIds.push(k);
+    }
+    if (!numericFieldIds.length) return;
+    var inputs = document.querySelectorAll('input, textarea');
+    var matched = Object.create(null);
+    for (var i = 0; i < inputs.length && Object.keys(matched).length < numericFieldIds.length; i++) {
+      var el = inputs[i];
+      var fk = Object.keys(el).find(function(k){ return k.indexOf('__reactFiber$') === 0; });
+      if (!fk) continue;
+      var node = el[fk];
+      for (var depth = 0; depth < 8 && node; depth++) {
+        var props = node.memoizedProps || {};
+        for (var pk in props) {
+          var pv = props[pk];
+          if (typeof pv !== 'string' || !OBJECT_ID_RE.test(pv)) continue;
+          if (numericFieldIds.indexOf(pv) !== -1 && !matched[pv]) {
+            var label = inputLabel(el) || pv;
+            map.numericFields[label] = pv;
+            matched[pv] = true;
+          }
+        }
+        node = node.return;
+      }
+    }
+  }
+
+  // ── MutationObserver for opened MUI dropdowns ─────────────────────────
+  function processNode(n){
+    if (!n || n.nodeType !== 1) return;
+    if (n.matches && n.matches('ul[role="listbox"], ul[role="menu"]')) {
+      setTimeout(function(){ try { captureDropdown(n); } catch(e){ console.error('[Lendry] capture error', e); } }, 30);
+      return;
+    }
+    if (n.querySelectorAll) {
+      var lists = n.querySelectorAll('ul[role="listbox"], ul[role="menu"]');
+      Array.prototype.forEach.call(lists, function(ul){
+        setTimeout(function(){ try { captureDropdown(ul); } catch(e){ console.error('[Lendry] capture error', e); } }, 30);
+      });
+    }
+  }
+  var observer = new MutationObserver(function(muts){
+    for (var i = 0; i < muts.length; i++) {
+      var added = muts[i].addedNodes;
+      for (var j = 0; j < added.length; j++) processNode(added[j]);
+    }
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // ── Hook fetch/XHR strictly to capture baselinePayload ────────────────
+  function captureBaseline(url, requestBody){
     if (!url || url.indexOf('calculate_rate') === -1) return;
-    try { if (typeof requestBody === 'string') requestBody = JSON.parse(requestBody); } catch(e){}
-    try { if (typeof responseBody === 'string') { var parsed = JSON.parse(responseBody); responseBody = parsed; } } catch(e){}
-    send({
-      token: TOKEN,
-      calculateRateUrl: url,
-      requestBody: requestBody,
-      responseBody: responseBody,
-      domFields: snapshotDom(),
-      pageTitle: document.title
-    });
+    try { if (typeof requestBody === 'string') requestBody = JSON.parse(requestBody); } catch(e){ return; }
+    if (!requestBody || typeof requestBody !== 'object') return;
+    map.baselinePayload = requestBody;
+    try {
+      var um = url.match(/products\\/([a-f0-9]{24})/i);
+      if (um) map.productId = um[1];
+    } catch(e){}
+    reconcileFieldIds();
+    captureNumericFields();
+    persist();
+    console.info('[Lendry] baseline payload captured. productId=' + map.productId + ', fields=' + Object.keys(map.fields).length + ', numeric=' + Object.keys(map.numericFields).length);
+    setStatus('✓ Baseline captured. Open remaining dropdowns or click Export JSON.');
   }
 
-  // Hook fetch
   var origFetch = window.fetch;
   window.fetch = function(input, init){
     var url = (typeof input === 'string') ? input : (input && input.url) || '';
-    var bodyForCapture = (init && init.body) ? init.body : null;
-    var p = origFetch.apply(this, arguments);
-    p.then(function(res){
-      try {
-        if (url.indexOf('calculate_rate') !== -1) {
-          res.clone().text().then(function(text){ maybeCapture(url, bodyForCapture, text); }).catch(function(){});
-        }
-      } catch(e){}
-    }).catch(function(){});
-    return p;
+    var body = (init && init.body) ? init.body : null;
+    if (url.indexOf('calculate_rate') !== -1) {
+      try { captureBaseline(url, body); } catch(e){ console.error('[Lendry] baseline capture error', e); }
+    }
+    return origFetch.apply(this, arguments);
   };
-
-  // Hook XHR
   var XOpen = XMLHttpRequest.prototype.open;
   var XSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function(m, u){ this.__lendryUrl = u; return XOpen.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function(body){
-    var self = this;
-    self.addEventListener('load', function(){
-      try {
-        if (self.__lendryUrl && self.__lendryUrl.indexOf('calculate_rate') !== -1) {
-          maybeCapture(self.__lendryUrl, body, self.responseText);
-        }
-      } catch(e){}
-    });
+    if (this.__lendryUrl && this.__lendryUrl.indexOf('calculate_rate') !== -1) {
+      try { captureBaseline(this.__lendryUrl, body); } catch(e){ console.error('[Lendry] baseline capture error', e); }
+    }
     return XSend.apply(this, arguments);
   };
 
-  console.info('[Lendry] capture armed — fill the form and click Calculate Rate');
-  showToast('Lendry capture armed. Fill out the pricer form and click Calculate Rate.', '#C9A84C');
+  // ── Floating overlay UI ───────────────────────────────────────────────
+  var overlay = document.createElement('div');
+  overlay.id = '__lendry_overlay';
+  overlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:#0F1629;color:#fff;padding:14px 16px;border-radius:10px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;max-width:380px;min-width:290px;box-shadow:0 8px 30px rgba(0,0,0,.4);border:1px solid #C9A84C;';
+  overlay.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+      '<div style="font:700 13px system-ui,-apple-system,sans-serif;color:#C9A84C;">⚡ Lendry NQX Capture</div>' +
+      '<button id="__lendry_close" style="background:transparent;border:0;color:#888;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;" title="Hide overlay">×</button>' +
+    '</div>' +
+    '<div id="__lendry_status" style="color:#C9A84C;margin-bottom:8px;">Open each dropdown on the pricer once.</div>' +
+    '<div id="__lendry_list" style="max-height:180px;overflow:auto;font-size:11px;margin-bottom:10px;background:rgba(255,255,255,.04);border-radius:6px;padding:6px 8px;"></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+      '<button id="__lendry_export" style="background:#C9A84C;color:#0F1629;border:0;padding:7px 14px;border-radius:5px;font:700 12px system-ui,-apple-system,sans-serif;cursor:pointer;">Export JSON</button>' +
+      '<button id="__lendry_reset" style="background:transparent;color:#C9A84C;border:1px solid #C9A84C;padding:6px 10px;border-radius:5px;cursor:pointer;font:600 11px system-ui,-apple-system,sans-serif;">Reset</button>' +
+    '</div>' +
+    '<div style="color:#666;margin-top:8px;font-size:10px;">Click Calculate Rate on the pricer to also capture the baseline payload.</div>';
+  function attachOverlay(){ if (!document.getElementById('__lendry_overlay')) document.body.appendChild(overlay); }
+  if (document.body) attachOverlay(); else document.addEventListener('DOMContentLoaded', attachOverlay);
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function setStatus(msg){ var s = document.getElementById('__lendry_status'); if (s) s.textContent = msg; }
+  function render(){
+    var list = document.getElementById('__lendry_list');
+    if (!list) return;
+    var labels = Object.keys(map.fields);
+    var html = '';
+    if (!labels.length) {
+      list.style.color = '#888';
+      list.textContent = '(no dropdowns captured yet — open one to start)';
+    } else {
+      list.style.color = '#fff';
+      html = labels.map(function(lbl){
+        var f = map.fields[lbl];
+        var n = (f.options || []).length;
+        var idBadge = f.fieldId ? '<span style="color:#4ade80;">✓id</span>' : '<span style="color:#f59e0b;">?id</span>';
+        return '<div style="padding:2px 0;"><span style="color:#C9A84C;">✓</span> <b>' + escapeHtml(lbl) + '</b> — ' + n + ' opt' + (n === 1 ? '' : 's') + ' ' + idBadge + '</div>';
+      }).join('');
+      list.innerHTML = html;
+    }
+    var nNum = Object.keys(map.numericFields).length;
+    var baselineLine = map.baselinePayload
+      ? '<div style="color:#4ade80;margin-top:4px;">✓ baseline + ' + nNum + ' numeric field' + (nNum === 1 ? '' : 's') + '</div>'
+      : '<div style="color:#888;margin-top:4px;">baseline payload pending — click Calculate Rate</div>';
+    if (labels.length) list.innerHTML = html + baselineLine;
+  }
+
+  function exportJson(){
+    try {
+      var blob = new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'lendry-nqx-' + (map.pricerId || 'capture') + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      console.info('[Lendry] exported map:', map);
+    } catch(e){ console.error('[Lendry] export failed', e); }
+  }
+
+  function bindButtons(){
+    var c = document.getElementById('__lendry_close'); if (c) c.onclick = function(){ overlay.style.display = 'none'; };
+    var e = document.getElementById('__lendry_export'); if (e) e.onclick = exportJson;
+    var r = document.getElementById('__lendry_reset'); if (r) r.onclick = function(){
+      if (!confirm('Clear every captured field?')) return;
+      map.fields = {}; map.numericFields = {}; map.baselinePayload = null;
+      map.productId = null; map.capturedAt = null;
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch(ee){}
+      render(); setStatus('Cleared. Open each dropdown again.');
+    };
+  }
+  setTimeout(bindButtons, 100);
+  render();
+
+  console.info('[Lendry] capture armed. window.__lendryMap is live — inspect anytime. Open each dropdown once, then click Calculate Rate, then Export JSON.');
 })();`;
 }
 
@@ -403,17 +576,14 @@ export function NqxGuidedDiscoveryDialog({
               />
             </div>
 
-            <div className="text-[13px] pt-1">
-              <strong>Step 3.</strong> On the pricer tab, fill in any realistic scenario — every required field — and click <strong>Calculate Rate</strong>. A green toast confirms the capture was sent.
-            </div>
-
-            <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2 text-[13px]">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span>Waiting for capture from the pricer page…</span>
+            <div className="rounded-md border border-[#C9A84C]/40 bg-[#C9A84C]/5 px-3 py-2 text-[12px] space-y-1">
+              <div><strong>Step 3.</strong> A floating Lendry overlay appears on the pricer page. Open <strong>each dropdown once</strong> (FICO, LTV, Property Type, etc.). The overlay ticks each one off as it captures the options.</div>
+              <div><strong>Step 4.</strong> Fill in any realistic scenario and click <strong>Calculate Rate</strong> on the pricer — that captures the baseline payload and resolves the field IDs.</div>
+              <div><strong>Step 5.</strong> Click <strong>Export JSON</strong> in the overlay to download the captured map.</div>
             </div>
 
             <p className="text-[12px] text-muted-foreground">
-              Session expires in 15 minutes. The capture script only sends one call, then disarms itself. Check the pricer tab's DevTools console for <code className="text-[11px] bg-muted px-1 rounded">[Lendry]</code> log lines if you want to confirm it ran.
+              Inspect <code className="text-[11px] bg-muted px-1 rounded">window.__lendryMap</code> in the pricer tab's console at any point to verify progress. The capture is mirrored to <code className="text-[11px] bg-muted px-1 rounded">sessionStorage</code> so a refresh won't lose it. Look for <code className="text-[11px] bg-muted px-1 rounded">[Lendry]</code> log lines for diagnostics.
             </p>
           </div>
         )}
