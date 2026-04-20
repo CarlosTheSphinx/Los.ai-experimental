@@ -25,6 +25,8 @@ import {
   Save,
   FileDown,
   Trash2,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { NqxGuidedDiscoveryDialog } from '@/components/admin/NqxGuidedDiscoveryDialog';
@@ -550,7 +552,7 @@ export function PricingConfiguration({
       brokerPointsEnabled: pointsBrokerAdjustable,
       brokerPointsStep: parseFloat(pointsStep) || 0.25,
     });
-  }, [onChange, pricingMode, extScraperUrl, extTextInputs, extDropdowns, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
+  }, [onChange, pricingMode, extScraperUrl, extTextInputs, extDropdowns, apiUrl, apiConfig, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
 
   const hasExistingRuleset = (existingRuleset?.rulesets?.length || 0) > 0;
 
@@ -1871,6 +1873,18 @@ function ExternalApiSection({
     });
   };
 
+  const moveFieldConfig = (fieldId: string, direction: -1 | 1) => {
+    if (!apiConfig) return;
+    const list = apiConfig.productFieldConfigs && apiConfig.productFieldConfigs.length > 0
+      ? [...apiConfig.productFieldConfigs]
+      : seedProductFieldConfigs(apiConfig);
+    const idx = list.findIndex(pfc => pfc.fieldId === fieldId);
+    const target = idx + direction;
+    if (idx < 0 || target < 0 || target >= list.length) return;
+    [list[idx], list[target]] = [list[target], list[idx]];
+    setApiConfig({ ...apiConfig, productFieldConfigs: list });
+  };
+
   const productFieldConfigs: ProductFieldConfig[] = apiConfig
     ? (apiConfig.productFieldConfigs && apiConfig.productFieldConfigs.length > 0
         ? apiConfig.productFieldConfigs
@@ -2013,15 +2027,44 @@ function ExternalApiSection({
             Choose how each pricer field gets its value when running a quote. Borrower fields show on the quote form;
             Fixed locks a value; Calculated derives it from a formula.
           </p>
+          <p className="text-[12px] text-muted-foreground -mt-2">
+            Use the up/down arrows to control the order Borrower-Input fields appear on the quote form.
+          </p>
           <div className="divide-y divide-border/30">
-            {productFieldConfigs.map((pfc) => {
+            {productFieldConfigs.map((pfc, idx) => {
               const field = product.fields.find(f => f.id === pfc.fieldId);
               if (!field) return null;
               const isSelect = pfc.fieldType === 'select';
+              const isFirst = idx === 0;
+              const isLast = idx === productFieldConfigs.length - 1;
               return (
                 <div key={pfc.fieldId} className="py-3 space-y-2" data-testid={`row-field-config-${pfc.fieldId}`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-56 shrink-0">
+                    <div className="flex flex-col gap-0.5 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        disabled={isFirst}
+                        onClick={() => moveFieldConfig(pfc.fieldId, -1)}
+                        data-testid={`button-move-up-${pfc.fieldId}`}
+                        aria-label="Move up"
+                      >
+                        <ArrowUp className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        disabled={isLast}
+                        onClick={() => moveFieldConfig(pfc.fieldId, 1)}
+                        data-testid={`button-move-down-${pfc.fieldId}`}
+                        aria-label="Move down"
+                      >
+                        <ArrowDown className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="w-52 shrink-0">
                       <div className="text-[14px] font-medium">{pfc.fieldLabel}</div>
                       <div className="text-[11px] text-muted-foreground font-mono">
                         {pfc.fieldType} · …{pfc.fieldId.slice(-6)}

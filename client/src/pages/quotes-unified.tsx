@@ -334,7 +334,7 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
         if (f.type === 'select' && Array.isArray(f.options) && f.options.length > 0) {
           pricingFields.push({
             fieldKey: formKey,
-            label: f.label || 'Pricing question',
+            label: smartTitleCase(f.label) || 'Pricing question',
             fieldType: 'select',
             options: f.options.map((o: any) => ({ value: o.id, label: o.label })),
             required: false,
@@ -345,7 +345,7 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
         } else if (f.type === 'number') {
           pricingFields.push({
             fieldKey: formKey,
-            label: f.label || 'Pricing value',
+            label: smartTitleCase(f.label) || 'Pricing value',
             fieldType: 'currency',
             required: false,
             visible: true,
@@ -369,7 +369,7 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
         if (f.type === 'select' && Array.isArray(f.options) && f.options.length > 0) {
           pricingFields.push({
             fieldKey: f.id,
-            label: f.label || 'Pricing question',
+            label: smartTitleCase(f.label) || 'Pricing question',
             fieldType: 'select',
             options: f.options.map((o: any) => ({ value: o.id, label: o.label })),
             required: false,
@@ -380,7 +380,7 @@ function buildPricingFields(program: ProgramWithPricing, baseQuoteFields?: any[]
         } else if (f.type === 'number') {
           pricingFields.push({
             fieldKey: f.id,
-            label: f.label || 'Pricing value',
+            label: smartTitleCase(f.label) || 'Pricing value',
             fieldType: 'currency',
             required: false,
             visible: true,
@@ -403,6 +403,48 @@ function applyKeyAliases(data: Record<string, any>, aliases: Record<string, stri
     }
   }
   return result;
+}
+
+// For Direct API (NQX) borrower selects, the form value is an option-id hex.
+// Replace each such value with its human label so it displays nicely on the
+// Loan Summary and saved quote (server pricer fuzzy-matches labels back to ids).
+function resolvePricingDisplayLabels(
+  data: Record<string, any>,
+  program: ProgramWithPricing | undefined,
+): Record<string, any> {
+  if (!program || (program.pricingMode !== 'external-api' && program.pricingMode !== 'external')) {
+    return data;
+  }
+  const apiCfg: any = (program.externalPricingConfig as any)?.apiMode;
+  if (!apiCfg || !Array.isArray(apiCfg.products)) return data;
+  const product = apiCfg.products.find((p: any) => p.id === apiCfg.selectedProductId);
+  if (!product || !Array.isArray(product.fields)) return data;
+  const pfcList: any[] = Array.isArray(apiCfg.productFieldConfigs) ? apiCfg.productFieldConfigs : [];
+  const out = { ...data };
+  for (const pfc of pfcList) {
+    if (pfc.sourceType !== 'borrower') continue;
+    const f = product.fields.find((x: any) => x.id === pfc.fieldId);
+    if (!f || f.type !== 'select' || !Array.isArray(f.options)) continue;
+    const formKey: string = pfc.internalKey || f.id;
+    const raw = out[formKey];
+    if (!raw || typeof raw !== 'string') continue;
+    if (!/^[a-f0-9]{24}$/i.test(raw)) continue;
+    const opt = f.options.find((o: any) => o.id === raw);
+    if (opt?.label) out[formKey] = opt.label;
+  }
+  return out;
+}
+
+function smartTitleCase(label: string | undefined | null): string {
+  if (!label) return '';
+  // Only re-case when the label is all lowercase or starts lowercase with no
+  // uppercase mid-word (e.g. "loan amount", "property value"). Leave already
+  // properly cased labels ("FICO Score", "LTV", "DSCR") alone.
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  if (/[A-Z]/.test(trimmed.slice(1))) return trimmed; // has uppercase mid-word
+  if (trimmed === trimmed.toUpperCase()) return trimmed; // all uppercase (acronym)
+  return trimmed.replace(/\b([a-z])/g, (m) => m.toUpperCase());
 }
 
 function formatShortDate(dateStr: string | Date | null | undefined) {
@@ -1443,7 +1485,8 @@ export default function QuotesUnified() {
                         key={`${selectedProgramId}`}
                         fields={quoteFields}
                         onSubmit={(data) => {
-                          const augmented = applyKeyAliases(data as Record<string, any>, keyAliases);
+                          const aliased = applyKeyAliases(data as Record<string, any>, keyAliases);
+                          const augmented = resolvePricingDisplayLabels(aliased, selectedProgram);
                           if (loanProductType === "dscr") {
                             handleDSCRSubmit(augmented as any);
                           } else {
