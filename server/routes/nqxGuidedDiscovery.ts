@@ -58,13 +58,12 @@ interface CapturedFieldMapEntry {
 }
 
 interface CapturePayload {
-  calculateRateUrl: string | null;
+  calculateRateUrl: string;
   requestBody: unknown;
   responseBody: unknown;
   domFields: DomFieldSnapshot[];
   additionalCaptures?: AdditionalCapture[];
   fieldMap?: CapturedFieldMapEntry[];
-  pageUrl?: string;
   pageTitle?: string;
 }
 
@@ -168,24 +167,8 @@ function harvestFieldsFromAdditional(
   return { fields: fieldsById, productName };
 }
 
-function parsePricerPageUrl(pageUrl?: string): { computeId: string } | null {
-  if (!pageUrl) return null;
-  try {
-    const u = new URL(pageUrl);
-    if (!u.hostname.endsWith("nqxpricer.com")) return null;
-    const m = u.pathname.match(/\/([a-f0-9]{24})/i);
-    if (!m) return null;
-    return { computeId: m[1] };
-  } catch {
-    return null;
-  }
-}
+const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 
-/**
- * Walk each captured field-map entry and try to resolve its NQX field
- * ObjectId by cross-referencing the captured option IDs against the
- * calculate_rate request body. Returns an array of fully-resolved NqxFields.
- */
 function fieldsFromFieldMap(
   entries: CapturedFieldMapEntry[],
   reqBody: Record<string, unknown>,
@@ -194,15 +177,12 @@ function fieldsFromFieldMap(
   for (const entry of entries) {
     if (!entry?.label) continue;
     const optionsByLabel = entry.optionsByLabel ?? {};
-    const labels = Object.keys(optionsByLabel);
-    const options: NqxFieldOption[] = labels
-      .map((lbl) => ({ id: String(optionsByLabel[lbl]), label: lbl }))
+    const options: NqxFieldOption[] = Object.keys(optionsByLabel)
+      .map((label) => ({ id: String(optionsByLabel[label]), label }))
       .filter((o) => o.id);
 
-    // Resolve fieldId: prefer what the client captured via fiber walk,
-    // else cross-reference option IDs against the request body.
     let fieldId: string | null =
-      entry.fieldId && /^[a-f0-9]{24}$/i.test(entry.fieldId) ? entry.fieldId : null;
+      entry.fieldId && OBJECT_ID_RE.test(entry.fieldId) ? entry.fieldId : null;
     if (!fieldId && options.length > 0) {
       const optIds = new Set(options.map((o) => o.id));
       for (const [k, v] of Object.entries(reqBody)) {
@@ -214,60 +194,38 @@ function fieldsFromFieldMap(
         }
       }
     }
+    if (!fieldId) continue;
 
-    if (!fieldId) {
-      // Couldn't resolve the NQX id — still surface the field using the
-      // label itself as a placeholder id so the admin at least sees it,
-      // flagged as unresolved.
-      out.push({
-        id: `unresolved:${entry.label}`,
-        label: entry.label,
-        type: "select",
-        options: options.length ? options : undefined,
-      });
-      continue;
-    }
-    out.push({ id: fieldId, label: entry.label, type: "select", options: options.length ? options : undefined });
+    out.push({
+      id: fieldId,
+      label: entry.label,
+      type: "select",
+      options: options.length ? options : undefined,
+    });
   }
   return out;
 }
 
 function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
-  // Prefer the calculate_rate URL for compute/product IDs; fall back to the
-  // pricer page URL (which only gives us computeId — productId has to come
-  // from calculate_rate, so without it we degrade gracefully).
-  const ids = parseCalculateRateUrl(capture.calculateRateUrl || "");
-  const pageIds = parsePricerPageUrl(capture.pageUrl);
-  if (!ids && !pageIds) {
-    throw new Error(
-      "No calculate_rate URL and no recognizable pricer page URL — cannot determine NQX compute/product IDs.",
-    );
+  const ids = parseCalculateRateUrl(capture.calculateRateUrl);
+  if (!ids) {
+    throw new Error("Captured request URL is not a recognizable NQX calculate_rate endpoint.");
   }
-  const computeId = ids?.computeId ?? pageIds!.computeId;
-  const productId = ids?.productId ?? "unknown-product";
-
   const reqBody =
     capture.requestBody && typeof capture.requestBody === "object"
       ? (capture.requestBody as Record<string, unknown>)
       : {};
   const additional = capture.additionalCaptures ?? [];
-  const fieldMapEntries = Array.isArray(capture.fieldMap) ? capture.fieldMap : [];
+  const fieldMapEntries = capture.fieldMap ?? [];
 
-  // 1. Fiber-walked field map — this is the best source: real human field
-  //    labels + real option labels + real option ObjectIds. fieldId may or
-  //    may not be resolved depending on whether calculate_rate was captured.
   const fiberFields = fieldsFromFieldMap(fieldMapEntries, reqBody);
-
-  // 2. Page-load config responses (legacy enrichment path; still useful if
-  //    the admin did happen to catch them).
   const { fields: configFields, productName } = harvestFieldsFromAdditional(
     additional,
-    productId,
+    ids.productId,
   );
 
-  // 3. DOM snapshot (very last resort; produces React useId-flavored noise).
   const domFieldsById = new Map<string, DomFieldSnapshot>();
-  for (const dom of capture.domFields ?? []) {
+  for (const dom of capture.domFields) {
     if (!dom.opaqueId || !isUsableOpaqueId(dom.opaqueId)) continue;
     if (!domFieldsById.has(dom.opaqueId)) domFieldsById.set(dom.opaqueId, dom);
   }
@@ -280,7 +238,10 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
   for (const key of reqKeys) {
     if (fieldsById.has(key)) continue;
     const fromConfig = configFields.get(key);
-    if (fromConfig) { fieldsById.set(key, fromConfig); continue; }
+    if (fromConfig) {
+      fieldsById.set(key, fromConfig);
+      continue;
+    }
     const fromDom = domFieldsById.get(key);
     if (fromDom) {
       const opts: NqxFieldOption[] | undefined = Array.isArray(fromDom.options)
@@ -299,27 +260,24 @@ function buildSchemaFromCapture(capture: CapturePayload): NqxDiscoverySchema {
     fieldsById.set(key, { id: key, label: key, type: "text" });
   }
 
-  // Include any config-derived fields that aren't yet in the map either.
   for (const [id, f] of Array.from(configFields.entries())) {
     if (!fieldsById.has(id)) fieldsById.set(id, f);
   }
 
   const fields = Array.from(fieldsById.values());
   const product: NqxProduct = {
-    id: productId,
+    id: ids.productId,
     name: productName || capture.pageTitle?.trim() || "Captured product",
     fields,
   };
 
   return {
-    computeId,
+    computeId: ids.computeId,
     computeName: capture.pageTitle?.trim(),
     products: [product],
     discoveredAt: new Date().toISOString(),
     rawResponses: [
-      ...(capture.calculateRateUrl
-        ? [{ url: capture.calculateRateUrl, status: 200, bodyPreview: previewBody(capture.responseBody) }]
-        : []),
+      { url: capture.calculateRateUrl, status: 200, bodyPreview: previewBody(capture.responseBody) },
       ...additional.map((c) => ({ url: c.url, status: 200, bodyPreview: previewBody(c.body) })),
     ],
   };
@@ -422,20 +380,9 @@ export function registerNqxGuidedDiscoveryRoutes(
       }
 
       const calculateRateUrl =
-        typeof body.calculateRateUrl === "string" ? body.calculateRateUrl : null;
-      const pageUrl = typeof body.pageUrl === "string" ? body.pageUrl : undefined;
-      const hasFieldMap = Array.isArray(body.fieldMap) && body.fieldMap.length > 0;
-
-      // Need EITHER a valid calculate_rate URL, OR a field map + a recognizable
-      // pricer page URL (so we at least know the computeId).
-      if (calculateRateUrl && !parseCalculateRateUrl(calculateRateUrl)) {
-        return res.status(400).json({ error: "calculateRateUrl is not an NQX endpoint" });
-      }
-      if (!calculateRateUrl && !(hasFieldMap && parsePricerPageUrl(pageUrl))) {
-        return res.status(400).json({
-          error:
-            "Need either a captured calculate_rate URL or a field map plus a recognizable nqxpricer.com page URL.",
-        });
+        typeof body.calculateRateUrl === "string" ? body.calculateRateUrl : "";
+      if (!parseCalculateRateUrl(calculateRateUrl)) {
+        return res.status(400).json({ error: "calculateRateUrl is missing or not an NQX endpoint" });
       }
 
       const payloadSize = JSON.stringify(body).length;
@@ -443,31 +390,31 @@ export function registerNqxGuidedDiscoveryRoutes(
         return res.status(413).json({ error: "Capture payload too large" });
       }
 
-      const additionalRaw = Array.isArray(body.additionalCaptures) ? body.additionalCaptures : [];
+      const additionalRaw: unknown[] = Array.isArray(body.additionalCaptures) ? body.additionalCaptures : [];
       const additionalCaptures: AdditionalCapture[] = [];
       for (const c of additionalRaw) {
         if (!c || typeof c !== "object") continue;
-        const url = typeof (c as any).url === "string" ? (c as any).url : "";
+        const rec = c as Record<string, unknown>;
+        const url = typeof rec.url === "string" ? rec.url : "";
         if (!url || !/nqxpricer\.com/.test(url)) continue;
-        additionalCaptures.push({ url, body: (c as any).body });
+        additionalCaptures.push({ url, body: rec.body });
       }
 
       const fieldMap: CapturedFieldMapEntry[] = [];
-      if (Array.isArray(body.fieldMap)) {
-        for (const e of body.fieldMap) {
-          if (!e || typeof e !== "object") continue;
-          const label = typeof (e as any).label === "string" ? (e as any).label.trim() : "";
-          if (!label) continue;
-          const fid = typeof (e as any).fieldId === "string" ? (e as any).fieldId : null;
-          const opts = (e as any).optionsByLabel;
-          const safeOpts: Record<string, string> = {};
-          if (opts && typeof opts === "object") {
-            for (const [k, v] of Object.entries(opts)) {
-              if (typeof k === "string" && typeof v === "string") safeOpts[k] = v;
-            }
+      const fieldMapRaw: unknown[] = Array.isArray(body.fieldMap) ? body.fieldMap : [];
+      for (const e of fieldMapRaw) {
+        if (!e || typeof e !== "object") continue;
+        const rec = e as Record<string, unknown>;
+        const label = typeof rec.label === "string" ? rec.label.trim() : "";
+        if (!label) continue;
+        const fid = typeof rec.fieldId === "string" ? rec.fieldId : null;
+        const safeOpts: Record<string, string> = {};
+        if (rec.optionsByLabel && typeof rec.optionsByLabel === "object") {
+          for (const [k, v] of Object.entries(rec.optionsByLabel as Record<string, unknown>)) {
+            if (typeof k === "string" && typeof v === "string") safeOpts[k] = v;
           }
-          fieldMap.push({ label, fieldId: fid, optionsByLabel: safeOpts });
         }
+        fieldMap.push({ label, fieldId: fid, optionsByLabel: safeOpts });
       }
 
       const capture: CapturePayload = {
@@ -477,7 +424,6 @@ export function registerNqxGuidedDiscoveryRoutes(
         domFields: Array.isArray(body.domFields) ? (body.domFields as DomFieldSnapshot[]) : [],
         additionalCaptures,
         fieldMap,
-        pageUrl,
         pageTitle: typeof body.pageTitle === "string" ? body.pageTitle : undefined,
       };
 
