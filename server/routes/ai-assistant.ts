@@ -160,10 +160,12 @@ export function registerAiAssistantRoutes(app: Express): void {
         }
 
         // Process message with AI
+        const tenantId = req.user?.tenantId ?? undefined;
         const { response, actionsTaken } = await processAssistantMessage(
           conversationId,
           content,
-          userId
+          userId,
+          tenantId
         );
 
         res.json({

@@ -34,6 +34,7 @@ import {
 } from "@shared/schema";
 import { eq, and, or, desc, asc, lte, gte, isNull, ilike, sql } from "drizzle-orm";
 import { getOpenAIApiKey } from "../utils/getOpenAIKey";
+import { buildLenderKnowledgePack } from "./brokerKnowledgeBase";
 
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 if (!aiApiKey) {
@@ -655,7 +656,8 @@ const FUNCTION_DEFINITIONS = [
 export async function processAssistantMessage(
   conversationId: number,
   userMessage: string,
-  processorId: number
+  processorId: number,
+  tenantId?: number
 ): Promise<{
   response: string;
   actionsTaken: Array<{
@@ -679,6 +681,16 @@ export async function processAssistantMessage(
     .where(eq(aiAssistantMessages.conversationId, conversationId))
     .orderBy(aiAssistantMessages.createdAt);
 
+  // Build knowledge pack for lender context (non-blocking — falls back to empty string on error)
+  let knowledgePack = "";
+  if (tenantId) {
+    try {
+      knowledgePack = await buildLenderKnowledgePack(tenantId);
+    } catch (err) {
+      console.warn("[processAssistantMessage] Failed to build lender knowledge pack:", err);
+    }
+  }
+
   // Format for OpenAI with system prompt
   const systemMessage = {
     role: "system" as const,
@@ -693,6 +705,7 @@ CAPABILITIES:
 - Send and read in-app messages to borrowers and brokers on specific deals
 - Analyze deal health and detect portfolio-wide anomalies
 - Recommend next actions based on deal state
+- Answer questions about loan programs, eligibility criteria, fund criteria, and lending states
 
 IMPORTANT — DEAL STATUS INTERPRETATION:
 When a user asks about "active loans", "current deals", "my deals", "loans in the pipeline", or similar phrases, they mean ALL deals currently in the system that are not voided or cancelled. Do NOT filter by a literal "active" status. Use list_user_deals WITHOUT a status filter to return all their deals. Only filter by a specific status if the user explicitly asks for it (e.g., "show me only my funded deals" or "which deals are on hold").
@@ -706,7 +719,13 @@ BEHAVIOR RULES:
 6. Reference deals by name and borrower, not just ID numbers.
 7. Keep responses concise but thorough. Use markdown formatting for readability.
 8. When sending in-app messages, use send_deal_message. When checking for messages, use get_deal_messages.
-9. Always include the deal status in your summaries so the user knows the state of each deal.`,
+9. Always include the deal status in your summaries so the user knows the state of each deal.${knowledgePack ? `
+
+=== PROGRAM & FUND KNOWLEDGE PACK ===
+The following is live data about this lender's active loan programs, underwriting rules, and lending partners. Use it to answer any questions about programs, eligibility, fund criteria, or lending states with accurate detail.
+
+${knowledgePack}
+=== END KNOWLEDGE PACK ===` : ""}`,
   };
 
   const chatMessages = [
