@@ -57,6 +57,7 @@ import { createAuditLog, getClientIp, logUserAction, AuditActions, ResourceTypes
 import { registerProcessorRoutes } from './routes/processor';
 import { registerBrokerSdrRoutes } from './routes/broker-sdr';
 import { registerAiAssistantRoutes } from './routes/ai-assistant';
+import { registerBrokerAssistantRoutes } from './routes/broker-assistant';
 import { registerAgentRoutes } from './routes/agents';
 import { registerDebuggerRoutes } from './routes/debugger';
 import { OrchestrationTracer } from './services/orchestrationTracing';
@@ -6020,6 +6021,9 @@ export async function registerRoutes(
 
   // ==================== AI ASSISTANT ROUTES ====================
   registerAiAssistantRoutes(app);
+
+  // ==================== BROKER AI ASSISTANT ROUTES ====================
+  registerBrokerAssistantRoutes(app);
 
   // ==================== PROCESSOR ROUTES ====================
   registerProcessorRoutes(app);

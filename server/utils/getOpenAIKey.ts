@@ -6,7 +6,9 @@ const CACHE_TTL_MS = 60_000;
 
 export async function getOpenAIApiKey(): Promise<string | undefined> {
   const integrationKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (integrationKey) return integrationKey;
+  if (integrationKey && !integrationKey.includes("DUMMY")) return integrationKey;
+
+  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
 
   const now = Date.now();
   if (cachedManualKey !== null && now - cacheTimestamp < CACHE_TTL_MS) {

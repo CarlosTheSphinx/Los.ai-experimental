@@ -64,6 +64,7 @@ import { InboxBadge } from "@/components/InboxBadge";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
+import { BrokerAssistant } from "@/components/broker/BrokerAssistant";
 import { AIOrchestrationDebugger } from "@/components/AIOrchestrationDebugger/DebuggerSidebar";
 import { TrainingChecklist } from "@/components/TrainingChecklist";
 import MessagesPage from "@/pages/messages";
@@ -628,6 +629,8 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
       )}
 
       {isAdmin && !isPreviewingOtherRole && <ProcessorAssistant isOpen={assistantOpen} onOpenChange={setAssistantOpen} />}
+
+      {(isBroker || effectiveViewAsLender) && <BrokerAssistant />}
 
       {isAdmin && !isPreviewingOtherRole && <TrainingChecklist />}
 
