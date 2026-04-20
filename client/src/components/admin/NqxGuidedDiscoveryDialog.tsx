@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Copy, ExternalLink } from "lucide-react";
+import { Loader2, CheckCircle2, Copy, ExternalLink, Terminal, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,14 +35,14 @@ interface PollResponse {
   suggested?: unknown;
 }
 
-function buildBookmarkletJs(captureEndpoint: string, token: string): string {
-  // The body of this IIFE runs on the NQX pricer page when the user clicks
-  // the bookmarklet. It hooks fetch + XHR to capture the next
-  // calculate_rate round-trip, snapshots the form fields, and POSTs the
-  // result back to our capture endpoint.
-  const src = `
+function buildCaptureScript(captureEndpoint: string, token: string): string {
+  // The body of this IIFE runs on the NQX pricer page either via a
+  // bookmarklet click or by being pasted into DevTools. It hooks
+  // fetch + XHR to capture the next calculate_rate round-trip,
+  // snapshots the form fields, and POSTs the result back.
+  return `
 (function(){
-  if (window.__lendryNqxCapture) { alert('Lendry capture is already armed on this page.'); return; }
+  if (window.__lendryNqxCapture) { console.info('[Lendry] capture already armed on this page'); alert('Lendry capture is already armed on this page.'); return; }
   window.__lendryNqxCapture = true;
   var TOKEN = ${JSON.stringify(token)};
   var ENDPOINT = ${JSON.stringify(captureEndpoint)};
@@ -96,19 +96,25 @@ function buildBookmarkletJs(captureEndpoint: string, token: string): string {
   function send(payload){
     if (sent) return;
     sent = true;
+    console.info('[Lendry] sending capture for', payload.calculateRateUrl);
     fetch(ENDPOINT, {
       method: 'POST', mode: 'cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(function(r){
       if (r.ok) {
+        console.info('[Lendry] capture accepted by server');
         showToast('Capture sent to Lendry. You can close this tab.', '#15803d');
       } else {
         sent = false;
-        r.text().then(function(t){ showToast('Capture failed: ' + (t || r.status), '#b91c1c'); });
+        r.text().then(function(t){
+          console.warn('[Lendry] capture rejected', r.status, t);
+          showToast('Capture failed: ' + (t || r.status), '#b91c1c');
+        });
       }
     }).catch(function(err){
       sent = false;
+      console.error('[Lendry] capture network error', err);
       showToast('Capture network error: ' + err.message, '#b91c1c');
     });
   }
@@ -159,10 +165,15 @@ function buildBookmarkletJs(captureEndpoint: string, token: string): string {
     return XSend.apply(this, arguments);
   };
 
+  console.info('[Lendry] capture armed — fill the form and click Calculate Rate');
   showToast('Lendry capture armed. Fill out the pricer form and click Calculate Rate.', '#C9A84C');
 })();`;
-  // Strip newlines for the bookmarklet href
-  return src.replace(/\s+/g, " ").trim();
+}
+
+function buildBookmarkletHref(captureEndpoint: string, token: string): string {
+  // Bookmarklet URL — single-line, percent-encoded, javascript: scheme.
+  const collapsed = buildCaptureScript(captureEndpoint, token).replace(/\s+/g, " ").trim();
+  return "javascript:" + encodeURIComponent(collapsed);
 }
 
 export function NqxGuidedDiscoveryDialog({
@@ -184,7 +195,12 @@ export function NqxGuidedDiscoveryDialog({
 
   const bookmarkletHref = useMemo(() => {
     if (!token) return "javascript:void(0)";
-    return "javascript:" + encodeURIComponent(buildBookmarkletJs(captureEndpoint, token));
+    return buildBookmarkletHref(captureEndpoint, token);
+  }, [token, captureEndpoint]);
+
+  const rawScript = useMemo(() => {
+    if (!token) return "";
+    return buildCaptureScript(captureEndpoint, token).trim();
   }, [token, captureEndpoint]);
 
   const stopPolling = () => {
@@ -249,9 +265,21 @@ export function NqxGuidedDiscoveryDialog({
   const copyBookmarklet = async () => {
     try {
       await navigator.clipboard.writeText(bookmarkletHref);
-      toast({ title: "Bookmarklet copied", description: "Paste it into your bookmarks bar." });
+      toast({ title: "Bookmarklet copied", description: "Paste it into your bookmarks bar as a new bookmark." });
     } catch {
       toast({ title: "Copy failed", description: "Drag the gold link instead.", variant: "destructive" });
+    }
+  };
+
+  const copyScript = async () => {
+    try {
+      await navigator.clipboard.writeText(rawScript);
+      toast({
+        title: "Script copied",
+        description: "Open DevTools → Console on the pricer tab, paste, press Enter.",
+      });
+    } catch {
+      toast({ title: "Copy failed", description: "Try selecting the script box manually.", variant: "destructive" });
     }
   };
 
@@ -289,49 +317,95 @@ export function NqxGuidedDiscoveryDialog({
         )}
 
         {status === "pending" && token && (
-          <div className="space-y-5 text-[14px]">
-            <ol className="space-y-4 list-decimal list-inside">
-              <li>
-                <strong>Drag this gold link to your bookmarks bar</strong> (or click "Copy" and paste it as a new bookmark).
-                <div className="mt-2 flex items-center gap-2">
-                  <a
-                    href={bookmarkletHref}
-                    onClick={(e) => e.preventDefault()}
-                    className="inline-block px-3 py-2 rounded-md font-bold text-[#0F1629] bg-gradient-to-r from-[#C9A84C] to-[#E0C46C] cursor-grab"
-                    data-testid="link-bookmarklet"
-                    title="Drag me to your bookmarks bar"
-                  >
-                    📌 Lendry NQX Capture
-                  </a>
-                  <Button size="sm" variant="outline" onClick={copyBookmarklet} data-testid="button-copy-bookmarklet">
-                    <Copy className="h-3 w-3 mr-1" /> Copy
-                  </Button>
-                </div>
-              </li>
-              <li>
-                <strong>Open the pricer URL in a new tab</strong> and bring it to focus.
-                <div className="mt-2">
-                  <a
-                    href={pricerUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-blue-600 hover:underline text-[13px]"
-                    data-testid="link-open-pricer"
-                  >
-                    <ExternalLink className="h-3 w-3" /> Open pricer
-                  </a>
-                </div>
-              </li>
-              <li>
-                <strong>Click the bookmarklet</strong> on the pricer page. A gold toast confirms it's armed.
-              </li>
-              <li>
-                <strong>Fill in any realistic scenario</strong> in the pricer form — every required field — and click <strong>Calculate Rate</strong>.
-              </li>
-              <li>
-                Wait for a green toast saying <em>"Capture sent to Lendry."</em> Then come back to this tab — we'll detect it within a few seconds.
-              </li>
-            </ol>
+          <div className="space-y-4 text-[14px] max-h-[70vh] overflow-y-auto pr-1">
+            {/* Step 0 — open pricer */}
+            <div className="rounded-md border px-3 py-2 flex items-center justify-between gap-2 bg-muted/30">
+              <div className="text-[13px]">
+                <strong>Step 1.</strong> Open the pricer in a new tab.
+              </div>
+              <a
+                href={pricerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline text-[13px] font-medium"
+                data-testid="link-open-pricer"
+              >
+                <ExternalLink className="h-3 w-3" /> Open pricer
+              </a>
+            </div>
+
+            <div className="text-[13px] font-medium text-foreground">
+              <strong>Step 2.</strong> Run the capture script on that tab — pick whichever option works:
+            </div>
+
+            {/* Option A — Bookmarklet */}
+            <div className="rounded-md border-2 border-[#C9A84C]/40 bg-[#C9A84C]/5 px-3 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-[13px]">Option A — Bookmarklet (fastest)</div>
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">recommended</span>
+              </div>
+              <p className="text-[12px] text-muted-foreground">
+                Drag the gold link to your bookmarks bar (or copy and paste as a new bookmark), switch to the pricer tab, then click the bookmark.
+              </p>
+              <div className="flex items-center gap-2">
+                <a
+                  href={bookmarkletHref}
+                  onClick={(e) => e.preventDefault()}
+                  className="inline-block px-3 py-2 rounded-md font-bold text-[#0F1629] bg-gradient-to-r from-[#C9A84C] to-[#E0C46C] cursor-grab"
+                  data-testid="link-bookmarklet"
+                  title="Drag me to your bookmarks bar"
+                >
+                  📌 Lendry NQX Capture
+                </a>
+                <Button size="sm" variant="outline" onClick={copyBookmarklet} data-testid="button-copy-bookmarklet">
+                  <Copy className="h-3 w-3 mr-1" /> Copy bookmarklet
+                </Button>
+              </div>
+            </div>
+
+            {/* CSP callout */}
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-start gap-2 text-[12px]">
+              <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>Clicked the bookmarklet and nothing happened?</strong> Your pricer page blocks bookmarklets via Content Security Policy. Use Option B below instead.
+              </span>
+            </div>
+
+            {/* Option B — DevTools paste */}
+            <div className="rounded-md border px-3 py-3 space-y-2">
+              <div className="font-semibold text-[13px] flex items-center gap-2">
+                <Terminal className="h-3.5 w-3.5" />
+                Option B — DevTools paste (works on sites that block bookmarklets)
+              </div>
+              <ol className="list-decimal list-inside text-[12px] text-muted-foreground space-y-1">
+                <li>On the pricer tab, open DevTools — <kbd className="px-1 py-0.5 border rounded bg-muted text-[11px]">F12</kbd> (Win/Linux) or <kbd className="px-1 py-0.5 border rounded bg-muted text-[11px]">⌘⌥J</kbd> (Mac) — and switch to the <strong>Console</strong> tab.</li>
+                <li>If the console warns "Don't paste anything here unless you understand it" — type <code className="text-[11px] bg-muted px-1 rounded">allow pasting</code> and press Enter.</li>
+                <li>Paste the script below and press Enter.</li>
+              </ol>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={copyScript}
+                  className="bg-[#0F1629] hover:bg-[#0F1629]/90 text-white"
+                  data-testid="button-copy-script"
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copy script
+                </Button>
+                <span className="text-[11px] text-muted-foreground">{rawScript.length.toLocaleString()} chars</span>
+              </div>
+              <textarea
+                readOnly
+                value={rawScript}
+                onClick={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+                onFocus={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+                className="w-full h-24 text-[10px] font-mono bg-muted/40 border rounded p-2 resize-none"
+                data-testid="textarea-capture-script"
+              />
+            </div>
+
+            <div className="text-[13px] pt-1">
+              <strong>Step 3.</strong> On the pricer tab, fill in any realistic scenario — every required field — and click <strong>Calculate Rate</strong>. A green toast confirms the capture was sent.
+            </div>
 
             <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2 text-[13px]">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -339,7 +413,7 @@ export function NqxGuidedDiscoveryDialog({
             </div>
 
             <p className="text-[12px] text-muted-foreground">
-              Session expires in 15 minutes. The bookmarklet only captures one call, then disarms itself.
+              Session expires in 15 minutes. The capture script only sends one call, then disarms itself. Check the pricer tab's DevTools console for <code className="text-[11px] bg-muted px-1 rounded">[Lendry]</code> log lines if you want to confirm it ran.
             </p>
           </div>
         )}
