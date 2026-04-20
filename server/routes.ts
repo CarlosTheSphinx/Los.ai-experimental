@@ -58,6 +58,7 @@ import { registerProcessorRoutes } from './routes/processor';
 import { registerBrokerSdrRoutes } from './routes/broker-sdr';
 import { registerAiAssistantRoutes } from './routes/ai-assistant';
 import { registerBrokerAssistantRoutes } from './routes/broker-assistant';
+import { registerNqxGuidedDiscoveryRoutes } from './routes/nqxGuidedDiscovery';
 import { registerAgentRoutes } from './routes/agents';
 import { registerDebuggerRoutes } from './routes/debugger';
 import { OrchestrationTracer } from './services/orchestrationTracing';
@@ -6024,6 +6025,7 @@ export async function registerRoutes(
 
   // ==================== BROKER AI ASSISTANT ROUTES ====================
   registerBrokerAssistantRoutes(app);
+  registerNqxGuidedDiscoveryRoutes(app, requireAdmin);
 
   // ==================== PROCESSOR ROUTES ====================
   registerProcessorRoutes(app);

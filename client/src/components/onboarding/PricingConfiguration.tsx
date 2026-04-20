@@ -27,6 +27,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { NqxGuidedDiscoveryDialog } from '@/components/admin/NqxGuidedDiscoveryDialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -1759,6 +1760,25 @@ function ExternalApiSection({
   showApiRawDebug: boolean; setShowApiRawDebug: (v: boolean) => void;
 }) {
   const { toast } = useToast();
+  const [guidedOpen, setGuidedOpen] = useState(false);
+
+  const applyDiscoveryResult = (data: { schema: any; suggested: any }) => {
+    if (!data?.schema || !data?.suggested) return;
+    const cfg: ApiModeConfig = {
+      computeId: data.schema.computeId,
+      computeName: data.schema.computeName,
+      selectedProductId: data.suggested.selectedProductId,
+      products: data.schema.products,
+      fieldMappings: data.suggested.fieldMappings,
+      optionMappings: data.suggested.optionMappings,
+      discoveredAt: data.schema.discoveredAt,
+    };
+    setApiConfig(cfg);
+    toast({
+      title: 'Schema captured',
+      description: `Found ${data.schema.products.length} product(s), ${cfg.fieldMappings.filter((f: any) => f.fieldId).length}/${cfg.fieldMappings.length} fields auto-mapped.`,
+    });
+  };
 
   const discoverMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -1852,26 +1872,52 @@ function ExternalApiSection({
           onChange={(e) => setApiUrl(e.target.value)}
           data-testid="input-api-url"
         />
-        <Button
-          size="sm"
-          disabled={discoverMutation.isPending}
-          onClick={() => {
-            const trimmed = apiUrl.trim();
-            if (!trimmed) {
-              toast({ title: 'Enter a URL first', variant: 'destructive' });
-              return;
-            }
-            discoverMutation.mutate(trimmed);
-          }}
-          className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white font-semibold shadow-md"
-          data-testid="button-discover-api"
-        >
-          {discoverMutation.isPending ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Discovering schema (≈30s)...</>
-          ) : (
-            <><Search className="h-4 w-4 mr-2" />Discover API Schema</>
-          )}
-        </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Button
+            size="sm"
+            disabled={discoverMutation.isPending}
+            onClick={() => {
+              const trimmed = apiUrl.trim();
+              if (!trimmed) {
+                toast({ title: 'Enter a URL first', variant: 'destructive' });
+                return;
+              }
+              discoverMutation.mutate(trimmed);
+            }}
+            variant="outline"
+            className="font-semibold"
+            data-testid="button-discover-api"
+          >
+            {discoverMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Auto (≈30s)...</>
+            ) : (
+              <><Search className="h-4 w-4 mr-2" />Auto-Discover</>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (!apiUrl.trim()) {
+                toast({ title: 'Enter a URL first', variant: 'destructive' });
+                return;
+              }
+              setGuidedOpen(true);
+            }}
+            className="bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white font-semibold shadow-md"
+            data-testid="button-guided-discovery"
+          >
+            <Search className="h-4 w-4 mr-2" />Guided Discovery
+          </Button>
+        </div>
+        <p className="text-[12px] text-muted-foreground -mt-2">
+          <strong>Guided</strong> is recommended — you fill in one scenario in the pricer and we capture the call. <strong>Auto</strong> only works if the page fires its API call without any user input.
+        </p>
+        <NqxGuidedDiscoveryDialog
+          open={guidedOpen}
+          onOpenChange={setGuidedOpen}
+          pricerUrl={apiUrl.trim()}
+          onComplete={(data) => applyDiscoveryResult(data as { schema: any; suggested: any })}
+        />
         {apiConfig && (
           <div className="flex items-center gap-2 text-[13px] text-green-700">
             <CheckCircle2 className="h-4 w-4" />
