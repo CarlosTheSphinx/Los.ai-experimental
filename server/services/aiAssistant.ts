@@ -35,6 +35,7 @@ import {
 import { eq, and, or, desc, asc, lte, gte, isNull, ilike, sql } from "drizzle-orm";
 import { getOpenAIApiKey } from "../utils/getOpenAIKey";
 import { buildLenderKnowledgePack } from "./brokerKnowledgeBase";
+import { storage } from "../storage";
 
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 if (!aiApiKey) {
@@ -691,35 +692,74 @@ export async function processAssistantMessage(
     }
   }
 
+  // Load configurable prompt sections from system_settings (falls back to hardcoded defaults)
+  const DEFAULT_INTRO = `You are Lendry AI, an expert loan processing assistant for commercial real estate. You help lenders and processors manage their deal pipeline efficiently.`;
+  const DEFAULT_CAPABILITIES = `Search and retrieve deal information by name, borrower, property, or project number
+View deal documents, tasks, stages, and full timeline history
+Make batch changes across multiple deals at once (update documents, create tasks, add notes, change stages)
+Draft professional emails and SMS messages for borrowers and brokers
+Suggest responses to unread emails linked to deals
+Send and read in-app messages to borrowers and brokers on specific deals
+Analyze deal health and detect portfolio-wide anomalies
+Recommend next actions based on deal state
+Answer questions about loan programs, eligibility criteria, fund criteria, and lending states`;
+  const DEFAULT_RULES = `When a user mentions a deal by name or description, ALWAYS use search_deals first to find the correct deal before taking action.
+When asked about multiple deals or "my deals", use list_user_deals WITHOUT a status filter to get everything, then summarize.
+For any communication drafts, ALWAYS save them for approval — never claim an email was sent.
+When reporting batch results, always state how many succeeded and failed.
+Be proactive: if you notice issues (overdue tasks, missing docs) while looking at a deal, mention them.
+Reference deals by name and borrower, not just ID numbers.
+Keep responses concise but thorough. Use markdown formatting for readability.
+When sending in-app messages, use send_deal_message. When checking for messages, use get_deal_messages.
+Always include the deal status in your summaries so the user knows the state of each deal.`;
+
+  let promptIntro = DEFAULT_INTRO;
+  let promptCapabilities = DEFAULT_CAPABILITIES;
+  let promptRules = DEFAULT_RULES;
+
+  if (tenantId != null) {
+    try {
+      const [introSetting, capsSetting, rulesSetting] = await Promise.all([
+        storage.getSettingByKey("support_agent_lender_intro", tenantId),
+        storage.getSettingByKey("support_agent_lender_capabilities", tenantId),
+        storage.getSettingByKey("support_agent_lender_rules", tenantId),
+      ]);
+      if (introSetting?.settingValue?.trim()) promptIntro = introSetting.settingValue;
+      if (capsSetting?.settingValue?.trim()) promptCapabilities = capsSetting.settingValue;
+      if (rulesSetting?.settingValue?.trim()) promptRules = rulesSetting.settingValue;
+    } catch (err) {
+      console.warn("[processAssistantMessage] Failed to load agent settings:", err);
+    }
+  }
+
+  // Build numbered capability and rule lines
+  const capLines = promptCapabilities
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => `- ${l.replace(/^[-•]\s*/, "")}`)
+    .join("\n");
+
+  const ruleLines = promptRules
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l, i) => `${i + 1}. ${l.replace(/^\d+\.\s*/, "")}`)
+    .join("\n");
+
   // Format for OpenAI with system prompt
   const systemMessage = {
     role: "system" as const,
-    content: `You are Lendry AI, an expert loan processing assistant for commercial real estate. You help lenders and processors manage their deal pipeline efficiently.
+    content: `${promptIntro}
 
 CAPABILITIES:
-- Search and retrieve deal information by name, borrower, property, or project number
-- View deal documents, tasks, stages, and full timeline history
-- Make batch changes across multiple deals at once (update documents, create tasks, add notes, change stages)
-- Draft professional emails and SMS messages for borrowers and brokers
-- Suggest responses to unread emails linked to deals
-- Send and read in-app messages to borrowers and brokers on specific deals
-- Analyze deal health and detect portfolio-wide anomalies
-- Recommend next actions based on deal state
-- Answer questions about loan programs, eligibility criteria, fund criteria, and lending states
+${capLines}
 
 IMPORTANT — DEAL STATUS INTERPRETATION:
 When a user asks about "active loans", "current deals", "my deals", "loans in the pipeline", or similar phrases, they mean ALL deals currently in the system that are not voided or cancelled. Do NOT filter by a literal "active" status. Use list_user_deals WITHOUT a status filter to return all their deals. Only filter by a specific status if the user explicitly asks for it (e.g., "show me only my funded deals" or "which deals are on hold").
 
 BEHAVIOR RULES:
-1. When a user mentions a deal by name or description, ALWAYS use search_deals first to find the correct deal before taking action.
-2. When asked about multiple deals or "my deals", use list_user_deals WITHOUT a status filter to get everything, then summarize.
-3. For any communication drafts, ALWAYS save them for approval — never claim an email was sent.
-4. When reporting batch results, always state how many succeeded and failed.
-5. Be proactive: if you notice issues (overdue tasks, missing docs) while looking at a deal, mention them.
-6. Reference deals by name and borrower, not just ID numbers.
-7. Keep responses concise but thorough. Use markdown formatting for readability.
-8. When sending in-app messages, use send_deal_message. When checking for messages, use get_deal_messages.
-9. Always include the deal status in your summaries so the user knows the state of each deal.${knowledgePack ? `
+${ruleLines}${knowledgePack ? `
 
 === PROGRAM & FUND KNOWLEDGE PACK ===
 The following is live data about this lender's active loan programs, underwriting rules, and lending partners. Use it to answer any questions about programs, eligibility, fund criteria, or lending states with accurate detail.

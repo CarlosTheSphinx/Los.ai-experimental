@@ -17,6 +17,7 @@ import {
   listConversations,
 } from "../services/aiAssistant";
 import { authenticateUser, type AuthRequest } from "../auth";
+import { storage } from "../storage";
 
 // Body parser with larger limit for audio payloads
 const audioBodyParser = express.json({ limit: "50mb" });
@@ -159,8 +160,16 @@ export function registerAiAssistantRoutes(app: Express): void {
           return res.status(403).json({ error: "Unauthorized" });
         }
 
-        // Process message with AI
+        // Check if lender assistant is enabled
         const tenantId = req.user?.tenantId ?? undefined;
+        if (tenantId != null) {
+          const enabledSetting = await storage.getSettingByKey("support_agent_lender_enabled", tenantId);
+          if (enabledSetting?.settingValue === "false") {
+            return res.status(403).json({ error: "Lender assistant is currently disabled." });
+          }
+        }
+
+        // Process message with AI
         const { response, actionsTaken } = await processAssistantMessage(
           conversationId,
           content,

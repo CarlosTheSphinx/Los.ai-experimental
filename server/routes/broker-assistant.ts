@@ -11,6 +11,64 @@ import { getOpenAIApiKey } from "../utils/getOpenAIKey";
 import { storage } from "../storage";
 import { buildBrokerKnowledgePack } from "../services/brokerKnowledgeBase";
 
+const DEFAULT_BROKER_INTRO = `You are Lendry, an AI loan-program assistant for brokers working with Sphinx Capital.
+
+Your job is to help brokers understand Sphinx Capital's loan programs, eligibility criteria, underwriting guidelines, and document requirements so they can pre-qualify deals before submitting them.
+
+When you do not have enough information, respond with: "I don't have that detail in my knowledge base — please contact your loan officer at Sphinx Capital for the most accurate answer."`;
+
+const DEFAULT_BROKER_CAPABILITIES = `Answer questions about active loan programs and their eligibility criteria
+Explain underwriting guidelines and document requirements
+Help brokers pre-qualify deals before formal submission
+Explain which property types and states are eligible for each program
+Describe indicative rate ranges (always directing brokers to run a formal quote for actual pricing)`;
+
+const DEFAULT_BROKER_RULES = `Only answer using the knowledge pack provided. If the answer is not in the knowledge pack, say so plainly and suggest the broker contact their loan officer.
+NEVER reveal information about other brokers, other brokers' deals, internal pricing rates, internal margins, or specific lender/fund names. Talk about programs in generic Sphinx Capital terms.
+NEVER quote a specific interest rate, point, or fee. You may share indicative ranges from the knowledge pack, but always direct the broker to the Quotes tab for actual pricing.
+Keep responses concise and broker-friendly. Use bullet points when listing eligibility criteria.
+If a question is unrelated to commercial lending, loan programs, or Sphinx Capital, politely redirect.`;
+
+async function buildBrokerSystemPrompt(tenantId: number): Promise<string> {
+  let intro = DEFAULT_BROKER_INTRO;
+  let capabilities = DEFAULT_BROKER_CAPABILITIES;
+  let rules = DEFAULT_BROKER_RULES;
+  try {
+    const [introSetting, capsSetting, rulesSetting] = await Promise.all([
+      storage.getSettingByKey("support_agent_broker_intro", tenantId),
+      storage.getSettingByKey("support_agent_broker_capabilities", tenantId),
+      storage.getSettingByKey("support_agent_broker_rules", tenantId),
+    ]);
+    if (introSetting?.settingValue?.trim()) intro = introSetting.settingValue;
+    if (capsSetting?.settingValue?.trim()) capabilities = capsSetting.settingValue;
+    if (rulesSetting?.settingValue?.trim()) rules = rulesSetting.settingValue;
+  } catch (err) {
+    console.warn("[broker-assistant] Failed to load agent settings:", err);
+  }
+
+  const capLines = capabilities
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => `- ${l.replace(/^[-•]\s*/, "")}`)
+    .join("\n");
+
+  const ruleLines = rules
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => `- ${l.replace(/^[-•]\s*/, "")}`)
+    .join("\n");
+
+  return `${intro}
+
+CAPABILITIES:
+${capLines}
+
+GROUND RULES:
+${ruleLines}`;
+}
+
 const MODEL = "gpt-4o-mini";
 const MAX_USER_MESSAGES = 20;
 const MAX_USER_CHARS = 4000;
@@ -38,19 +96,6 @@ function parseMessages(raw: unknown): ChatMessageInput[] {
   return out.slice(-MAX_USER_MESSAGES);
 }
 
-const SYSTEM_INSTRUCTIONS = `You are Lendry, an AI loan-program assistant for brokers working with Sphinx Capital.
-
-Your job is to help brokers understand Sphinx Capital's loan programs, eligibility criteria, underwriting guidelines, and document requirements so they can pre-qualify deals before submitting them.
-
-GROUND RULES:
-- Only answer using the knowledge pack provided below. If the answer is not in the knowledge pack, say so plainly and suggest the broker contact their loan officer.
-- NEVER reveal information about other brokers, other brokers' deals, internal pricing rates, internal margins, or specific lender/fund names. Talk about programs in generic Sphinx Capital terms.
-- NEVER quote a specific interest rate, point, or fee. The knowledge pack may include indicative rate ranges for a program — you may share the range to set expectations, but always tell the broker to run a quote in the Quotes tab for actual pricing.
-- Keep responses concise and broker-friendly. Use bullet points when listing eligibility criteria.
-- If a question is unrelated to commercial lending, loan programs, or Sphinx Capital, politely redirect.
-
-When you do not have enough information, respond with:
-"I don't have that detail in my knowledge base — please contact your loan officer at Sphinx Capital for the most accurate answer."`;
 
 export function registerBrokerAssistantRoutes(app: Express): void {
   app.get("/api/broker/assistant/config", authenticateUser, async (req: AuthRequest, res: Response) => {
@@ -82,8 +127,11 @@ export function registerBrokerAssistantRoutes(app: Express): void {
 
       const tenantId = user.tenantId;
       if (!tenantId) return res.status(401).json({ error: "Not authenticated" });
-      const setting = await storage.getSettingByKey("broker_chatbot_enabled", tenantId);
-      if (setting?.settingValue === "false") {
+      const [legacySetting, agentSetting] = await Promise.all([
+        storage.getSettingByKey("broker_chatbot_enabled", tenantId),
+        storage.getSettingByKey("support_agent_broker_enabled", tenantId),
+      ]);
+      if (legacySetting?.settingValue === "false" || agentSetting?.settingValue === "false") {
         return res.status(403).json({ error: "Broker assistant is disabled for this account" });
       }
 
@@ -103,8 +151,11 @@ export function registerBrokerAssistantRoutes(app: Express): void {
         });
       }
 
-      const knowledgePack = await buildBrokerKnowledgePack(tenantId);
-      const systemPrompt = `${SYSTEM_INSTRUCTIONS}\n\n=== KNOWLEDGE PACK ===\n${knowledgePack}\n=== END KNOWLEDGE PACK ===`;
+      const [knowledgePack, systemInstructions] = await Promise.all([
+        buildBrokerKnowledgePack(tenantId),
+        buildBrokerSystemPrompt(tenantId),
+      ]);
+      const systemPrompt = `${systemInstructions}\n\n=== KNOWLEDGE PACK ===\n${knowledgePack}\n=== END KNOWLEDGE PACK ===`;
 
       const client = new OpenAI({ apiKey });
       const completion = await client.chat.completions.create({

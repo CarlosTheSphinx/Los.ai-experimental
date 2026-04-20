@@ -13,7 +13,8 @@ import {
   Save, Settings as SettingsIcon, RefreshCw, HardDrive, Phone, Mail, Brain,
   MapPin, Bot, CheckCircle2, XCircle, AlertCircle, Layers, Plus, Trash2,
   GripVertical, FileStack, ChevronRight, Shield, Palette, Lock,
-  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText, Link2, FileSearch
+  Calculator, GitBranch, Bell, Plug, CreditCard, LayoutList, FileText, Link2, FileSearch,
+  MessageSquare
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -64,6 +65,7 @@ import CustomFieldsConfig from "@/components/admin/config/CustomFieldsConfig";
 import BillingPlansConfig from "@/components/admin/config/BillingPlansConfig";
 import EmailIntegrationConfig from "@/components/admin/config/EmailIntegrationConfig";
 import AICustomizationConfig from "@/components/admin/config/AICustomizationConfig";
+import SupportAgentConfig from "@/components/admin/config/SupportAgentConfig";
 import MagicLinksConfig from "@/components/admin/config/MagicLinksConfig";
 import DocumentReviewConfig from "@/components/admin/config/DocumentReviewConfig";
 import InquiryFormTemplatesConfig from "@/components/admin/config/InquiryFormTemplatesConfig";
@@ -118,6 +120,7 @@ const CONFIG_TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "integrations", label: "Integrations", icon: Plug },
   { id: "platform-integrations", label: "Platform Integrations", icon: Plug, superAdminOnly: true },
+  { id: "support-agent", label: "Support Agent", icon: MessageSquare },
   { id: "ai-customization", label: "AI Customization", icon: Bot },
   { id: "doc-review", label: "Doc Review & Comms", icon: FileSearch },
   { id: "magic-links", label: "Magic Links", icon: Link2 },
@@ -1495,6 +1498,8 @@ export default function AdminSettings() {
               </Card>
             </>
           )}
+
+          {activeTab === "support-agent" && <SupportAgentConfig />}
 
           {activeTab === "ai-customization" && <AICustomizationConfig />}
 
