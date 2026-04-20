@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,31 +8,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Copy, ExternalLink, Terminal, AlertCircle } from "lucide-react";
+import { Loader2, Copy, ExternalLink, Terminal, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-interface DiscoveryResult {
-  schema: unknown;
-  suggested: unknown;
-}
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pricerUrl: string;
-  onComplete: (result: DiscoveryResult) => void;
 }
 
 interface StartResponse {
   token: string;
   expiresAt: string;
-}
-
-interface PollResponse {
-  status: "pending" | "captured" | "expired";
-  schema?: unknown;
-  suggested?: unknown;
 }
 
 function buildCaptureScript(_captureEndpoint: string, token: string): string {
@@ -353,13 +341,11 @@ export function NqxGuidedDiscoveryDialog({
   open,
   onOpenChange,
   pricerUrl,
-  onComplete,
 }: Props) {
   const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "pending" | "captured" | "expired">("idle");
+  const [status, setStatus] = useState<"idle" | "pending">("idle");
   const [starting, setStarting] = useState(false);
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const captureEndpoint = useMemo(
     () => `${window.location.origin}/api/public/nqx-discovery-capture`,
@@ -376,23 +362,13 @@ export function NqxGuidedDiscoveryDialog({
     return buildCaptureScript(captureEndpoint, token).trim();
   }, [token, captureEndpoint]);
 
-  const stopPolling = () => {
-    if (pollTimer.current) {
-      clearInterval(pollTimer.current);
-      pollTimer.current = null;
-    }
-  };
-
   const reset = () => {
-    stopPolling();
     setToken(null);
     setStatus("idle");
   };
 
   useEffect(() => {
     if (!open) reset();
-    return () => stopPolling();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const startSession = async () => {
@@ -402,28 +378,6 @@ export function NqxGuidedDiscoveryDialog({
       const data = (await res.json()) as StartResponse;
       setToken(data.token);
       setStatus("pending");
-
-      pollTimer.current = setInterval(async () => {
-        try {
-          const r = await apiRequest("GET", `/api/admin/programs/nqx/guided-discovery/${data.token}`);
-          const poll = (await r.json()) as PollResponse;
-          if (poll.status === "captured" && poll.schema && poll.suggested) {
-            stopPolling();
-            setStatus("captured");
-            onComplete({ schema: poll.schema, suggested: poll.suggested });
-            toast({
-              title: "Schema captured",
-              description: "Field mappings populated from the pricer.",
-            });
-            setTimeout(() => onOpenChange(false), 1200);
-          } else if (poll.status === "expired") {
-            stopPolling();
-            setStatus("expired");
-          }
-        } catch {
-          // keep polling
-        }
-      }, 2500);
     } catch (err: unknown) {
       const msg =
         err instanceof Error && err.message
@@ -588,19 +542,10 @@ export function NqxGuidedDiscoveryDialog({
           </div>
         )}
 
-        {status === "captured" && (
-          <div className="flex items-center gap-2 text-green-700 text-[14px]" data-testid="status-discovery-complete">
-            <CheckCircle2 className="h-5 w-5" />
-            Schema captured. Closing…
-          </div>
-        )}
-
-        {status === "expired" && (
-          <div className="space-y-3 text-[14px]">
-            <p className="text-amber-700">This session expired. Start a new one to try again.</p>
-            <Button onClick={startSession} disabled={starting} data-testid="button-restart-guided-discovery">
-              {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start a new session"}
-            </Button>
+        {status === "pending" && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-[12px] text-blue-900 dark:text-blue-200">
+            <strong>Step 6.</strong> Once you have the downloaded JSON, close this dialog and click{" "}
+            <strong>Import captured JSON</strong> to load it into the configuration.
           </div>
         )}
 

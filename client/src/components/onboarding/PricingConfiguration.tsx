@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { NqxGuidedDiscoveryDialog } from '@/components/admin/NqxGuidedDiscoveryDialog';
+import { NqxImportCapturedMapDialog } from '@/components/admin/NqxImportCapturedMapDialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -1761,24 +1762,7 @@ function ExternalApiSection({
 }) {
   const { toast } = useToast();
   const [guidedOpen, setGuidedOpen] = useState(false);
-
-  const applyDiscoveryResult = (data: { schema: any; suggested: any }) => {
-    if (!data?.schema || !data?.suggested) return;
-    const cfg: ApiModeConfig = {
-      computeId: data.schema.computeId,
-      computeName: data.schema.computeName,
-      selectedProductId: data.suggested.selectedProductId,
-      products: data.schema.products,
-      fieldMappings: data.suggested.fieldMappings,
-      optionMappings: data.suggested.optionMappings,
-      discoveredAt: data.schema.discoveredAt,
-    };
-    setApiConfig(cfg);
-    toast({
-      title: 'Schema captured',
-      description: `Found ${data.schema.products.length} product(s), ${cfg.fieldMappings.filter((f: any) => f.fieldId).length}/${cfg.fieldMappings.length} fields auto-mapped.`,
-    });
-  };
+  const [importOpen, setImportOpen] = useState(false);
 
   const discoverMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -1909,14 +1893,32 @@ function ExternalApiSection({
             <Search className="h-4 w-4 mr-2" />Guided Discovery
           </Button>
         </div>
-        <p className="text-[12px] text-muted-foreground -mt-2">
-          <strong>Guided</strong> is recommended — you fill in one scenario in the pricer and we capture the call. <strong>Auto</strong> only works if the page fires its API call without any user input.
-        </p>
+        <div className="flex items-center justify-between -mt-2">
+          <p className="text-[12px] text-muted-foreground">
+            <strong>Guided</strong> is recommended — you fill in one scenario in the pricer and we capture the call. <strong>Auto</strong> only works if the page fires its API call without any user input.
+          </p>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setImportOpen(true)}
+            className="text-[12px]"
+            data-testid="button-import-captured-map"
+          >
+            <Upload className="h-3.5 w-3.5 mr-1" />Import captured JSON
+          </Button>
+        </div>
         <NqxGuidedDiscoveryDialog
           open={guidedOpen}
           onOpenChange={setGuidedOpen}
           pricerUrl={apiUrl.trim()}
-          onComplete={(data) => applyDiscoveryResult(data as { schema: any; suggested: any })}
+        />
+        <NqxImportCapturedMapDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onApply={(cfg) => {
+            setApiConfig(cfg);
+            setApiTestResult(null);
+          }}
         />
         {apiConfig && (
           <div className="flex items-center gap-2 text-[13px] text-green-700">
