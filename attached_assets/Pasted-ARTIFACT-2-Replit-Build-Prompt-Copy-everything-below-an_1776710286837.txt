@@ -1,0 +1,150 @@
+ARTIFACT 2: Replit Build Prompt
+Copy everything below and give it to your Replit agent.
+
+I'm building a Communications Automations feature for Lendry.AI, our commercial real estate loan origination SaaS. This is a major module. Before writing any code, read this entire spec, ask clarifying questions if anything is ambiguous, and then propose a phased build order that I approve before you start.
+Feature summary
+Lenders on Lendry configure multi-step messaging automations that send to brokers and borrowers across email, in-app, and SMS (SMS is new — Twilio integration). Automations have triggers (event- or time-based), sequential nodes (send, wait, branch), and exit conditions. Templates support merge tags that evaluate live data at send time. Full opt-out and audit compliance is required.
+Actors and permissions
+
+Lender: full CRUD on automations, templates, segments. Configures all sends.
+Broker: receives lender-sent comms. Optionally cc'd/notified when borrower-directed comms fire (controlled by notify_broker_on_send per automation).
+Borrower: receives lender-sent comms. Cannot configure anything.
+Admin (Sphinx/Lendry internal): monitoring, compliance, force-stop automations.
+
+Data model (propose schema, wait for my approval before migrating)
+I want to review the full Postgres/Prisma schema before you create migrations. Draft tables for:
+
+channels — channel configuration (email SMTP config, Twilio number(s), in-app settings).
+templates — per-channel, versioned, with body, subject (email only), created_at, version, supersedes_id.
+merge_tags — registry of available tags (key, description, resolver_fn_name, channel_formatting_rules). Keep this as seed data, not user-editable.
+automations — name, owner_lender_id, status (draft/active/paused/archived), trigger_config (JSONB), exit_conditions (JSONB), notify_broker_on_send (bool), max_duration_days, created_at.
+automation_nodes — ordered children of an automation. Fields: automation_id, order, type (send/wait/branch_engagement/branch_loan_state), config (JSONB — varies per type).
+segments — name, owner_lender_id, filter_config (JSONB).
+automation_runs — one per (automation, triggering entity). Fields: automation_id, subject_type (loan/broker/borrower), subject_id, started_at, current_node_id, status (running/completed/exited/failed), exit_reason.
+scheduled_node_executions — queue table. run_id, node_id, scheduled_for, status (pending/executing/done/failed), attempts. This is what the worker polls.
+send_log — immutable. One row per send attempt. run_id (nullable — manual sends allowed), node_id (nullable), channel, template_id, template_version, recipient_type, recipient_id, recipient_contact_value (the actual email/phone), resolved_body, resolved_subject, resolved_merge_tags (JSONB), status (sent/skipped/failed/suppressed), failure_reason, delivery_events (JSONB array — opens, clicks, replies), sent_at.
+opt_outs — contact_value (email or phone), channel, opted_out_at, source (stop_keyword/unsubscribe_link/manual/admin), recipient_id (nullable).
+consent_records — recipient_id, channel, consented_at, source (onboarding_form/manual/import), consent_text (captured copy of what they agreed to).
+
+Propose the full schema first. I'll review before you create migrations. Think carefully about indexes — scheduled_node_executions especially needs to be fast to poll.
+Core subsystems to build
+1. Trigger system
+Triggers live in automations.trigger_config. Support these types:
+
+Event-based: { type: "event", event_name: "loan.status_changed", filter: { to_status: "submitted" } }. Requires your codebase to emit these events. If the event bus doesn't exist yet, build it — use a simple in-process EventEmitter pattern, with all domain events (loan status changes, document uploads, etc.) published to one bus. Automations subscribe at config time.
+Time-based absolute: { type: "time_absolute", at: "2026-05-01T14:00:00Z" }.
+Time-based recurring: { type: "time_recurring", interval: { unit: "days", value: 7 }, anchor_field: "loan.submitted_at" }. Fires every N units after anchor.
+Time-based relative: { type: "time_relative", offset: { unit: "days", value: -3 }, anchor_field: "loan.estimated_close_date" }. Fires 3 days before close.
+Manual: { type: "manual" }. Started via UI button, passes subject_id explicitly.
+
+When a trigger fires, create an automation_run and schedule the first node.
+2. Node execution engine
+A background worker polls scheduled_node_executions every minute for rows where scheduled_for <= now() and status = 'pending'. For each:
+
+Lock the row (SELECT FOR UPDATE).
+Load the automation run, check exit conditions — if any met, mark run as exited and stop.
+Check opt-out status for the recipient on the relevant channel. If opted out, log as "skipped: opt-out" in send_log and advance to next node.
+Execute node based on type:
+
+Send: resolve merge tags, dispatch via channel adapter, log to send_log.
+Wait: reschedule next node for now() + wait_duration, respecting SMS quiet hours (push to next 8am local if needed).
+Branch (engagement): check send_log for previous send's engagement events within the configured window. Route to true/false branch.
+Branch (loan state): evaluate configured condition against current loan data. Route accordingly.
+
+
+Schedule the next node based on branch outcome or linear order.
+Handle errors with exponential backoff, max 3 retries, then fail the run and alert the lender.
+
+Use a job runner appropriate to our Replit setup — if we don't have one, use a simple setInterval polling loop with row-level locking for v1. Not BullMQ or Redis unless already present in the stack. Confirm what we have before picking.
+3. Merge tag resolver
+Build a resolver service with a registry of tag handlers. Each tag has a key (e.g. loan.missing_documents) and a resolver function that takes (context: { recipient, loan, lender, broker, automation_run }) and returns a string.
+
+Tags must be channel-aware: when resolving loan.missing_documents for SMS, return a comma-separated string; for email, return an HTML <ul>; for empty lists, return "" (and the template rendering layer must handle empty-line collapse gracefully).
+Resolver must be pure and fast — no network calls during render. Prefetch all needed data before rendering.
+Add a "preview" endpoint the UI can call with a sample context so the lender can see their template rendered with real data before activating an automation.
+
+Seed the initial tag registry with at minimum:
+
+recipient.first_name, recipient.last_name, recipient.full_name
+lender.company_name, lender.contact_name, lender.phone
+broker.company_name, broker.contact_name
+loan.id, loan.amount, loan.property_address, loan.current_stage, loan.estimated_close_date, loan.submitted_at
+loan.accepted_documents (list), loan.missing_documents (list), loan.pending_tasks (list)
+
+4. SMS / Twilio integration
+
+Provision support for one Twilio number per lender (lender_id FK on the phone number record). Multi-number support deferred to v2.
+Outbound send uses Twilio's Messages API. Capture message SID for reconciliation.
+Inbound webhook endpoint for delivery status + inbound messages. Map STOP/HELP keywords to opt-out + auto-response.
+Enforce quiet hours: never send SMS before 8:00am or after 9:00pm recipient-local-time (recipient timezone from their profile; default to lender's timezone if missing). Reschedule to next available window.
+Character counter in the template editor: live count + segment count (>160 chars = multi-segment, cost implication).
+Do NOT attempt 10DLC registration programmatically — that's an ops task I'm handling. But DO build the feature to respect a sms_enabled flag on the lender record that only flips true once I confirm their registration is approved. Until then, SMS templates can be drafted but not activated.
+
+5. Opt-out enforcement
+
+Central OptOutService with isOptedOut(recipient_id, channel) method.
+Every send pathway (automation, manual batch, manual 1:1) must call this before dispatch. No exceptions.
+Opt-out sources: SMS STOP keyword webhook, email unsubscribe link click, in-app toggle, admin manual entry.
+Opt-outs are immediate — no grace period, no "send in-flight messages anyway."
+Expose opt-out management in the admin UI.
+
+6. Segments service
+Segments are stored filters that compile to SQL queries at execution time. For v1, support filter types:
+
+Role filter: { role: "broker" | "borrower" | "lender" }
+Activity filter: { activity: "submitted_deal_in_last_n_days", n: 30 }
+Loan state filter: { loan_status_in: ["underwriting", "approved"] }
+Stalled filter: { no_activity_for_days: 14 }
+Close-date filter: { closing_within_days: 7 }
+
+Combine via simple AND only in v1. OR/NOT deferred.
+Provide a "test segment" endpoint that returns count + preview of 10 matching recipients before the lender saves.
+7. UI (form-based, NOT drag-and-drop)
+Build these screens:
+
+Automations list — all automations, status, next run time, recipient count, quick pause/activate.
+Automation editor — form-based. Top section: name, status, trigger config, exit conditions. Below: ordered list of nodes with "Add Node" button between each. Each node is an expandable form appropriate to its type. Drag to reorder (simple vertical list reorder, NOT canvas). Validation before save.
+Template library — list, create, edit, version history, preview.
+Template editor — per channel. Rich editor for email, plain textarea for SMS with char counter, simpler editor for in-app. Merge tag picker (searchable dropdown that inserts at cursor). Preview pane with sample data.
+Segments — list, create, edit. Filter builder is a form, not a query builder UI — dropdowns for filter type + inputs.
+Send Log — paginated, filterable by automation, recipient, channel, status, date range. Exportable to CSV.
+Opt-out management — list, manual add/remove, shows source.
+Manual batch send — select segment, select template, preview, send-now or schedule. Fully separate from automations; uses same channel/template/opt-out infrastructure.
+
+8. Phased build order (propose this back to me for approval before coding)
+I suggest the following phases. Propose a refined version:
+
+Phase 1: Foundation. Schema, channels config (incl. Twilio setup scaffolding with sms_enabled: false), templates, merge tag resolver, send log, opt-out service, manual 1:1 send across all three channels. NO automations yet. Goal: can send a templated email, in-app, or SMS (if enabled) to one recipient with merge tags resolved and opt-out respected.
+Phase 2: Manual batch send. Add segments. Add "send to segment now" flow. Still no automations.
+Phase 3: Automations — linear. Add automations, trigger system, node execution engine, but only Send and Wait node types. Single-channel per automation. Exit conditions.
+Phase 4: Automations — branching. Add branch_engagement and branch_loan_state node types.
+Phase 5: Automations — multichannel. Allow mixed channels within one automation.
+Phase 6: Polish. Preview, testing tools, CSV export, admin monitoring.
+
+9. Non-negotiables
+
+Do NOT build visual drag-and-drop. Form-based only.
+Do NOT build per-recipient personalization beyond merge tags.
+Do NOT build recipient-attribute branching (no "if FICO > 720" type conditions). Branching is engagement OR loan state only.
+Do NOT activate SMS for any lender without lender.sms_enabled = true, which is gated on 10DLC approval I'll handle manually.
+Every send MUST go through opt-out check. Every send MUST be logged to send_log. No exceptions.
+
+10. What I want you to do next
+
+Confirm you've read and understand the spec.
+Ask any clarifying questions about ambiguities.
+Propose the full Prisma schema for my review.
+Propose your refined phased build order.
+Wait for my approval on both before writing any feature code. You can scaffold the module's directory structure in the meantime.
+
+Do not start Phase 1 implementation until I explicitly say "approved, start Phase 1."
+
+How to actually use this
+
+Save the Product Brief somewhere you can reference (Notion page, /docs/communications-automations.md in your repo).
+Hand the Replit Build Prompt to your Replit agent.
+The agent should come back with clarifying questions + a proposed schema + a proposed build order. Review carefully before approving — this is where bugs get caught cheaply.
+Approve Phase 1 only. Don't let the agent burn through all phases without checkpoint reviews. The non-negotiables at the bottom are there to keep it honest.
+
+One last thing, Carlos — this feature alone is probably 4-8 weeks of solid work for a single agent, even with good scaffolding. I know you said disregard time, but I want you to know that so you can plan around it. Don't let your NQX integration project languish while this one eats your calendar. Keep them in separate Replit projects or at minimum separate branches, and ship the NQX rate speedup first since it's nearly done.
+Want me to also draft the phase 1 sub-spec in more detail, or are you good with the main prompt as a starting point?
