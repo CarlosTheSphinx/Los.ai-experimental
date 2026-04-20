@@ -357,6 +357,19 @@ export async function buildLenderKnowledgePack(tenantId: number): Promise<string
     lines.push("");
   }
 
+  // ── Aggregate lending states across all active funds ───────────
+  const allStates = new Set<string>();
+  for (const f of tenantFunds) {
+    if (f.isActive && Array.isArray(f.allowedStates)) {
+      for (const s of f.allowedStates) allStates.add(s);
+    }
+  }
+  if (allStates.size > 0) {
+    lines.push("# LENDING STATES (union of all active funds)");
+    lines.push(Array.from(allStates).sort().join(", "));
+    lines.push("");
+  }
+
   // ── Funds ──────────────────────────────────────────────────────
   if (tenantFunds.length) {
     lines.push("# LENDING PARTNERS / FUNDS");

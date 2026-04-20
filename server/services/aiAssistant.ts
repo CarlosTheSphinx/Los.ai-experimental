@@ -683,7 +683,7 @@ export async function processAssistantMessage(
 
   // Build knowledge pack for lender context (non-blocking — falls back to empty string on error)
   let knowledgePack = "";
-  if (tenantId) {
+  if (tenantId != null) {
     try {
       knowledgePack = await buildLenderKnowledgePack(tenantId);
     } catch (err) {
