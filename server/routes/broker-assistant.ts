@@ -14,6 +14,7 @@ import { buildBrokerKnowledgePack } from "../services/brokerKnowledgeBase";
 const MODEL = "gpt-4o-mini";
 const MAX_USER_MESSAGES = 20;
 const MAX_USER_CHARS = 4000;
+const MAX_TOTAL_CHARS = 30000;
 // Broker-only by design. Other roles (including super_admin and lender) are
 // rejected because the assistant's content policy and prompt are tuned for
 // broker-safe disclosure only.
@@ -44,7 +45,7 @@ Your job is to help brokers understand Sphinx Capital's loan programs, eligibili
 GROUND RULES:
 - Only answer using the knowledge pack provided below. If the answer is not in the knowledge pack, say so plainly and suggest the broker contact their loan officer.
 - NEVER reveal information about other brokers, other brokers' deals, internal pricing rates, internal margins, or specific lender/fund names. Talk about programs in generic Sphinx Capital terms.
-- NEVER quote a specific interest rate or fee — pricing is generated separately by the pricing engine. If asked about rates, tell the broker to run a quote in the Quotes tab.
+- NEVER quote a specific interest rate, point, or fee. The knowledge pack may include indicative rate ranges for a program — you may share the range to set expectations, but always tell the broker to run a quote in the Quotes tab for actual pricing.
 - Keep responses concise and broker-friendly. Use bullet points when listing eligibility criteria.
 - If a question is unrelated to commercial lending, loan programs, or Sphinx Capital, politely redirect.
 
@@ -54,6 +55,10 @@ When you do not have enough information, respond with:
 export function registerBrokerAssistantRoutes(app: Express): void {
   app.get("/api/broker/assistant/config", authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
+      const role = req.user?.role || "";
+      if (!ALLOWED_ROLES.has(role)) {
+        return res.status(403).json({ error: "Broker assistant is only available to brokers" });
+      }
       const tenantId = req.user?.tenantId;
       if (!tenantId) return res.status(401).json({ error: "Not authenticated" });
       const setting = await storage.getSettingByKey("broker_chatbot_enabled", tenantId);
@@ -85,6 +90,10 @@ export function registerBrokerAssistantRoutes(app: Express): void {
       const cleaned = parseMessages(req.body?.messages);
       if (!cleaned.length || cleaned[cleaned.length - 1].role !== "user") {
         return res.status(400).json({ error: "Last message must come from the user" });
+      }
+      const totalChars = cleaned.reduce((n, m) => n + m.content.length, 0);
+      if (totalChars > MAX_TOTAL_CHARS) {
+        return res.status(413).json({ error: "Conversation is too long. Please start a new chat." });
       }
 
       const apiKey = await getOpenAIApiKey();
