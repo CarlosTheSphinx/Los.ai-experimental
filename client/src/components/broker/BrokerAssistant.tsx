@@ -72,8 +72,11 @@ export function BrokerAssistant() {
       const res = await apiRequest("POST", "/api/broker/assistant/chat", { messages: next });
       const data = await res.json();
       setMessages([...next, { role: "assistant", content: data.content || "" }]);
-    } catch (err: any) {
-      const detail = err?.message || "Failed to reach the assistant. Please try again.";
+    } catch (err: unknown) {
+      const detail =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to reach the assistant. Please try again.";
       toast({ title: "Assistant error", description: detail, variant: "destructive" });
       setMessages(next);
     } finally {

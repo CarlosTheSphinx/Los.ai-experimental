@@ -113,13 +113,18 @@ export function registerBrokerAssistantRoutes(app: Express): void {
         "I don't have that detail in my knowledge base — please contact your loan officer at Sphinx Capital for the most accurate answer.";
 
       res.json({ content });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("broker assistant chat error", error);
-      const status = error?.status === 429 ? 429 : 500;
+      const errStatus =
+        typeof error === "object" && error !== null && "status" in error
+          ? (error as { status?: unknown }).status
+          : undefined;
+      const status = errStatus === 429 ? 429 : 500;
       res.status(status).json({
-        error: status === 429
-          ? "AI is temporarily over its limit. Please try again in a moment."
-          : "Failed to get a response. Please try again.",
+        error:
+          status === 429
+            ? "AI is temporarily over its limit. Please try again in a moment."
+            : "Failed to get a response. Please try again.",
       });
     }
   });
