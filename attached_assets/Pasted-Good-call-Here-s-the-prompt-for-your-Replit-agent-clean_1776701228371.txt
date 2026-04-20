@@ -1,0 +1,103 @@
+Good call. Here's the prompt for your Replit agent — clean and self-contained.
+One quick clarification on terminology: you said "bookmarklet" but you confirmed earlier that b-diya's Content Security Policy blocks bookmarklets. So what we actually want is a pasteable console script that behaves like a bookmarklet (one-shot paste, does its thing). I'll frame it that way in the prompt. If your Replit agent still calls it a bookmarklet, that's fine — the important thing is how it's delivered.
+
+What to paste to your Replit agent
+
+Build me a pasteable console script that runs in the b-diya NQX pricer's DevTools console. It should extract the option IDs for every dropdown on the page by reading React's internal state, without requiring the user to click Calculate Rate even once.
+Context — read this carefully:
+
+Site: https://www.b-diya.nqxpricer.com/69d6e0fc844f4418eb40faae
+Stack: Next.js + Material-UI (MUI). All dropdowns are MUI Select components. Dropdown options render as <li role="menuitem"> inside a <ul role="listbox"> portal at the bottom of the body (check MuiPopover-root, MuiMenu-root).
+The site blocks bookmarklets via CSP but allows pasted console input. Deliver the script as a single paste-and-press-Enter snippet. Assume the user has already typed allow pasting in the console.
+Option IDs are NOT in any HTML attribute of the <li> elements. They only exist in React's internal state (the MenuItem's value prop, which becomes a prop on the React fiber node attached to each <li>).
+
+What the script must do:
+
+Install a floating overlay in the top-right corner of the page with:
+
+A status line ("Ready — open a dropdown to capture its options")
+A running list of captured dropdowns: "FICO: 8 options captured", "LTV: 10 options captured", etc.
+A big "Export JSON" button
+A small "Reset" button
+Style it so it stays visible over the pricer UI (position: fixed; z-index: 999999; background: #1a1a1a; color: gold; padding: 16px; border-radius: 8px; font-family: monospace; max-width: 400px;)
+
+
+Watch for MUI dropdowns opening. Use a MutationObserver on document.body watching for added nodes. When a ul[role="listbox"] appears in the DOM (which happens when any MUI Select dropdown opens):
+
+Find every li[role="menuitem"] child.
+For each <li>, read:
+
+The visible label: li.innerText.trim().
+The option ID by walking the React fiber. Find the property on the <li> DOM element starting with __reactProps$ or __reactFiber$ (property names are minified but follow these prefixes). From the fiber/props, the option's value prop is what we want — that's the ID.
+
+
+Also identify which field this dropdown belongs to by reading the aria-labelledby attribute on the <ul>. That ID points to a <label> element elsewhere in the DOM; read its innerText to get the human-readable field name (e.g. "FICO Score", "LTV", "Property Type").
+Try multiple extraction strategies in order (be defensive — React internals vary):
+
+Strategy A: Read li.__reactProps$<hash>.value directly.
+Strategy B: Walk the React fiber: find __reactFiber$<hash> on the <li>, then traverse .memoizedProps.value or .return.memoizedProps.value.
+Strategy C: Check if MUI stored the value on a parent element's data-value attribute.
+Strategy D (last resort): If all above fail for a given dropdown, log a clear warning like [Lendry] Could not extract IDs for field "FICO" — React fiber structure unexpected. Paste window.__lendryDebug into chat for manual extraction. and save the raw fiber object to window.__lendryDebug for debugging.
+
+
+
+
+Store captures in window.__lendryMap in this shape, and mirror to sessionStorage.lendryMap on every update (so a page refresh doesn't lose progress):
+
+js   {
+     pricerId: "69d6e0fc844f4418eb40faae",
+     productId: "69d6e0fcc15353ac14e79477",
+     capturedAt: "<ISO timestamp>",
+     fields: {
+       "FICO Score": {
+         options: {
+           "720-739": "<optionId>",
+           "740-759": "<optionId>",
+           ...
+         }
+       },
+       "LTV": { options: { ... } },
+       ...
+     }
+   }
+
+Deduplicate. If the same dropdown is opened twice, don't create duplicate entries — merge cleanly. Use the field label as the key.
+On script load, if sessionStorage.lendryMap exists, restore it so the user can resume after a refresh.
+Export button triggers a browser download of nqx_field_map.json containing window.__lendryMap. Use the standard Blob + URL.createObjectURL + temporary <a download> click technique.
+Reset button clears window.__lendryMap and sessionStorage.lendryMap after a confirm() prompt.
+Logging: Every capture should console.log("[Lendry] Captured FICO Score: 8 options", {...}) so the user can verify in the console as they work.
+Note on numeric fields: This script only handles dropdowns (things that open a listbox). Loan Amount and Est. Value / Purchase Price are plain numeric inputs — they do NOT need option mapping, just field IDs. The field IDs for numeric inputs are already known from the baseline payload I previously captured:
+
+69d6e0fcc15353ac14e79480 → Loan Amount
+69d6e0fcc15353ac14e7947f → Est. Value / Purchase Price
+Include these in the exported JSON under a separate numericFields key, pre-populated.
+
+
+
+Deliverable format:
+Return the script as a single code block, minified or unminified (user's choice — I prefer readable). Include a short README section at the top of your reply with:
+
+Exact steps the user will follow (open pricer → F12 → Console → allow pasting → paste → Enter → click through dropdowns → Export)
+What the user should see in the overlay if it's working correctly
+What to send back to you if any extraction warnings appear
+
+Do NOT include any code that submits the form, reads the calculate_rate API, or touches any network calls. This script is purely a DOM/React-state reader.
+Also: Alongside the console script, draft (but don't finalize yet) the production getNqxRate(userInputs) function that will consume nqx_field_map.json. Show me the signature and a skeleton so I know you've thought through how the mapping will be used downstream. I'll review it and we'll flesh it out once I've run the discovery script and handed you the real JSON.
+
+What you'll do after the agent delivers
+
+Open b-diya in Chrome.
+F12 → Console → allow pasting → Enter.
+Paste the script → Enter. You should see a gold overlay appear top-right.
+Click each dropdown one by one. Just open them — you don't need to select anything. The overlay should count options as it captures them.
+Once all ~9 dropdowns have been opened and counted, click Export JSON.
+Drop the downloaded file into your Replit project at data/nqx_field_map.json.
+Tell your agent: "Here's the field map. Now finalize getNqxRate() per your skeleton, wire it in behind the USE_NQX_API flag, and test with the baseline inputs — it should return rate 6.66."
+
+Likely failure modes to watch for
+
+The overlay doesn't appear after paste. CSP issue. Check console for errors — might need to strip inline styles and use a classList approach, or the user might need to disable CSP via a Chrome extension for that tab.
+Options captured but IDs are undefined. React fiber structure didn't match expectations. The agent should have built in the four extraction strategies; if all four fail, window.__lendryDebug will have a raw fiber you can send back to me and we'll figure out the right path.
+Some dropdowns don't get captured. Cascading fields — e.g. "Cash Out %" only appears if Loan Purpose = Refinance. You may need to change certain fields to reveal hidden dropdowns, then open those too. The overlay will show which fields got captured; if a dropdown from the form is missing from the overlay count, go reveal it and open it.
+
+Hand the prompt to your agent and let me know when you have the script ready to run. I'm here for the JSON review.
