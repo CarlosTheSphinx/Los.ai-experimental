@@ -182,8 +182,8 @@ export function mapQuoteToPandaTokens(quote: SavedQuote): PandaDocToken[] {
   addToken("loan_term", loanData.loanTerm);
   addToken("interest_only", loanData.interestOnly);
   addToken("prepayment_penalty", loanData.prepaymentPenalty);
-  addToken("fico", loanData.ficoScore || loanData.fico);
-  addToken("fico_score", loanData.ficoScore || loanData.fico);
+  addToken("fico", loanData.ficoScore || loanData.fico || (loanData as any).statedFicoScore);
+  addToken("fico_score", loanData.ficoScore || loanData.fico || (loanData as any).statedFicoScore);
   addToken("experience_tier", loanData.experienceTier);
   addToken("completed_projects", loanData.completedProjects);
   addToken("borrowing_entity_type", loanData.borrowingEntityType);
