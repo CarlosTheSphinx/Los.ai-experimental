@@ -6,6 +6,7 @@ import {
 import { and, eq, asc, sql, isNotNull, lte, gt } from 'drizzle-orm';
 import { sendCommsMessage } from './sendService';
 import { isOptedOut } from './optOutService';
+import { storage } from '../storage';
 
 /**
  * Automation execution worker — drains pending rows from
@@ -50,6 +51,55 @@ type ExitConditions = {
   loanStatusEquals?: string[];
   exitOnOptOut?: boolean;
 };
+
+/**
+ * Compute the next allowed dispatch time for SMS sends. Returns null if the
+ * current time is outside any quiet-hours window (i.e. dispatch may proceed).
+ *
+ * Reads two tenant settings (UTC times, "HH:MM"):
+ *   comms_sms_quiet_hours_start  (default "21:00")
+ *   comms_sms_quiet_hours_end    (default "08:00")
+ * If start > end the window wraps midnight (e.g. 21:00→08:00 spans the night).
+ * If either setting is the literal "off", quiet hours are disabled.
+ */
+async function computeSmsQuietHoursDefer(tenantId: number, now: Date): Promise<Date | null> {
+  try {
+    const [startSetting, endSetting] = await Promise.all([
+      storage.getSettingByKey('comms_sms_quiet_hours_start', tenantId),
+      storage.getSettingByKey('comms_sms_quiet_hours_end', tenantId),
+    ]);
+    const startStr = (startSetting?.settingValue ?? '21:00').trim();
+    const endStr = (endSetting?.settingValue ?? '08:00').trim();
+    if (startStr.toLowerCase() === 'off' || endStr.toLowerCase() === 'off') return null;
+    const parse = (s: string): number | null => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+      if (!m) return null;
+      const h = parseInt(m[1], 10), mn = parseInt(m[2], 10);
+      if (h < 0 || h > 23 || mn < 0 || mn > 59) return null;
+      return h * 60 + mn;
+    };
+    const startMin = parse(startStr);
+    const endMin = parse(endStr);
+    if (startMin == null || endMin == null) return null;
+    const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const inWindow = startMin === endMin
+      ? false
+      : startMin < endMin
+        ? (nowMin >= startMin && nowMin < endMin)
+        : (nowMin >= startMin || nowMin < endMin); // wraps midnight
+    if (!inWindow) return null;
+    // Defer to today's endMin (UTC), or tomorrow's if endMin already passed today.
+    const defer = new Date(now);
+    defer.setUTCSeconds(0, 0);
+    defer.setUTCHours(Math.floor(endMin / 60), endMin % 60);
+    if (defer.getTime() <= now.getTime()) defer.setUTCDate(defer.getUTCDate() + 1);
+    return defer;
+  } catch {
+    // On any config read failure, prefer to allow the send (fail-open) rather
+    // than indefinitely deferring.
+    return null;
+  }
+}
 
 async function reclaimStaleLocks(): Promise<void> {
   const cutoff = new Date(Date.now() - STALE_LOCK_MS);
@@ -247,6 +297,23 @@ async function processOne(rowId: number): Promise<void> {
       dispatchOk = false;
       dispatchError = 'Send node missing templateId or recipientType';
     } else {
+      // SMS quiet hours — defer dispatch (don't fail) when within the
+      // tenant's configured no-send window so we don't text people overnight.
+      // Email and in-app are not subject to quiet hours.
+      if (automation.defaultChannel === 'sms') {
+        const deferUntil = await computeSmsQuietHoursDefer(automation.tenantId, new Date());
+        if (deferUntil) {
+          await db.update(commsScheduledExecutions)
+            .set({
+              scheduledFor: deferUntil,
+              attempts: Math.max(0, (row.attempts ?? 1) - 1), // don't burn an attempt on a deferral
+              lastError: 'deferred:sms_quiet_hours',
+            })
+            .where(eq(commsScheduledExecutions.id, row.id));
+          return;
+        }
+      }
+
       // Idempotency guard: if a send_log entry already exists for this
       // run/node, the previous attempt actually delivered (or recorded an
       // outcome) before the row finalize crashed. Skip the resend and just

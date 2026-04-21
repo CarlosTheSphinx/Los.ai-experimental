@@ -111,6 +111,16 @@ export async function startManualRun(params: {
     .where(and(eq(commsAutomations.id, params.automationId), eq(commsAutomations.tenantId, params.tenantId)))
     .limit(1);
   if (!automation) return { runId: null, error: 'Automation not found' };
+  // Manual runs require an active automation with a manual trigger — otherwise
+  // we'd produce ghost runs against draft/paused/archived automations or hijack
+  // event/time-based ones.
+  if (automation.status !== 'active') {
+    return { runId: null, error: `Automation must be active to start a run (current: ${automation.status})` };
+  }
+  const tcfg = automation.triggerConfig as { kind?: string } | null;
+  if (!tcfg || tcfg.kind !== 'manual') {
+    return { runId: null, error: 'Only automations with a manual trigger can be started this way' };
+  }
   const runId = await startRun(params);
   if (!runId) return { runId: null, error: 'Automation has no nodes' };
   return { runId };
