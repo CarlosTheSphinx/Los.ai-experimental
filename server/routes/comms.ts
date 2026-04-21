@@ -1198,6 +1198,18 @@ export function registerCommsRoutes(
         .limit(1);
       if (!existing) return res.status(404).json({ error: 'Automation not found' });
       unwireAutomation(id);
+      // Explicitly exit any in-flight runs so they don't stay 'running' forever
+      // after their queue rows drain. Mirror the pause flow's queue cleanup.
+      await db.update(commsAutomationRuns)
+        .set({ status: 'exited', exitReason: 'automation_archived' })
+        .where(and(eq(commsAutomationRuns.automationId, id), eq(commsAutomationRuns.status, 'running')));
+      await db.update(commsScheduledExecutions)
+        .set({ status: 'done', executedAt: new Date(), lastError: 'exited:automation_archived' })
+        .where(and(
+          isNotNull(commsScheduledExecutions.runId),
+          eq(commsScheduledExecutions.status, 'pending'),
+          sql`${commsScheduledExecutions.runId} IN (SELECT id FROM comms_automation_runs WHERE automation_id = ${id})`,
+        ));
       await db.update(commsAutomations).set({ status: 'archived', updatedAt: new Date() })
         .where(eq(commsAutomations.id, id));
       res.json({ ok: true });

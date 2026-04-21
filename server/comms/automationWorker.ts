@@ -303,10 +303,15 @@ async function processOne(rowId: number): Promise<void> {
       if (automation.defaultChannel === 'sms') {
         const deferUntil = await computeSmsQuietHoursDefer(automation.tenantId, new Date());
         if (deferUntil) {
+          // Release the lock and re-queue immediately at the deferred time so
+          // the next drain picks it up on schedule (don't wait for stale-lock
+          // reclamation). Don't burn an attempt on a deferral.
           await db.update(commsScheduledExecutions)
             .set({
               scheduledFor: deferUntil,
-              attempts: Math.max(0, (row.attempts ?? 1) - 1), // don't burn an attempt on a deferral
+              status: 'pending',
+              lockedAt: null,
+              attempts: Math.max(0, (row.attempts ?? 1) - 1),
               lastError: 'deferred:sms_quiet_hours',
             })
             .where(eq(commsScheduledExecutions.id, row.id));
