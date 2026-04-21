@@ -19,6 +19,7 @@ import { Calculator, Zap, CheckCircle2, XCircle, Loader2, Sparkles, RotateCcw } 
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { Redirect } from "wouter";
 
 interface ProgramWithPricing {
   id: number;
@@ -87,6 +88,11 @@ export default function Home() {
   // If user is a borrower, show the borrower dashboard instead
   if (user?.role === 'borrower') {
     return <BorrowerDashboard />;
+  }
+
+  // Brokers should land on the quotes list, not the pricing engine
+  if (user?.role === 'broker') {
+    return <Redirect to="/quotes" />;
   }
   
   // Program-driven loan product type
