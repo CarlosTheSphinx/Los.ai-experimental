@@ -1807,6 +1807,8 @@ function ExternalApiSection({
   const [guidedOpen, setGuidedOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
+  const quoteOnlyVariables = quoteFormVariables.filter(qv => !INTERNAL_FIELD_KEYS.some(ik => ik.key === qv.key));
+
   const discoverMutation = useMutation({
     mutationFn: async (url: string) => {
       const res = await apiRequest('POST', '/api/admin/programs/discover-api-schema', { url });
@@ -2169,12 +2171,10 @@ function ExternalApiSection({
                           </button>
                         ))}
                       </div>
-                      {quoteFormVariables.filter(qv => !INTERNAL_FIELD_KEYS.some(ik => ik.key === qv.key)).length > 0 && (
+                      {quoteOnlyVariables.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/40">
                           <span className="text-[11px] text-muted-foreground mr-1 self-center">From Quote Form:</span>
-                          {quoteFormVariables
-                            .filter(qv => !INTERNAL_FIELD_KEYS.some(ik => ik.key === qv.key))
-                            .map(v => (
+                          {quoteOnlyVariables.map(v => (
                               <button
                                 type="button"
                                 key={v.key}
