@@ -1,0 +1,31 @@
+Comms Phase 5 — Multichannel Automations
+What & Why
+Phases 3 and 4 lock an entire automation to a single channel. Phase 5 relaxes that: each Send node picks its own channel and template, so a single sequence can email, then SMS three days later, then drop an in-app notification — while keeping channel-specific rules (opt-outs, SMS quiet hours, character limits) intact per node.
+
+Done looks like
+The automation editor no longer asks for a top-level channel; each Send node has its own "Channel + Template" selector, and the template dropdown filters to templates matching the chosen channel.
+The Branch on Engagement node lets the lender choose which prior Send node it references regardless of channel, and the engine evaluates engagement using the channel-appropriate event types (e.g. "replied" only valid for SMS / email, "viewed" for in-app).
+Opt-out and quiet-hour checks happen per node, per channel, so a borrower opted out of SMS still receives the email step; the Send Log records the per-node skip reason.
+The list view shows a small icon strip per automation summarising which channels it touches.
+A pre-flight check on activation warns (but does not block) if the automation references a channel that is currently inactive or, for SMS, blocked by sms_enabled = false.
+Out of scope
+Picking different recipients per node (still one subject per run).
+Channel fallback ("if SMS fails, send email instead") — separate follow-up.
+Per-node language / locale selection.
+Steps
+Schema and API adjustments — Move channel selection from the automation level to the Send node config, migrate any existing automations to populate the per-node channel from the old top-level field, and update the automations API + validators accordingly.
+
+Engine multichannel handling — Update the node worker so each Send node dispatches via the channel named in its own config and independently evaluates opt-outs, quiet hours, and SMS-enabled gating, without aborting the whole run when one channel is skipped.
+
+Editor UI — Replace the automation-level channel picker with a per-node channel + template combo, filter templates by channel, and show a channel icon next to each node row in the list. Update the Branch on Engagement field picker to expose Send nodes regardless of channel.
+
+Activation pre-flight & summaries — On activate, run a pre-flight that warns about inactive channels or SMS-blocked nodes without blocking. Update the automation list view to show the distinct channel icons used by each automation.
+
+Relevant files
+client/src/pages/admin/automations.tsx
+server/routes/comms.ts
+server/comms/sendService.ts
+shared/schema.ts
+Dependencies
+
+Comms Phase 4 — Branching Nodes
