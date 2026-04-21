@@ -5,6 +5,7 @@ import {
 } from '@shared/schema';
 import { and, eq, asc, sql, isNotNull, lte, gt } from 'drizzle-orm';
 import { sendCommsMessage } from './sendService';
+import { isOptedOut } from './optOutService';
 
 /**
  * Automation execution worker — drains pending rows from
@@ -154,7 +155,7 @@ async function processOne(rowId: number): Promise<void> {
     return;
   }
 
-  // Exit conditions — only meaningful for loan subjects
+  // Exit conditions — loan-status / max-duration only meaningful for loan subjects.
   if (run.subjectType === 'loan') {
     const exitReason = await evaluateExitConditions({
       exit: (automation.exitConditions ?? null) as ExitConditions | null,
@@ -170,6 +171,57 @@ async function processOne(rowId: number): Promise<void> {
         .set({ status: 'done', executedAt: new Date(), lastError: `exited:${exitReason}` })
         .where(eq(commsScheduledExecutions.id, row.id));
       return;
+    }
+  }
+
+  // Opt-out short-circuit: re-check on EVERY tick (including wait nodes) so a
+  // recipient who opts out mid-sequence exits the run immediately instead of
+  // waiting until the next send dispatch. The recipient depends on the next
+  // node — but for runs whose only known "person" is the subject itself
+  // (broker / borrower subjects), we can resolve right away. For loan
+  // subjects we resolve via the upcoming send node's recipientType; for wait
+  // nodes we look ahead to the next send to know whom to check.
+  {
+    const exit = (automation.exitConditions ?? {}) as ExitConditions;
+    if (exit.exitOnOptOut) {
+      let checkUserId: number | null = null;
+      let recipientType: 'broker' | 'borrower' | null = null;
+
+      if (run.subjectType === 'broker' || run.subjectType === 'borrower') {
+        checkUserId = run.subjectId;
+        recipientType = run.subjectType;
+      } else if (run.subjectType === 'loan') {
+        // Find the next send node at or after this position; use its recipientType.
+        const upcoming = await db.select().from(commsAutomationNodes)
+          .where(and(
+            eq(commsAutomationNodes.automationId, automation.id),
+            sql`${commsAutomationNodes.orderIndex} >= ${node.orderIndex}`,
+            eq(commsAutomationNodes.type, 'send'),
+          ))
+          .orderBy(asc(commsAutomationNodes.orderIndex))
+          .limit(1);
+        const nextSend = upcoming[0];
+        if (nextSend) {
+          const cfg = (nextSend.config ?? {}) as Partial<SendNodeConfig>;
+          if (cfg.recipientType === 'borrower' || cfg.recipientType === 'broker') {
+            recipientType = cfg.recipientType;
+            checkUserId = await resolveRecipientUserId(run.subjectId, cfg.recipientType, automation.tenantId);
+          }
+        }
+      }
+
+      if (checkUserId && recipientType) {
+        const channel = automation.defaultChannel as 'email' | 'sms' | 'in_app';
+        if (await isOptedOut(automation.tenantId, checkUserId, channel)) {
+          await db.update(commsAutomationRuns)
+            .set({ status: 'exited', exitReason: 'opted_out' })
+            .where(eq(commsAutomationRuns.id, run.id));
+          await db.update(commsScheduledExecutions)
+            .set({ status: 'done', executedAt: new Date(), lastError: 'exited:opted_out' })
+            .where(eq(commsScheduledExecutions.id, row.id));
+          return;
+        }
+      }
     }
   }
 

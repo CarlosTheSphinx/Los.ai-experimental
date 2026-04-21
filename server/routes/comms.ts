@@ -973,6 +973,61 @@ export function registerCommsRoutes(
     nodes: z.array(nodeSchema).optional(),
   });
 
+  /**
+   * Pre-save node validation. We refuse to persist invalid nodes so the editor
+   * surfaces problems immediately, instead of letting them slip through to
+   * activation time. Also enforces the single-channel rule against both the
+   * node's declared channel AND the underlying template's actual channel.
+   */
+  type NodeIn = z.infer<typeof nodeSchema>;
+  async function validateNodesForSave(
+    nodes: NodeIn[],
+    defaultChannel: 'email' | 'sms' | 'in_app',
+    tenantId: number,
+  ): Promise<string | null> {
+    const templateIds: number[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const cfg = (n.config ?? {}) as Record<string, unknown>;
+      if (n.type === 'send') {
+        if (!cfg.templateId || typeof cfg.templateId !== 'number') {
+          return `Send step #${i + 1} is missing a template`;
+        }
+        if (!cfg.recipientType || (cfg.recipientType !== 'borrower' && cfg.recipientType !== 'broker')) {
+          return `Send step #${i + 1} is missing a recipient`;
+        }
+        if (cfg.channel && cfg.channel !== defaultChannel) {
+          return `Send step #${i + 1} channel (${cfg.channel}) must match automation channel (${defaultChannel})`;
+        }
+        templateIds.push(cfg.templateId);
+      } else if (n.type === 'wait') {
+        const dm = cfg.durationMinutes;
+        if (typeof dm !== 'number' || dm < 1) {
+          return `Wait step #${i + 1} must have a duration of at least 1 minute`;
+        }
+      }
+    }
+    if (templateIds.length) {
+      const tpls = await db.select({ id: commsTemplates.id, channel: commsTemplates.channel, tenantId: commsTemplates.tenantId })
+        .from(commsTemplates)
+        .where(sql`${commsTemplates.id} = ANY(${templateIds})`);
+      const tplMap = new Map(tpls.map(t => [t.id, t]));
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n.type !== 'send') continue;
+        const tid = (n.config as Record<string, unknown>).templateId as number;
+        const tpl = tplMap.get(tid);
+        if (!tpl || tpl.tenantId !== tenantId) {
+          return `Send step #${i + 1} references a template not in your workspace`;
+        }
+        if (tpl.channel !== defaultChannel) {
+          return `Send step #${i + 1} template channel (${tpl.channel}) must match automation channel (${defaultChannel})`;
+        }
+      }
+    }
+    return null;
+  }
+
   app.get('/api/comms/automations', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const tenantId = requireTenantId(req, res);
@@ -1042,6 +1097,11 @@ export function registerCommsRoutes(
       const parsed = automationBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
+      if (parsed.data.nodes?.length) {
+        const nodeErr = await validateNodesForSave(parsed.data.nodes, parsed.data.defaultChannel, tenantId);
+        if (nodeErr) return res.status(400).json({ error: nodeErr });
+      }
+
       const [created] = await db.insert(commsAutomations).values({
         tenantId,
         name: parsed.data.name,
@@ -1082,6 +1142,11 @@ export function registerCommsRoutes(
 
       const parsed = automationBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      if (parsed.data.nodes?.length) {
+        const nodeErr = await validateNodesForSave(parsed.data.nodes, parsed.data.defaultChannel, tenantId);
+        if (nodeErr) return res.status(400).json({ error: nodeErr });
+      }
 
       // Editing an active automation rewires it after save
       const wasActive = existing.status === 'active';
