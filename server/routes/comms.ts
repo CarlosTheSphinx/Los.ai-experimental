@@ -1394,10 +1394,25 @@ export function registerCommsRoutes(
         nextMap.set(r.automation_id, r.next_run);
       }
 
+      // Distinct channels used by Send nodes in each automation (for list icon strip).
+      const channelRows = ids.length ? await db.execute(sql`
+        SELECT automation_id,
+               ARRAY_REMOVE(ARRAY_AGG(DISTINCT config->>'channel'), NULL) AS channels
+          FROM comms_automation_nodes
+         WHERE type = 'send'
+           AND automation_id = ANY(${sql.raw(`ARRAY[${ids.join(',')}]::int[]`)})
+         GROUP BY automation_id
+      `) : { rows: [] as Array<{ automation_id: number; channels: string[] }> };
+      const channelMap = new Map<number, string[]>();
+      for (const r of (channelRows.rows ?? []) as Array<{ automation_id: number; channels: string[] }>) {
+        channelMap.set(r.automation_id, r.channels ?? []);
+      }
+
       res.json(list.map(a => ({
         ...a,
         nodeCount: countMap.get(a.id) ?? 0,
         nextRunAt: nextMap.get(a.id) ?? null,
+        channels: channelMap.get(a.id) ?? [],
       })));
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
@@ -1589,10 +1604,43 @@ export function registerCommsRoutes(
       );
       if (nodeErr) return res.status(400).json({ error: nodeErr });
 
+      // Pre-flight: warn (but don't block) when used channels are inactive or SMS-disabled.
+      const warnings: string[] = [];
+      const sendNodes = nodeRows.filter(n => n.type === 'send');
+      const usedChannels = [...new Set(sendNodes.map(n => {
+        const cfg = (n.config ?? {}) as { channel?: string };
+        return cfg.channel ?? a.defaultChannel;
+      }))];
+      if (usedChannels.length > 0) {
+        const activeChannels = await db.select({
+          type: commsChannels.type,
+          isActive: commsChannels.isActive,
+          smsEnabled: commsChannels.smsEnabled,
+        }).from(commsChannels)
+          .where(and(eq(commsChannels.tenantId, tenantId)));
+        for (const ch of usedChannels) {
+          const configured = activeChannels.filter(c => c.type === ch);
+          if (configured.length === 0) {
+            warnings.push(`This automation uses the "${ch}" channel, which has no configured integration. Messages may not send.`);
+          } else {
+            const anyActive = configured.some(c => c.isActive);
+            if (!anyActive) {
+              const label = ch === 'email' ? 'Email' : ch === 'sms' ? 'SMS' : 'In-app';
+              warnings.push(`${label} channel is currently inactive. Messages sent via this channel will be skipped.`);
+            } else if (ch === 'sms') {
+              const smsOk = configured.some(c => c.isActive && c.smsEnabled);
+              if (!smsOk) {
+                warnings.push('SMS channel is configured but SMS sending is disabled (10DLC compliance). SMS messages will be skipped until enabled.');
+              }
+            }
+          }
+        }
+      }
+
       await db.update(commsAutomations).set({ status: 'active', updatedAt: new Date() })
         .where(eq(commsAutomations.id, id));
       wireAutomation(id, tenantId, a.triggerConfig as TriggerConfig);
-      res.json({ ok: true });
+      res.json({ ok: true, warnings });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }

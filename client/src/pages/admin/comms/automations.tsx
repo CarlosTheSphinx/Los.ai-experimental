@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send,
-  ChevronUp, ChevronDown, GitBranch, Activity, MessageSquare, Tag, Smartphone, Zap,
+  ChevronUp, ChevronDown, GitBranch, Activity, MessageSquare, Tag, Smartphone, Zap, Bell,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -54,7 +54,7 @@ interface NodeConfig {
   // Preferred over refTopLevelIndex; the latter is retained only to load
   // legacy automations saved before this field existed.
   refPath?: (number | "yes" | "no")[];
-  engagementType?: "delivered" | "opened" | "clicked" | "replied";
+  engagementType?: "delivered" | "opened" | "clicked" | "replied" | "viewed";
   windowMinutes?: number;
   // branch_loan_state
   field?: "currentStage" | "status" | "loanAmount" | "loanType";
@@ -84,6 +84,14 @@ interface AutomationListItem {
   updatedAt: string;
   nodeCount: number;
   nextRunAt: string | null;
+  channels: Channel[];
+}
+
+interface CommsChannelItem {
+  id: number;
+  type: string;
+  isActive: boolean;
+  smsEnabled: boolean;
 }
 
 interface AutomationDetail extends AutomationListItem {
@@ -124,6 +132,22 @@ const NODE_LABEL: Record<NodeType, string> = {
   branch_loan_state: "Branch on Loan State",
 };
 
+const CHANNEL_ENGAGEMENT_OPTIONS: Record<Channel, { value: string; label: string }[]> = {
+  email: [
+    { value: "delivered", label: "Delivered" },
+    { value: "opened", label: "Opened" },
+    { value: "clicked", label: "Clicked" },
+    { value: "replied", label: "Replied" },
+  ],
+  sms: [
+    { value: "delivered", label: "Delivered" },
+    { value: "replied", label: "Replied" },
+  ],
+  in_app: [
+    { value: "viewed", label: "Viewed" },
+  ],
+};
+
 export default function CommsAutomationsPage() {
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
 
@@ -136,6 +160,12 @@ export default function CommsAutomationsPage() {
 function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
   const { toast } = useToast();
   const { data, isLoading } = useQuery<AutomationListItem[]>({ queryKey: ["/api/comms/automations"] });
+  const { data: channelData } = useQuery<CommsChannelItem[]>({ queryKey: ["/api/comms/channels"] });
+
+  const activeChannelTypes = new Set((channelData ?? []).filter(c => c.isActive).map(c => c.type));
+  const smsEnabledTypes = new Set(
+    (channelData ?? []).filter(c => c.isActive && c.smsEnabled).map(c => c.type)
+  );
 
   const pause = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/comms/automations/${id}/pause`),
@@ -143,14 +173,28 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
     onError: (e: ApiError) => toast({ title: "Pause failed", description: e?.message, variant: "destructive" }),
   });
   const activate = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/comms/automations/${id}/activate`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Activated" }); },
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/comms/automations/${id}/activate`);
+      return res.json() as Promise<{ ok: boolean; warnings: string[] }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] });
+      toast({ title: "Activated" });
+      for (const w of (data?.warnings ?? [])) {
+        toast({ title: "Channel warning", description: w, variant: "destructive" });
+      }
+    },
     onError: (e: ApiError) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
   });
   const archive = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/comms/automations/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Archived" }); },
   });
+
+  const channelIconClass = (ch: string) => {
+    if (ch === "sms") return activeChannelTypes.has("sms") && smsEnabledTypes.has("sms") ? "" : "opacity-30";
+    return activeChannelTypes.has(ch) ? "" : "opacity-30";
+  };
 
   return (
     <div className="space-y-4" data-testid="page-automations-list">
@@ -181,6 +225,19 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
                     <Badge variant={STATUS_BADGE[a.status].variant} data-testid={`badge-status-${a.id}`}>
                       {STATUS_BADGE[a.status].label}
                     </Badge>
+                    {(a.channels ?? []).length > 0 && (
+                      <span className="flex items-center gap-0.5" data-testid={`channel-icons-${a.id}`}>
+                        {(a.channels ?? []).includes("email") && (
+                          <Mail className={`w-3 h-3 text-muted-foreground ${channelIconClass("email")}`} />
+                        )}
+                        {(a.channels ?? []).includes("sms") && (
+                          <Smartphone className={`w-3 h-3 text-muted-foreground ${channelIconClass("sms")}`} />
+                        )}
+                        {(a.channels ?? []).includes("in_app") && (
+                          <Bell className={`w-3 h-3 text-muted-foreground ${channelIconClass("in_app")}`} />
+                        )}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {a.nodeCount} node{a.nodeCount === 1 ? "" : "s"} · trigger: {a.triggerConfig?.kind ?? "—"}
@@ -302,7 +359,7 @@ function listTopLevelSends(nodes: NodeRow[]): Array<{ idx: number; templateId?: 
 // Sends that live inside nested branches (so long as they're in a visible
 // subtree that isn't the branch's own).
 type TreeStep = number | "yes" | "no";
-type TreeSend = { path: TreeStep[]; label: string; templateId?: number };
+type TreeSend = { path: TreeStep[]; label: string; templateId?: number; channel?: Channel };
 // Shared DFS pre-order comparator used by the client validator AND the
 // eligible-sends picker. Numeric steps compare numerically (so step 2 is
 // before step 10). Side steps compare with explicit "yes" < "no" to match
@@ -337,6 +394,7 @@ function listTreeSends(nodes: NodeRow[]): TreeSend[] {
           path: hp,
           label: `${here}: Send${n.config.templateId ? ` (template #${n.config.templateId})` : ""}`,
           templateId: n.config.templateId,
+          channel: n.config.channel,
         });
       } else if (n.type === "branch_engagement" || n.type === "branch_loan_state") {
         if (n.yes?.length) walk(n.yes, [...hp, "yes"], `${here} → Yes`);
@@ -1216,6 +1274,18 @@ function NodeEditor({
 
   const testKey = path.map(p => typeof p === "number" ? p : `${p.side}${p.idx}`).join("-");
 
+  // Channel-aware engagement type filtering for branch_engagement nodes.
+  const refSend = node.config.refPath
+    ? eligibleTreeSends.find(s => JSON.stringify(s.path) === JSON.stringify(node.config.refPath))
+    : node.config.refTopLevelIndex != null
+      ? eligibleTreeSends.find(s => JSON.stringify(s.path) === JSON.stringify([node.config.refTopLevelIndex]))
+      : undefined;
+  const refChannel: Channel = refSend?.channel ?? automationChannel;
+  const engagementOptions = CHANNEL_ENGAGEMENT_OPTIONS[refChannel] ?? CHANNEL_ENGAGEMENT_OPTIONS.email;
+  const engagementValidValue = engagementOptions.some(o => o.value === node.config.engagementType)
+    ? (node.config.engagementType as string)
+    : engagementOptions[0].value;
+
   return (
     <Card data-testid={`card-node-${testKey}`} className={ringByDepth}>
       <CardContent className="p-3 space-y-2">
@@ -1270,8 +1340,6 @@ function NodeEditor({
               <Label className="text-xs">Reference (earlier Send)</Label>
               <Select
                 value={
-                  // Serialize the current ref into a picker value. Prefer refPath
-                  // (full tree), fall back to refTopLevelIndex (legacy).
                   node.config.refPath
                     ? JSON.stringify(node.config.refPath)
                     : node.config.refTopLevelIndex != null
@@ -1280,14 +1348,18 @@ function NodeEditor({
                 }
                 onValueChange={v => {
                   const parsed = JSON.parse(v) as (number | "yes" | "no")[];
-                  // Write both refPath AND refTopLevelIndex (when applicable)
-                  // so legacy back-ends still resolve the ref correctly.
                   const patch: NodeConfig = { refPath: parsed };
                   if (parsed.length === 1 && typeof parsed[0] === "number") {
                     patch.refTopLevelIndex = parsed[0];
                   } else {
                     patch.refTopLevelIndex = undefined;
                   }
+                  // Reset engagement to first valid option for the new Send node's channel.
+                  const newSend = eligibleTreeSends.find(s => JSON.stringify(s.path) === v);
+                  const newCh: Channel = newSend?.channel ?? automationChannel;
+                  const newOpts = CHANNEL_ENGAGEMENT_OPTIONS[newCh] ?? CHANNEL_ENGAGEMENT_OPTIONS.email;
+                  const currentOk = newOpts.some(o => o.value === node.config.engagementType);
+                  if (!currentOk) patch.engagementType = newOpts[0].value as NodeConfig["engagementType"];
                   onUpdate(path, { config: patch });
                 }}
               >
@@ -1304,15 +1376,14 @@ function NodeEditor({
             <div>
               <Label className="text-xs">Engagement</Label>
               <Select
-                value={node.config.engagementType ?? "opened"}
+                value={engagementValidValue}
                 onValueChange={v => onUpdate(path, { config: { engagementType: v as NodeConfig["engagementType"] } })}
               >
                 <SelectTrigger data-testid={`select-engagement-${testKey}`}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="delivered">Delivered</SelectItem>
-                  <SelectItem value="opened">Opened</SelectItem>
-                  <SelectItem value="clicked">Clicked</SelectItem>
-                  <SelectItem value="replied">Replied</SelectItem>
+                  {engagementOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
