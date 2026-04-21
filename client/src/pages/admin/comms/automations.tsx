@@ -686,11 +686,11 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   // Pre-activation summary (for confirmation dialog)
   const activateTriggerSummary = (() => {
     switch (triggerKind) {
-      case "event": return `Event trigger: "${eventName}"${eventToStage ? ` → stage "${eventToStage}"` : ""} — fires on every future matching event.`;
-      case "time_absolute": return `One-shot schedule at ${runAt ? new Date(runAt).toLocaleString() : "(no date set)"}.`;
-      case "time_recurring": return `Recurring every ${everyMinutes} minutes.`;
-      case "time_relative": return `Delayed ${offsetMinutes} min after "${eventName}"${eventToStage ? ` → stage "${eventToStage}"` : ""}`;
-      case "manual": return "Manual trigger — runs must be started individually per contact.";
+      case "event": return `Event: "${eventName}"${eventToStage ? ` (stage → "${eventToStage}")` : ""} — this automation will run for every future contact that matches the event.`;
+      case "time_absolute": return `One-shot at ${runAt ? new Date(runAt).toLocaleString() : "(no date set)"}${segmentId ? ` — targets segment #${segmentId}` : " — targets the configured audience segment"}.`;
+      case "time_recurring": return `Recurring every ${everyMinutes} min${segmentId ? ` — targets segment #${segmentId}` : " — targets all eligible contacts in the configured segment"}.`;
+      case "time_relative": return `Delayed ${offsetMinutes} min after "${eventName}"${eventToStage ? ` (stage → "${eventToStage}")` : ""} — runs for every future contact matching that event.`;
+      case "manual": return "Manual trigger — no contacts will be messaged automatically. Runs must be started individually via the 'Start a manual run' panel or API.";
     }
   })();
   const activateFirstRecipient = (() => {
@@ -877,7 +877,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             onRemove={removeAt}
             onMove={moveAt}
             onUpdate={updateAt}
-            onSave={() => onSaveClick("save")}
+            onSave={() => onSaveClick(isNew ? "create" : "save")}
             isSavePending={isSavePending}
             depth={0}
           />
@@ -1524,9 +1524,9 @@ function NodeEditor({
               <Select
                 value={waitUnit}
                 onValueChange={v => {
-                  const unit = v as "minutes" | "hours" | "days";
-                  setWaitUnit(unit);
-                  handleWaitChange(waitDisplayValue, unit);
+                  // Only change the display unit — durationMinutes stays unchanged.
+                  // The display value recalculates automatically from the stored minutes.
+                  setWaitUnit(v as "minutes" | "hours" | "days");
                 }}
               >
                 <SelectTrigger className="w-32" data-testid={`select-wait-unit-${testKey}`}>
