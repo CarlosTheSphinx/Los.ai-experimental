@@ -78,6 +78,11 @@ import DocumentRulesPage from "@/pages/admin/document-rules";
 import BrokerCommercialDeals, { DealForm as BrokerDealForm, DealDetail as BrokerDealDetail } from "@/pages/broker-commercial-deals";
 import SettingsPage from "@/pages/settings";
 import BorrowerDocumentsPage from "@/pages/borrower-documents";
+import CommsChannelsPage from "@/pages/admin/comms/channels";
+import CommsTemplatesPage from "@/pages/admin/comms/templates";
+import CommsSendPage from "@/pages/admin/comms/send";
+import CommsSendLogPage from "@/pages/admin/comms/log";
+import CommsOptOutsPage from "@/pages/admin/comms/opt-outs";
 import BrokerDocumentsPage from "@/pages/broker-documents";
 import QuoteDocuments from "@/pages/quote-documents";
 import BorrowerPreview from "@/pages/borrower-preview";
@@ -340,6 +345,12 @@ function MainRoutes() {
           <Route path="/admin/platform-integrations" component={() => <SuperAdminProtectedRoute component={IntegrationsPage} />} />
           <Route path="/admin/onboarding-config" component={() => <SuperAdminProtectedRoute component={OnboardingConfigPage} />} />
 
+          {/* Comms Automations */}
+          <Route path="/admin/comms/channels" component={() => <AdminProtectedRoute component={CommsChannelsPage} />} />
+          <Route path="/admin/comms/templates" component={() => <AdminProtectedRoute component={CommsTemplatesPage} />} />
+          <Route path="/admin/comms/send" component={() => <AdminProtectedRoute component={CommsSendPage} />} />
+          <Route path="/admin/comms/log" component={() => <AdminProtectedRoute component={CommsSendLogPage} />} />
+          <Route path="/admin/comms/opt-outs" component={() => <AdminProtectedRoute component={CommsOptOutsPage} />} />
 
           <Route component={NotFound} />
         </Switch>

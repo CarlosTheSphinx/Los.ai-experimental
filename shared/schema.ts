@@ -1,3 +1,4 @@
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   pgTable,
   text,
@@ -4358,3 +4359,165 @@ export const insertCommercialFormConfigSchema = createInsertSchema(commercialFor
 export type CommercialFormConfig = typeof commercialFormConfig.$inferSelect;
 export type InsertCommercialFormConfig = z.infer<typeof insertCommercialFormConfigSchema>;
 export type InsertIntakeDealFundSubmission = z.infer<typeof insertIntakeDealFundSubmissionSchema>;
+
+// ==================== COMMUNICATIONS AUTOMATIONS ====================
+
+export const commsChannels = pgTable("comms_channels", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  type: varchar("type", { length: 20 }).notNull(), // 'email' | 'sms' | 'in_app'
+  config: jsonb("config"), // { accountSid, apiKey, apiKeySecret, fromNumber } for SMS
+  smsEnabled: boolean("sms_enabled").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCommsChannelSchema = createInsertSchema(commsChannels).omit({ id: true, createdAt: true });
+export type CommsChannel = typeof commsChannels.$inferSelect;
+export type InsertCommsChannel = z.infer<typeof insertCommsChannelSchema>;
+
+export const commsTemplates = pgTable("comms_templates", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  channel: varchar("channel", { length: 20 }).notNull(), // 'email' | 'sms' | 'in_app'
+  subject: text("subject"),
+  body: text("body").notNull(),
+  version: integer("version").default(1).notNull(),
+  supersedesId: integer("supersedes_id").references((): AnyPgColumn => commsTemplates.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCommsTemplateSchema = createInsertSchema(commsTemplates).omit({ id: true, createdAt: true });
+export type CommsTemplate = typeof commsTemplates.$inferSelect;
+export type InsertCommsTemplate = z.infer<typeof insertCommsTemplateSchema>;
+
+export const commsMergeTags = pgTable("comms_merge_tags", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 100 }).unique().notNull(),
+  description: text("description").notNull(),
+  resolverFnName: varchar("resolver_fn_name", { length: 100 }).notNull(),
+  channelFormatting: jsonb("channel_formatting"), // { email: 'html_list', sms: 'comma_list', in_app: 'plain_list' }
+});
+export const insertCommsMergeTagSchema = createInsertSchema(commsMergeTags).omit({ id: true });
+export type CommsMergeTag = typeof commsMergeTags.$inferSelect;
+export type InsertCommsMergeTag = z.infer<typeof insertCommsMergeTagSchema>;
+
+export const commsAutomations = pgTable("comms_automations", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).default("draft").notNull(), // 'draft' | 'active' | 'paused' | 'archived'
+  triggerConfig: jsonb("trigger_config"),
+  exitConditions: jsonb("exit_conditions"),
+  notifyBrokerOnSend: boolean("notify_broker_on_send").default(false).notNull(),
+  maxDurationDays: integer("max_duration_days"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertCommsAutomationSchema = createInsertSchema(commsAutomations).omit({ id: true, createdAt: true, updatedAt: true });
+export type CommsAutomation = typeof commsAutomations.$inferSelect;
+export type InsertCommsAutomation = z.infer<typeof insertCommsAutomationSchema>;
+
+export const commsAutomationNodes = pgTable("comms_automation_nodes", {
+  id: serial("id").primaryKey(),
+  automationId: integer("automation_id").references(() => commsAutomations.id, { onDelete: "cascade" }).notNull(),
+  orderIndex: integer("order_index").notNull(),
+  type: varchar("type", { length: 30 }).notNull(), // 'send' | 'wait' | 'branch_engagement' | 'branch_loan_state'
+  config: jsonb("config"),
+});
+export const insertCommsAutomationNodeSchema = createInsertSchema(commsAutomationNodes).omit({ id: true });
+export type CommsAutomationNode = typeof commsAutomationNodes.$inferSelect;
+export type InsertCommsAutomationNode = z.infer<typeof insertCommsAutomationNodeSchema>;
+
+export const commsSegments = pgTable("comms_segments", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  filterConfig: jsonb("filter_config"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCommsSegmentSchema = createInsertSchema(commsSegments).omit({ id: true, createdAt: true });
+export type CommsSegment = typeof commsSegments.$inferSelect;
+export type InsertCommsSegment = z.infer<typeof insertCommsSegmentSchema>;
+
+export const commsAutomationRuns = pgTable("comms_automation_runs", {
+  id: serial("id").primaryKey(),
+  automationId: integer("automation_id").references(() => commsAutomations.id, { onDelete: "cascade" }).notNull(),
+  subjectType: varchar("subject_type", { length: 20 }).notNull(), // 'loan' | 'broker' | 'borrower'
+  subjectId: integer("subject_id").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  currentNodeId: integer("current_node_id").references(() => commsAutomationNodes.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 20 }).default("running").notNull(), // 'running' | 'completed' | 'exited' | 'failed'
+  exitReason: text("exit_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCommsAutomationRunSchema = createInsertSchema(commsAutomationRuns).omit({ id: true, createdAt: true });
+export type CommsAutomationRun = typeof commsAutomationRuns.$inferSelect;
+export type InsertCommsAutomationRun = z.infer<typeof insertCommsAutomationRunSchema>;
+
+export const commsScheduledExecutions = pgTable("comms_scheduled_executions", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").references(() => commsAutomationRuns.id, { onDelete: "cascade" }).notNull(),
+  nodeId: integer("node_id").references(() => commsAutomationNodes.id, { onDelete: "cascade" }).notNull(),
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending' | 'executing' | 'done' | 'failed'
+  attempts: integer("attempts").default(0).notNull(),
+  lockedAt: timestamp("locked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertCommsScheduledExecutionSchema = createInsertSchema(commsScheduledExecutions).omit({ id: true, createdAt: true });
+export type CommsScheduledExecution = typeof commsScheduledExecutions.$inferSelect;
+export type InsertCommsScheduledExecution = z.infer<typeof insertCommsScheduledExecutionSchema>;
+
+export const commsSendLog = pgTable("comms_send_log", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  runId: integer("run_id").references(() => commsAutomationRuns.id, { onDelete: "set null" }),
+  nodeId: integer("node_id").references(() => commsAutomationNodes.id, { onDelete: "set null" }),
+  channel: varchar("channel", { length: 20 }).notNull(), // 'email' | 'sms' | 'in_app'
+  templateId: integer("template_id").references(() => commsTemplates.id, { onDelete: "set null" }),
+  templateVersion: integer("template_version").notNull(),
+  recipientType: varchar("recipient_type", { length: 20 }).notNull(), // 'broker' | 'borrower' | 'lender_user'
+  recipientId: integer("recipient_id").notNull(),
+  recipientContactValue: text("recipient_contact_value").notNull(),
+  resolvedBody: text("resolved_body").notNull(),
+  resolvedSubject: text("resolved_subject"),
+  resolvedMergeTags: jsonb("resolved_merge_tags"),
+  status: varchar("status", { length: 20 }).notNull(), // 'sent' | 'skipped' | 'failed' | 'suppressed'
+  failureReason: text("failure_reason"),
+  deliveryEvents: jsonb("delivery_events").default([]),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+});
+export const insertCommsSendLogSchema = createInsertSchema(commsSendLog).omit({ id: true });
+export type CommsSendLog = typeof commsSendLog.$inferSelect;
+export type InsertCommsSendLog = z.infer<typeof insertCommsSendLogSchema>;
+
+export const commsOptOuts = pgTable("comms_opt_outs", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  contactValue: text("contact_value").notNull(),
+  channel: varchar("channel", { length: 20 }).notNull(), // 'email' | 'sms' | 'in_app'
+  optedOutAt: timestamp("opted_out_at").defaultNow().notNull(),
+  source: varchar("source", { length: 30 }).notNull(), // 'stop_keyword' | 'unsubscribe_link' | 'in_app' | 'manual' | 'admin'
+  recipientId: integer("recipient_id").references(() => users.id, { onDelete: "set null" }),
+});
+export const insertCommsOptOutSchema = createInsertSchema(commsOptOuts).omit({ id: true });
+export type CommsOptOut = typeof commsOptOuts.$inferSelect;
+export type InsertCommsOptOut = z.infer<typeof insertCommsOptOutSchema>;
+
+export const commsConsentRecords = pgTable("comms_consent_records", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  recipientId: integer("recipient_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  channel: varchar("channel", { length: 20 }).notNull(), // 'email' | 'sms' | 'in_app'
+  consentedAt: timestamp("consented_at").defaultNow().notNull(),
+  source: varchar("source", { length: 30 }).notNull(), // 'onboarding_form' | 'manual' | 'import'
+  consentText: text("consent_text"),
+});
+export const insertCommsConsentRecordSchema = createInsertSchema(commsConsentRecords).omit({ id: true });
+export type CommsConsentRecord = typeof commsConsentRecords.$inferSelect;
+export type InsertCommsConsentRecord = z.infer<typeof insertCommsConsentRecordSchema>;

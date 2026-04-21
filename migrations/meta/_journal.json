@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1776712099854,
+      "tag": "0000_good_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776712200000,
+      "tag": "0001_add_borrower_documents_source_deal",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776712300000,
+      "tag": "0002_add_broker_contact_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776712400000,
+      "tag": "0003_convert_tenant_id_to_integer",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776712500000,
+      "tag": "0004_add_message_thread_participants",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776714000000,
+      "tag": "0005_add_comms_indexes",
+      "breakpoints": true
+    }
+  ]
+}
