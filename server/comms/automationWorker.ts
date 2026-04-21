@@ -39,7 +39,9 @@ let started = false;
 
 type SendNodeConfig = {
   channel: 'email' | 'sms' | 'in_app';
-  templateId: number;
+  templateId?: number;
+  inlineBody?: string;
+  inlineSubject?: string;
   recipientType: 'broker' | 'borrower' | 'lender_user';
 };
 
@@ -565,14 +567,15 @@ async function processOne(rowId: number): Promise<void> {
 
   if (node.type === 'send') {
     const cfg = (node.config ?? {}) as Partial<SendNodeConfig>;
-    if (!cfg.templateId || !cfg.recipientType) {
+    if ((!cfg.templateId && !cfg.inlineBody) || !cfg.recipientType) {
       dispatchOk = false;
-      dispatchError = 'Send node missing templateId or recipientType';
+      dispatchError = 'Send node missing template/message and recipientType';
     } else {
       // SMS quiet hours — defer dispatch (don't fail) when within the
       // tenant's configured no-send window so we don't text people overnight.
       // Email and in-app are not subject to quiet hours.
-      if (automation.defaultChannel === 'sms') {
+      const effectiveChannel = cfg.channel ?? automation.defaultChannel;
+      if (effectiveChannel === 'sms') {
         const deferUntil = await computeSmsQuietHoursDefer(automation.tenantId, new Date());
         if (deferUntil) {
           // Release the lock and re-queue immediately at the deferred time so
@@ -625,7 +628,10 @@ async function processOne(rowId: number): Promise<void> {
       } else {
         const result = await sendCommsMessage({
           tenantId: automation.tenantId,
-          templateId: cfg.templateId,
+          templateId: cfg.templateId ?? null,
+          inlineBody: cfg.inlineBody,
+          inlineSubject: cfg.inlineSubject,
+          inlineChannel: cfg.channel ?? automation.defaultChannel as 'email' | 'sms' | 'in_app',
           recipientType: cfg.recipientType,
           recipientId: recipientUserId,
           loanId: resolvedLoanId ?? undefined,

@@ -1104,14 +1104,19 @@ export function registerCommsRoutes(
         // this branch's root top-level position.
         const rootTopIdx = typeof ownPath[0] === 'number' ? ownPath[0] : 0;
         if (n.type === 'send') {
-          if (!cfg.templateId || typeof cfg.templateId !== 'number') return `${here} (Send) is missing a template`;
           if (!cfg.recipientType || (cfg.recipientType !== 'borrower' && cfg.recipientType !== 'broker')) {
             return `${here} (Send) is missing a recipient`;
           }
-          if (cfg.channel && cfg.channel !== defaultChannel) {
-            return `${here} (Send) channel (${cfg.channel}) must match automation channel (${defaultChannel})`;
+          // Multichannel: each Send node may declare its own channel; if absent
+          // the automation-level defaultChannel is used at runtime.
+          if (cfg.channel && !['email', 'sms', 'in_app'].includes(cfg.channel as string)) {
+            return `${here} (Send) has an unrecognised channel`;
           }
-          templateIds.push(cfg.templateId);
+          // Either a saved template OR an inline body is required.
+          if (!cfg.templateId && !cfg.inlineBody) {
+            return `${here} (Send) must have a template or a composed message`;
+          }
+          if (cfg.templateId) templateIds.push(cfg.templateId);
         } else if (n.type === 'wait') {
           const dm = cfg.durationMinutes;
           if (typeof dm !== 'number' || dm < 1) return `${here} (Wait) must have a duration of at least 1 minute`;
@@ -1733,6 +1738,63 @@ export function registerCommsRoutes(
       res.json(enriched);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  // ── Active automation runs for a specific deal (loan) ──────────────────────
+  // Used by the deal's Communications tab to show which automations are running
+  // and what step they are currently parked on.
+  app.get('/api/comms/deal-runs/:dealId', async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const tenantId = req.user.tenantId;
+    const dealId = parseInt(req.params.dealId, 10);
+    if (isNaN(dealId)) return res.status(400).json({ error: 'Invalid deal id' });
+    try {
+      const runs = await db
+        .select({
+          id: commsAutomationRuns.id,
+          automationId: commsAutomationRuns.automationId,
+          automationName: commsAutomations.name,
+          status: commsAutomationRuns.status,
+          startedAt: commsAutomationRuns.startedAt,
+          exitReason: commsAutomationRuns.exitReason,
+          currentNodeId: commsAutomationRuns.currentNodeId,
+          nodeType: commsAutomationNodes.type,
+          nodeOrderIndex: commsAutomationNodes.orderIndex,
+        })
+        .from(commsAutomationRuns)
+        .innerJoin(commsAutomations, eq(commsAutomations.id, commsAutomationRuns.automationId))
+        .leftJoin(commsAutomationNodes, eq(commsAutomationNodes.id, commsAutomationRuns.currentNodeId))
+        .where(and(
+          eq(commsAutomationRuns.subjectType, 'loan'),
+          eq(commsAutomationRuns.subjectId, dealId),
+          eq(commsAutomations.tenantId, tenantId),
+        ))
+        .orderBy(desc(commsAutomationRuns.startedAt));
+
+      const nodeLabel = (type: string | null): string => {
+        switch (type) {
+          case 'send': return 'Sending message';
+          case 'wait': return 'Waiting';
+          case 'branch_engagement': return 'Evaluating engagement';
+          case 'branch_loan_state': return 'Evaluating loan state';
+          default: return type ? type : 'Starting';
+        }
+      };
+
+      res.json(runs.map(r => ({
+        id: r.id,
+        automationId: r.automationId,
+        automationName: r.automationName,
+        status: r.status,
+        startedAt: r.startedAt,
+        exitReason: r.exitReason,
+        currentStep: r.nodeOrderIndex != null ? r.nodeOrderIndex + 1 : null,
+        currentStepLabel: nodeLabel(r.nodeType),
+      })));
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: errMsg });
     }
   });
 }

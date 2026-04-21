@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send,
-  ChevronUp, ChevronDown, GitBranch, Activity,
+  ChevronUp, ChevronDown, GitBranch, Activity, MessageSquare, Tag, Smartphone, Zap,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -42,6 +43,9 @@ interface NodeConfig {
   templateId?: number;
   recipientType?: "borrower" | "broker";
   channel?: Channel;
+  // inline compose — when set, templateId is not required
+  inlineBody?: string;
+  inlineSubject?: string;
   // wait
   durationMinutes?: number;
   // branch_engagement
@@ -439,13 +443,12 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     }
   };
 
-  // Stamp every send node anywhere in the tree with the automation-level
-  // channel before save so backend single-channel validation is satisfied.
-  const stampChannel = (n: NodeRow): NodeRow => ({
+  // Ensure every send node has a channel set (fill in defaultChannel if unset)
+  const ensureChannel = (n: NodeRow): NodeRow => ({
     ...n,
-    config: n.type === "send" ? { ...n.config, channel: defaultChannel } : n.config,
-    ...(n.yes ? { yes: n.yes.map(stampChannel) } : {}),
-    ...(n.no ? { no: n.no.map(stampChannel) } : {}),
+    config: n.type === "send" ? { ...n.config, channel: n.config.channel ?? defaultChannel } : n.config,
+    ...(n.yes ? { yes: n.yes.map(ensureChannel) } : {}),
+    ...(n.no ? { no: n.no.map(ensureChannel) } : {}),
   });
 
   const buildPayload = () => ({
@@ -458,7 +461,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     },
     notifyBrokerOnSend,
     maxDurationDays: maxDurationDays === "" ? null : Number(maxDurationDays),
-    nodes: nodes.map(stampChannel),
+    nodes: nodes.map(ensureChannel),
   });
 
   // Phase 4 — client-side mirror of the server validator. Catches the same
@@ -484,7 +487,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
         // legacy refTopLevelIndex checks the ref must be strictly less.
         const rootTopIdx = typeof ownPath[0] === "number" ? ownPath[0] : 0;
         if (n.type === "send") {
-          if (!n.config.templateId) return `${here} (Send) is missing a template`;
+          if (!n.config.templateId && !n.config.inlineBody) return `${here} (Send) needs a template or a composed message`;
           if (!n.config.recipientType) return `${here} (Send) is missing a recipient`;
         } else if (n.type === "wait") {
           if (!n.config.durationMinutes || n.config.durationMinutes < 1) return `${here} (Wait) duration must be at least 1 minute`;
@@ -634,7 +637,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             <Input id="auto-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Welcome series" data-testid="input-name" />
           </div>
           <div>
-            <Label>Channel</Label>
+            <Label>Default channel</Label>
             <Select value={defaultChannel} onValueChange={v => setDefaultChannel(v as Channel)}>
               <SelectTrigger data-testid="select-default-channel"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -644,7 +647,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              Every send step in this automation uses this channel. Mixing channels in one automation is not supported.
+              Default channel for new send steps. Each step can override this individually for mixed-channel sequences.
             </p>
           </div>
           {!isNew && existing && (
@@ -961,6 +964,219 @@ function AddNodePicker({
   );
 }
 
+// ── Merge tag helper ──────────────────────────────────────────────────────────
+const MERGE_TAGS = [
+  { tag: "{{recipient.first_name}}", label: "First name" },
+  { tag: "{{recipient.full_name}}", label: "Full name" },
+  { tag: "{{recipient.email}}", label: "Email" },
+  { tag: "{{recipient.phone}}", label: "Phone" },
+  { tag: "{{loan.address}}", label: "Address" },
+  { tag: "{{loan.amount}}", label: "Loan amount" },
+  { tag: "{{loan.number}}", label: "Loan #" },
+  { tag: "{{loan.status}}", label: "Status" },
+  { tag: "{{loan.portal_link}}", label: "Portal link" },
+  { tag: "{{loan.target_close_date}}", label: "Close date" },
+  { tag: "{{lender.name}}", label: "Lender" },
+  { tag: "{{broker.full_name}}", label: "Broker" },
+  { tag: "{{current_date}}", label: "Today" },
+];
+
+function insertAtCursor(el: HTMLTextAreaElement | null, text: string, currentValue: string): string {
+  if (!el) return currentValue + text;
+  const start = el.selectionStart ?? currentValue.length;
+  const end = el.selectionEnd ?? currentValue.length;
+  const val = el.value;
+  const next = val.slice(0, start) + text + val.slice(end);
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(start + text.length, start + text.length);
+  });
+  return next;
+}
+
+// ── Per-send-node channel + compose/template editor ───────────────────────────
+function SendNodeEditor({
+  node, path, testKey, templates, defaultChannel, onUpdate,
+}: {
+  node: NodeRow;
+  path: PathStep[];
+  testKey: string;
+  templates: Template[];
+  defaultChannel: Channel;
+  onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
+}) {
+  const nodeChannel: Channel = node.config.channel ?? defaultChannel;
+  const [mode, setMode] = useState<"template" | "compose">(
+    node.config.inlineBody ? "compose" : "template",
+  );
+  const [bodyRef, setBodyRef] = useState<HTMLTextAreaElement | null>(null);
+  const [subjRef, setSubjRef] = useState<HTMLTextAreaElement | null>(null);
+  const [focusedField, setFocusedField] = useState<"subject" | "body">("body");
+
+  const filteredTemplates = templates.filter(t => t.channel === nodeChannel);
+
+  const insertTag = (tag: string) => {
+    if (focusedField === "subject") {
+      const next = insertAtCursor(subjRef, tag, node.config.inlineSubject ?? "");
+      onUpdate(path, { config: { ...node.config, inlineSubject: next } });
+    } else {
+      const next = insertAtCursor(bodyRef, tag, node.config.inlineBody ?? "");
+      onUpdate(path, { config: { ...node.config, inlineBody: next } });
+    }
+  };
+
+  const channelIcon = nodeChannel === "email"
+    ? <Mail className="w-3 h-3" />
+    : nodeChannel === "sms"
+      ? <Smartphone className="w-3 h-3" />
+      : <Zap className="w-3 h-3" />;
+
+  return (
+    <div className="space-y-2">
+      {/* Row 1: channel + recipient */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs">Channel</Label>
+          <Select
+            value={nodeChannel}
+            onValueChange={v => onUpdate(path, { config: { ...node.config, channel: v as Channel, templateId: undefined } })}
+          >
+            <SelectTrigger data-testid={`select-channel-${testKey}`}>
+              <div className="flex items-center gap-1.5">{channelIcon}<SelectValue /></div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="email">Email</SelectItem>
+              <SelectItem value="sms">SMS</SelectItem>
+              <SelectItem value="in_app">In-app</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Recipient</Label>
+          <Select
+            value={node.config.recipientType ?? "borrower"}
+            onValueChange={v => onUpdate(path, { config: { ...node.config, recipientType: v as "borrower" | "broker" } })}
+          >
+            <SelectTrigger data-testid={`select-recipient-${testKey}`}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="borrower">Borrower</SelectItem>
+              <SelectItem value="broker">Broker</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Row 2: mode toggle */}
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant={mode === "template" ? "default" : "outline"}
+          className="h-7 text-xs gap-1"
+          onClick={() => setMode("template")}
+          data-testid={`button-mode-template-${testKey}`}
+        >
+          <Tag className="w-3 h-3" /> Pick template
+        </Button>
+        <Button
+          size="sm"
+          variant={mode === "compose" ? "default" : "outline"}
+          className="h-7 text-xs gap-1"
+          onClick={() => setMode("compose")}
+          data-testid={`button-mode-compose-${testKey}`}
+        >
+          <MessageSquare className="w-3 h-3" /> Compose
+        </Button>
+      </div>
+
+      {/* Template picker */}
+      {mode === "template" && (
+        <div>
+          <Label className="text-xs">Template ({nodeChannel})</Label>
+          <Select
+            value={node.config.templateId?.toString() ?? ""}
+            onValueChange={v => onUpdate(path, { config: { ...node.config, templateId: Number(v), inlineBody: undefined, inlineSubject: undefined } })}
+          >
+            <SelectTrigger data-testid={`select-template-${testKey}`}><SelectValue placeholder="Pick a template…" /></SelectTrigger>
+            <SelectContent>
+              {filteredTemplates.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">No {nodeChannel} templates yet</div>
+              )}
+              {filteredTemplates.map(t => (
+                <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Inline compose */}
+      {mode === "compose" && (
+        <div className="space-y-2">
+          {/* Merge tag bar */}
+          <div>
+            <Label className="text-xs text-muted-foreground">Insert merge tag into {focusedField === "subject" ? "subject" : "body"}</Label>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {MERGE_TAGS.map(m => (
+                <button
+                  key={m.tag}
+                  type="button"
+                  onClick={() => insertTag(m.tag)}
+                  className="text-[10px] bg-muted hover:bg-muted/80 border border-border rounded px-1.5 py-0.5 font-mono leading-tight"
+                  data-testid={`button-tag-${m.label.replace(/\s/g, "-").toLowerCase()}-${testKey}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Subject (email only) */}
+          {nodeChannel === "email" && (
+            <div>
+              <Label className="text-xs">Subject</Label>
+              <Textarea
+                ref={el => setSubjRef(el)}
+                rows={1}
+                className="text-sm resize-none"
+                placeholder="Subject line…"
+                value={node.config.inlineSubject ?? ""}
+                onFocus={() => setFocusedField("subject")}
+                onChange={e => onUpdate(path, { config: { ...node.config, inlineSubject: e.target.value, templateId: undefined } })}
+                data-testid={`input-inline-subject-${testKey}`}
+              />
+            </div>
+          )}
+
+          {/* Body */}
+          <div>
+            <Label className="text-xs">Message body</Label>
+            <Textarea
+              ref={el => setBodyRef(el)}
+              rows={5}
+              className="text-sm font-mono resize-y"
+              placeholder={nodeChannel === "email"
+                ? "Write your email HTML or plain text…"
+                : nodeChannel === "sms"
+                  ? "Write your SMS message (160 chars per segment)…"
+                  : "Write your in-app notification…"
+              }
+              value={node.config.inlineBody ?? ""}
+              onFocus={() => setFocusedField("body")}
+              onChange={e => onUpdate(path, { config: { ...node.config, inlineBody: e.target.value, templateId: undefined } })}
+              data-testid={`input-inline-body-${testKey}`}
+            />
+            {nodeChannel === "sms" && node.config.inlineBody && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                ~{Math.ceil((node.config.inlineBody?.length ?? 0) / 160)} segment(s) · {node.config.inlineBody?.length ?? 0} chars
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NodeEditor({
   node, path, templates, automationChannel, topLevelSends, treeSends,
   onUpdate, onRemove, onMoveUp, onMoveDown,
@@ -1026,29 +1242,14 @@ function NodeEditor({
         <Separator />
 
         {node.type === "send" && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Template ({automationChannel})</Label>
-              <Select value={node.config.templateId?.toString() ?? ""} onValueChange={v => onUpdate(path, { config: { templateId: Number(v) } })}>
-                <SelectTrigger data-testid={`select-template-${testKey}`}><SelectValue placeholder="Pick…" /></SelectTrigger>
-                <SelectContent>
-                  {templates.filter(t => t.channel === automationChannel).map(t => (
-                    <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Recipient</Label>
-              <Select value={node.config.recipientType ?? "borrower"} onValueChange={v => onUpdate(path, { config: { recipientType: v as "borrower" | "broker" } })}>
-                <SelectTrigger data-testid={`select-recipient-${testKey}`}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="borrower">Borrower</SelectItem>
-                  <SelectItem value="broker">Broker</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <SendNodeEditor
+            node={node}
+            path={path}
+            testKey={testKey}
+            templates={templates}
+            defaultChannel={automationChannel}
+            onUpdate={onUpdate}
+          />
         )}
 
         {node.type === "wait" && (
