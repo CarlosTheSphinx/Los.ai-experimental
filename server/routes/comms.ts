@@ -1172,7 +1172,10 @@ export function registerCommsRoutes(
         return res.status(400).json({ error: 'At least one node is required to activate' });
       }
       // Validate per-node config so we never activate an automation that will fail at dispatch.
-      // Single-channel automations: every send node must use the automation's defaultChannel.
+      // Single-channel automations: every send node must use the automation's defaultChannel,
+      // AND the underlying template's own channel must match — otherwise a crafted PUT payload
+      // could slip a mismatched template past the explicit-channel check.
+      const templateIds: number[] = [];
       for (const n of nodes) {
         const cfg = (n.config ?? {}) as Record<string, unknown>;
         if (n.type === 'send') {
@@ -1184,10 +1187,32 @@ export function registerCommsRoutes(
               error: `Send node #${n.orderIndex + 1} channel (${cfg.channel}) must match automation channel (${a.defaultChannel})`,
             });
           }
+          templateIds.push(Number(cfg.templateId));
         } else if (n.type === 'wait') {
           const dm = cfg.durationMinutes;
           if (typeof dm !== 'number' || dm < 1) {
             return res.status(400).json({ error: `Wait node #${n.orderIndex + 1} must have durationMinutes >= 1` });
+          }
+        }
+      }
+
+      if (templateIds.length) {
+        const tpls = await db.select({ id: commsTemplates.id, channel: commsTemplates.channel, tenantId: commsTemplates.tenantId })
+          .from(commsTemplates)
+          .where(sql`${commsTemplates.id} = ANY(${templateIds})`);
+        const tplMap = new Map(tpls.map(t => [t.id, t]));
+        for (const n of nodes) {
+          if (n.type !== 'send') continue;
+          const cfg = (n.config ?? {}) as Record<string, unknown>;
+          const tid = Number(cfg.templateId);
+          const tpl = tplMap.get(tid);
+          if (!tpl || tpl.tenantId !== tenantId) {
+            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} references template ${tid} which is not in your tenant` });
+          }
+          if (tpl.channel !== a.defaultChannel) {
+            return res.status(400).json({
+              error: `Send node #${n.orderIndex + 1} template channel (${tpl.channel}) must match automation channel (${a.defaultChannel})`,
+            });
           }
         }
       }
