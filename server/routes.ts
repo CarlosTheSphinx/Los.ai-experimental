@@ -69,6 +69,9 @@ import { registerMicrosoftConnectRoutes } from './routes/microsoftConnect';
 import commercialIntakeRouter from './routes/commercialIntake';
 import { registerCommsRoutes } from './routes/comms';
 import { startBatchSendWorker } from './comms/batchSendWorker';
+import { startAutomationWorker } from './comms/automationWorker';
+import { initializeTriggerSystem } from './comms/triggerService';
+import { commsEventBus } from './comms/eventBus';
 
 
 /**
@@ -6048,6 +6051,8 @@ export async function registerRoutes(
   // ==================== COMMS AUTOMATIONS ROUTES ====================
   registerCommsRoutes(app, { authenticateUser, requireAdmin, requireSuperAdmin });
   startBatchSendWorker();
+  startAutomationWorker();
+  initializeTriggerSystem().catch(err => console.error('[triggerService] init failed:', err));
 
 
   // ==================== ADMIN ROUTES ====================
@@ -7797,6 +7802,11 @@ export async function registerRoutes(
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
+      // Tenant scope: never allow an admin to move a stage on a project belonging
+      // to another tenant. Also ensures the comms event below is scoped correctly.
+      if (project.tenantId !== req.user!.tenantId) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
 
       const stages = await storage.getStagesByProjectId(projectId);
       const targetStage = stages.find(s => s.stageKey === targetStageKey);
@@ -7818,7 +7828,21 @@ export async function registerRoutes(
         }
       }
 
+      const previousStage = project.currentStage ?? null;
       await db.update(projects).set({ currentStage: targetStageKey, lastUpdated: new Date() }).where(eq(projects.id, projectId));
+
+      // Emit domain event so the comms automation engine can react.
+      try {
+        commsEventBus.publish('loan_status_changed', {
+          tenantId: req.user!.tenantId,
+          loanId: projectId,
+          fromStage: previousStage,
+          toStage: targetStageKey,
+          movedByUserId: req.user!.id,
+        });
+      } catch (err) {
+        console.error('[commsEventBus] publish loan_status_changed failed:', err);
+      }
 
       await storage.createProjectActivity({
         projectId,

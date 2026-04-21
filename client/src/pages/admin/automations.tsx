@@ -1,15 +1,16 @@
 import { useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, ScrollText, Users, SendHorizontal, ListChecks, UserMinus } from "lucide-react";
+import { Settings, ScrollText, Users, SendHorizontal, ListChecks, UserMinus, Workflow } from "lucide-react";
 import CommsChannelsPage from "./comms/channels";
 import CommsTemplatesPage from "./comms/templates";
 import CommsSegmentsPage from "./comms/segments";
 import CommsBatchSendPage from "./comms/batch-send";
 import CommsSendLogPage from "./comms/log";
 import CommsOptOutsPage from "./comms/opt-outs";
+import CommsAutomationsPage from "./comms/automations";
 
-const TAB_VALUES = ["setup", "templates", "segments", "batch-send", "log", "opt-outs"] as const;
+const TAB_VALUES = ["setup", "templates", "segments", "automations", "batch-send", "log", "opt-outs"] as const;
 type TabValue = typeof TAB_VALUES[number];
 
 const DEFAULT_TAB: TabValue = "setup";
@@ -48,7 +49,7 @@ export default function AutomationsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 h-auto">
           <TabsTrigger value="setup" data-testid="tab-setup" className="gap-2">
             <Settings className="w-4 h-4" /><span>Setup</span>
           </TabsTrigger>
@@ -57,6 +58,9 @@ export default function AutomationsPage() {
           </TabsTrigger>
           <TabsTrigger value="segments" data-testid="tab-segments" className="gap-2">
             <Users className="w-4 h-4" /><span>Segments</span>
+          </TabsTrigger>
+          <TabsTrigger value="automations" data-testid="tab-automations" className="gap-2">
+            <Workflow className="w-4 h-4" /><span>Automations</span>
           </TabsTrigger>
           <TabsTrigger value="batch-send" data-testid="tab-batch-send" className="gap-2">
             <SendHorizontal className="w-4 h-4" /><span>Batch Send</span>
@@ -72,6 +76,7 @@ export default function AutomationsPage() {
         <TabsContent value="setup" className="mt-4"><CommsChannelsPage /></TabsContent>
         <TabsContent value="templates" className="mt-4"><CommsTemplatesPage /></TabsContent>
         <TabsContent value="segments" className="mt-4"><CommsSegmentsPage /></TabsContent>
+        <TabsContent value="automations" className="mt-4"><CommsAutomationsPage /></TabsContent>
         <TabsContent value="batch-send" className="mt-4"><CommsBatchSendPage /></TabsContent>
         <TabsContent value="log" className="mt-4"><CommsSendLogPage /></TabsContent>
         <TabsContent value="opt-outs" className="mt-4"><CommsOptOutsPage /></TabsContent>

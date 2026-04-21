@@ -4,10 +4,13 @@ import {
   commsChannels, commsTemplates, commsMergeTags,
   commsSendLog, commsOptOuts,
   commsSegments, commsScheduledExecutions,
+  commsAutomations, commsAutomationNodes, commsAutomationRuns,
   insertCommsChannelSchema, insertCommsTemplateSchema, insertCommsOptOutSchema,
+  insertCommsAutomationSchema,
   users, tenants,
 } from '@shared/schema';
 import { eq, and, desc, asc, gte, lte, ilike, or, sql, SQL } from 'drizzle-orm';
+import { wireAutomation, unwireAutomation, startManualRun, type TriggerConfig } from '../comms/triggerService';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import type { AuthRequest } from '../auth';
@@ -932,6 +935,325 @@ export function registerCommsRoutes(
         .limit(50);
 
       res.json(results);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  // ==================== AUTOMATIONS (Phase 3) ====================
+
+  /** Validate trigger config shape — required when activating an automation. */
+  const triggerConfigSchema = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('event'), eventName: z.enum(['loan_status_changed', 'document_uploaded', 'deal_submitted', 'task_completed']), filters: z.object({ toStage: z.string().optional(), fromStage: z.string().optional() }).optional() }),
+    z.object({ kind: z.literal('time_absolute'), runAt: z.string(), segmentId: z.number().optional() }),
+    z.object({ kind: z.literal('time_recurring'), everyMinutes: z.number().int().min(1), segmentId: z.number().optional() }),
+    z.object({ kind: z.literal('time_relative'), anchorEvent: z.enum(['loan_status_changed', 'document_uploaded', 'deal_submitted', 'task_completed']), offsetMinutes: z.number().int().min(0), filters: z.object({ toStage: z.string().optional() }).optional() }),
+    z.object({ kind: z.literal('manual') }),
+  ]);
+
+  const exitConditionsSchema = z.object({
+    loanStatusEquals: z.array(z.string()).optional(),
+    exitOnOptOut: z.boolean().optional(),
+  }).optional().nullable();
+
+  const nodeSchema = z.object({
+    type: z.enum(['send', 'wait']),
+    config: z.record(z.unknown()),
+  });
+
+  const automationBodySchema = z.object({
+    name: z.string().min(1).max(255),
+    triggerConfig: triggerConfigSchema.optional().nullable(),
+    exitConditions: exitConditionsSchema,
+    notifyBrokerOnSend: z.boolean().optional(),
+    maxDurationDays: z.number().int().positive().optional().nullable(),
+    nodes: z.array(nodeSchema).optional(),
+  });
+
+  app.get('/api/comms/automations', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const list = await db.select().from(commsAutomations)
+        .where(eq(commsAutomations.tenantId, tenantId))
+        .orderBy(desc(commsAutomations.updatedAt));
+
+      // Annotate each with node count + next scheduled run time
+      const ids = list.map(a => a.id);
+      const nodeCounts = ids.length ? await db.execute(sql`
+        SELECT automation_id, COUNT(*)::int AS node_count
+          FROM comms_automation_nodes
+         WHERE automation_id = ANY(${sql.raw(`ARRAY[${ids.join(',')}]::int[]`)})
+         GROUP BY automation_id
+      `) : { rows: [] as Array<{ automation_id: number; node_count: number }> };
+      const nextRuns = ids.length ? await db.execute(sql`
+        SELECT a.id AS automation_id, MIN(s.scheduled_for) AS next_run
+          FROM comms_automations a
+          LEFT JOIN comms_automation_runs r ON r.automation_id = a.id
+          LEFT JOIN comms_scheduled_executions s ON s.run_id = r.id AND s.status = 'pending'
+         WHERE a.id = ANY(${sql.raw(`ARRAY[${ids.join(',')}]::int[]`)})
+         GROUP BY a.id
+      `) : { rows: [] as Array<{ automation_id: number; next_run: string | null }> };
+
+      const countMap = new Map<number, number>();
+      for (const r of (nodeCounts.rows ?? []) as Array<{ automation_id: number; node_count: number }>) {
+        countMap.set(r.automation_id, r.node_count);
+      }
+      const nextMap = new Map<number, string | null>();
+      for (const r of (nextRuns.rows ?? []) as Array<{ automation_id: number; next_run: string | null }>) {
+        nextMap.set(r.automation_id, r.next_run);
+      }
+
+      res.json(list.map(a => ({
+        ...a,
+        nodeCount: countMap.get(a.id) ?? 0,
+        nextRunAt: nextMap.get(a.id) ?? null,
+      })));
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.get('/api/comms/automations/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const [a] = await db.select().from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!a) return res.status(404).json({ error: 'Automation not found' });
+      const nodes = await db.select().from(commsAutomationNodes)
+        .where(eq(commsAutomationNodes.automationId, id))
+        .orderBy(asc(commsAutomationNodes.orderIndex));
+      res.json({ ...a, nodes });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.post('/api/comms/automations', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const parsed = automationBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      const [created] = await db.insert(commsAutomations).values({
+        tenantId,
+        name: parsed.data.name,
+        status: 'draft',
+        triggerConfig: parsed.data.triggerConfig ?? null,
+        exitConditions: parsed.data.exitConditions ?? null,
+        notifyBrokerOnSend: parsed.data.notifyBrokerOnSend ?? false,
+        maxDurationDays: parsed.data.maxDurationDays ?? null,
+        createdBy: req.user?.id ?? null,
+      }).returning();
+
+      if (parsed.data.nodes?.length) {
+        await db.insert(commsAutomationNodes).values(
+          parsed.data.nodes.map((n, idx) => ({
+            automationId: created.id,
+            orderIndex: idx,
+            type: n.type,
+            config: n.config,
+          }))
+        );
+      }
+      res.status(201).json(created);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.put('/api/comms/automations/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!existing) return res.status(404).json({ error: 'Automation not found' });
+
+      const parsed = automationBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      // Editing an active automation rewires it after save
+      const wasActive = existing.status === 'active';
+
+      await db.update(commsAutomations).set({
+        name: parsed.data.name,
+        triggerConfig: parsed.data.triggerConfig ?? null,
+        exitConditions: parsed.data.exitConditions ?? null,
+        notifyBrokerOnSend: parsed.data.notifyBrokerOnSend ?? false,
+        maxDurationDays: parsed.data.maxDurationDays ?? null,
+        updatedAt: new Date(),
+      }).where(eq(commsAutomations.id, id));
+
+      if (parsed.data.nodes) {
+        // Replace node set wholesale — runs already in flight reference frozen ids
+        // via cascading FK on commsAutomationRuns.currentNodeId (set null), so this
+        // is safe: in-flight runs whose current node is deleted will be marked
+        // failed by the worker on next tick.
+        await db.delete(commsAutomationNodes).where(eq(commsAutomationNodes.automationId, id));
+        if (parsed.data.nodes.length) {
+          await db.insert(commsAutomationNodes).values(
+            parsed.data.nodes.map((n, idx) => ({
+              automationId: id, orderIndex: idx, type: n.type, config: n.config,
+            }))
+          );
+        }
+      }
+
+      // Always unwire on edit; re-wire only if still active AND has a trigger config.
+      // Prevents listener/timer leaks when triggerConfig becomes null on an active automation.
+      unwireAutomation(id);
+      if (wasActive && parsed.data.triggerConfig) {
+        wireAutomation(id, tenantId, parsed.data.triggerConfig as TriggerConfig);
+      }
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.delete('/api/comms/automations/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!existing) return res.status(404).json({ error: 'Automation not found' });
+      unwireAutomation(id);
+      await db.update(commsAutomations).set({ status: 'archived', updatedAt: new Date() })
+        .where(eq(commsAutomations.id, id));
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.post('/api/comms/automations/:id/activate', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const [a] = await db.select().from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!a) return res.status(404).json({ error: 'Automation not found' });
+      if (!a.triggerConfig) return res.status(400).json({ error: 'Trigger must be configured before activation' });
+
+      // Re-validate trigger config (in case it was saved before stricter rules existed).
+      const triggerOk = triggerConfigSchema.safeParse(a.triggerConfig);
+      if (!triggerOk.success) {
+        return res.status(400).json({ error: `Invalid trigger config: ${triggerOk.error.errors[0].message}` });
+      }
+      // For time_absolute, refuse to activate if the runAt is in the past.
+      if (triggerOk.data.kind === 'time_absolute') {
+        const at = new Date(triggerOk.data.runAt).getTime();
+        if (Number.isNaN(at) || at <= Date.now()) {
+          return res.status(400).json({ error: 'time_absolute runAt must be in the future' });
+        }
+      }
+
+      const nodes = await db.select().from(commsAutomationNodes)
+        .where(eq(commsAutomationNodes.automationId, id))
+        .orderBy(asc(commsAutomationNodes.orderIndex));
+      if (nodes.length === 0) {
+        return res.status(400).json({ error: 'At least one node is required to activate' });
+      }
+      // Validate per-node config so we never activate an automation that will fail at dispatch.
+      for (const n of nodes) {
+        const cfg = (n.config ?? {}) as Record<string, unknown>;
+        if (n.type === 'send') {
+          if (!cfg.templateId || !cfg.recipientType || !cfg.channel) {
+            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} is missing channel/template/recipient` });
+          }
+        } else if (n.type === 'wait') {
+          const dm = cfg.durationMinutes;
+          if (typeof dm !== 'number' || dm < 1) {
+            return res.status(400).json({ error: `Wait node #${n.orderIndex + 1} must have durationMinutes >= 1` });
+          }
+        }
+      }
+
+      await db.update(commsAutomations).set({ status: 'active', updatedAt: new Date() })
+        .where(eq(commsAutomations.id, id));
+      wireAutomation(id, tenantId, a.triggerConfig as TriggerConfig);
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.post('/api/comms/automations/:id/pause', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const [a] = await db.select().from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!a) return res.status(404).json({ error: 'Automation not found' });
+      unwireAutomation(id);
+      await db.update(commsAutomations).set({ status: 'paused', updatedAt: new Date() })
+        .where(eq(commsAutomations.id, id));
+      // Terminate in-flight runs so they don't sit forever in `running`.
+      // Re-activating an automation does not auto-resume paused runs — fire fresh ones.
+      await db.update(commsAutomationRuns)
+        .set({ status: 'exited', exitReason: 'automation_paused' })
+        .where(and(eq(commsAutomationRuns.automationId, id), eq(commsAutomationRuns.status, 'running')));
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  const startRunBody = z.object({
+    subjectType: z.enum(['loan', 'broker', 'borrower']),
+    subjectId: z.number().int().positive(),
+  });
+  app.post('/api/comms/automations/:id/start-run', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      const parsed = startRunBody.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      const result = await startManualRun({
+        automationId: id,
+        tenantId,
+        subjectType: parsed.data.subjectType,
+        subjectId: parsed.data.subjectId,
+      });
+      if (result.error) return res.status(400).json({ error: result.error });
+      res.json({ runId: result.runId });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.get('/api/comms/automations/:id/runs', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id);
+      // Tenant scope via the parent automation
+      const [a] = await db.select({ id: commsAutomations.id }).from(commsAutomations)
+        .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
+        .limit(1);
+      if (!a) return res.status(404).json({ error: 'Automation not found' });
+
+      const runs = await db.select().from(commsAutomationRuns)
+        .where(eq(commsAutomationRuns.automationId, id))
+        .orderBy(desc(commsAutomationRuns.startedAt))
+        .limit(50);
+      res.json(runs);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }
