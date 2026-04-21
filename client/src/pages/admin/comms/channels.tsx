@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Trash2, Pencil, User, Mail, MessageSquare, Bell,
-  CheckCircle2, AlertCircle, Lock,
+  CheckCircle2, AlertCircle, Lock, Send,
 } from "lucide-react";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -220,6 +220,8 @@ function ChannelStepCard({
   onEdit,
   onDelete,
   onAddAdditional,
+  onTestSend,
+  testingId,
   getUserLabel,
 }: {
   step: SetupStepMeta;
@@ -229,6 +231,8 @@ function ChannelStepCard({
   onEdit: (ch: CommsChannel) => void;
   onDelete: (id: number) => void;
   onAddAdditional: (type: ChannelType) => void;
+  onTestSend: (ch: CommsChannel) => void;
+  testingId: number | null;
   getUserLabel: (id: number | null) => string | null;
 }) {
   const matching = channels.filter(c => c.type === step.type);
@@ -281,6 +285,17 @@ function ChannelStepCard({
                   )}
                 </div>
                 <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!ch.isActive || (ch.type === "sms" && !ch.smsEnabled) || testingId === ch.id}
+                    onClick={() => onTestSend(ch)}
+                    title="Send a test message to yourself"
+                    data-testid={`button-test-send-${ch.id}`}
+                  >
+                    <Send className="h-3 w-3 mr-1" />
+                    {testingId === ch.id ? "Sending..." : "Test send"}
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => onEdit(ch)} data-testid={`button-edit-channel-${ch.id}`}>
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -308,6 +323,7 @@ export default function CommsChannelsPage() {
   const [showForm, setShowForm] = useState<{ type?: ChannelType } | null>(null);
   const [editing, setEditing] = useState<CommsChannel | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
 
   const { data: channels = [], isLoading } = useQuery<CommsChannel[]>({
     queryKey: ["/api/comms/channels"],
@@ -340,6 +356,21 @@ export default function CommsChannelsPage() {
       toast({ title: "Channel updated" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: (channelId: number) =>
+      apiRequest("POST", `/api/comms/channels/${channelId}/test-send`, {}).then(r => r.json()),
+    onMutate: (id) => setTestingId(id),
+    onSettled: () => setTestingId(null),
+    onSuccess: (data) => {
+      if (data?.success) {
+        toast({ title: "Test message sent", description: "Check your inbox/phone shortly." });
+      } else {
+        toast({ title: "Test send blocked", description: data?.error || data?.status || "Skipped", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => toast({ title: "Test send failed", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -381,6 +412,8 @@ export default function CommsChannelsPage() {
               onAddAdditional={t => setShowForm({ type: t })}
               onEdit={ch => setEditing(ch)}
               onDelete={id => setDeletingId(id)}
+              onTestSend={ch => testSendMutation.mutate(ch.id)}
+              testingId={testingId}
               getUserLabel={getUserLabel}
             />
           ))}

@@ -437,6 +437,66 @@ export function registerCommsRoutes(
     }
   });
 
+  /** Test-send: dispatch a one-off built-in test message on a given channel
+   *  to verify channel configuration. Recipient is the calling user (so we
+   *  never bother real users while testing). Uses the existing send pipeline
+   *  to honor opt-outs and tenant scoping. */
+  app.post('/api/comms/channels/:id/test-send', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const channelId = parseInt(req.params.id);
+      if (!req.user?.id) return res.status(401).json({ error: 'No user' });
+
+      const [channel] = await db.select().from(commsChannels)
+        .where(and(eq(commsChannels.id, channelId), eq(commsChannels.tenantId, tenantId)))
+        .limit(1);
+      if (!channel) return res.status(404).json({ error: 'Channel not found' });
+      if (channel.type === 'sms' && !channel.smsEnabled) {
+        return res.status(400).json({ error: 'SMS is disabled until 10DLC approval is granted' });
+      }
+
+      // Find or create a one-shot test template for this channel
+      const testName = `__channel_test_${channel.type}`;
+      let [tpl] = await db.select().from(commsTemplates)
+        .where(and(
+          eq(commsTemplates.tenantId, tenantId),
+          eq(commsTemplates.name, testName),
+        ))
+        .limit(1);
+      if (!tpl) {
+        const body = channel.type === 'email'
+          ? '<p>This is a test message from your Lendry communications setup. If you received this, your channel is configured correctly.</p>'
+          : 'Test message from Lendry: your channel is configured correctly.';
+        const inserted = await db.insert(commsTemplates).values({
+          tenantId,
+          name: testName,
+          channel: channel.type,
+          subject: channel.type === 'email' ? 'Lendry test message' : null,
+          body,
+          createdBy: req.user.id,
+        }).returning();
+        tpl = inserted[0];
+      }
+
+      // Recipient = the calling user. They are tenant-scoped by definition.
+      const recipientType = ['super_admin', 'lender', 'processor'].includes(req.user.role)
+        ? 'lender_user' : (req.user.role as 'broker' | 'borrower');
+
+      const result = await sendCommsMessage({
+        tenantId,
+        templateId: tpl.id,
+        recipientType,
+        recipientId: req.user.id,
+        senderUserId: req.user.id,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: errMsg });
+    }
+  });
+
   // ==================== SEND LOG ====================
 
   app.get('/api/comms/send-log', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -730,16 +790,14 @@ export function registerCommsRoutes(
 
       let dispatchedNow = 0;
       if (!isFuture) {
-        // Best-effort immediate dispatch on the request thread (worker also drains as backup).
-        // Dispatch a small batch synchronously so users see a fast result; remaining rows
-        // get picked up by the next worker tick.
-        const SYNC_LIMIT = 50;
+        // Synchronous dispatch on the request thread for "send now" — every recipient
+        // is processed before we respond. The worker also drains as a backup if the
+        // request crashes mid-loop.
         const due = await db.select().from(commsScheduledExecutions)
           .where(and(
             eq(commsScheduledExecutions.batchId, batchId),
             eq(commsScheduledExecutions.status, 'pending'),
-          ))
-          .limit(SYNC_LIMIT);
+          ));
 
         for (const row of due) {
           // Claim the row first to prevent the worker from double-sending

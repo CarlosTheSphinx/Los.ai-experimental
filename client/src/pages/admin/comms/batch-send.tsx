@@ -56,6 +56,7 @@ export default function CommsBatchSendPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleAt, setScheduleAt] = useState<string>("");
   const [show1to1, setShow1to1] = useState(false);
+  const [channelFilter, setChannelFilter] = useState<"all" | "email" | "sms" | "in_app">("all");
 
   const { data: segments = [] } = useQuery<CommsSegment[]>({ queryKey: ["/api/comms/segments"] });
   const { data: templates = [] } = useQuery<CommsTemplate[]>({ queryKey: ["/api/comms/templates"] });
@@ -116,9 +117,17 @@ export default function CommsBatchSendPage() {
   });
 
   const audienceFilteredTemplates = useMemo(() => {
-    // No strict channel filtering by audience yet; show all active templates
-    return templates;
-  }, [templates]);
+    if (channelFilter === "all") return templates;
+    return templates.filter(t => t.channel === channelFilter);
+  }, [templates, channelFilter]);
+
+  // If the current selection no longer matches the active channel filter, clear it
+  useMemo(() => {
+    if (templateId && channelFilter !== "all") {
+      const sel = templates.find(t => String(t.id) === templateId);
+      if (sel && sel.channel !== channelFilter) setTemplateId("");
+    }
+  }, [channelFilter, templateId, templates]);
 
   const canAdvance: Record<typeof step, boolean> = useMemo(() => ({
     1: !!segmentId,
@@ -193,7 +202,22 @@ export default function CommsBatchSendPage() {
 
           {step === 2 && (
             <div className="space-y-3">
-              <Label>Choose template</Label>
+              <div className="flex items-center justify-between">
+                <Label>Choose template</Label>
+                <div className="flex gap-1">
+                  {(["all", "email", "sms", "in_app"] as const).map(c => (
+                    <Badge
+                      key={c}
+                      variant={channelFilter === c ? "default" : "outline"}
+                      className="cursor-pointer text-xs"
+                      onClick={() => setChannelFilter(c)}
+                      data-testid={`chip-channel-${c}`}
+                    >
+                      {c === "all" ? "All" : c === "in_app" ? "In-App" : c.toUpperCase()}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
               <Select value={templateId} onValueChange={setTemplateId}>
                 <SelectTrigger data-testid="select-batch-template">
                   <SelectValue placeholder="Select a template..." />
