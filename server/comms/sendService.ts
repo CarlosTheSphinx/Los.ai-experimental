@@ -14,7 +14,12 @@ interface SmsChannelConfig {
 
 export interface SendParams {
   tenantId: number;
-  templateId: number;
+  // Either templateId (pick a saved template) OR inlineBody (compose inline).
+  // When inlineBody is provided templateId is optional.
+  templateId?: number | null;
+  inlineBody?: string;
+  inlineSubject?: string;
+  inlineChannel?: 'email' | 'sms' | 'in_app';
   recipientType: 'broker' | 'borrower' | 'lender_user';
   recipientId: number;
   loanId?: number;
@@ -41,10 +46,44 @@ export interface SendResult {
 
 export async function sendCommsMessage(params: SendParams): Promise<SendResult> {
   const {
-    tenantId, templateId, recipientId, recipientType,
+    tenantId, templateId, inlineBody, inlineSubject, inlineChannel,
+    recipientId, recipientType,
     loanId, senderUserId = null, runId = null, nodeId = null,
     branchPath = [],
   } = params;
+
+  // ── Inline compose path (no saved template required) ──────────────────────
+  if (inlineBody) {
+    const channel = inlineChannel ?? 'email';
+    const [recipient] = await db.select().from(users)
+      .where(and(eq(users.id, recipientId), eq(users.tenantId, tenantId)))
+      .limit(1);
+    if (!recipient) {
+      const logEntry = await writeLog({
+        tenantId, channel, templateId: null, templateVersion: 0,
+        recipientType, recipientId, recipientContactValue: '',
+        resolvedBody: inlineBody, resolvedSubject: inlineSubject ?? null,
+        resolvedMergeTags: {}, status: 'failed',
+        failureReason: 'Recipient not found or not in your tenant', runId, nodeId,
+      });
+      return { success: false, status: 'failed', logId: logEntry?.id, error: 'Recipient not found or not in your tenant' };
+    }
+    const ctx = await buildContext({ recipientId, loanId, tenantId });
+    const { resolvedBody, resolvedSubject, resolvedMergeTags } = resolveTemplate(
+      inlineBody, inlineSubject ?? null, ctx, channel
+    );
+    // Route inline body through the same dispatch helpers used for templates.
+    return dispatchAndLog({
+      tenantId, channel, template: null, templateId: null, templateVersion: 0,
+      recipientId, recipientType, recipient, loanId, senderUserId, runId, nodeId,
+      resolvedBody, resolvedSubject, resolvedMergeTags, branchPath,
+    });
+  }
+
+  // ── Template path ──────────────────────────────────────────────────────────
+  if (!templateId) {
+    return { success: false, status: 'failed', error: 'Send node requires either a templateId or inlineBody' };
+  }
 
   // Tenant-scoped template lookup
   const [template] = await db.select().from(commsTemplates)
@@ -92,6 +131,37 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     template.body, template.subject, ctx, channel
   );
 
+  return dispatchAndLog({
+    tenantId, channel, template, templateId, templateVersion: template.version,
+    recipientId, recipientType, recipient, loanId, senderUserId, runId, nodeId,
+    resolvedBody, resolvedSubject, resolvedMergeTags, branchPath,
+  });
+}
+
+// ── Shared dispatch + log helper ───────────────────────────────────────────────
+// Called by both the template path and the inline-compose path.
+async function dispatchAndLog(p: {
+  tenantId: number;
+  channel: 'email' | 'sms' | 'in_app';
+  template: { version: number } | null;
+  templateId: number | null;
+  templateVersion: number;
+  recipientId: number;
+  recipientType: string;
+  recipient: { id: number; email: string; phone?: string | null };
+  loanId?: number;
+  senderUserId?: number | null;
+  runId?: number | null;
+  nodeId?: number | null;
+  resolvedBody: string;
+  resolvedSubject: string | null;
+  resolvedMergeTags: Record<string, string>;
+  branchPath?: Array<{ nodeId: number; nodeType: 'branch_engagement' | 'branch_loan_state'; side: 'yes' | 'no'; at: string }>;
+}): Promise<SendResult> {
+  const { tenantId, channel, templateId, templateVersion, recipientId, recipientType,
+    recipient, loanId, senderUserId = null, runId = null, nodeId = null,
+    resolvedBody, resolvedSubject, resolvedMergeTags, branchPath = [] } = p;
+
   let contactValue = '';
   if (channel === 'email') {
     contactValue = recipient.email;
@@ -99,7 +169,7 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     contactValue = recipient.phone || '';
     if (!contactValue) {
       const logEntry = await writeLog({
-        tenantId, channel, templateId, templateVersion: template.version,
+        tenantId, channel, templateId, templateVersion,
         recipientType, recipientId, recipientContactValue: '',
         resolvedBody, resolvedSubject, resolvedMergeTags, status: 'skipped',
         failureReason: 'No phone number on file', runId, nodeId,
@@ -115,7 +185,7 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     const suppressed = await isOptedOut(contactValue, channel, tenantId);
     if (suppressed) {
       const logEntry = await writeLog({
-        tenantId, channel, templateId, templateVersion: template.version,
+        tenantId, channel, templateId, templateVersion,
         recipientType, recipientId, recipientContactValue: contactValue,
         resolvedBody, resolvedSubject, resolvedMergeTags, status: 'suppressed',
         failureReason: 'Recipient has opted out', runId, nodeId,
@@ -124,7 +194,6 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     }
   }
 
-  // For SMS: enforce tenant channel config and smsEnabled gate
   // Helper: find best SMS channel — prefer sender's owned channel, fall back to shared
   async function resolveSmsChannel() {
     if (senderUserId) {
@@ -138,8 +207,6 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
         .limit(1);
       if (ownedChannel) return ownedChannel;
     }
-    // Only fall back to shared channels (ownerUserId IS NULL) to avoid
-    // accidentally using another team member's assigned phone number
     const [sharedChannel] = await db.select().from(commsChannels)
       .where(and(
         eq(commsChannels.tenantId, tenantId),
@@ -151,14 +218,12 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     return sharedChannel ?? null;
   }
 
-  // Resolve SMS channel once and reuse for both gate check and dispatch
   let resolvedSmsChannel: typeof import('@shared/schema').commsChannels.$inferSelect | null = null;
   if (channel === 'sms') {
     resolvedSmsChannel = await resolveSmsChannel();
-
     if (!resolvedSmsChannel) {
       const logEntry = await writeLog({
-        tenantId, channel, templateId, templateVersion: template.version,
+        tenantId, channel, templateId, templateVersion,
         recipientType, recipientId, recipientContactValue: contactValue,
         resolvedBody, resolvedSubject, resolvedMergeTags, status: 'skipped',
         failureReason: 'No active SMS channel configured for this tenant', runId, nodeId,
@@ -167,7 +232,7 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     }
     if (!resolvedSmsChannel.smsEnabled) {
       const logEntry = await writeLog({
-        tenantId, channel, templateId, templateVersion: template.version,
+        tenantId, channel, templateId, templateVersion,
         recipientType, recipientId, recipientContactValue: contactValue,
         resolvedBody, resolvedSubject, resolvedMergeTags, status: 'skipped',
         failureReason: 'SMS sending is disabled on this channel (pending 10DLC approval)', runId, nodeId,
@@ -189,20 +254,13 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
         html: resolvedBody,
       });
     } else if (channel === 'sms') {
-      // Use the already-resolved SMS channel (no duplicate DB query)
       if (!resolvedSmsChannel || !resolvedSmsChannel.config) {
         throw new Error('No SMS channel configuration found');
       }
-
       const cfg = resolvedSmsChannel.config as SmsChannelConfig;
       if (!cfg.accountSid || !cfg.apiKey || !cfg.apiKeySecret || !cfg.fromNumber) {
         throw new Error('Incomplete SMS channel credentials');
       }
-
-      // Direct Twilio dispatch: comms uses per-tenant per-user channel credentials from
-      // comms_channels rather than the platform-level smsService.ts (which uses a shared
-      // platform Twilio account). This intentional separation keeps comms tenant-specific
-      // and allows future per-lender 10DLC campaign configurations.
       const twilio = (await import('twilio')).default;
       const twilioClient = twilio(cfg.apiKey, cfg.apiKeySecret, { accountSid: cfg.accountSid });
       await twilioClient.messages.create({
@@ -225,7 +283,7 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
   }
 
   const logEntry = await writeLog({
-    tenantId, channel, templateId, templateVersion: template.version,
+    tenantId, channel, templateId, templateVersion,
     recipientType, recipientId, recipientContactValue: contactValue,
     resolvedBody, resolvedSubject: resolvedSubject || null,
     resolvedMergeTags, status: dispatchStatus,
