@@ -81,7 +81,8 @@ export default function CommsSendPage() {
     queryKey: ["/api/projects"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/projects");
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.projects ?? []);
     },
   });
 
