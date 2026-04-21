@@ -182,9 +182,6 @@ async function processOne(rowId: number): Promise<void> {
     if (!cfg.templateId || !cfg.recipientType) {
       dispatchOk = false;
       dispatchError = 'Send node missing templateId or recipientType';
-    } else if (run.subjectType !== 'loan') {
-      dispatchOk = false;
-      dispatchError = `Send unsupported for subjectType=${run.subjectType}`;
     } else {
       // Idempotency guard: if a send_log entry already exists for this
       // run/node, the previous attempt actually delivered (or recorded an
@@ -197,17 +194,33 @@ async function processOne(rowId: number): Promise<void> {
         dispatchOk = true;
       } else {
 
-      const recipientUserId = await resolveRecipientUserId(run.subjectId, cfg.recipientType, automation.tenantId);
+      // Resolve recipient based on the run's subject type:
+      //   loan     → look up the borrower/broker on the project
+      //   broker   → recipient IS the user identified by subjectId (must be a broker)
+      //   borrower → recipient IS the user identified by subjectId
+      let recipientUserId: number | null = null;
+      let resolvedLoanId: number | null = null;
+      if (run.subjectType === 'loan') {
+        recipientUserId = await resolveRecipientUserId(run.subjectId, cfg.recipientType, automation.tenantId);
+        resolvedLoanId = run.subjectId;
+      } else if (run.subjectType === 'broker' || run.subjectType === 'borrower') {
+        // Tenant-scoped user lookup
+        const [u] = await db.select({ id: users.id }).from(users)
+          .where(and(eq(users.id, run.subjectId), eq(users.tenantId, automation.tenantId)))
+          .limit(1);
+        recipientUserId = u?.id ?? null;
+      }
+
       if (!recipientUserId) {
         dispatchOk = false;
-        dispatchError = `Could not resolve ${cfg.recipientType} for loan ${run.subjectId}`;
+        dispatchError = `Could not resolve ${cfg.recipientType} for ${run.subjectType} ${run.subjectId}`;
       } else {
         const result = await sendCommsMessage({
           tenantId: automation.tenantId,
           templateId: cfg.templateId,
           recipientType: cfg.recipientType,
           recipientId: recipientUserId,
-          loanId: run.subjectId,
+          loanId: resolvedLoanId ?? undefined,
           runId: run.id,
           nodeId: node.id,
         });

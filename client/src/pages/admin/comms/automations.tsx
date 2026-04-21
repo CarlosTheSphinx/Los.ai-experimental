@@ -14,15 +14,40 @@ import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 
 type AutomationStatus = "draft" | "active" | "paused" | "archived";
+type Channel = "email" | "sms" | "in_app";
 type EventName = "loan_status_changed" | "document_uploaded" | "deal_submitted" | "task_completed";
 type TriggerKind = "event" | "time_absolute" | "time_recurring" | "time_relative" | "manual";
+type SubjectType = "loan" | "broker" | "borrower";
+
+type TriggerConfig =
+  | { kind: "event"; eventName: EventName; filters?: { toStage?: string; fromStage?: string } }
+  | { kind: "time_absolute"; runAt: string; segmentId?: number }
+  | { kind: "time_recurring"; everyMinutes: number; segmentId?: number }
+  | { kind: "time_relative"; anchorEvent: EventName; offsetMinutes: number; filters?: { toStage?: string } }
+  | { kind: "manual" };
+
+interface ExitConditions {
+  exitOnOptOut?: boolean;
+  loanStatusEquals?: string[];
+}
+
+interface SendNodeConfig {
+  templateId?: number;
+  recipientType?: "borrower" | "broker";
+  channel?: Channel; // mirrors the automation-level defaultChannel — kept on the node for legacy reads
+}
+interface WaitNodeConfig {
+  durationMinutes?: number;
+}
+type NodeConfig = SendNodeConfig & WaitNodeConfig;
 
 interface AutomationListItem {
   id: number;
   name: string;
   status: AutomationStatus;
-  triggerConfig: any;
-  exitConditions: any;
+  defaultChannel: Channel;
+  triggerConfig: TriggerConfig | null;
+  exitConditions: ExitConditions | null;
   notifyBrokerOnSend: boolean;
   maxDurationDays: number | null;
   createdAt: string;
@@ -33,21 +58,25 @@ interface AutomationListItem {
 
 interface NodeRow {
   type: "send" | "wait";
-  config: Record<string, any>;
+  config: NodeConfig;
 }
 
 interface AutomationDetail extends AutomationListItem {
-  nodes: Array<{ id: number; orderIndex: number; type: "send" | "wait"; config: any }>;
+  nodes: Array<{ id: number; orderIndex: number; type: "send" | "wait"; config: NodeConfig | null }>;
 }
 
 interface AutomationRun {
   id: number;
-  subjectType: string;
+  subjectType: SubjectType;
   subjectId: number;
   startedAt: string;
   status: string;
   exitReason: string | null;
+  parkedNode: { id: number; ordinal: number; type: "send" | "wait"; label: string } | null;
+  lastSendLogId: number | null;
 }
+
+interface ApiError { message?: string }
 
 interface Template { id: number; name: string; channel: "email" | "sms" | "in_app" }
 interface Segment { id: number; name: string }
@@ -75,12 +104,12 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
   const pause = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/comms/automations/${id}/pause`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Paused" }); },
-    onError: (e: any) => toast({ title: "Pause failed", description: e?.message, variant: "destructive" }),
+    onError: (e: ApiError) => toast({ title: "Pause failed", description: e?.message, variant: "destructive" }),
   });
   const activate = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/comms/automations/${id}/activate`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Activated" }); },
-    onError: (e: any) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
+    onError: (e: ApiError) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
   });
   const archive = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/comms/automations/${id}`),
@@ -164,6 +193,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   });
 
   const [name, setName] = useState("");
+  const [defaultChannel, setDefaultChannel] = useState<Channel>("email");
   const [triggerKind, setTriggerKind] = useState<TriggerKind>("manual");
   const [eventName, setEventName] = useState<EventName>("loan_status_changed");
   const [eventToStage, setEventToStage] = useState("");
@@ -182,6 +212,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   useEffect(() => {
     if (isNew || !existing || hydrated) return;
     setName(existing.name);
+    setDefaultChannel(existing.defaultChannel ?? "email");
     const t = existing.triggerConfig;
     if (t?.kind) {
       setTriggerKind(t.kind);
@@ -201,7 +232,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     setHydrated(true);
   }, [existing, isNew, hydrated]);
 
-  const buildTriggerConfig = () => {
+  const buildTriggerConfig = (): TriggerConfig => {
     switch (triggerKind) {
       case "event": return { kind: "event", eventName, filters: eventToStage ? { toStage: eventToStage } : undefined };
       case "time_absolute": return { kind: "time_absolute", runAt: runAt ? new Date(runAt).toISOString() : new Date().toISOString(), segmentId };
@@ -213,6 +244,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
 
   const buildPayload = () => ({
     name,
+    defaultChannel,
     triggerConfig: buildTriggerConfig(),
     exitConditions: {
       exitOnOptOut,
@@ -220,36 +252,41 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     },
     notifyBrokerOnSend,
     maxDurationDays: maxDurationDays === "" ? null : Number(maxDurationDays),
-    nodes,
+    // Stamp every send node with the automation-level channel before save so
+    // backend single-channel validation is satisfied.
+    nodes: nodes.map(n => n.type === "send"
+      ? { ...n, config: { ...n.config, channel: defaultChannel } }
+      : n),
   });
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/comms/automations", buildPayload()),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Automation created" }); onClose(); },
-    onError: (e: any) => toast({ title: "Create failed", description: e?.message, variant: "destructive" }),
+    onError: (e: ApiError) => toast({ title: "Create failed", description: e?.message, variant: "destructive" }),
   });
   const save = useMutation({
     mutationFn: () => apiRequest("PUT", `/api/comms/automations/${id}`, buildPayload()),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] }); toast({ title: "Saved" }); },
-    onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
+    onError: (e: ApiError) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
   });
   const activate = useMutation({
     mutationFn: () => apiRequest("POST", `/api/comms/automations/${id}/activate`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] }); toast({ title: "Activated" }); },
-    onError: (e: any) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
+    onError: (e: ApiError) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
   });
   const pause = useMutation({
     mutationFn: () => apiRequest("POST", `/api/comms/automations/${id}/pause`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] }); toast({ title: "Paused" }); },
   });
 
-  const [manualLoanId, setManualLoanId] = useState("");
+  const [manualSubjectType, setManualSubjectType] = useState<SubjectType>("loan");
+  const [manualSubjectId, setManualSubjectId] = useState("");
   const startRun = useMutation({
     mutationFn: () => apiRequest("POST", `/api/comms/automations/${id}/start-run`, {
-      subjectType: "loan", subjectId: Number(manualLoanId),
+      subjectType: manualSubjectType, subjectId: Number(manualSubjectId),
     }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id, "runs"] }); toast({ title: "Run started" }); setManualLoanId(""); },
-    onError: (e: any) => toast({ title: "Start failed", description: e?.message, variant: "destructive" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id, "runs"] }); toast({ title: "Run started" }); setManualSubjectId(""); },
+    onError: (e: ApiError) => toast({ title: "Start failed", description: e?.message, variant: "destructive" }),
   });
 
   const updateNode = (idx: number, patch: Partial<NodeRow>) =>
@@ -264,7 +301,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   });
   const addNode = (atIdx: number, type: "send" | "wait") => {
     const n: NodeRow = type === "send"
-      ? { type: "send", config: { channel: "email", recipientType: "borrower" } }
+      ? { type: "send", config: { channel: defaultChannel, recipientType: "borrower" } }
       : { type: "wait", config: { durationMinutes: 60 } };
     setNodes(prev => [...prev.slice(0, atIdx), n, ...prev.slice(atIdx)]);
   };
@@ -298,6 +335,20 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
           <div>
             <Label htmlFor="auto-name">Name</Label>
             <Input id="auto-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Welcome series" data-testid="input-name" />
+          </div>
+          <div>
+            <Label>Channel</Label>
+            <Select value={defaultChannel} onValueChange={v => setDefaultChannel(v as Channel)}>
+              <SelectTrigger data-testid="select-default-channel"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="in_app">In-app</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Every send step in this automation uses this channel. Mixing channels in one automation is not supported.
+            </p>
           </div>
           {!isNew && existing && (
             <div className="text-xs text-muted-foreground">
@@ -418,6 +469,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
               <NodeEditor
                 node={n}
                 templates={templates}
+                automationChannel={defaultChannel}
                 onChange={p => updateNode(idx, p)}
                 onRemove={() => removeNode(idx)}
                 onMoveUp={idx > 0 ? () => moveNode(idx, -1) : undefined}
@@ -441,16 +493,27 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
         <Card>
           <CardHeader><CardTitle className="text-base">Start a manual run</CardTitle></CardHeader>
           <CardContent className="flex items-end gap-2">
+            <div className="w-32">
+              <Label className="text-xs">Subject</Label>
+              <Select value={manualSubjectType} onValueChange={v => setManualSubjectType(v as SubjectType)}>
+                <SelectTrigger data-testid="select-manual-subject-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="loan">Loan</SelectItem>
+                  <SelectItem value="broker">Broker</SelectItem>
+                  <SelectItem value="borrower">Borrower</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex-1">
-              <Label className="text-xs">Loan ID</Label>
+              <Label className="text-xs">{manualSubjectType === "loan" ? "Loan ID" : `${manualSubjectType[0].toUpperCase()}${manualSubjectType.slice(1)} user ID`}</Label>
               <Input
-                type="number" value={manualLoanId} onChange={e => setManualLoanId(e.target.value)}
-                placeholder="e.g. 42" data-testid="input-manual-loan-id"
+                type="number" value={manualSubjectId} onChange={e => setManualSubjectId(e.target.value)}
+                placeholder="e.g. 42" data-testid="input-manual-subject-id"
               />
             </div>
             <Button
               onClick={() => startRun.mutate()}
-              disabled={!manualLoanId || startRun.isPending}
+              disabled={!manualSubjectId || startRun.isPending}
               data-testid="button-start-run"
             >
               <Send className="w-4 h-4 mr-1" />Start run
@@ -470,9 +533,25 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             ) : (
               <div className="space-y-1 text-sm">
                 {runs.map(r => (
-                  <div key={r.id} className="flex items-center justify-between py-1 border-b last:border-0" data-testid={`row-run-${r.id}`}>
-                    <span>#{r.id} · {r.subjectType} {r.subjectId}</span>
-                    <span className="flex items-center gap-2">
+                  <div key={r.id} className="flex items-center justify-between py-1 border-b last:border-0 gap-3" data-testid={`row-run-${r.id}`}>
+                    <span className="min-w-0 truncate">
+                      #{r.id} · {r.subjectType} {r.subjectId}
+                      {r.parkedNode && r.status === "running" && (
+                        <span className="ml-2 text-xs text-muted-foreground" data-testid={`text-parked-node-${r.id}`}>
+                          parked at step {r.parkedNode.ordinal} ({r.parkedNode.label})
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      {r.lastSendLogId != null && (
+                        <a
+                          href={`/admin/comms/send-log?id=${r.lastSendLogId}`}
+                          className="text-xs underline text-muted-foreground hover:text-foreground"
+                          data-testid={`link-send-log-${r.id}`}
+                        >
+                          view send
+                        </a>
+                      )}
                       <Badge variant={r.status === "completed" ? "default" : r.status === "failed" ? "destructive" : "secondary"}>
                         {r.status}
                       </Badge>
@@ -491,9 +570,10 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   );
 }
 
-function NodeEditor({ node, templates, onChange, onRemove, onMoveUp, onMoveDown, index }: {
+function NodeEditor({ node, templates, automationChannel, onChange, onRemove, onMoveUp, onMoveDown, index }: {
   node: NodeRow;
   templates: Template[];
+  automationChannel: Channel;
   onChange: (patch: Partial<NodeRow>) => void;
   onRemove: () => void;
   onMoveUp?: () => void;
@@ -522,24 +602,13 @@ function NodeEditor({ node, templates, onChange, onRemove, onMoveUp, onMoveDown,
         </div>
         <Separator />
         {node.type === "send" ? (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs">Channel</Label>
-              <Select value={node.config.channel ?? "email"} onValueChange={v => onChange({ config: { channel: v } })}>
-                <SelectTrigger data-testid={`select-channel-${index}`}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="in_app">In-app</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Template</Label>
+              <Label className="text-xs">Template ({automationChannel})</Label>
               <Select value={node.config.templateId?.toString() ?? ""} onValueChange={v => onChange({ config: { templateId: Number(v) } })}>
                 <SelectTrigger data-testid={`select-template-${index}`}><SelectValue placeholder="Pick…" /></SelectTrigger>
                 <SelectContent>
-                  {templates.filter(t => t.channel === (node.config.channel ?? "email")).map(t => (
+                  {templates.filter(t => t.channel === automationChannel).map(t => (
                     <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -547,7 +616,7 @@ function NodeEditor({ node, templates, onChange, onRemove, onMoveUp, onMoveDown,
             </div>
             <div>
               <Label className="text-xs">Recipient</Label>
-              <Select value={node.config.recipientType ?? "borrower"} onValueChange={v => onChange({ config: { recipientType: v } })}>
+              <Select value={node.config.recipientType ?? "borrower"} onValueChange={v => onChange({ config: { recipientType: v as "borrower" | "broker" } })}>
                 <SelectTrigger data-testid={`select-recipient-${index}`}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="borrower">Borrower</SelectItem>

@@ -135,9 +135,19 @@ function wireEventTrigger(
       if (p.fromStage !== cfg.filters.fromStage) return;
     }
 
-    const loanId = (payload as { loanId?: number }).loanId;
-    if (!loanId) return;
-    await startRun({ automationId, tenantId, subjectType: 'loan', subjectId: loanId });
+    // Resolve subject. Most events carry loanId. `deal_submitted` may not have
+    // an associated loan yet — fall back to the broker user id (subjectType
+    // 'broker') so the automation still fires.
+    const p = payload as { loanId?: number | null; submittedByUserId?: number | null };
+    if (p.loanId) {
+      await startRun({ automationId, tenantId, subjectType: 'loan', subjectId: p.loanId });
+      return;
+    }
+    if (cfg.eventName === 'deal_submitted' && p.submittedByUserId) {
+      await startRun({ automationId, tenantId, subjectType: 'broker', subjectId: p.submittedByUserId });
+      return;
+    }
+    // Otherwise nothing to attach the run to — skip.
   };
 
   const unsubscribe = commsEventBus.subscribe(cfg.eventName, handler);

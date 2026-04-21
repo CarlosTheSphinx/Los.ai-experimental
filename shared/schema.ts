@@ -4410,6 +4410,7 @@ export const commsAutomations = pgTable("comms_automations", {
   tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   status: varchar("status", { length: 20 }).default("draft").notNull(), // 'draft' | 'active' | 'paused' | 'archived'
+  defaultChannel: varchar("default_channel", { length: 20 }).default("email").notNull(), // single channel — applies to every send node
   triggerConfig: jsonb("trigger_config"),
   exitConditions: jsonb("exit_conditions"),
   notifyBrokerOnSend: boolean("notify_broker_on_send").default(false).notNull(),

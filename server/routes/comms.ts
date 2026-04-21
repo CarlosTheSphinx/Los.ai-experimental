@@ -961,8 +961,11 @@ export function registerCommsRoutes(
     config: z.record(z.unknown()),
   });
 
+  const channelEnum = z.enum(['email', 'sms', 'in_app']);
+
   const automationBodySchema = z.object({
     name: z.string().min(1).max(255),
+    defaultChannel: channelEnum.default('email'),
     triggerConfig: triggerConfigSchema.optional().nullable(),
     exitConditions: exitConditionsSchema,
     notifyBrokerOnSend: z.boolean().optional(),
@@ -1043,6 +1046,7 @@ export function registerCommsRoutes(
         tenantId,
         name: parsed.data.name,
         status: 'draft',
+        defaultChannel: parsed.data.defaultChannel,
         triggerConfig: parsed.data.triggerConfig ?? null,
         exitConditions: parsed.data.exitConditions ?? null,
         notifyBrokerOnSend: parsed.data.notifyBrokerOnSend ?? false,
@@ -1084,6 +1088,7 @@ export function registerCommsRoutes(
 
       await db.update(commsAutomations).set({
         name: parsed.data.name,
+        defaultChannel: parsed.data.defaultChannel,
         triggerConfig: parsed.data.triggerConfig ?? null,
         exitConditions: parsed.data.exitConditions ?? null,
         notifyBrokerOnSend: parsed.data.notifyBrokerOnSend ?? false,
@@ -1167,11 +1172,17 @@ export function registerCommsRoutes(
         return res.status(400).json({ error: 'At least one node is required to activate' });
       }
       // Validate per-node config so we never activate an automation that will fail at dispatch.
+      // Single-channel automations: every send node must use the automation's defaultChannel.
       for (const n of nodes) {
         const cfg = (n.config ?? {}) as Record<string, unknown>;
         if (n.type === 'send') {
-          if (!cfg.templateId || !cfg.recipientType || !cfg.channel) {
-            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} is missing channel/template/recipient` });
+          if (!cfg.templateId || !cfg.recipientType) {
+            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} is missing template/recipient` });
+          }
+          if (cfg.channel && cfg.channel !== a.defaultChannel) {
+            return res.status(400).json({
+              error: `Send node #${n.orderIndex + 1} channel (${cfg.channel}) must match automation channel (${a.defaultChannel})`,
+            });
           }
         } else if (n.type === 'wait') {
           const dm = cfg.durationMinutes;
@@ -1213,10 +1224,10 @@ export function registerCommsRoutes(
     }
   });
 
-  // Manual runs only support loan subjects in Phase 3 — the worker's send path
-  // needs a loan to resolve recipients. Broader subject types are deferred.
+  // Manual runs accept loan / borrower / broker subjects. Each subject is
+  // tenant-scope-validated before any run is created.
   const startRunBody = z.object({
-    subjectType: z.literal('loan'),
+    subjectType: z.enum(['loan', 'broker', 'borrower']),
     subjectId: z.number().int().positive(),
   });
   app.post('/api/comms/automations/:id/start-run', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -1227,12 +1238,25 @@ export function registerCommsRoutes(
       const parsed = startRunBody.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
-      // Tenant scope check — never let an admin start a run against another tenant's loan.
-      const [loan] = await db.select({ id: projects.id, tenantId: projects.tenantId })
-        .from(projects)
-        .where(and(eq(projects.id, parsed.data.subjectId), eq(projects.tenantId, tenantId)))
-        .limit(1);
-      if (!loan) return res.status(404).json({ error: 'Loan not found in your tenant' });
+      // Tenant scope check on the subject — never let an admin start a run
+      // against another tenant's loan or user.
+      if (parsed.data.subjectType === 'loan') {
+        const [loan] = await db.select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.id, parsed.data.subjectId), eq(projects.tenantId, tenantId)))
+          .limit(1);
+        if (!loan) return res.status(404).json({ error: 'Loan not found in your tenant' });
+      } else {
+        const expectedRole = parsed.data.subjectType; // 'broker' | 'borrower'
+        const [u] = await db.select({ id: users.id, role: users.role })
+          .from(users)
+          .where(and(eq(users.id, parsed.data.subjectId), eq(users.tenantId, tenantId)))
+          .limit(1);
+        if (!u) return res.status(404).json({ error: `${expectedRole} not found in your tenant` });
+        if (u.role !== expectedRole) {
+          return res.status(400).json({ error: `User ${parsed.data.subjectId} is not a ${expectedRole}` });
+        }
+      }
 
       const result = await startManualRun({
         automationId: id,
@@ -1262,7 +1286,41 @@ export function registerCommsRoutes(
         .where(eq(commsAutomationRuns.automationId, id))
         .orderBy(desc(commsAutomationRuns.startedAt))
         .limit(50);
-      res.json(runs);
+
+      // Enrich each run with parked-node info (current step) plus the latest
+      // send-log id for that run so the UI can deep-link into the Send Log.
+      const nodeIds = Array.from(new Set(runs.map(r => r.currentNodeId).filter((x): x is number => !!x)));
+      const nodes = nodeIds.length
+        ? await db.select().from(commsAutomationNodes).where(sql`${commsAutomationNodes.id} = ANY(${nodeIds})`)
+        : [];
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+      const runIds = runs.map(r => r.id);
+      let lastSendByRun = new Map<number, number>();
+      if (runIds.length) {
+        const sendLogs = await db.select({ id: commsSendLog.id, runId: commsSendLog.runId })
+          .from(commsSendLog)
+          .where(sql`${commsSendLog.runId} = ANY(${runIds})`)
+          .orderBy(desc(commsSendLog.id));
+        for (const r of sendLogs) {
+          if (r.runId != null && !lastSendByRun.has(r.runId)) lastSendByRun.set(r.runId, r.id);
+        }
+      }
+
+      const enriched = runs.map(r => {
+        const n = r.currentNodeId ? nodeMap.get(r.currentNodeId) : null;
+        return {
+          ...r,
+          parkedNode: n ? {
+            id: n.id,
+            ordinal: n.orderIndex + 1,
+            type: n.type,
+            label: n.type === 'send' ? 'Send message' : 'Wait',
+          } : null,
+          lastSendLogId: lastSendByRun.get(r.id) ?? null,
+        };
+      });
+      res.json(enriched);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }
