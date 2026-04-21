@@ -309,6 +309,24 @@ export function registerCommsRoutes(
     }
   });
 
+  /** Throws if SMS templates are being marked active while no SMS channel
+   *  has been approved (smsEnabled=true) for this tenant. Internal helper. */
+  async function assertSmsAllowed(tenantId: number, channel: string, isActive: boolean): Promise<string | null> {
+    if (channel !== 'sms' || !isActive) return null;
+    const enabled = await db.select({ id: commsChannels.id }).from(commsChannels)
+      .where(and(
+        eq(commsChannels.tenantId, tenantId),
+        eq(commsChannels.type, 'sms'),
+        eq(commsChannels.smsEnabled, true),
+        eq(commsChannels.isActive, true),
+      ))
+      .limit(1);
+    if (!enabled.length) {
+      return 'SMS templates cannot be activated until an SMS channel is approved (10DLC). Set up SMS in the Setup tab and ask a platform admin to enable it.';
+    }
+    return null;
+  }
+
   app.post('/api/comms/templates', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       const tenantId = requireTenantId(req, res);
@@ -320,6 +338,9 @@ export function registerCommsRoutes(
         version: 1,
       });
       if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      const gateError = await assertSmsAllowed(tenantId, parsed.data.channel, parsed.data.isActive ?? true);
+      if (gateError) return res.status(400).json({ error: gateError });
 
       const [template] = await db.insert(commsTemplates).values(parsed.data).returning();
       res.status(201).json(template);
@@ -337,6 +358,9 @@ export function registerCommsRoutes(
       const [existing] = await db.select().from(commsTemplates)
         .where(and(eq(commsTemplates.id, id), eq(commsTemplates.tenantId, tenantId))).limit(1);
       if (!existing) return res.status(404).json({ error: 'Template not found' });
+
+      const gateError = await assertSmsAllowed(tenantId, existing.channel, true);
+      if (gateError) return res.status(400).json({ error: gateError });
 
       await db.update(commsTemplates).set({ isActive: false }).where(eq(commsTemplates.id, id));
 

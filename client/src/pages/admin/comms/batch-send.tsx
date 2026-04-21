@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -122,7 +122,7 @@ export default function CommsBatchSendPage() {
   }, [templates, channelFilter]);
 
   // If the current selection no longer matches the active channel filter, clear it
-  useMemo(() => {
+  useEffect(() => {
     if (templateId && channelFilter !== "all") {
       const sel = templates.find(t => String(t.id) === templateId);
       if (sel && sel.channel !== channelFilter) setTemplateId("");
