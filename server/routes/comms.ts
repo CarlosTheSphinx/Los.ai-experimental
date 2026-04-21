@@ -1011,7 +1011,87 @@ export function registerCommsRoutes(
     // against "previous top-level Send".
     const topLevelTypes = nodes.map(n => n.type);
 
-    function walk(seq: NodeIn[], path: string, depth: number, rootTopIdx: number): string | null {
+    // Phase 4 — explicit structural cycle check. The persist layer takes a
+    // JSON tree from the client so cycles are not representable in transit,
+    // but we still walk the object graph with an identity-tracking Set and
+    // reject any input where a node object appears twice (e.g. a malicious
+    // handcrafted payload that aliases the same sub-array into two parents).
+    // This is cheap and guarantees the DFS persister can never loop.
+    {
+      const seen = new Set<object>();
+      const cycleWalk = (seq: NodeIn[] | undefined, path: string): string | null => {
+        if (!seq) return null;
+        for (let i = 0; i < seq.length; i++) {
+          const n = seq[i];
+          const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+          if (seen.has(n)) return `Sequence contains a cycle at ${here}`;
+          seen.add(n);
+          if (n.yes) { const e = cycleWalk(n.yes, `${here} → Yes`); if (e) return e; }
+          if (n.no)  { const e = cycleWalk(n.no,  `${here} → No`);  if (e) return e; }
+        }
+        return null;
+      };
+      const cycleErr = cycleWalk(nodes, '');
+      if (cycleErr) return cycleErr;
+    }
+
+    // Phase 4 — enumerate every Send node in DFS pre-order with its branch
+    // path, so branch_engagement nodes can reference any prior Send in the
+    // tree (not just top-level ones). A ref is legal iff the target Send's
+    // pre-order position is strictly earlier than the branch node's and the
+    // target is NOT inside the branch node's own subtree.
+    type PathStep = number | 'yes' | 'no';
+    interface SendLoc { path: PathStep[]; preOrder: number; label: string; }
+    const allSends: SendLoc[] = [];
+    {
+      let counter = 0;
+      const walkSends = (seq: NodeIn[], prefix: PathStep[], labelPrefix: string) => {
+        seq.forEach((n, i) => {
+          const here = labelPrefix ? `${labelPrefix} → step ${i + 1}` : `Step ${i + 1}`;
+          const pathHere: PathStep[] = [...prefix, i];
+          counter++;
+          if (n.type === 'send') {
+            allSends.push({ path: pathHere, preOrder: counter, label: here });
+          } else if (n.type === 'branch_engagement' || n.type === 'branch_loan_state') {
+            if (n.yes?.length) walkSends(n.yes, [...pathHere, 'yes'], `${here} → Yes`);
+            if (n.no?.length)  walkSends(n.no,  [...pathHere, 'no' ], `${here} → No`);
+          }
+        });
+      };
+      walkSends(nodes, [], '');
+    }
+    // Path-prefix helper: is 'maybeAncestor' a prefix of 'p'?
+    const isPrefix = (maybeAncestor: PathStep[], p: PathStep[]): boolean => {
+      if (maybeAncestor.length > p.length) return false;
+      return maybeAncestor.every((v, i) => v === p[i]);
+    };
+    // Compute the DFS pre-order counter for an arbitrary node path using the
+    // same counter scheme as the allSends enumeration above.
+    const preOrderOfPath = (target: PathStep[]): number => {
+      let n = 0;
+      const descend = (seq: NodeIn[], prefix: PathStep[]): boolean => {
+        for (let i = 0; i < seq.length; i++) {
+          const node = seq[i];
+          const here: PathStep[] = [...prefix, i];
+          n++;
+          if (here.length === target.length && here.every((v, j) => v === target[j])) return true;
+          if (node.type === 'branch_engagement' || node.type === 'branch_loan_state') {
+            if (node.yes?.length && descend(node.yes, [...here, 'yes'])) return true;
+            if (node.no?.length  && descend(node.no,  [...here, 'no' ])) return true;
+          }
+        }
+        return false;
+      };
+      descend(nodes, []);
+      return n;
+    };
+
+    function walk(
+      seq: NodeIn[],
+      path: string,
+      depth: number,
+      branchPath: PathStep[] = [],
+    ): string | null {
       if (depth > MAX_BRANCH_DEPTH) {
         return `Sequence at ${path} is nested too deep (max ${MAX_BRANCH_DEPTH} levels)`;
       }
@@ -1019,6 +1099,10 @@ export function registerCommsRoutes(
         const n = seq[i];
         const cfg = (n.config ?? {}) as Record<string, unknown>;
         const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+        const ownPath: PathStep[] = [...branchPath, i];
+        // Legacy refTopLevelIndex checks must point strictly earlier than
+        // this branch's root top-level position.
+        const rootTopIdx = typeof ownPath[0] === 'number' ? ownPath[0] : 0;
         if (n.type === 'send') {
           if (!cfg.templateId || typeof cfg.templateId !== 'number') return `${here} (Send) is missing a template`;
           if (!cfg.recipientType || (cfg.recipientType !== 'borrower' && cfg.recipientType !== 'broker')) {
@@ -1032,13 +1116,39 @@ export function registerCommsRoutes(
           const dm = cfg.durationMinutes;
           if (typeof dm !== 'number' || dm < 1) return `${here} (Wait) must have a duration of at least 1 minute`;
         } else if (n.type === 'branch_engagement') {
+          // Phase 4 — a branch_engagement may reference either:
+          //   (a) refPath: PathStep[] — any prior Send anywhere in the tree
+          //       (preferred, supports nested refs), or
+          //   (b) refTopLevelIndex: number — legacy, top-level Send only
+          //       (back-compat for existing saved automations).
+          const refPath = cfg.refPath as unknown;
           const refIdx = cfg.refTopLevelIndex;
-          if (typeof refIdx !== 'number') return `${here} (Branch on Engagement) must reference a previous Send step`;
-          if (refIdx < 0 || refIdx >= rootTopIdx) {
-            return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a strictly earlier top-level step`;
-          }
-          if (topLevelTypes[refIdx] !== 'send') {
-            return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a Send step`;
+          if (Array.isArray(refPath)) {
+            // Target must be a known Send…
+            const target = allSends.find(s =>
+              s.path.length === refPath.length && s.path.every((v, j) => v === refPath[j]),
+            );
+            if (!target) {
+              return `${here} (Branch on Engagement) references a step that isn't a Send`;
+            }
+            // …strictly earlier in pre-order…
+            const myPreOrder = preOrderOfPath(ownPath);
+            if (target.preOrder >= myPreOrder) {
+              return `${here} (Branch on Engagement) references a step that isn't strictly earlier`;
+            }
+            // …and not inside this branch's own subtree.
+            if (isPrefix(ownPath, target.path)) {
+              return `${here} (Branch on Engagement) cannot reference a Send inside its own branch`;
+            }
+          } else if (typeof refIdx === 'number') {
+            if (refIdx < 0 || refIdx >= rootTopIdx) {
+              return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a strictly earlier top-level step`;
+            }
+            if (topLevelTypes[refIdx] !== 'send') {
+              return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a Send step`;
+            }
+          } else {
+            return `${here} (Branch on Engagement) must reference a previous Send step`;
           }
           if (!['delivered', 'opened', 'clicked', 'replied'].includes(String(cfg.engagementType))) {
             return `${here} (Branch on Engagement) has an invalid engagement type`;
@@ -1048,8 +1158,8 @@ export function registerCommsRoutes(
           }
           if (!n.yes?.length) return `${here} (Branch on Engagement) "Yes" sequence is empty`;
           if (!n.no?.length)  return `${here} (Branch on Engagement) "No" sequence is empty`;
-          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, rootTopIdx); if (yErr) return yErr;
-          const nErr = walk(n.no,  `${here} → No`,  depth + 1, rootTopIdx); if (nErr) return nErr;
+          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, [...ownPath, 'yes']); if (yErr) return yErr;
+          const nErr = walk(n.no,  `${here} → No`,  depth + 1, [...ownPath, 'no' ]); if (nErr) return nErr;
         } else if (n.type === 'branch_loan_state') {
           const okFields = ['currentStage', 'status', 'loanAmount', 'loanType'];
           if (!okFields.includes(String(cfg.field))) return `${here} (Branch on Loan State) must pick a loan field`;
@@ -1075,15 +1185,15 @@ export function registerCommsRoutes(
           }
           if (!n.yes?.length) return `${here} (Branch on Loan State) "Yes" sequence is empty`;
           if (!n.no?.length)  return `${here} (Branch on Loan State) "No" sequence is empty`;
-          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, rootTopIdx); if (yErr) return yErr;
-          const nErr = walk(n.no,  `${here} → No`,  depth + 1, rootTopIdx); if (nErr) return nErr;
+          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, [...ownPath, 'yes']); if (yErr) return yErr;
+          const nErr = walk(n.no,  `${here} → No`,  depth + 1, [...ownPath, 'no' ]); if (nErr) return nErr;
         }
       }
       return null;
     }
 
-    for (let i = 0; i < nodes.length; i++) {
-      const err = walk([nodes[i]], '', 0, i);
+    {
+      const err = walk(nodes, '', 0, []);
       if (err) return err;
     }
 
@@ -1136,14 +1246,32 @@ export function registerCommsRoutes(
     nodes: NodeIn[],
   ): Promise<void> {
     const topLevelIds: number[] = [];
+    // Phase 4 — key every inserted row by its tree path (e.g. "0|yes|1") so we
+    // can resolve branch_engagement.refPath → refNodeId for refs that cross
+    // into nested branches.
+    const pathToId = new Map<string, number>();
+    const pathKey = (p: (number | 'yes' | 'no')[]): string => p.join('|');
+
     async function insertOne(
-      n: NodeIn, parentNodeId: number | null, branchSide: 'yes' | 'no' | null, orderIndex: number,
+      n: NodeIn,
+      parentNodeId: number | null,
+      branchSide: 'yes' | 'no' | null,
+      orderIndex: number,
+      path: (number | 'yes' | 'no')[],
     ): Promise<number> {
       let cfg: Record<string, unknown> = { ...(n.config ?? {}) };
       if (n.type === 'branch_engagement') {
-        const refIdx = cfg.refTopLevelIndex as number | undefined;
-        if (typeof refIdx === 'number' && topLevelIds[refIdx] != null) {
-          cfg = { ...cfg, refNodeId: topLevelIds[refIdx] };
+        // Prefer refPath (full-tree) when present; fall back to
+        // refTopLevelIndex (legacy, top-level only) for back-compat.
+        const refPath = cfg.refPath as unknown;
+        if (Array.isArray(refPath)) {
+          const targetId = pathToId.get(pathKey(refPath as (number | 'yes' | 'no')[]));
+          if (targetId != null) cfg = { ...cfg, refNodeId: targetId };
+        } else {
+          const refIdx = cfg.refTopLevelIndex as number | undefined;
+          if (typeof refIdx === 'number' && topLevelIds[refIdx] != null) {
+            cfg = { ...cfg, refNodeId: topLevelIds[refIdx] };
+          }
         }
       }
       const [row] = await db.insert(commsAutomationNodes).values({
@@ -1155,20 +1283,21 @@ export function registerCommsRoutes(
         branchSide,
       }).returning({ id: commsAutomationNodes.id });
       const newId = row.id;
+      pathToId.set(pathKey(path), newId);
 
       if (n.type === 'branch_engagement' || n.type === 'branch_loan_state') {
         for (let j = 0; j < (n.yes ?? []).length; j++) {
-          await insertOne(n.yes![j], newId, 'yes', j);
+          await insertOne(n.yes![j], newId, 'yes', j, [...path, 'yes', j]);
         }
         for (let j = 0; j < (n.no ?? []).length; j++) {
-          await insertOne(n.no![j], newId, 'no', j);
+          await insertOne(n.no![j], newId, 'no', j, [...path, 'no', j]);
         }
       }
       return newId;
     }
 
     for (let i = 0; i < nodes.length; i++) {
-      const id = await insertOne(nodes[i], null, null, i);
+      const id = await insertOne(nodes[i], null, null, i, [i]);
       topLevelIds.push(id);
     }
   }
@@ -1187,11 +1316,29 @@ export function registerCommsRoutes(
     const topLevelIdToIdx = new Map<number, number>();
     topLevel.forEach((r, i) => topLevelIdToIdx.set(r.id, i));
 
+    // Phase 4 — index every row by its tree path so we can translate
+    // refNodeId → refPath for branch_engagement refs that may point into
+    // nested branches, not just top-level.
+    const idToPath = new Map<number, (number | 'yes' | 'no')[]>();
+    const indexPaths = (row: NodeRow, path: (number | 'yes' | 'no')[]): void => {
+      idToPath.set(row.id, path);
+      if (row.type === 'branch_engagement' || row.type === 'branch_loan_state') {
+        const kids = rows.filter(r => r.parentNodeId === row.id);
+        const yes = kids.filter(r => r.branchSide === 'yes').sort((a, b) => a.orderIndex - b.orderIndex);
+        const no  = kids.filter(r => r.branchSide === 'no').sort((a, b) => a.orderIndex - b.orderIndex);
+        yes.forEach((r, i) => indexPaths(r, [...path, 'yes', i]));
+        no .forEach((r, i) => indexPaths(r, [...path, 'no',  i]));
+      }
+    };
+    topLevel.forEach((r, i) => indexPaths(r, [i]));
+
     const build = (row: NodeRow): NodeIn & { id: number } => {
       const cfg: Record<string, unknown> = { ...((row.config ?? {}) as Record<string, unknown>) };
       if (row.type === 'branch_engagement' && typeof cfg.refNodeId === 'number') {
         const idx = topLevelIdToIdx.get(cfg.refNodeId as number);
         if (idx != null) cfg.refTopLevelIndex = idx;
+        const path = idToPath.get(cfg.refNodeId as number);
+        if (path != null) cfg.refPath = path;
       }
       const out: NodeIn & { id: number } = {
         id: row.id,

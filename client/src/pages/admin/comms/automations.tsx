@@ -46,6 +46,10 @@ interface NodeConfig {
   durationMinutes?: number;
   // branch_engagement
   refTopLevelIndex?: number;
+  // Phase 4 — full-tree ref path to a prior Send (e.g. [0, 'yes', 1]).
+  // Preferred over refTopLevelIndex; the latter is retained only to load
+  // legacy automations saved before this field existed.
+  refPath?: (number | "yes" | "no")[];
   engagementType?: "delivered" | "opened" | "clicked" | "replied";
   windowMinutes?: number;
   // branch_loan_state
@@ -289,6 +293,57 @@ function listTopLevelSends(nodes: NodeRow[]): Array<{ idx: number; templateId?: 
     }));
 }
 
+// Phase 4 — full-tree enumeration of Send nodes with their path and a
+// human-readable breadcrumb label. Lets a branch_engagement picker offer
+// Sends that live inside nested branches (so long as they're in a visible
+// subtree that isn't the branch's own).
+type TreeStep = number | "yes" | "no";
+type TreeSend = { path: TreeStep[]; label: string; templateId?: number };
+// Shared DFS pre-order comparator used by the client validator AND the
+// eligible-sends picker. Numeric steps compare numerically (so step 2 is
+// before step 10). Side steps compare with explicit "yes" < "no" to match
+// the DFS traversal order used everywhere else (yes child visited first).
+// A longer path that shares a prefix is treated as LATER in pre-order.
+function cmpTreePath(a: TreeStep[], b: TreeStep[]): number {
+  const lim = Math.min(a.length, b.length);
+  for (let k = 0; k < lim; k++) {
+    const av = a[k]; const bv = b[k];
+    if (av === bv) continue;
+    if (typeof av === "number" && typeof bv === "number") return av - bv;
+    if (typeof av === "string" && typeof bv === "string") {
+      // "yes" visited before "no" in our tree walks.
+      return av === "yes" ? -1 : 1;
+    }
+    // Mixed types shouldn't happen at the same depth in well-formed paths.
+    return typeof av === "number" ? -1 : 1;
+  }
+  return a.length - b.length;
+}
+function pathIsPrefix(a: TreeStep[], b: TreeStep[]): boolean {
+  return a.length <= b.length && a.every((v, i) => v === b[i]);
+}
+function listTreeSends(nodes: NodeRow[]): TreeSend[] {
+  const out: TreeSend[] = [];
+  const walk = (seq: NodeRow[], pfx: (number | "yes" | "no")[], lbl: string): void => {
+    seq.forEach((n, i) => {
+      const here = lbl ? `${lbl} → Step ${i + 1}` : `Step ${i + 1}`;
+      const hp: (number | "yes" | "no")[] = [...pfx, i];
+      if (n.type === "send") {
+        out.push({
+          path: hp,
+          label: `${here}: Send${n.config.templateId ? ` (template #${n.config.templateId})` : ""}`,
+          templateId: n.config.templateId,
+        });
+      } else if (n.type === "branch_engagement" || n.type === "branch_loan_state") {
+        if (n.yes?.length) walk(n.yes, [...hp, "yes"], `${here} → Yes`);
+        if (n.no?.length)  walk(n.no,  [...hp, "no" ], `${here} → No`);
+      }
+    });
+  };
+  walk(nodes, [], "");
+  return out;
+}
+
 function newNode(type: NodeType, defaultChannel: Channel): NodeRow {
   switch (type) {
     case "send": return { type: "send", config: { channel: defaultChannel, recipientType: "borrower" } };
@@ -412,26 +467,46 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   // truth.
   const validateClient = (): string | null => {
     const topTypes = nodes.map(n => n.type);
-    const walk = (seq: NodeRow[], path: string, rootTopIdx: number, depth: number): string | null => {
+    // Phase 4 — build the list of eligible Send paths for a branch node at
+    // the given path. A Send is eligible iff it appears strictly before the
+    // branch in DFS pre-order AND is not inside the branch's own subtree.
+    const pathEq = (a: TreeStep[], b: TreeStep[]): boolean =>
+      a.length === b.length && a.every((v, i) => v === b[i]);
+    const allSendPaths = listTreeSends(nodes).map(s => s.path);
+
+    const walk = (seq: NodeRow[], path: string, depth: number, branchPath: TreeStep[]): string | null => {
       if (depth > 5) return `Sequence at ${path} is nested too deep (max 5 levels)`;
       for (let i = 0; i < seq.length; i++) {
         const n = seq[i];
         const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+        const ownPath: TreeStep[] = [...branchPath, i];
+        // rootTopIdx is the top-level position this branch lives under; for
+        // legacy refTopLevelIndex checks the ref must be strictly less.
+        const rootTopIdx = typeof ownPath[0] === "number" ? ownPath[0] : 0;
         if (n.type === "send") {
           if (!n.config.templateId) return `${here} (Send) is missing a template`;
           if (!n.config.recipientType) return `${here} (Send) is missing a recipient`;
         } else if (n.type === "wait") {
           if (!n.config.durationMinutes || n.config.durationMinutes < 1) return `${here} (Wait) duration must be at least 1 minute`;
         } else if (n.type === "branch_engagement") {
+          const rPath = n.config.refPath;
           const ref = n.config.refTopLevelIndex;
-          if (ref == null) return `${here} (Branch on Engagement) must reference an earlier Send step`;
-          if (ref >= rootTopIdx) return `${here} (Branch on Engagement) reference must come before this branch`;
-          if (topTypes[ref] !== "send") return `${here} (Branch on Engagement) reference must point to a Send step`;
+          if (Array.isArray(rPath)) {
+            const target = allSendPaths.find(p => pathEq(p, rPath));
+            if (!target) return `${here} (Branch on Engagement) reference must point to a Send step`;
+            if (pathIsPrefix(ownPath, target)) return `${here} (Branch on Engagement) cannot reference a Send inside its own branch`;
+            if (cmpTreePath(target, ownPath) >= 0) return `${here} (Branch on Engagement) reference must come before this branch`;
+          } else if (ref != null) {
+            if (ref >= rootTopIdx) return `${here} (Branch on Engagement) reference must come before this branch`;
+            if (topTypes[ref] !== "send") return `${here} (Branch on Engagement) reference must point to a Send step`;
+          } else {
+            return `${here} (Branch on Engagement) must reference an earlier Send step`;
+          }
           if (!n.config.windowMinutes || n.config.windowMinutes < 1) return `${here} (Branch on Engagement) window must be at least 1 minute`;
           if (!n.yes?.length) return `${here} "Yes" branch is empty`;
           if (!n.no?.length)  return `${here} "No" branch is empty`;
-          const ye = walk(n.yes, `${here} → Yes`, rootTopIdx, depth + 1); if (ye) return ye;
-          const ne = walk(n.no,  `${here} → No`,  rootTopIdx, depth + 1); if (ne) return ne;
+          const ye = walk(n.yes, `${here} → Yes`, depth + 1, [...ownPath, "yes"]); if (ye) return ye;
+          const ne = walk(n.no,  `${here} → No`,  depth + 1, [...ownPath, "no" ]); if (ne) return ne;
         } else if (n.type === "branch_loan_state") {
           if (!n.config.field) return `${here} (Branch on Loan State) needs a field`;
           if (!n.config.operator) return `${here} (Branch on Loan State) needs an operator`;
@@ -449,16 +524,14 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
           }
           if (!n.yes?.length) return `${here} "Yes" branch is empty`;
           if (!n.no?.length)  return `${here} "No" branch is empty`;
-          const ye = walk(n.yes, `${here} → Yes`, rootTopIdx, depth + 1); if (ye) return ye;
-          const ne = walk(n.no,  `${here} → No`,  rootTopIdx, depth + 1); if (ne) return ne;
+          const ye = walk(n.yes, `${here} → Yes`, depth + 1, [...ownPath, "yes"]); if (ye) return ye;
+          const ne = walk(n.no,  `${here} → No`,  depth + 1, [...ownPath, "no" ]); if (ne) return ne;
         }
       }
       return null;
     };
-    for (let i = 0; i < nodes.length; i++) {
-      const err = walk([nodes[i]], "", i, 0);
-      if (err) return err;
-    }
+    const err = walk(nodes, "", 0, []);
+    if (err) return err;
     return null;
   };
 
@@ -528,6 +601,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   };
 
   const topLevelSends = listTopLevelSends(nodes);
+  const treeSends = listTreeSends(nodes);
 
   return (
     <div className="space-y-4" data-testid="page-automation-editor">
@@ -694,6 +768,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             templates={templates}
             automationChannel={defaultChannel}
             topLevelSends={topLevelSends}
+            treeSends={treeSends}
             onInsert={insertChild}
             onRemove={removeAt}
             onMove={moveAt}
@@ -796,7 +871,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
 // Recursive list — renders each node and the add-node controls between them.
 // `side` is null at the top level and "yes"|"no" inside a branch's children.
 function NodeList({
-  nodes, parentPath, side, templates, automationChannel, topLevelSends,
+  nodes, parentPath, side, templates, automationChannel, topLevelSends, treeSends,
   onInsert, onRemove, onMove, onUpdate, depth,
 }: {
   nodes: NodeRow[];
@@ -805,6 +880,7 @@ function NodeList({
   templates: Template[];
   automationChannel: Channel;
   topLevelSends: ReturnType<typeof listTopLevelSends>;
+  treeSends: TreeSend[];
   onInsert: (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => void;
   onRemove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
   onMove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
@@ -837,6 +913,7 @@ function NodeList({
               templates={templates}
               automationChannel={automationChannel}
               topLevelSends={topLevelSends}
+            treeSends={treeSends}
               onUpdate={onUpdate}
               onRemove={() => onRemove(parentPath, side, idx)}
               onMoveUp={idx > 0 ? () => onMove(parentPath, side, idx, -1) : undefined}
@@ -885,7 +962,7 @@ function AddNodePicker({
 }
 
 function NodeEditor({
-  node, path, templates, automationChannel, topLevelSends,
+  node, path, templates, automationChannel, topLevelSends, treeSends,
   onUpdate, onRemove, onMoveUp, onMoveDown,
   onInsertChild, onRemoveChild, onMoveChild,
   ordinal, depth,
@@ -895,6 +972,7 @@ function NodeEditor({
   templates: Template[];
   automationChannel: Channel;
   topLevelSends: ReturnType<typeof listTopLevelSends>;
+  treeSends: TreeSend[];
   onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
   onRemove: () => void;
   onMoveUp?: () => void;
@@ -907,9 +985,16 @@ function NodeEditor({
 }) {
   const isBranch = node.type === "branch_engagement" || node.type === "branch_loan_state";
   const ringByDepth = depth === 0 ? "" : "ml-4 border-l-2 border-l-muted pl-3";
-  // Engagement branches can only reference top-level Sends that come
-  // STRICTLY BEFORE this branch's own top-level position. For nested
-  // branches we walk up the path to find the root top-level idx.
+  // Phase 4 — convert the editor's PathStep[] path into the canonical
+  // TreeStep[] form so we can compare against treeSends using the shared
+  // cmpTreePath helper (numeric-aware, with 'yes' < 'no' matching DFS order).
+  const ownPath: TreeStep[] = path.flatMap(p =>
+    typeof p === "number" ? [p] : [p.side, p.idx],
+  );
+  const eligibleTreeSends = treeSends.filter(
+    s => cmpTreePath(s.path, ownPath) < 0 && !pathIsPrefix(ownPath, s.path),
+  );
+  // Legacy picker fallback (for automations saved before refPath existed).
   const myRootTopIdx = typeof path[0] === "number" ? path[0] : 0;
   const eligibleSends = topLevelSends.filter(s => s.idx < myRootTopIdx);
 
@@ -983,15 +1068,34 @@ function NodeEditor({
             <div>
               <Label className="text-xs">Reference (earlier Send)</Label>
               <Select
-                value={node.config.refTopLevelIndex?.toString() ?? ""}
-                onValueChange={v => onUpdate(path, { config: { refTopLevelIndex: Number(v) } })}
+                value={
+                  // Serialize the current ref into a picker value. Prefer refPath
+                  // (full tree), fall back to refTopLevelIndex (legacy).
+                  node.config.refPath
+                    ? JSON.stringify(node.config.refPath)
+                    : node.config.refTopLevelIndex != null
+                      ? JSON.stringify([node.config.refTopLevelIndex])
+                      : ""
+                }
+                onValueChange={v => {
+                  const parsed = JSON.parse(v) as (number | "yes" | "no")[];
+                  // Write both refPath AND refTopLevelIndex (when applicable)
+                  // so legacy back-ends still resolve the ref correctly.
+                  const patch: NodeConfig = { refPath: parsed };
+                  if (parsed.length === 1 && typeof parsed[0] === "number") {
+                    patch.refTopLevelIndex = parsed[0];
+                  } else {
+                    patch.refTopLevelIndex = undefined;
+                  }
+                  onUpdate(path, { config: patch });
+                }}
               >
                 <SelectTrigger data-testid={`select-ref-${testKey}`}>
-                  <SelectValue placeholder={eligibleSends.length ? "Pick a send" : "No earlier Send"} />
+                  <SelectValue placeholder={eligibleTreeSends.length ? "Pick a send" : "No earlier Send"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {eligibleSends.map(s => (
-                    <SelectItem key={s.idx} value={s.idx.toString()}>{s.label}</SelectItem>
+                  {eligibleTreeSends.map(s => (
+                    <SelectItem key={JSON.stringify(s.path)} value={JSON.stringify(s.path)}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1096,6 +1200,7 @@ function NodeEditor({
                 templates={templates}
                 automationChannel={automationChannel}
                 topLevelSends={topLevelSends}
+            treeSends={treeSends}
                 onInsert={onInsertChild}
                 onRemove={onRemoveChild}
                 onMove={onMoveChild}
@@ -1114,6 +1219,7 @@ function NodeEditor({
                 templates={templates}
                 automationChannel={automationChannel}
                 topLevelSends={topLevelSends}
+            treeSends={treeSends}
                 onInsert={onInsertChild}
                 onRemove={onRemoveChild}
                 onMove={onMoveChild}

@@ -158,6 +158,10 @@ export default function CommsSendLogPage() {
   const [recipientSearch, setRecipientSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Phase 4 — filter by the branch a run took (Yes/No) or by whether the row
+  // came from a branched sequence at all. Filter is client-side because the
+  // branch path is already snapshotted onto every row.
+  const [branchFilter, setBranchFilter] = useState<"all" | "yes" | "no" | "any">("all");
   const [offset, setOffset] = useState(0);
   const limit = 50;
 
@@ -167,13 +171,14 @@ export default function CommsSendLogPage() {
     setRecipientSearch("");
     setDateFrom("");
     setDateTo("");
+    setBranchFilter("all");
     setOffset(0);
   }
 
   const hasActiveFilters =
-    channelFilter !== "all" || statusFilter !== "all" || recipientSearch || dateFrom || dateTo;
+    channelFilter !== "all" || statusFilter !== "all" || recipientSearch || dateFrom || dateTo || branchFilter !== "all";
 
-  const { data: logs = [], isLoading } = useQuery<SendLogEntry[]>({
+  const { data: allLogs = [], isLoading } = useQuery<SendLogEntry[]>({
     queryKey: ["/api/comms/send-log", channelFilter, statusFilter, recipientSearch, dateFrom, dateTo, offset],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
@@ -186,6 +191,15 @@ export default function CommsSendLogPage() {
       if (!res.ok) throw new Error("Failed to fetch logs");
       return res.json();
     },
+  });
+
+  // Phase 4 — branch filter is applied client-side over the already-fetched
+  // page. This keeps the server endpoint simple and gives instant toggling.
+  const logs = allLogs.filter(entry => {
+    if (branchFilter === "all") return true;
+    const bp = entry.log.branchPath ?? [];
+    if (branchFilter === "any") return bp.length > 0;
+    return bp.some(b => b.side === branchFilter);
   });
 
   return (
@@ -267,6 +281,24 @@ export default function CommsSendLogPage() {
               />
             </div>
 
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs">Branch</Label>
+              <Select
+                value={branchFilter}
+                onValueChange={v => { setBranchFilter(v as typeof branchFilter); setOffset(0); }}
+              >
+                <SelectTrigger className="w-36" data-testid="select-log-branch">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sends</SelectItem>
+                  <SelectItem value="any">Any Branch</SelectItem>
+                  <SelectItem value="yes">Yes branch</SelectItem>
+                  <SelectItem value="no">No branch</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {hasActiveFilters && (
               <Button
                 variant="ghost"
@@ -301,7 +333,7 @@ export default function CommsSendLogPage() {
         </Card>
       )}
 
-      {logs.length >= limit && (
+      {allLogs.length >= limit && (
         <div className="flex justify-center gap-3">
           <Button
             variant="outline"
