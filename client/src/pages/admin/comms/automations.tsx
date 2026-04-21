@@ -181,7 +181,7 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
       queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] });
       toast({ title: "Activated" });
       for (const w of (data?.warnings ?? [])) {
-        toast({ title: "Channel warning", description: w, variant: "destructive" });
+        toast({ title: "Channel warning", description: w });
       }
     },
     onError: (e: ApiError) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),

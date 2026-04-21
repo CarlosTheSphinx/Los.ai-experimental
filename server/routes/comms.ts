@@ -1395,13 +1395,19 @@ export function registerCommsRoutes(
       }
 
       // Distinct channels used by Send nodes in each automation (for list icon strip).
+      // Coalesce to the automation's default_channel so legacy send nodes without an
+      // explicit per-node channel still contribute the correct icon.
       const channelRows = ids.length ? await db.execute(sql`
-        SELECT automation_id,
-               ARRAY_REMOVE(ARRAY_AGG(DISTINCT config->>'channel'), NULL) AS channels
-          FROM comms_automation_nodes
-         WHERE type = 'send'
-           AND automation_id = ANY(${sql.raw(`ARRAY[${ids.join(',')}]::int[]`)})
-         GROUP BY automation_id
+        SELECT n.automation_id,
+               ARRAY_REMOVE(
+                 ARRAY_AGG(DISTINCT COALESCE(n.config->>'channel', a.default_channel)),
+                 NULL
+               ) AS channels
+          FROM comms_automation_nodes n
+          JOIN comms_automations a ON a.id = n.automation_id
+         WHERE n.type = 'send'
+           AND n.automation_id = ANY(${sql.raw(`ARRAY[${ids.join(',')}]::int[]`)})
+         GROUP BY n.automation_id
       `) : { rows: [] as Array<{ automation_id: number; channels: string[] }> };
       const channelMap = new Map<number, string[]>();
       for (const r of (channelRows.rows ?? []) as Array<{ automation_id: number; channels: string[] }>) {
