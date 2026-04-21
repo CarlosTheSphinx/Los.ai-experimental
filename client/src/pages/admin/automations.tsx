@@ -1,25 +1,26 @@
 import { useMemo } from "react";
-import { useLocation } from "wouter";
-import { useSearch } from "wouter/use-browser-location";
+import { useLocation, useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Radio, ScrollText, Send, ListChecks, UserMinus } from "lucide-react";
+import { Settings, ScrollText, Users, SendHorizontal, ListChecks, UserMinus } from "lucide-react";
 import CommsChannelsPage from "./comms/channels";
 import CommsTemplatesPage from "./comms/templates";
-import CommsSendPage from "./comms/send";
+import CommsSegmentsPage from "./comms/segments";
+import CommsBatchSendPage from "./comms/batch-send";
 import CommsSendLogPage from "./comms/log";
 import CommsOptOutsPage from "./comms/opt-outs";
 
-const TAB_VALUES = ["channels", "templates", "send", "log", "opt-outs"] as const;
+const TAB_VALUES = ["setup", "templates", "segments", "batch-send", "log", "opt-outs"] as const;
 type TabValue = typeof TAB_VALUES[number];
 
-const DEFAULT_TAB: TabValue = "channels";
+const DEFAULT_TAB: TabValue = "setup";
 
+// Legacy alias support: ?tab=channels still resolves to setup; ?tab=send → batch-send
 function parseTab(search: string): TabValue {
   const params = new URLSearchParams(search);
   const t = params.get("tab");
-  return t && (TAB_VALUES as readonly string[]).includes(t)
-    ? (t as TabValue)
-    : DEFAULT_TAB;
+  if (t === "channels") return "setup";
+  if (t === "send") return "batch-send";
+  return t && (TAB_VALUES as readonly string[]).includes(t) ? (t as TabValue) : DEFAULT_TAB;
 }
 
 export default function AutomationsPage() {
@@ -42,49 +43,38 @@ export default function AutomationsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Automations</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure communication channels, templates, and outbound messaging in one place.
+          Set up channels, build templates, define audience segments, and dispatch messages — all in one place.
         </p>
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto">
-          <TabsTrigger value="channels" data-testid="tab-channels" className="gap-2">
-            <Radio className="w-4 h-4" />
-            <span>Channels</span>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto">
+          <TabsTrigger value="setup" data-testid="tab-setup" className="gap-2">
+            <Settings className="w-4 h-4" /><span>Setup</span>
           </TabsTrigger>
           <TabsTrigger value="templates" data-testid="tab-templates" className="gap-2">
-            <ScrollText className="w-4 h-4" />
-            <span>Templates</span>
+            <ScrollText className="w-4 h-4" /><span>Templates</span>
           </TabsTrigger>
-          <TabsTrigger value="send" data-testid="tab-send" className="gap-2">
-            <Send className="w-4 h-4" />
-            <span>Send Message</span>
+          <TabsTrigger value="segments" data-testid="tab-segments" className="gap-2">
+            <Users className="w-4 h-4" /><span>Segments</span>
+          </TabsTrigger>
+          <TabsTrigger value="batch-send" data-testid="tab-batch-send" className="gap-2">
+            <SendHorizontal className="w-4 h-4" /><span>Batch Send</span>
           </TabsTrigger>
           <TabsTrigger value="log" data-testid="tab-log" className="gap-2">
-            <ListChecks className="w-4 h-4" />
-            <span>Send Log</span>
+            <ListChecks className="w-4 h-4" /><span>Send Log</span>
           </TabsTrigger>
           <TabsTrigger value="opt-outs" data-testid="tab-opt-outs" className="gap-2">
-            <UserMinus className="w-4 h-4" />
-            <span>Opt-Outs</span>
+            <UserMinus className="w-4 h-4" /><span>Opt-Outs</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="channels" className="mt-4">
-          <CommsChannelsPage />
-        </TabsContent>
-        <TabsContent value="templates" className="mt-4">
-          <CommsTemplatesPage />
-        </TabsContent>
-        <TabsContent value="send" className="mt-4">
-          <CommsSendPage />
-        </TabsContent>
-        <TabsContent value="log" className="mt-4">
-          <CommsSendLogPage />
-        </TabsContent>
-        <TabsContent value="opt-outs" className="mt-4">
-          <CommsOptOutsPage />
-        </TabsContent>
+        <TabsContent value="setup" className="mt-4"><CommsChannelsPage /></TabsContent>
+        <TabsContent value="templates" className="mt-4"><CommsTemplatesPage /></TabsContent>
+        <TabsContent value="segments" className="mt-4"><CommsSegmentsPage /></TabsContent>
+        <TabsContent value="batch-send" className="mt-4"><CommsBatchSendPage /></TabsContent>
+        <TabsContent value="log" className="mt-4"><CommsSendLogPage /></TabsContent>
+        <TabsContent value="opt-outs" className="mt-4"><CommsOptOutsPage /></TabsContent>
       </Tabs>
     </div>
   );

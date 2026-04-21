@@ -68,6 +68,7 @@ import { registerGoogleConnectRoutes } from './routes/googleConnect';
 import { registerMicrosoftConnectRoutes } from './routes/microsoftConnect';
 import commercialIntakeRouter from './routes/commercialIntake';
 import { registerCommsRoutes } from './routes/comms';
+import { startBatchSendWorker } from './comms/batchSendWorker';
 
 
 /**
@@ -6046,6 +6047,7 @@ export async function registerRoutes(
 
   // ==================== COMMS AUTOMATIONS ROUTES ====================
   registerCommsRoutes(app, { authenticateUser, requireAdmin, requireSuperAdmin });
+  startBatchSendWorker();
 
 
   // ==================== ADMIN ROUTES ====================

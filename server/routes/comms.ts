@@ -3,14 +3,17 @@ import { db } from '../db';
 import {
   commsChannels, commsTemplates, commsMergeTags,
   commsSendLog, commsOptOuts,
+  commsSegments, commsScheduledExecutions,
   insertCommsChannelSchema, insertCommsTemplateSchema, insertCommsOptOutSchema,
   users, tenants,
 } from '@shared/schema';
-import { eq, and, desc, asc, gte, lte, ilike, or, SQL } from 'drizzle-orm';
+import { eq, and, desc, asc, gte, lte, ilike, or, sql, SQL } from 'drizzle-orm';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import type { AuthRequest } from '../auth';
 import { isOptedOut, addOptOut, removeOptOut, listOptOuts } from '../comms/optOutService';
 import { sendCommsMessage, previewTemplate } from '../comms/sendService';
+import { resolveSegment, type SegmentFilterConfig } from '../comms/segmentService';
 
 function getTenantId(req: AuthRequest): number | null {
   if (!req.user) return null;
@@ -550,6 +553,266 @@ export function registerCommsRoutes(
 
       await removeOptOut({ tenantId, ...deleteParsed.data });
       res.json({ success: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  // ==================== SEGMENTS ====================
+
+  const segmentFilterSchema = z.object({
+    type: z.enum([
+      'has_loan_in_stage', 'has_loan_in_status', 'closing_within_days',
+      'stalled_days', 'created_within_days', 'has_phone',
+      'has_email_consent', 'has_sms_consent',
+    ]),
+    values: z.array(z.string()).optional(),
+    value: z.union([z.number(), z.boolean()]).optional(),
+  });
+  const segmentFilterConfigSchema = z.object({
+    audience: z.enum(['broker', 'borrower', 'lender_user']),
+    filters: z.array(segmentFilterSchema).default([]),
+  });
+  const segmentBodySchema = z.object({
+    name: z.string().min(1).max(255),
+    filterConfig: segmentFilterConfigSchema,
+  });
+
+  app.get('/api/comms/segments', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const rows = await db.select().from(commsSegments)
+        .where(eq(commsSegments.tenantId, tenantId))
+        .orderBy(desc(commsSegments.createdAt));
+      res.json(rows);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.post('/api/comms/segments', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const parsed = segmentBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+      const [row] = await db.insert(commsSegments).values({
+        tenantId,
+        name: parsed.data.name,
+        filterConfig: parsed.data.filterConfig,
+        createdBy: req.user?.id ?? null,
+      }).returning();
+      res.status(201).json(row);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.put('/api/comms/segments/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id as string);
+      const parsed = segmentBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+      const [row] = await db.update(commsSegments)
+        .set({ name: parsed.data.name, filterConfig: parsed.data.filterConfig })
+        .where(and(eq(commsSegments.id, id), eq(commsSegments.tenantId, tenantId)))
+        .returning();
+      if (!row) return res.status(404).json({ error: 'Segment not found' });
+      res.json(row);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  app.delete('/api/comms/segments/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const id = parseInt(req.params.id as string);
+      await db.delete(commsSegments)
+        .where(and(eq(commsSegments.id, id), eq(commsSegments.tenantId, tenantId)));
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  /** Preview a filter config without persisting. Accepts either {filterConfig} or {segmentId}. */
+  app.post('/api/comms/segments/preview', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      let cfg: SegmentFilterConfig | null = null;
+
+      if (req.body.segmentId) {
+        const [row] = await db.select().from(commsSegments)
+          .where(and(eq(commsSegments.id, req.body.segmentId), eq(commsSegments.tenantId, tenantId)))
+          .limit(1);
+        if (!row) return res.status(404).json({ error: 'Segment not found' });
+        cfg = row.filterConfig as SegmentFilterConfig;
+      } else {
+        const parsed = segmentFilterConfigSchema.safeParse(req.body.filterConfig);
+        if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+        cfg = parsed.data;
+      }
+
+      const result = await resolveSegment(cfg, tenantId, { limit: 10 });
+      res.json({ count: result.count, sample: result.recipients });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  // ==================== BATCH SEND ====================
+
+  const batchSendSchema = z.object({
+    segmentId: z.number(),
+    templateId: z.number(),
+    scheduledFor: z.string().datetime().optional(),
+  });
+
+  app.post('/api/comms/batch-send', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+
+      const parsed = batchSendSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      // Tenant-scoped segment & template
+      const [seg] = await db.select().from(commsSegments)
+        .where(and(eq(commsSegments.id, parsed.data.segmentId), eq(commsSegments.tenantId, tenantId)))
+        .limit(1);
+      if (!seg) return res.status(404).json({ error: 'Segment not found' });
+
+      const [tpl] = await db.select().from(commsTemplates)
+        .where(and(eq(commsTemplates.id, parsed.data.templateId), eq(commsTemplates.tenantId, tenantId)))
+        .limit(1);
+      if (!tpl) return res.status(404).json({ error: 'Template not found' });
+
+      const cfg = seg.filterConfig as SegmentFilterConfig;
+      if (!cfg) return res.status(400).json({ error: 'Segment has no filter config' });
+
+      const { recipients } = await resolveSegment(cfg, tenantId);
+      if (!recipients.length) return res.json({ batchId: null, queued: 0, dispatchedNow: 0 });
+
+      const recipientType: 'broker' | 'borrower' | 'lender_user' =
+        cfg.audience === 'lender_user' ? 'lender_user' : cfg.audience;
+
+      const batchId = randomUUID();
+      const scheduledFor = parsed.data.scheduledFor ? new Date(parsed.data.scheduledFor) : new Date();
+      const senderUserId = req.user?.id ?? null;
+      const isFuture = scheduledFor.getTime() > Date.now() + 5_000;
+
+      // Always queue rows (send-now still goes through the worker so all sends go through the same path)
+      const rowsToInsert = recipients.map(r => ({
+        runId: null,
+        nodeId: null,
+        tenantId,
+        templateId: tpl.id,
+        recipientId: r.id,
+        recipientType,
+        loanId: null,
+        senderUserId,
+        batchId,
+        scheduledFor,
+        status: 'pending' as const,
+      }));
+
+      // Insert in chunks to avoid query size limits
+      const CHUNK = 100;
+      for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
+        await db.insert(commsScheduledExecutions).values(rowsToInsert.slice(i, i + CHUNK));
+      }
+
+      let dispatchedNow = 0;
+      if (!isFuture) {
+        // Best-effort immediate dispatch on the request thread (worker also drains as backup).
+        // Dispatch a small batch synchronously so users see a fast result; remaining rows
+        // get picked up by the next worker tick.
+        const SYNC_LIMIT = 50;
+        const due = await db.select().from(commsScheduledExecutions)
+          .where(and(
+            eq(commsScheduledExecutions.batchId, batchId),
+            eq(commsScheduledExecutions.status, 'pending'),
+          ))
+          .limit(SYNC_LIMIT);
+
+        for (const row of due) {
+          // Claim the row first to prevent the worker from double-sending
+          const [claimed] = await db.update(commsScheduledExecutions)
+            .set({ status: 'executing', lockedAt: new Date(), attempts: sql`${commsScheduledExecutions.attempts} + 1` })
+            .where(and(
+              eq(commsScheduledExecutions.id, row.id),
+              eq(commsScheduledExecutions.status, 'pending'),
+            ))
+            .returning();
+          if (!claimed) continue;
+
+          try {
+            const result = await sendCommsMessage({
+              tenantId,
+              templateId: tpl.id,
+              recipientType,
+              recipientId: row.recipientId!,
+              senderUserId,
+            });
+            await db.update(commsScheduledExecutions)
+              .set({
+                status: result.success || result.status === 'suppressed' || result.status === 'skipped' ? 'done' : 'failed',
+                lastError: result.error ?? null,
+                executedAt: new Date(),
+              })
+              .where(eq(commsScheduledExecutions.id, row.id));
+            if (result.success) dispatchedNow++;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            await db.update(commsScheduledExecutions)
+              .set({ status: 'failed', lastError: msg, executedAt: new Date() })
+              .where(eq(commsScheduledExecutions.id, row.id));
+          }
+        }
+      }
+
+      res.json({
+        batchId,
+        queued: rowsToInsert.length,
+        dispatchedNow,
+        scheduledFor: scheduledFor.toISOString(),
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
+
+  /** List recent batches with aggregate counts */
+  app.get('/api/comms/batches', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = requireTenantId(req, res);
+      if (!tenantId) return;
+      const limit = Math.min(parseInt(req.query.limit as string || '25'), 100);
+
+      const rows = await db.execute(sql`
+        SELECT batch_id,
+               MIN(template_id) AS template_id,
+               MIN(scheduled_for) AS scheduled_for,
+               MIN(created_at) AS created_at,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+               SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+               SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+          FROM comms_scheduled_executions
+         WHERE tenant_id = ${tenantId}
+           AND batch_id IS NOT NULL
+           AND node_id IS NULL
+         GROUP BY batch_id
+         ORDER BY MIN(created_at) DESC
+         LIMIT ${limit}
+      `);
+      res.json(rows.rows ?? []);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }

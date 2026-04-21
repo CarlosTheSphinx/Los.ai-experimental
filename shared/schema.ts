@@ -4462,12 +4462,22 @@ export type InsertCommsAutomationRun = z.infer<typeof insertCommsAutomationRunSc
 
 export const commsScheduledExecutions = pgTable("comms_scheduled_executions", {
   id: serial("id").primaryKey(),
-  runId: integer("run_id").references(() => commsAutomationRuns.id, { onDelete: "cascade" }).notNull(),
-  nodeId: integer("node_id").references(() => commsAutomationNodes.id, { onDelete: "cascade" }).notNull(),
+  // runId/nodeId nullable so batch-send rows (no automation context) can be queued in the same table
+  runId: integer("run_id").references(() => commsAutomationRuns.id, { onDelete: "cascade" }),
+  nodeId: integer("node_id").references(() => commsAutomationNodes.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }).notNull(),
+  templateId: integer("template_id").references(() => commsTemplates.id, { onDelete: "set null" }),
+  recipientId: integer("recipient_id"),
+  recipientType: varchar("recipient_type", { length: 20 }), // 'broker' | 'borrower' | 'lender_user'
+  loanId: integer("loan_id"),
+  senderUserId: integer("sender_user_id").references(() => users.id, { onDelete: "set null" }),
+  batchId: varchar("batch_id", { length: 64 }),
   scheduledFor: timestamp("scheduled_for").notNull(),
   status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending' | 'executing' | 'done' | 'failed'
   attempts: integer("attempts").default(0).notNull(),
+  lastError: text("last_error"),
   lockedAt: timestamp("locked_at"),
+  executedAt: timestamp("executed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertCommsScheduledExecutionSchema = createInsertSchema(commsScheduledExecutions).omit({ id: true, createdAt: true });
