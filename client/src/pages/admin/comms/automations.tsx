@@ -525,6 +525,12 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     nodes: nodes.map(ensureChannel),
   });
 
+  const humanizeMins = (m: number): string => {
+    if (m % 1440 === 0 && m >= 1440) return `${m / 1440} day${m / 1440 === 1 ? "" : "s"}`;
+    if (m % 60 === 0 && m >= 60) return `${m / 60} hour${m / 60 === 1 ? "" : "s"}`;
+    return `${m} minute${m === 1 ? "" : "s"}`;
+  };
+
   // Phase 4 — client-side mirror of the server validator. Catches the same
   // mistakes (missing children, dangling refs, bad windows) before we even
   // submit, so the user gets fast feedback. Server is still the source of
@@ -551,7 +557,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
           if (!n.config.templateId && !n.config.inlineBody) return `${here} (Send) needs a template or a composed message`;
           if (!n.config.recipientType) return `${here} (Send) is missing a recipient`;
         } else if (n.type === "wait") {
-          if (!n.config.durationMinutes || n.config.durationMinutes < 1) return `${here} (Wait) duration must be at least 1 minute`;
+          if (!n.config.durationMinutes || n.config.durationMinutes < 1) return `${here} (Wait) duration must be at least 1 minute (currently ${humanizeMins(n.config.durationMinutes ?? 0)})`;
         } else if (n.type === "branch_engagement") {
           const rPath = n.config.refPath;
           const ref = n.config.refTopLevelIndex;
@@ -1539,7 +1545,7 @@ function NodeEditor({
               </Select>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Stored as {node.config.durationMinutes ?? 60} minute{(node.config.durationMinutes ?? 60) === 1 ? "" : "s"} total
+              = {node.config.durationMinutes ?? 60} minute{(node.config.durationMinutes ?? 60) === 1 ? "" : "s"} stored
             </p>
           </div>
         )}
