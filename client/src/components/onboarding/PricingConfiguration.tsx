@@ -2144,7 +2144,7 @@ function ExternalApiSection({
                         className="flex-1 font-mono text-[12px]"
                         value={pfc.formula || ''}
                         onChange={(e) => updateFieldConfig(pfc.fieldId, { formula: e.target.value })}
-                        placeholder="e.g. loanAmount / propertyValue * 100"
+                        placeholder="e.g. {loanAmount} / {propertyValue} * 100"
                         data-testid={`input-formula-${pfc.fieldId}`}
                       />
                     )}
@@ -2159,13 +2159,32 @@ function ExternalApiSection({
                             type="button"
                             key={v.key}
                             className="text-[11px] px-2 py-0.5 rounded border bg-background hover:bg-accent font-mono"
-                            onClick={() => updateFieldConfig(pfc.fieldId, { formula: (pfc.formula || '') + v.key })}
+                            onClick={() => updateFieldConfig(pfc.fieldId, { formula: (pfc.formula || '') + `{${v.key}}` })}
                             data-testid={`chip-var-${pfc.fieldId}-${v.key}`}
                           >
-                            {v.key}
+                            {`{${v.key}}`}
                           </button>
                         ))}
                       </div>
+                      {quoteFormVariables.filter(qv => !INTERNAL_FIELD_KEYS.some(ik => ik.key === qv.key)).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/40">
+                          <span className="text-[11px] text-muted-foreground mr-1 self-center">From Quote Form:</span>
+                          {quoteFormVariables
+                            .filter(qv => !INTERNAL_FIELD_KEYS.some(ik => ik.key === qv.key))
+                            .map(v => (
+                              <button
+                                type="button"
+                                key={v.key}
+                                className="text-[11px] px-2 py-0.5 rounded border bg-primary/10 hover:bg-primary/20 text-primary font-mono"
+                                onClick={() => updateFieldConfig(pfc.fieldId, { formula: (pfc.formula || '') + `{${v.key}}` })}
+                                data-testid={`chip-qfvar-${pfc.fieldId}-${v.key}`}
+                                title={v.label}
+                              >
+                                {`{${v.key}}`}
+                              </button>
+                            ))}
+                        </div>
+                      )}
 
                       {isSelect && (
                         <div className="space-y-2">
