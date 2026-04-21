@@ -11,8 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send,
-  ChevronUp, ChevronDown, GitBranch, Activity, MessageSquare, Tag, Smartphone, Zap, Bell,
+  ChevronUp, ChevronDown, GitBranch, Activity, MessageSquare, Tag, Smartphone, Zap, Bell, Save,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -619,15 +622,31 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     onError: (e: ApiError) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
   });
   const activate = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/comms/automations/${id}/activate`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] }); toast({ title: "Activated" }); },
-    onError: (e: ApiError) => toast({ title: "Activate failed", description: e?.message, variant: "destructive" }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/comms/automations/${id}/activate`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Activate failed");
+      }
+      return res.json() as Promise<{ ok: boolean; warnings: string[] }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] });
+      setShowActivateDialog(false);
+      toast({ title: "Activated" });
+      for (const w of (data?.warnings ?? [])) {
+        toast({ title: "Channel warning", description: w });
+      }
+    },
+    onError: (e: Error) => toast({ title: "Activate failed", description: e.message, variant: "destructive" }),
   });
   const pause = useMutation({
     mutationFn: () => apiRequest("POST", `/api/comms/automations/${id}/pause`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); queryClient.invalidateQueries({ queryKey: ["/api/comms/automations", id] }); toast({ title: "Paused" }); },
   });
 
+  const [showActivateDialog, setShowActivateDialog] = useState(false);
   const [manualSubjectType, setManualSubjectType] = useState<SubjectType>("loan");
   const [manualSubjectId, setManualSubjectId] = useState("");
   const startRun = useMutation({
@@ -664,6 +683,30 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   const topLevelSends = listTopLevelSends(nodes);
   const treeSends = listTreeSends(nodes);
 
+  // Pre-activation summary (for confirmation dialog)
+  const activateTriggerSummary = (() => {
+    switch (triggerKind) {
+      case "event": return `Event trigger: "${eventName}"${eventToStage ? ` → stage "${eventToStage}"` : ""} — fires on every future matching event.`;
+      case "time_absolute": return `One-shot schedule at ${runAt ? new Date(runAt).toLocaleString() : "(no date set)"}.`;
+      case "time_recurring": return `Recurring every ${everyMinutes} minutes.`;
+      case "time_relative": return `Delayed ${offsetMinutes} min after "${eventName}"${eventToStage ? ` → stage "${eventToStage}"` : ""}`;
+      case "manual": return "Manual trigger — runs must be started individually per contact.";
+    }
+  })();
+  const activateFirstRecipient = (() => {
+    const walk = (arr: NodeRow[]): "borrower" | "broker" | undefined => {
+      for (const n of arr) {
+        if (n.type === "send") return n.config.recipientType ?? "borrower";
+        const r = walk(n.yes ?? []) ?? walk(n.no ?? []);
+        if (r) return r;
+      }
+      return undefined;
+    };
+    return walk(nodes) ?? "borrower";
+  })();
+
+  const isSavePending = save.isPending || create.isPending;
+
   return (
     <div className="space-y-4" data-testid="page-automation-editor">
       <div className="flex items-center justify-between">
@@ -677,7 +720,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             </Button>
           )}
           {!isNew && existing && existing.status !== "active" && existing.status !== "archived" && (
-            <Button variant="outline" size="sm" onClick={() => activate.mutate()} data-testid="button-activate-editor">
+            <Button variant="outline" size="sm" onClick={() => setShowActivateDialog(true)} data-testid="button-activate-editor">
               <Play className="w-4 h-4 mr-1" />Activate
             </Button>
           )}
@@ -834,6 +877,8 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             onRemove={removeAt}
             onMove={moveAt}
             onUpdate={updateAt}
+            onSave={() => onSaveClick("save")}
+            isSavePending={isSavePending}
             depth={0}
           />
         </CardContent>
@@ -871,6 +916,36 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
           </CardContent>
         </Card>
       )}
+
+      {/* Activation confirmation dialog */}
+      <Dialog open={showActivateDialog} onOpenChange={setShowActivateDialog}>
+        <DialogContent data-testid="dialog-activate-confirm">
+          <DialogHeader>
+            <DialogTitle>Activate automation?</DialogTitle>
+            <DialogDescription>Review the details below before activating.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm py-2">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Trigger</p>
+              <p>{activateTriggerSummary}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Primary recipient</p>
+              <p className="capitalize">{activateFirstRecipient}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Steps</p>
+              <p>{nodes.length} top-level step{nodes.length === 1 ? "" : "s"} in the sequence</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowActivateDialog(false)} data-testid="button-activate-cancel">Cancel</Button>
+            <Button onClick={() => activate.mutate()} disabled={activate.isPending} data-testid="button-activate-confirm">
+              <Play className="w-4 h-4 mr-1" />{activate.isPending ? "Activating…" : "Activate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!isNew && (
         <Card>
@@ -933,7 +1008,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
 // `side` is null at the top level and "yes"|"no" inside a branch's children.
 function NodeList({
   nodes, parentPath, side, templates, automationChannel, topLevelSends, treeSends,
-  onInsert, onRemove, onMove, onUpdate, depth,
+  onInsert, onRemove, onMove, onUpdate, onSave, isSavePending, depth,
 }: {
   nodes: NodeRow[];
   parentPath: PathStep[];
@@ -946,6 +1021,8 @@ function NodeList({
   onRemove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
   onMove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
   onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
+  onSave: () => void;
+  isSavePending: boolean;
   depth: number;
 }) {
   // Branches deeper than 5 levels are blocked at validation time, but we
@@ -974,7 +1051,7 @@ function NodeList({
               templates={templates}
               automationChannel={automationChannel}
               topLevelSends={topLevelSends}
-            treeSends={treeSends}
+              treeSends={treeSends}
               onUpdate={onUpdate}
               onRemove={() => onRemove(parentPath, side, idx)}
               onMoveUp={idx > 0 ? () => onMove(parentPath, side, idx, -1) : undefined}
@@ -982,6 +1059,8 @@ function NodeList({
               onInsertChild={onInsert}
               onRemoveChild={onRemove}
               onMoveChild={onMove}
+              onSave={onSave}
+              isSavePending={isSavePending}
               ordinal={idx + 1}
               depth={depth}
             />
@@ -1054,7 +1133,7 @@ function insertAtCursor(el: HTMLTextAreaElement | null, text: string, currentVal
 
 // ── Per-send-node channel + compose/template editor ───────────────────────────
 function SendNodeEditor({
-  node, path, testKey, templates, defaultChannel, onUpdate,
+  node, path, testKey, templates, defaultChannel, onUpdate, onSave, isSavePending,
 }: {
   node: NodeRow;
   path: PathStep[];
@@ -1062,7 +1141,10 @@ function SendNodeEditor({
   templates: Template[];
   defaultChannel: Channel;
   onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
+  onSave: () => void;
+  isSavePending: boolean;
 }) {
+  const { toast } = useToast();
   const nodeChannel: Channel = node.config.channel ?? defaultChannel;
   const [mode, setMode] = useState<"template" | "compose">(
     node.config.inlineBody ? "compose" : "template",
@@ -1070,6 +1152,32 @@ function SendNodeEditor({
   const [bodyRef, setBodyRef] = useState<HTMLTextAreaElement | null>(null);
   const [subjRef, setSubjRef] = useState<HTMLTextAreaElement | null>(null);
   const [focusedField, setFocusedField] = useState<"subject" | "body">("body");
+  const [makingTemplate, setMakingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+
+  const makeTemplate = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/comms/templates", {
+      name: templateName.trim(),
+      channel: nodeChannel,
+      subject: node.config.inlineSubject ?? "",
+      body: node.config.inlineBody ?? "",
+    }),
+    onSuccess: async (res) => {
+      const created = await res.json() as { id: number; name: string };
+      queryClient.invalidateQueries({ queryKey: ["/api/comms/templates"] });
+      onUpdate(path, { config: {
+        ...node.config,
+        templateId: created.id,
+        inlineBody: undefined,
+        inlineSubject: undefined,
+      } });
+      setMode("template");
+      setMakingTemplate(false);
+      setTemplateName("");
+      toast({ title: "Template created", description: `"${created.name}" saved and selected` });
+    },
+    onError: (e: Error) => toast({ title: "Template creation failed", description: e.message, variant: "destructive" }),
+  });
 
   const filteredTemplates = templates.filter(t => t.channel === nodeChannel);
 
@@ -1229,6 +1337,61 @@ function SendNodeEditor({
               </p>
             )}
           </div>
+
+          {/* Save step + Make template actions */}
+          {makingTemplate ? (
+            <div className="flex items-center gap-2 pt-1">
+              <Input
+                className="h-7 text-xs flex-1"
+                placeholder="Template name…"
+                value={templateName}
+                onChange={e => setTemplateName(e.target.value)}
+                data-testid={`input-template-name-${testKey}`}
+                onKeyDown={e => { if (e.key === "Enter" && templateName.trim()) makeTemplate.mutate(); }}
+              />
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!templateName.trim() || makeTemplate.isPending}
+                onClick={() => makeTemplate.mutate()}
+                data-testid={`button-template-confirm-${testKey}`}
+              >
+                {makeTemplate.isPending ? "Saving…" : "Save template"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => { setMakingTemplate(false); setTemplateName(""); }}
+                data-testid={`button-template-cancel-${testKey}`}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={onSave}
+                disabled={isSavePending}
+                data-testid={`button-save-step-${testKey}`}
+              >
+                <Save className="w-3 h-3" />{isSavePending ? "Saving…" : "Save step"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setMakingTemplate(true)}
+                disabled={!node.config.inlineBody}
+                data-testid={`button-make-template-${testKey}`}
+              >
+                <Tag className="w-3 h-3" />Make template
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1239,6 +1402,7 @@ function NodeEditor({
   node, path, templates, automationChannel, topLevelSends, treeSends,
   onUpdate, onRemove, onMoveUp, onMoveDown,
   onInsertChild, onRemoveChild, onMoveChild,
+  onSave, isSavePending,
   ordinal, depth,
 }: {
   node: NodeRow;
@@ -1254,9 +1418,28 @@ function NodeEditor({
   onInsertChild: (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => void;
   onRemoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
   onMoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
+  onSave: () => void;
+  isSavePending: boolean;
   ordinal: number;
   depth: number;
 }) {
+  // Wait unit state — derive initial unit from stored durationMinutes
+  const initWaitUnit = (): "minutes" | "hours" | "days" => {
+    const dm = node.config.durationMinutes ?? 60;
+    if (dm % 1440 === 0 && dm >= 1440) return "days";
+    if (dm % 60 === 0 && dm >= 60) return "hours";
+    return "minutes";
+  };
+  const [waitUnit, setWaitUnit] = useState<"minutes" | "hours" | "days">(initWaitUnit);
+  const waitDisplayValue = waitUnit === "days"
+    ? (node.config.durationMinutes ?? 60) / 1440
+    : waitUnit === "hours"
+      ? (node.config.durationMinutes ?? 60) / 60
+      : (node.config.durationMinutes ?? 60);
+  const handleWaitChange = (value: number, unit: "minutes" | "hours" | "days") => {
+    const mins = unit === "days" ? value * 1440 : unit === "hours" ? value * 60 : value;
+    onUpdate(path, { config: { durationMinutes: Math.max(1, Math.round(mins)) } });
+  };
   const isBranch = node.type === "branch_engagement" || node.type === "branch_loan_state";
   const ringByDepth = depth === 0 ? "" : "ml-4 border-l-2 border-l-muted pl-3";
   // Phase 4 — convert the editor's PathStep[] path into the canonical
@@ -1319,18 +1502,46 @@ function NodeEditor({
             templates={templates}
             defaultChannel={automationChannel}
             onUpdate={onUpdate}
+            onSave={onSave}
+            isSavePending={isSavePending}
           />
         )}
 
         {node.type === "wait" && (
           <div>
-            <Label className="text-xs">Wait duration (minutes)</Label>
-            <Input
-              type="number" min={1}
-              value={node.config.durationMinutes ?? 60}
-              onChange={e => onUpdate(path, { config: { durationMinutes: Number(e.target.value) } })}
-              data-testid={`input-wait-minutes-${testKey}`}
-            />
+            <Label className="text-xs">Wait duration</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number" min={1}
+                className="flex-1"
+                value={waitDisplayValue}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  handleWaitChange(v, waitUnit);
+                }}
+                data-testid={`input-wait-value-${testKey}`}
+              />
+              <Select
+                value={waitUnit}
+                onValueChange={v => {
+                  const unit = v as "minutes" | "hours" | "days";
+                  setWaitUnit(unit);
+                  handleWaitChange(waitDisplayValue, unit);
+                }}
+              >
+                <SelectTrigger className="w-32" data-testid={`select-wait-unit-${testKey}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">Minutes</SelectItem>
+                  <SelectItem value="hours">Hours</SelectItem>
+                  <SelectItem value="days">Days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Stored as {node.config.durationMinutes ?? 60} minute{(node.config.durationMinutes ?? 60) === 1 ? "" : "s"} total
+            </p>
           </div>
         )}
 
@@ -1472,11 +1683,13 @@ function NodeEditor({
                 templates={templates}
                 automationChannel={automationChannel}
                 topLevelSends={topLevelSends}
-            treeSends={treeSends}
+                treeSends={treeSends}
                 onInsert={onInsertChild}
                 onRemove={onRemoveChild}
                 onMove={onMoveChild}
                 onUpdate={onUpdate}
+                onSave={onSave}
+                isSavePending={isSavePending}
                 depth={depth + 1}
               />
             </div>
@@ -1491,11 +1704,13 @@ function NodeEditor({
                 templates={templates}
                 automationChannel={automationChannel}
                 topLevelSends={topLevelSends}
-            treeSends={treeSends}
+                treeSends={treeSends}
                 onInsert={onInsertChild}
                 onRemove={onRemoveChild}
                 onMove={onMoveChild}
                 onUpdate={onUpdate}
+                onSave={onSave}
+                isSavePending={isSavePending}
                 depth={depth + 1}
               />
             </div>
