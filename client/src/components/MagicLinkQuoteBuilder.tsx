@@ -29,6 +29,7 @@ interface Program {
   basePointsMin: number | null;
   basePointsMax: number | null;
   brokerPointsEnabled: boolean | null;
+  brokerPointsMin: number | null;
   brokerPointsMax: number | null;
   brokerPointsStep: number | null;
 }
@@ -172,6 +173,19 @@ export default function MagicLinkQuoteBuilder({
           onReset={handleReset}
           onEdit={handleReset}
           programId={selectedProgramId}
+          programConfig={selectedProgram ? {
+            yspEnabled: selectedProgram.yspEnabled ?? false,
+            yspMin: selectedProgram.yspMin ?? undefined,
+            yspMax: selectedProgram.yspMax ?? undefined,
+            yspStep: selectedProgram.yspStep ?? undefined,
+            basePoints: selectedProgram.basePoints ?? undefined,
+            basePointsMin: selectedProgram.basePointsMin ?? undefined,
+            basePointsMax: selectedProgram.basePointsMax ?? undefined,
+            brokerPointsEnabled: selectedProgram.brokerPointsEnabled ?? undefined,
+            brokerPointsMin: selectedProgram.brokerPointsMin ?? undefined,
+            brokerPointsMax: selectedProgram.brokerPointsMax ?? undefined,
+            brokerPointsStep: selectedProgram.brokerPointsStep ?? undefined,
+          } : null}
         />
       </div>
     );
