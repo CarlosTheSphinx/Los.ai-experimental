@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Calculator, DollarSign, Building, User, Gauge } from "lucide-react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 
 export interface QuoteFormField {
   fieldKey: string;
@@ -265,7 +265,26 @@ export function DynamicQuoteForm({ fields, onSubmit, isLoading, defaultData, pro
     const vals: Record<string, any> = { _noop_: '' };
     visibleFields.forEach(f => {
       if (defaultData && defaultData[f.fieldKey] !== undefined) {
-        vals[f.fieldKey] = defaultData[f.fieldKey];
+        let val = defaultData[f.fieldKey];
+        // For select fields, if the stored value is a human label rather than an option ID,
+        // reverse-resolve it back to the option ID so the Select renders correctly.
+        if ((f.fieldType === 'select' || f.fieldType === 'radio') && val && typeof val === 'string') {
+          const options = f.options || [];
+          const hasDirectMatch = options.some((o: any) => {
+            const v = typeof o === 'string' ? o : o?.value;
+            return v === val;
+          });
+          if (!hasDirectMatch) {
+            const byLabel = options.find((o: any) => {
+              if (typeof o === 'string') return o.toLowerCase() === val.toLowerCase();
+              return o?.label?.toLowerCase() === val.toLowerCase();
+            });
+            if (byLabel) {
+              val = typeof byLabel === 'string' ? byLabel : (byLabel.value ?? val);
+            }
+          }
+        }
+        vals[f.fieldKey] = val;
       } else {
         vals[f.fieldKey] = '';
       }
@@ -277,6 +296,13 @@ export function DynamicQuoteForm({ fields, onSubmit, isLoading, defaultData, pro
     resolver: zodResolver(schema),
     defaultValues,
   });
+
+  // Sync form when defaultData changes from outside (e.g. quote duplication or reset).
+  // Safe because defaultValues reverse-resolves human labels to option IDs before applying.
+  useEffect(() => {
+    form.reset(defaultValues);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultData]);
 
   const handleFormSubmit = (data: Record<string, any>) => {
     const cleaned: Record<string, any> = {};
