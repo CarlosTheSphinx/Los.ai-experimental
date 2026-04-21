@@ -212,7 +212,19 @@ async function processOne(rowId: number): Promise<void> {
 
       if (checkUserId && recipientType) {
         const channel = automation.defaultChannel as 'email' | 'sms' | 'in_app';
-        if (await isOptedOut(automation.tenantId, checkUserId, channel)) {
+        // Resolve the recipient's actual contact value for the automation's
+        // channel — opt-outs are keyed by contact value, not user id.
+        const [recip] = await db.select({ id: users.id, email: users.email, phone: users.phone })
+          .from(users)
+          .where(and(eq(users.id, checkUserId), eq(users.tenantId, automation.tenantId)))
+          .limit(1);
+        let contactValue: string | null = null;
+        if (recip) {
+          if (channel === 'email') contactValue = recip.email ?? null;
+          else if (channel === 'sms') contactValue = recip.phone ?? null;
+          else if (channel === 'in_app') contactValue = `user:${recip.id}`;
+        }
+        if (contactValue && await isOptedOut(contactValue, channel, automation.tenantId)) {
           await db.update(commsAutomationRuns)
             .set({ status: 'exited', exitReason: 'opted_out' })
             .where(eq(commsAutomationRuns.id, run.id));
