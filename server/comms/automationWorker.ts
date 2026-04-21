@@ -228,7 +228,7 @@ async function findAfterNode(
 async function evaluateEngagementBranch(
   runId: number,
   cfg: BranchEngagementConfig,
-): Promise<'yes' | 'no'> {
+): Promise<'yes' | 'no' | 'defer'> {
   if (!cfg.refNodeId) return 'no';
   const [ref] = await db.select({
     id: commsSendLog.id, status: commsSendLog.status, sentAt: commsSendLog.sentAt,
@@ -244,7 +244,7 @@ async function evaluateEngagementBranch(
   const windowMs = Math.max(1, cfg.windowMinutes ?? 0) * 60_000;
   const cutoff = new Date(sentAt.getTime() + windowMs);
   // Until the window closes, defer the decision (caller will reschedule).
-  if (Date.now() < cutoff.getTime()) return '__defer__' as unknown as 'yes';
+  if (Date.now() < cutoff.getTime()) return 'defer';
 
   if (cfg.engagementType === 'delivered') {
     return ref.status === 'sent' ? 'yes' : 'no';
@@ -394,17 +394,37 @@ async function processOne(rowId: number): Promise<void> {
         // recipientType we can resolve. Stays within the current branch arm
         // and ascends back up the tree when an arm ends, so we don't target
         // an unrelated subtree's recipient.
-        let nextSend: { id: number; type: string; config: unknown } | null = null;
+        type SendCandidate = { id: number; type: string; config: unknown };
+        type TraversalCursor = {
+          id: number;
+          parentNodeId: number | null;
+          branchSide: string | null;
+          orderIndex: number;
+        };
+        let nextSend: SendCandidate | null = null;
         // If the current node is itself a send, include it as a candidate.
         if (node.type === 'send') {
-          nextSend = node as any;
+          nextSend = { id: node.id, type: node.type, config: node.config };
         } else {
-          let cursor: { id: number; parentNodeId: number | null; branchSide: string | null; orderIndex: number } | null = node as any;
+          let cursor: TraversalCursor | null = {
+            id: node.id,
+            parentNodeId: node.parentNodeId ?? null,
+            branchSide: node.branchSide ?? null,
+            orderIndex: node.orderIndex,
+          };
           while (cursor) {
             const step = await findAfterNode(automation.id, cursor);
             if (!step) break;
-            if (step.type === 'send') { nextSend = step as any; break; }
-            cursor = { id: step.id, parentNodeId: step.parentNodeId, branchSide: step.branchSide, orderIndex: step.orderIndex };
+            if (step.type === 'send') {
+              nextSend = { id: step.id, type: step.type, config: step.config };
+              break;
+            }
+            cursor = {
+              id: step.id,
+              parentNodeId: step.parentNodeId,
+              branchSide: step.branchSide,
+              orderIndex: step.orderIndex,
+            };
           }
         }
         if (nextSend) {
@@ -454,7 +474,7 @@ async function processOne(rowId: number): Promise<void> {
         const result = await evaluateEngagementBranch(run.id, cfg);
         // If the engagement window hasn't elapsed yet, defer this row to the
         // exact end-of-window moment so we don't tight-loop.
-        if ((result as unknown) === '__defer__') {
+        if (result === 'defer') {
           const [ref] = await db.select({ sentAt: commsSendLog.sentAt }).from(commsSendLog)
             .where(and(eq(commsSendLog.runId, run.id), eq(commsSendLog.nodeId, cfg.refNodeId)))
             .orderBy(asc(commsSendLog.id))
