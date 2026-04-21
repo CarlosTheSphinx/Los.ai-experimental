@@ -1,7 +1,7 @@
 import { db } from '../db';
 import {
   commsScheduledExecutions, commsAutomationRuns, commsAutomations, commsAutomationNodes,
-  projects, users,
+  commsSendLog, projects, users,
 } from '@shared/schema';
 import { and, eq, asc, sql, isNotNull, lte, gt } from 'drizzle-orm';
 import { sendCommsMessage } from './sendService';
@@ -186,6 +186,17 @@ async function processOne(rowId: number): Promise<void> {
       dispatchOk = false;
       dispatchError = `Send unsupported for subjectType=${run.subjectType}`;
     } else {
+      // Idempotency guard: if a send_log entry already exists for this
+      // run/node, the previous attempt actually delivered (or recorded an
+      // outcome) before the row finalize crashed. Skip the resend and just
+      // advance the pointer.
+      const existingLog = await db.select({ id: commsSendLog.id }).from(commsSendLog)
+        .where(and(eq(commsSendLog.runId, run.id), eq(commsSendLog.nodeId, node.id)))
+        .limit(1);
+      if (existingLog.length > 0) {
+        dispatchOk = true;
+      } else {
+
       const recipientUserId = await resolveRecipientUserId(run.subjectId, cfg.recipientType, automation.tenantId);
       if (!recipientUserId) {
         dispatchOk = false;
@@ -218,6 +229,7 @@ async function processOne(rowId: number): Promise<void> {
           dispatchError = result.error || 'send failed';
         }
       }
+      } // end idempotency-guard else
     }
   } else if (node.type === 'wait') {
     // Wait nodes always succeed — the "execution" is just to advance the pointer.

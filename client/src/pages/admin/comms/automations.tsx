@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send } from "lucide-react";
+import { Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send, ChevronUp, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 
@@ -179,7 +179,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from server once
-  useMemo(() => {
+  useEffect(() => {
     if (isNew || !existing || hydrated) return;
     setName(existing.name);
     const t = existing.triggerConfig;
@@ -255,6 +255,13 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   const updateNode = (idx: number, patch: Partial<NodeRow>) =>
     setNodes(prev => prev.map((n, i) => i === idx ? { ...n, ...patch, config: { ...n.config, ...(patch.config ?? {}) } } : n));
   const removeNode = (idx: number) => setNodes(prev => prev.filter((_, i) => i !== idx));
+  const moveNode = (idx: number, dir: -1 | 1) => setNodes(prev => {
+    const next = [...prev];
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return prev;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    return next;
+  });
   const addNode = (atIdx: number, type: "send" | "wait") => {
     const n: NodeRow = type === "send"
       ? { type: "send", config: { channel: "email", recipientType: "borrower" } }
@@ -413,6 +420,8 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
                 templates={templates}
                 onChange={p => updateNode(idx, p)}
                 onRemove={() => removeNode(idx)}
+                onMoveUp={idx > 0 ? () => moveNode(idx, -1) : undefined}
+                onMoveDown={idx < nodes.length - 1 ? () => moveNode(idx, 1) : undefined}
                 index={idx}
               />
               <div className="flex justify-center gap-2 my-2">
@@ -482,11 +491,13 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   );
 }
 
-function NodeEditor({ node, templates, onChange, onRemove, index }: {
+function NodeEditor({ node, templates, onChange, onRemove, onMoveUp, onMoveDown, index }: {
   node: NodeRow;
   templates: Template[];
   onChange: (patch: Partial<NodeRow>) => void;
   onRemove: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   index: number;
 }) {
   return (
@@ -497,9 +508,17 @@ function NodeEditor({ node, templates, onChange, onRemove, index }: {
             {node.type === "send" ? <Send className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
             <span>Step {index + 1}: {node.type === "send" ? "Send message" : "Wait"}</span>
           </div>
-          <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove} data-testid={`button-remove-node-${index}`}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" disabled={!onMoveUp} onClick={onMoveUp} data-testid={`button-move-up-${index}`}>
+              <ChevronUp className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" disabled={!onMoveDown} onClick={onMoveDown} data-testid={`button-move-down-${index}`}>
+              <ChevronDown className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove} data-testid={`button-remove-node-${index}`}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
         <Separator />
         {node.type === "send" ? (

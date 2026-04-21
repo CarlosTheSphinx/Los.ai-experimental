@@ -877,6 +877,21 @@ router.post("/api/commercial/deals/:id/submit", async (req: Request, res: Respon
       console.error(`[Intake Notifications] Failed for deal ${dealId}:`, err);
     });
 
+    // Publish domain event for the comms automation engine.
+    try {
+      const { commsEventBus } = await import('../comms/eventBus');
+      if (deal.tenantId) {
+        commsEventBus.publish('deal_submitted', {
+          tenantId: deal.tenantId,
+          dealId,
+          loanId: null,
+          submittedByUserId: userId,
+        });
+      }
+    } catch (err) {
+      console.error('[commsEventBus] publish deal_submitted failed:', err);
+    }
+
     res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

@@ -5049,6 +5049,19 @@ export async function registerRoutes(
 
       maybeAutoTriggerPipeline(projectId, userId);
 
+      // Publish domain event for the comms automation engine.
+      try {
+        commsEventBus.publish('document_uploaded', {
+          tenantId: req.user!.tenantId,
+          loanId: projectId,
+          documentId: doc.id,
+          documentName: fileName || 'document',
+          uploadedByUserId: userId,
+        });
+      } catch (err) {
+        console.error('[commsEventBus] publish document_uploaded failed:', err);
+      }
+
       res.json({ document: doc });
     } catch (error) {
       console.error('Project doc upload complete error:', error);
@@ -11923,6 +11936,20 @@ export async function registerRoutes(
         activityDescription: dtActivityDesc,
         visibleToBorrower: false,
       });
+
+      // Publish domain event for the comms automation engine on completion.
+      if (status === 'completed') {
+        try {
+          commsEventBus.publish('task_completed', {
+            tenantId: req.user!.tenantId,
+            taskId,
+            loanId: dealId,
+            completedByUserId: req.user!.id,
+          });
+        } catch (err) {
+          console.error('[commsEventBus] publish task_completed failed:', err);
+        }
+      }
 
       // Send notification if task was just completed
       if (status === 'completed' && !wasCompleted) {

@@ -7,7 +7,7 @@ import {
   commsAutomations, commsAutomationNodes, commsAutomationRuns,
   insertCommsChannelSchema, insertCommsTemplateSchema, insertCommsOptOutSchema,
   insertCommsAutomationSchema,
-  users, tenants,
+  projects, users, tenants,
 } from '@shared/schema';
 import { eq, and, desc, asc, gte, lte, ilike, or, sql, SQL } from 'drizzle-orm';
 import { wireAutomation, unwireAutomation, startManualRun, type TriggerConfig } from '../comms/triggerService';
@@ -1213,8 +1213,10 @@ export function registerCommsRoutes(
     }
   });
 
+  // Manual runs only support loan subjects in Phase 3 — the worker's send path
+  // needs a loan to resolve recipients. Broader subject types are deferred.
   const startRunBody = z.object({
-    subjectType: z.enum(['loan', 'broker', 'borrower']),
+    subjectType: z.literal('loan'),
     subjectId: z.number().int().positive(),
   });
   app.post('/api/comms/automations/:id/start-run', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -1224,6 +1226,13 @@ export function registerCommsRoutes(
       const id = parseInt(req.params.id);
       const parsed = startRunBody.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+      // Tenant scope check — never let an admin start a run against another tenant's loan.
+      const [loan] = await db.select({ id: projects.id, tenantId: projects.tenantId })
+        .from(projects)
+        .where(and(eq(projects.id, parsed.data.subjectId), eq(projects.tenantId, tenantId)))
+        .limit(1);
+      if (!loan) return res.status(404).json({ error: 'Loan not found in your tenant' });
 
       const result = await startManualRun({
         automationId: id,
