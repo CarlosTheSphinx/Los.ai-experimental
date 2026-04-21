@@ -136,11 +136,6 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
-  { href: "/admin/comms/channels", label: "Comms Channels", icon: Radio },
-  { href: "/admin/comms/templates", label: "Comms Templates", icon: ScrollText },
-  { href: "/admin/comms/send", label: "Send Message", icon: Send },
-  { href: "/admin/comms/log", label: "Send Log", icon: ListChecks },
-  { href: "/admin/comms/opt-outs", label: "Opt-Outs", icon: UserMinus },
 ];
 
 const adminNavItemsV2: NavItem[] = [
@@ -155,8 +150,11 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
-  { href: "/admin/comms/channels", label: "Comms Channels", icon: Radio },
-  { href: "/admin/comms/templates", label: "Comms Templates", icon: ScrollText },
+];
+
+const commsNavItems: NavItem[] = [
+  { href: "/admin/comms/channels", label: "Channels", icon: Radio },
+  { href: "/admin/comms/templates", label: "Templates", icon: ScrollText },
   { href: "/admin/comms/send", label: "Send Message", icon: Send },
   { href: "/admin/comms/log", label: "Send Log", icon: ListChecks },
   { href: "/admin/comms/opt-outs", label: "Opt-Outs", icon: UserMinus },
@@ -446,6 +444,45 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                                 {item.shortcut}
                               </span>
                             )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          {showAdminSection && (
+            <SidebarGroup className="mt-4 pt-4 border-t border-sidebar-border">
+              <SidebarGroupLabel className="text-[12px] uppercase tracking-[0.15em] text-muted-foreground/60 px-0 pb-2">
+                Communications
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {commsNavItems.map((item) => {
+                    const isActive = location === item.href ||
+                      (item.href !== "/admin" && location.startsWith(item.href));
+                    const Icon = item.icon;
+
+                    return (
+                      <SidebarMenuItem key={item.href} className="group relative">
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={item.label}
+                          className={isActive ? "border-l-2 border-primary bg-sidebar-accent" : ""}
+                        >
+                          <Link
+                            href={item.href}
+                            data-testid={`nav-comms-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            onClick={handleNavClick}
+                          >
+                            <NavIcon icon={Icon} isActive={isActive} />
+                            <span className="flex items-center gap-1 flex-1 text-[15px] group-data-[collapsible=icon]:hidden">
+                              {item.label}
+                            </span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
