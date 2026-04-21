@@ -1072,6 +1072,7 @@ export const loanPrograms = pgTable("loan_programs", {
   basePointsMin: real("base_points_min").default(0.5),
   basePointsMax: real("base_points_max").default(3),
   brokerPointsEnabled: boolean("broker_points_enabled").default(true),
+  brokerPointsMin: real("broker_points_min").default(0),
   brokerPointsMax: real("broker_points_max").default(2),
   brokerPointsStep: real("broker_points_step").default(0.125),
 

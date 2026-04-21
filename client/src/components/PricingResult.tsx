@@ -23,6 +23,7 @@ interface ProgramConfig {
   basePointsMin?: number;
   basePointsMax?: number;
   brokerPointsEnabled?: boolean;
+  brokerPointsMin?: number;
   brokerPointsMax?: number;
   brokerPointsStep?: number;
 }
@@ -90,6 +91,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
   const programBasePointsMin = cfg.basePointsMin ?? 0.5;
   const programBasePointsMax = cfg.basePointsMax ?? 3;
   const programBrokerPointsEnabled = cfg.brokerPointsEnabled ?? true;
+  const programBrokerPointsMin = cfg.brokerPointsMin ?? 0;
   const rawProgramBrokerPointsMax = cfg.brokerPointsMax ?? 2;
   const programBrokerPointsStep = cfg.brokerPointsStep ?? 0.125;
 
@@ -111,7 +113,7 @@ export function PricingResult({ result, formData, onReset, programId, programCon
 
   // Points state — split into base and broker additional
   const [basePointsValue, setBasePointsValue] = useState(programBasePoints);
-  const [brokerPointsValue, setBrokerPointsValue] = useState(0);
+  const [brokerPointsValue, setBrokerPointsValue] = useState(programBrokerPointsMin);
 
   // YSP state — when broker can toggle, they control an additional amount on top of fixed
   const [brokerYspValue, setBrokerYspValue] = useState(0);
@@ -356,13 +358,13 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                       <div className="flex items-center gap-2">
                         <Input
                           type="number"
-                          min={0}
+                          min={programBrokerPointsMin}
                           max={programBrokerPointsMax}
                           step={programBrokerPointsStep}
                           value={brokerPointsValue}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value);
-                            if (!isNaN(val) && val >= 0 && val <= programBrokerPointsMax) {
+                            if (!isNaN(val) && val >= programBrokerPointsMin && val <= programBrokerPointsMax) {
                               setBrokerPointsValue(val);
                             }
                           }}
@@ -376,14 +378,14 @@ export function PricingResult({ result, formData, onReset, programId, programCon
                       <Slider
                         value={[brokerPointsValue]}
                         onValueChange={([val]) => setBrokerPointsValue(val)}
-                        min={0}
+                        min={programBrokerPointsMin}
                         max={programBrokerPointsMax}
                         step={programBrokerPointsStep}
                         className="w-full"
                         data-testid="slider-broker-points"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                        <span>0 pts</span>
+                        <span>{programBrokerPointsMin} pts</span>
                         <span>{programBrokerPointsMax} pts (max)</span>
                       </div>
                     </div>

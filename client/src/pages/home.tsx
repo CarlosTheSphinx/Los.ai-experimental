@@ -40,6 +40,7 @@ interface ProgramWithPricing {
   basePointsMin?: number;
   basePointsMax?: number;
   brokerPointsEnabled?: boolean;
+  brokerPointsMin?: number;
   brokerPointsMax?: number;
   brokerPointsStep?: number;
 }

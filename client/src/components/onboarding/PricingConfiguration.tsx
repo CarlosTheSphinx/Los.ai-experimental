@@ -461,8 +461,8 @@ export function PricingConfiguration({
       setYspMax(String(prog.yspMax ?? '2.00'));
       setYspStep(String(prog.yspStep ?? '0.125'));
       setBasePoints(String(prog.basePoints ?? '1.00'));
-      setPointsMin(String(prog.basePointsMin ?? '1.00'));
-      setPointsMax(String(prog.basePointsMax ?? '3.00'));
+      setPointsMin(String(prog.brokerPointsMin ?? '0'));
+      setPointsMax(String(prog.brokerPointsMax ?? '2.00'));
       setPointsBrokerAdjustable(prog.brokerPointsEnabled ?? true);
       setPointsStep(String(prog.brokerPointsStep ?? '0.25'));
 
@@ -547,9 +547,9 @@ export function PricingConfiguration({
       yspStep: parseFloat(yspStep) || 0.125,
       yspBrokerCanToggle: yspBrokerAdjustable,
       basePoints: parseFloat(basePoints) || 1,
-      basePointsMin: parseFloat(pointsMin) || 0.5,
-      basePointsMax: parseFloat(pointsMax) || 3,
       brokerPointsEnabled: pointsBrokerAdjustable,
+      brokerPointsMin: parseFloat(pointsMin) || 0,
+      brokerPointsMax: parseFloat(pointsMax) || 2,
       brokerPointsStep: parseFloat(pointsStep) || 0.25,
     });
   }, [onChange, pricingMode, extScraperUrl, extTextInputs, extDropdowns, apiUrl, apiConfig, yspEnabled, yspMin, yspMax, yspStep, yspBrokerAdjustable, basePoints, pointsMin, pointsMax, pointsBrokerAdjustable, pointsStep]);
@@ -622,9 +622,9 @@ export function PricingConfiguration({
         yspStep: parseFloat(yspStep) || 0.125,
         yspBrokerCanToggle: yspBrokerAdjustable,
         basePoints: parseFloat(basePoints) || 1,
-        basePointsMin: parseFloat(pointsMin) || 0.5,
-        basePointsMax: parseFloat(pointsMax) || 3,
         brokerPointsEnabled: pointsBrokerAdjustable,
+        brokerPointsMin: parseFloat(pointsMin) || 0,
+        brokerPointsMax: parseFloat(pointsMax) || 2,
         brokerPointsStep: parseFloat(pointsStep) || 0.25,
         pricingMode: pricingModeDb,
         externalPricingConfig: extConfig,
@@ -729,8 +729,8 @@ export function PricingConfiguration({
                     setYspMax(String(prog.yspMax ?? '2.00'));
                     setYspStep(String(prog.yspStep ?? '0.125'));
                     setBasePoints(String(prog.basePoints ?? '1.00'));
-                    setPointsMin(String(prog.basePointsMin ?? '1.00'));
-                    setPointsMax(String(prog.basePointsMax ?? '3.00'));
+                    setPointsMin(String(prog.brokerPointsMin ?? '0'));
+                    setPointsMax(String(prog.brokerPointsMax ?? '2.00'));
                     setPointsBrokerAdjustable(prog.brokerPointsEnabled ?? true);
                     setPointsStep(String(prog.brokerPointsStep ?? '0.25'));
                     const modeMap: Record<string, PricingMode> = { rule_based: 'rule-based', external: 'external', none: 'none' };

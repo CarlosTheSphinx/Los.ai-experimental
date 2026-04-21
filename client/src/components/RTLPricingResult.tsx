@@ -24,6 +24,7 @@ interface ProgramConfig {
   basePointsMin?: number;
   basePointsMax?: number;
   brokerPointsEnabled?: boolean;
+  brokerPointsMin?: number;
   brokerPointsMax?: number;
   brokerPointsStep?: number;
 }
@@ -64,6 +65,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
   const programBasePointsMin = cfg.basePointsMin ?? 1;
   const programBasePointsMax = cfg.basePointsMax ?? 4;
   const programBrokerPointsEnabled = cfg.brokerPointsEnabled ?? true;
+  const programBrokerPointsMin = cfg.brokerPointsMin ?? 0;
   const rawProgramBrokerPointsMax = cfg.brokerPointsMax ?? 3;
   const programBrokerPointsStep = cfg.brokerPointsStep ?? 0.125;
 
@@ -85,7 +87,7 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
 
   // Points state — split into base and broker additional
   const [basePointsValue, setBasePointsValue] = useState(programBasePoints);
-  const [brokerPointsValue, setBrokerPointsValue] = useState(0);
+  const [brokerPointsValue, setBrokerPointsValue] = useState(programBrokerPointsMin);
 
   // YSP state — when broker can toggle, they control an additional amount on top of fixed
   const [brokerYspValue, setBrokerYspValue] = useState(0);
@@ -381,13 +383,13 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                     <div className="flex items-center gap-2">
                       <Input
                         type="number"
-                        min={0}
+                        min={programBrokerPointsMin}
                         max={programBrokerPointsMax}
                         step={programBrokerPointsStep}
                         value={brokerPointsValue}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
-                          if (!isNaN(val) && val >= 0 && val <= programBrokerPointsMax) {
+                          if (!isNaN(val) && val >= programBrokerPointsMin && val <= programBrokerPointsMax) {
                             setBrokerPointsValue(val);
                           }
                         }}
@@ -401,14 +403,15 @@ export function RTLPricingResult({ result, formData, onReset, onEdit, programId,
                     <Slider
                       value={[brokerPointsValue]}
                       onValueChange={([val]) => setBrokerPointsValue(val)}
+                      min={programBrokerPointsMin}
                       max={programBrokerPointsMax}
                       step={programBrokerPointsStep}
                       className="w-full"
                       data-testid="slider-additional-points"
                     />
                     <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                      <span>+0</span>
-                      <span>+{(programBrokerPointsMax / 2).toFixed(1)}</span>
+                      <span>+{programBrokerPointsMin.toFixed(1)}</span>
+                      <span>+{((programBrokerPointsMin + programBrokerPointsMax) / 2).toFixed(1)}</span>
                       <span>+{programBrokerPointsMax.toFixed(1)}</span>
                     </div>
                   </div>

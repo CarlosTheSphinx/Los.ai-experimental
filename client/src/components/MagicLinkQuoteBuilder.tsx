@@ -154,6 +154,7 @@ export default function MagicLinkQuoteBuilder({
             basePointsMin: selectedProgram.basePointsMin ?? undefined,
             basePointsMax: selectedProgram.basePointsMax ?? undefined,
             brokerPointsEnabled: selectedProgram.brokerPointsEnabled ?? undefined,
+            brokerPointsMin: selectedProgram.brokerPointsMin ?? undefined,
             brokerPointsMax: selectedProgram.brokerPointsMax ?? undefined,
             brokerPointsStep: selectedProgram.brokerPointsStep ?? undefined,
           } : null}
