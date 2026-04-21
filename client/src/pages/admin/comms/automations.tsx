@@ -155,7 +155,13 @@ export default function CommsAutomationsPage() {
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
 
   if (editingId !== null) {
-    return <AutomationEditor id={editingId} onClose={() => setEditingId(null)} />;
+    return (
+      <AutomationEditor
+        id={editingId}
+        onClose={() => setEditingId(null)}
+        onCreated={newId => setEditingId(newId)}
+      />
+    );
   }
   return <AutomationsList onEdit={setEditingId} />;
 }
@@ -430,7 +436,7 @@ function newNode(type: NodeType, defaultChannel: Channel): NodeRow {
   }
 }
 
-function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => void }) {
+function AutomationEditor({ id, onClose, onCreated }: { id: number | "new"; onClose: () => void; onCreated?: (id: number) => void }) {
   const isNew = id === "new";
   const { toast } = useToast();
 
@@ -618,8 +624,21 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   };
 
   const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/comms/automations", buildPayload()),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] }); toast({ title: "Automation created" }); onClose(); },
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/comms/automations", buildPayload());
+      return res.json() as Promise<{ id: number }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/comms/automations"] });
+      toast({ title: "Automation created" });
+      // If an onCreated callback exists (e.g. "Save step" from compose mode),
+      // transition to editing the new record instead of closing the editor.
+      if (onCreated) {
+        onCreated(data.id);
+      } else {
+        onClose();
+      }
+    },
     onError: (e: ApiError) => toast({ title: "Create failed", description: e?.message, variant: "destructive" }),
   });
   const save = useMutation({
@@ -880,7 +899,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             onRemove={removeAt}
             onMove={moveAt}
             onUpdate={updateAt}
-            onSave={isNew ? undefined : () => onSaveClick("save")}
+            onSave={() => onSaveClick(isNew ? "create" : "save")}
             isSavePending={isSavePending}
             depth={0}
           />
