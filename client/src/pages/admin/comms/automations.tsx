@@ -623,11 +623,8 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   });
   const activate = useMutation({
     mutationFn: async () => {
+      // apiRequest already throws on non-2xx (reads .error or .message from JSON body).
       const res = await apiRequest("POST", `/api/comms/automations/${id}/activate`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? "Activate failed");
-      }
       return res.json() as Promise<{ ok: boolean; warnings: string[] }>;
     },
     onSuccess: (data) => {
@@ -877,7 +874,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
             onRemove={removeAt}
             onMove={moveAt}
             onUpdate={updateAt}
-            onSave={() => onSaveClick(isNew ? "create" : "save")}
+            onSave={isNew ? undefined : () => onSaveClick("save")}
             isSavePending={isSavePending}
             depth={0}
           />
@@ -1021,8 +1018,8 @@ function NodeList({
   onRemove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
   onMove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
   onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
-  onSave: () => void;
-  isSavePending: boolean;
+  onSave?: () => void;
+  isSavePending?: boolean;
   depth: number;
 }) {
   // Branches deeper than 5 levels are blocked at validation time, but we
@@ -1141,8 +1138,8 @@ function SendNodeEditor({
   templates: Template[];
   defaultChannel: Channel;
   onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
-  onSave: () => void;
-  isSavePending: boolean;
+  onSave?: () => void;
+  isSavePending?: boolean;
 }) {
   const { toast } = useToast();
   const nodeChannel: Channel = node.config.channel ?? defaultChannel;
@@ -1370,16 +1367,18 @@ function SendNodeEditor({
             </div>
           ) : (
             <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={onSave}
-                disabled={isSavePending}
-                data-testid={`button-save-step-${testKey}`}
-              >
-                <Save className="w-3 h-3" />{isSavePending ? "Saving…" : "Save step"}
-              </Button>
+              {onSave && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={onSave}
+                  disabled={isSavePending}
+                  data-testid={`button-save-step-${testKey}`}
+                >
+                  <Save className="w-3 h-3" />{isSavePending ? "Saving…" : "Save step"}
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -1418,8 +1417,8 @@ function NodeEditor({
   onInsertChild: (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => void;
   onRemoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
   onMoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
-  onSave: () => void;
-  isSavePending: boolean;
+  onSave?: () => void;
+  isSavePending?: boolean;
   ordinal: number;
   depth: number;
 }) {
