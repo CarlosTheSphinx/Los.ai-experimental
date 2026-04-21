@@ -1030,6 +1030,7 @@ export function PricingConfiguration({
           setApiTestResult={setApiTestResult}
           showApiRawDebug={showApiRawDebug}
           setShowApiRawDebug={setShowApiRawDebug}
+          quoteFormVariables={quoteFormVariables}
         />
       )}
 
@@ -1793,12 +1794,14 @@ function ExternalApiSection({
   apiUrl, setApiUrl, apiConfig, setApiConfig,
   apiTestSample, setApiTestSample, apiTestResult, setApiTestResult,
   showApiRawDebug, setShowApiRawDebug,
+  quoteFormVariables,
 }: {
   apiUrl: string; setApiUrl: (v: string) => void;
   apiConfig: ApiModeConfig | null; setApiConfig: (c: ApiModeConfig | null) => void;
   apiTestSample: string; setApiTestSample: (v: string) => void;
   apiTestResult: any; setApiTestResult: (r: any) => void;
   showApiRawDebug: boolean; setShowApiRawDebug: (v: boolean) => void;
+  quoteFormVariables: { key: string; label: string }[];
 }) {
   const { toast } = useToast();
   const [guidedOpen, setGuidedOpen] = useState(false);
