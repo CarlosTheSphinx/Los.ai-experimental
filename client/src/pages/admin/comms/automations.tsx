@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  Plus, Trash2, Mail, Clock, Play, Pause, ChevronLeft, History, Send,
+  ChevronUp, ChevronDown, GitBranch, Activity,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 
@@ -18,6 +21,7 @@ type Channel = "email" | "sms" | "in_app";
 type EventName = "loan_status_changed" | "document_uploaded" | "deal_submitted" | "task_completed";
 type TriggerKind = "event" | "time_absolute" | "time_recurring" | "time_relative" | "manual";
 type SubjectType = "loan" | "broker" | "borrower";
+type NodeType = "send" | "wait" | "branch_engagement" | "branch_loan_state";
 
 type TriggerConfig =
   | { kind: "event"; eventName: EventName; filters?: { toStage?: string; fromStage?: string } }
@@ -31,15 +35,33 @@ interface ExitConditions {
   loanStatusEquals?: string[];
 }
 
-interface SendNodeConfig {
+// Phase 4 — node config is a free-form bag whose keys depend on node.type.
+// Send/Wait keep their original keys; branch_* nodes layer in their own.
+interface NodeConfig {
+  // send
   templateId?: number;
   recipientType?: "borrower" | "broker";
-  channel?: Channel; // mirrors the automation-level defaultChannel — kept on the node for legacy reads
-}
-interface WaitNodeConfig {
+  channel?: Channel;
+  // wait
   durationMinutes?: number;
+  // branch_engagement
+  refTopLevelIndex?: number;
+  engagementType?: "delivered" | "opened" | "clicked" | "replied";
+  windowMinutes?: number;
+  // branch_loan_state
+  field?: "currentStage" | "status" | "loanAmount" | "loanType";
+  operator?: "eq" | "neq" | "in" | "notIn" | "gt" | "gte" | "lt" | "lte";
+  value?: string | number | string[];
 }
-type NodeConfig = SendNodeConfig & WaitNodeConfig;
+
+interface NodeRow {
+  type: NodeType;
+  config: NodeConfig;
+  // Branch nodes carry two child sequences. Editor keeps them undefined for
+  // send/wait so the JSON we send back to the server matches the schema.
+  yes?: NodeRow[];
+  no?: NodeRow[];
+}
 
 interface AutomationListItem {
   id: number;
@@ -56,14 +78,12 @@ interface AutomationListItem {
   nextRunAt: string | null;
 }
 
-interface NodeRow {
-  type: "send" | "wait";
-  config: NodeConfig;
+interface AutomationDetail extends AutomationListItem {
+  // Tree shape coming back from the server (Phase 4).
+  nodes: Array<NodeRow & { id: number }>;
 }
 
-interface AutomationDetail extends AutomationListItem {
-  nodes: Array<{ id: number; orderIndex: number; type: "send" | "wait"; config: NodeConfig | null }>;
-}
+interface BranchTrailEntry { nodeId: number; nodeType: NodeType; side: "yes" | "no"; at: string; label: string }
 
 interface AutomationRun {
   id: number;
@@ -72,7 +92,8 @@ interface AutomationRun {
   startedAt: string;
   status: string;
   exitReason: string | null;
-  parkedNode: { id: number; ordinal: number; type: "send" | "wait"; label: string } | null;
+  parkedNode: { id: number; ordinal: number; type: NodeType; label: string } | null;
+  branchTrail?: BranchTrailEntry[];
   lastSendLogId: number | null;
 }
 
@@ -86,6 +107,13 @@ const STATUS_BADGE: Record<AutomationStatus, { label: string; variant: "default"
   active:   { label: "Active",   variant: "default" },
   paused:   { label: "Paused",   variant: "secondary" },
   archived: { label: "Archived", variant: "destructive" },
+};
+
+const NODE_LABEL: Record<NodeType, string> = {
+  send: "Send message",
+  wait: "Wait",
+  branch_engagement: "Branch on Engagement",
+  branch_loan_state: "Branch on Loan State",
 };
 
 export default function CommsAutomationsPage() {
@@ -121,7 +149,7 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-lg font-semibold">Automations</h2>
-          <p className="text-sm text-muted-foreground">Linear sequences triggered by events, schedules, or manual actions.</p>
+          <p className="text-sm text-muted-foreground">Sequences with optional branches, triggered by events, schedules, or manual actions.</p>
         </div>
         <Button onClick={() => onEdit("new")} data-testid="button-new-automation"><Plus className="w-4 h-4 mr-2" />New Automation</Button>
       </div>
@@ -177,6 +205,111 @@ function AutomationsList({ onEdit }: { onEdit: (id: number | "new") => void }) {
   );
 }
 
+// Phase 4 helpers — pure tree manipulation. Path is an array of either
+// numeric indices (top-level) or { side: "yes"|"no", idx } steps inside a
+// branch's children. Centralizing tree updates avoids reimplementing
+// recursion at every callsite.
+type PathStep = number | { side: "yes" | "no"; idx: number };
+
+// Replace the children array at the parent identified by parentPath (empty = root).
+function withChildren(
+  nodes: NodeRow[],
+  parentPath: PathStep[],
+  side: "yes" | "no" | null,
+  fn: (arr: NodeRow[]) => NodeRow[],
+): NodeRow[] {
+  if (parentPath.length === 0) {
+    return fn(nodes);
+  }
+  // Parent path is a prefix; descend by replacing the node at the head.
+  const [head, ...rest] = parentPath;
+  const idx = typeof head === "number" ? head : head.idx;
+  return nodes.map((n, i) => {
+    if (i !== idx) return n;
+    if (rest.length === 0 && typeof head !== "number") {
+      // We are at parentPath end — descend into the matching side from `head`
+      // Actually head already moved into the node; rest is empty so the
+      // children array to mutate lives on this node under `side`.
+    }
+    if (rest.length === 0) {
+      // We hit the parent node. The side here comes from the caller.
+      const childArr = (side === "yes" ? n.yes : side === "no" ? n.no : null) ?? [];
+      const next = fn(childArr);
+      if (side === "yes") return { ...n, yes: next };
+      if (side === "no") return { ...n, no: next };
+      return n;
+    }
+    // Descend into the node's matching side from the next step.
+    const nextStep = rest[0];
+    if (typeof nextStep === "number") return n;
+    const childSide = nextStep.side;
+    const childArr = (childSide === "yes" ? n.yes : n.no) ?? [];
+    const updatedKids = withChildren(childArr, rest, side, fn);
+    if (childSide === "yes") return { ...n, yes: updatedKids };
+    return { ...n, no: updatedKids };
+  });
+}
+
+// Update a node identified by an absolute path (array of {side,idx} steps after
+// the first numeric top-level idx).
+function updateNodeAtPath(nodes: NodeRow[], path: PathStep[], patch: Partial<NodeRow>): NodeRow[] {
+  if (path.length === 0) return nodes;
+  const [head, ...rest] = path;
+  const idx = typeof head === "number" ? head : head.idx;
+  return nodes.map((n, i) => {
+    if (i !== idx) return n;
+    if (rest.length === 0) {
+      return {
+        ...n,
+        ...patch,
+        config: { ...n.config, ...(patch.config ?? {}) },
+      };
+    }
+    const nextStep = rest[0];
+    if (typeof nextStep === "number") return n;
+    const childArr = (nextStep.side === "yes" ? n.yes : n.no) ?? [];
+    const updated = updateNodeAtPath(childArr, rest, patch);
+    if (nextStep.side === "yes") return { ...n, yes: updated };
+    return { ...n, no: updated };
+  });
+}
+
+// Walk the tree and yield top-level Send node descriptors so branch_engagement
+// pickers can offer "earlier top-level Send" choices. We only care about
+// top-level here because the worker resolves engagement refs by top-level
+// position; branches inside branches reference back through the same map.
+function listTopLevelSends(nodes: NodeRow[]): Array<{ idx: number; templateId?: number; label: string }> {
+  return nodes
+    .map((n, idx) => ({ n, idx }))
+    .filter(({ n }) => n.type === "send")
+    .map(({ n, idx }) => ({
+      idx,
+      templateId: n.config.templateId,
+      label: `Step ${idx + 1}: Send${n.config.templateId ? ` (template #${n.config.templateId})` : ""}`,
+    }));
+}
+
+function newNode(type: NodeType, defaultChannel: Channel): NodeRow {
+  switch (type) {
+    case "send": return { type: "send", config: { channel: defaultChannel, recipientType: "borrower" } };
+    case "wait": return { type: "wait", config: { durationMinutes: 60 } };
+    case "branch_engagement":
+      return {
+        type: "branch_engagement",
+        config: { engagementType: "opened", windowMinutes: 1440 },
+        yes: [],
+        no: [],
+      };
+    case "branch_loan_state":
+      return {
+        type: "branch_loan_state",
+        config: { field: "currentStage", operator: "eq", value: "" },
+        yes: [],
+        no: [],
+      };
+  }
+}
+
 function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => void }) {
   const isNew = id === "new";
   const { toast } = useToast();
@@ -207,6 +340,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   const [notifyBrokerOnSend, setNotifyBrokerOnSend] = useState(false);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [clientError, setClientError] = useState<string | null>(null);
 
   // Hydrate from server once
   useEffect(() => {
@@ -228,7 +362,15 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     }
     setMaxDurationDays(existing.maxDurationDays ?? "");
     setNotifyBrokerOnSend(existing.notifyBrokerOnSend);
-    setNodes(existing.nodes.map(n => ({ type: n.type, config: n.config ?? {} })));
+    // Strip `id` from server tree (it's display-only). The recursive shape is
+    // already what we'll send back, so no transformation is needed.
+    const stripId = (n: NodeRow & { id?: number }): NodeRow => ({
+      type: n.type,
+      config: n.config ?? {},
+      ...(n.yes ? { yes: n.yes.map(stripId) } : {}),
+      ...(n.no ? { no: n.no.map(stripId) } : {}),
+    });
+    setNodes((existing.nodes ?? []).map(stripId));
     setHydrated(true);
   }, [existing, isNew, hydrated]);
 
@@ -242,6 +384,15 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     }
   };
 
+  // Stamp every send node anywhere in the tree with the automation-level
+  // channel before save so backend single-channel validation is satisfied.
+  const stampChannel = (n: NodeRow): NodeRow => ({
+    ...n,
+    config: n.type === "send" ? { ...n.config, channel: defaultChannel } : n.config,
+    ...(n.yes ? { yes: n.yes.map(stampChannel) } : {}),
+    ...(n.no ? { no: n.no.map(stampChannel) } : {}),
+  });
+
   const buildPayload = () => ({
     name,
     defaultChannel,
@@ -252,12 +403,76 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     },
     notifyBrokerOnSend,
     maxDurationDays: maxDurationDays === "" ? null : Number(maxDurationDays),
-    // Stamp every send node with the automation-level channel before save so
-    // backend single-channel validation is satisfied.
-    nodes: nodes.map(n => n.type === "send"
-      ? { ...n, config: { ...n.config, channel: defaultChannel } }
-      : n),
+    nodes: nodes.map(stampChannel),
   });
+
+  // Phase 4 — client-side mirror of the server validator. Catches the same
+  // mistakes (missing children, dangling refs, bad windows) before we even
+  // submit, so the user gets fast feedback. Server is still the source of
+  // truth.
+  const validateClient = (): string | null => {
+    const topTypes = nodes.map(n => n.type);
+    const walk = (seq: NodeRow[], path: string, rootTopIdx: number, depth: number): string | null => {
+      if (depth > 5) return `Sequence at ${path} is nested too deep (max 5 levels)`;
+      for (let i = 0; i < seq.length; i++) {
+        const n = seq[i];
+        const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+        if (n.type === "send") {
+          if (!n.config.templateId) return `${here} (Send) is missing a template`;
+          if (!n.config.recipientType) return `${here} (Send) is missing a recipient`;
+        } else if (n.type === "wait") {
+          if (!n.config.durationMinutes || n.config.durationMinutes < 1) return `${here} (Wait) duration must be at least 1 minute`;
+        } else if (n.type === "branch_engagement") {
+          const ref = n.config.refTopLevelIndex;
+          if (ref == null) return `${here} (Branch on Engagement) must reference an earlier Send step`;
+          if (ref >= rootTopIdx) return `${here} (Branch on Engagement) reference must come before this branch`;
+          if (topTypes[ref] !== "send") return `${here} (Branch on Engagement) reference must point to a Send step`;
+          if (!n.config.windowMinutes || n.config.windowMinutes < 1) return `${here} (Branch on Engagement) window must be at least 1 minute`;
+          if (!n.yes?.length) return `${here} "Yes" branch is empty`;
+          if (!n.no?.length)  return `${here} "No" branch is empty`;
+          const ye = walk(n.yes, `${here} → Yes`, rootTopIdx, depth + 1); if (ye) return ye;
+          const ne = walk(n.no,  `${here} → No`,  rootTopIdx, depth + 1); if (ne) return ne;
+        } else if (n.type === "branch_loan_state") {
+          if (!n.config.field) return `${here} (Branch on Loan State) needs a field`;
+          if (!n.config.operator) return `${here} (Branch on Loan State) needs an operator`;
+          const v = n.config.value;
+          if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return `${here} (Branch on Loan State) needs a value`;
+          const op = String(n.config.operator);
+          if ((op === "in" || op === "notIn") && !Array.isArray(v)) {
+            return `${here} (Branch on Loan State) operator "${op}" requires a list of values`;
+          }
+          if (["gt", "gte", "lt", "lte"].includes(op)) {
+            const numVal = typeof v === "number" ? v : Number(v);
+            if (!Number.isFinite(numVal)) {
+              return `${here} (Branch on Loan State) operator "${op}" requires a numeric value`;
+            }
+          }
+          if (!n.yes?.length) return `${here} "Yes" branch is empty`;
+          if (!n.no?.length)  return `${here} "No" branch is empty`;
+          const ye = walk(n.yes, `${here} → Yes`, rootTopIdx, depth + 1); if (ye) return ye;
+          const ne = walk(n.no,  `${here} → No`,  rootTopIdx, depth + 1); if (ne) return ne;
+        }
+      }
+      return null;
+    };
+    for (let i = 0; i < nodes.length; i++) {
+      const err = walk([nodes[i]], "", i, 0);
+      if (err) return err;
+    }
+    return null;
+  };
+
+  const onSaveClick = (action: "create" | "save") => {
+    const err = validateClient();
+    if (err) {
+      setClientError(err);
+      toast({ title: "Fix sequence first", description: err, variant: "destructive" });
+      return;
+    }
+    setClientError(null);
+    if (action === "create") create.mutate();
+    else save.mutate();
+  };
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/comms/automations", buildPayload()),
@@ -289,22 +504,30 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
     onError: (e: ApiError) => toast({ title: "Start failed", description: e?.message, variant: "destructive" }),
   });
 
-  const updateNode = (idx: number, patch: Partial<NodeRow>) =>
-    setNodes(prev => prev.map((n, i) => i === idx ? { ...n, ...patch, config: { ...n.config, ...(patch.config ?? {}) } } : n));
-  const removeNode = (idx: number) => setNodes(prev => prev.filter((_, i) => i !== idx));
-  const moveNode = (idx: number, dir: -1 | 1) => setNodes(prev => {
-    const next = [...prev];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return prev;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    return next;
-  });
-  const addNode = (atIdx: number, type: "send" | "wait") => {
-    const n: NodeRow = type === "send"
-      ? { type: "send", config: { channel: defaultChannel, recipientType: "borrower" } }
-      : { type: "wait", config: { durationMinutes: 60 } };
-    setNodes(prev => [...prev.slice(0, atIdx), n, ...prev.slice(atIdx)]);
+  // ---- Tree mutation handlers ----
+  // parentPath = path to the node owning the children list; empty = top-level.
+  // side = which side of the parent's branches; null = top-level list.
+  const insertChild = (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => {
+    const fresh = newNode(type, defaultChannel);
+    setNodes(prev => withChildren(prev, parentPath, side, arr => [...arr.slice(0, atIdx), fresh, ...arr.slice(atIdx)]));
   };
+  const removeAt = (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => {
+    setNodes(prev => withChildren(prev, parentPath, side, arr => arr.filter((_, i) => i !== idx)));
+  };
+  const moveAt = (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => {
+    setNodes(prev => withChildren(prev, parentPath, side, arr => {
+      const j = idx + dir;
+      if (j < 0 || j >= arr.length) return arr;
+      const next = [...arr];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    }));
+  };
+  const updateAt = (path: PathStep[], patch: Partial<NodeRow>) => {
+    setNodes(prev => updateNodeAtPath(prev, path, patch));
+  };
+
+  const topLevelSends = listTopLevelSends(nodes);
 
   return (
     <div className="space-y-4" data-testid="page-automation-editor">
@@ -323,7 +546,7 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
               <Play className="w-4 h-4 mr-1" />Activate
             </Button>
           )}
-          <Button onClick={() => isNew ? create.mutate() : save.mutate()} disabled={!name || nodes.length === 0} data-testid="button-save">
+          <Button onClick={() => onSaveClick(isNew ? "create" : "save")} disabled={!name || nodes.length === 0} data-testid="button-save">
             {isNew ? "Create" : "Save"}
           </Button>
         </div>
@@ -452,40 +675,31 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Sequence</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center justify-between">
+            <span>Sequence</span>
+            <span className="text-xs font-normal text-muted-foreground">Branches let you fork on engagement or loan data.</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2">
-          {nodes.length === 0 && (
-            <div className="flex justify-center gap-2 py-4">
-              <Button variant="outline" size="sm" onClick={() => addNode(0, "send")} data-testid="button-add-first-send">
-                <Mail className="w-4 h-4 mr-1" />Add Send
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => addNode(0, "wait")} data-testid="button-add-first-wait">
-                <Clock className="w-4 h-4 mr-1" />Add Wait
-              </Button>
+          {clientError && (
+            <div className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded px-2 py-1" data-testid="text-client-error">
+              {clientError}
             </div>
           )}
-          {nodes.map((n, idx) => (
-            <div key={idx}>
-              <NodeEditor
-                node={n}
-                templates={templates}
-                automationChannel={defaultChannel}
-                onChange={p => updateNode(idx, p)}
-                onRemove={() => removeNode(idx)}
-                onMoveUp={idx > 0 ? () => moveNode(idx, -1) : undefined}
-                onMoveDown={idx < nodes.length - 1 ? () => moveNode(idx, 1) : undefined}
-                index={idx}
-              />
-              <div className="flex justify-center gap-2 my-2">
-                <Button variant="ghost" size="sm" onClick={() => addNode(idx + 1, "send")} data-testid={`button-add-send-after-${idx}`}>
-                  <Plus className="w-3 h-3 mr-1" />Send
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => addNode(idx + 1, "wait")} data-testid={`button-add-wait-after-${idx}`}>
-                  <Plus className="w-3 h-3 mr-1" />Wait
-                </Button>
-              </div>
-            </div>
-          ))}
+          <NodeList
+            nodes={nodes}
+            parentPath={[]}
+            side={null}
+            templates={templates}
+            automationChannel={defaultChannel}
+            topLevelSends={topLevelSends}
+            onInsert={insertChild}
+            onRemove={removeAt}
+            onMove={moveAt}
+            onUpdate={updateAt}
+            depth={0}
+          />
         </CardContent>
       </Card>
 
@@ -541,6 +755,15 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
                           parked at step {r.parkedNode.ordinal} ({r.parkedNode.label})
                         </span>
                       )}
+                      {r.branchTrail && r.branchTrail.length > 0 && (
+                        <span className="ml-2 inline-flex flex-wrap gap-1" data-testid={`text-branch-trail-${r.id}`}>
+                          {r.branchTrail.map((b, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px] py-0">
+                              <GitBranch className="w-3 h-3 mr-1" />{b.label}
+                            </Badge>
+                          ))}
+                        </span>
+                      )}
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
                       {r.lastSendLogId != null && (
@@ -570,43 +793,159 @@ function AutomationEditor({ id, onClose }: { id: number | "new"; onClose: () => 
   );
 }
 
-function NodeEditor({ node, templates, automationChannel, onChange, onRemove, onMoveUp, onMoveDown, index }: {
-  node: NodeRow;
+// Recursive list — renders each node and the add-node controls between them.
+// `side` is null at the top level and "yes"|"no" inside a branch's children.
+function NodeList({
+  nodes, parentPath, side, templates, automationChannel, topLevelSends,
+  onInsert, onRemove, onMove, onUpdate, depth,
+}: {
+  nodes: NodeRow[];
+  parentPath: PathStep[];
+  side: "yes" | "no" | null;
   templates: Template[];
   automationChannel: Channel;
-  onChange: (patch: Partial<NodeRow>) => void;
+  topLevelSends: ReturnType<typeof listTopLevelSends>;
+  onInsert: (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => void;
+  onRemove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
+  onMove: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
+  onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
+  depth: number;
+}) {
+  // Branches deeper than 5 levels are blocked at validation time, but we
+  // also disable the add-node picker at depth >= 5 so the user can't even
+  // build something the server will reject.
+  const allowBranch = depth < 5;
+  return (
+    <div className="space-y-1">
+      {nodes.length === 0 && (
+        <AddNodePicker
+          onPick={t => onInsert(parentPath, side, 0, t)}
+          allowBranch={allowBranch && side === null /* branches inside branches limited to top-level depth budget */ ? true : allowBranch}
+          testIdPrefix={`add-empty-${depth}`}
+        />
+      )}
+      {nodes.map((n, idx) => {
+        const path: PathStep[] =
+          side === null
+            ? [...parentPath, idx]
+            : [...parentPath, { side, idx }];
+        return (
+          <div key={idx}>
+            <NodeEditor
+              node={n}
+              path={path}
+              templates={templates}
+              automationChannel={automationChannel}
+              topLevelSends={topLevelSends}
+              onUpdate={onUpdate}
+              onRemove={() => onRemove(parentPath, side, idx)}
+              onMoveUp={idx > 0 ? () => onMove(parentPath, side, idx, -1) : undefined}
+              onMoveDown={idx < nodes.length - 1 ? () => onMove(parentPath, side, idx, 1) : undefined}
+              onInsertChild={onInsert}
+              onRemoveChild={onRemove}
+              onMoveChild={onMove}
+              ordinal={idx + 1}
+              depth={depth}
+            />
+            <AddNodePicker
+              onPick={t => onInsert(parentPath, side, idx + 1, t)}
+              allowBranch={allowBranch}
+              testIdPrefix={`add-after-${path.map(p => typeof p === "number" ? p : `${p.side}${p.idx}`).join("-")}`}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AddNodePicker({
+  onPick, allowBranch, testIdPrefix,
+}: { onPick: (t: NodeType) => void; allowBranch: boolean; testIdPrefix: string }) {
+  return (
+    <div className="flex justify-center gap-2 my-1">
+      <Button variant="ghost" size="sm" onClick={() => onPick("send")} data-testid={`button-${testIdPrefix}-send`}>
+        <Plus className="w-3 h-3 mr-1" /><Mail className="w-3 h-3 mr-1" />Send
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => onPick("wait")} data-testid={`button-${testIdPrefix}-wait`}>
+        <Plus className="w-3 h-3 mr-1" /><Clock className="w-3 h-3 mr-1" />Wait
+      </Button>
+      {allowBranch && (
+        <>
+          <Button variant="ghost" size="sm" onClick={() => onPick("branch_engagement")} data-testid={`button-${testIdPrefix}-branch-engagement`}>
+            <Plus className="w-3 h-3 mr-1" /><Activity className="w-3 h-3 mr-1" />If engaged?
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onPick("branch_loan_state")} data-testid={`button-${testIdPrefix}-branch-loan`}>
+            <Plus className="w-3 h-3 mr-1" /><GitBranch className="w-3 h-3 mr-1" />If loan…?
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NodeEditor({
+  node, path, templates, automationChannel, topLevelSends,
+  onUpdate, onRemove, onMoveUp, onMoveDown,
+  onInsertChild, onRemoveChild, onMoveChild,
+  ordinal, depth,
+}: {
+  node: NodeRow;
+  path: PathStep[];
+  templates: Template[];
+  automationChannel: Channel;
+  topLevelSends: ReturnType<typeof listTopLevelSends>;
+  onUpdate: (path: PathStep[], patch: Partial<NodeRow>) => void;
   onRemove: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
-  index: number;
+  onInsertChild: (parentPath: PathStep[], side: "yes" | "no" | null, atIdx: number, type: NodeType) => void;
+  onRemoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number) => void;
+  onMoveChild: (parentPath: PathStep[], side: "yes" | "no" | null, idx: number, dir: -1 | 1) => void;
+  ordinal: number;
+  depth: number;
 }) {
+  const isBranch = node.type === "branch_engagement" || node.type === "branch_loan_state";
+  const ringByDepth = depth === 0 ? "" : "ml-4 border-l-2 border-l-muted pl-3";
+  // Engagement branches can only reference top-level Sends that come
+  // STRICTLY BEFORE this branch's own top-level position. For nested
+  // branches we walk up the path to find the root top-level idx.
+  const myRootTopIdx = typeof path[0] === "number" ? path[0] : 0;
+  const eligibleSends = topLevelSends.filter(s => s.idx < myRootTopIdx);
+
+  const testKey = path.map(p => typeof p === "number" ? p : `${p.side}${p.idx}`).join("-");
+
   return (
-    <Card data-testid={`card-node-${index}`}>
+    <Card data-testid={`card-node-${testKey}`} className={ringByDepth}>
       <CardContent className="p-3 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium">
-            {node.type === "send" ? <Send className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-            <span>Step {index + 1}: {node.type === "send" ? "Send message" : "Wait"}</span>
+            {node.type === "send" && <Send className="w-4 h-4" />}
+            {node.type === "wait" && <Clock className="w-4 h-4" />}
+            {node.type === "branch_engagement" && <Activity className="w-4 h-4" />}
+            {node.type === "branch_loan_state" && <GitBranch className="w-4 h-4" />}
+            <span>Step {ordinal}: {NODE_LABEL[node.type]}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" disabled={!onMoveUp} onClick={onMoveUp} data-testid={`button-move-up-${index}`}>
+            <Button variant="ghost" size="sm" disabled={!onMoveUp} onClick={onMoveUp} data-testid={`button-move-up-${testKey}`}>
               <ChevronUp className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" disabled={!onMoveDown} onClick={onMoveDown} data-testid={`button-move-down-${index}`}>
+            <Button variant="ghost" size="sm" disabled={!onMoveDown} onClick={onMoveDown} data-testid={`button-move-down-${testKey}`}>
               <ChevronDown className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove} data-testid={`button-remove-node-${index}`}>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove} data-testid={`button-remove-node-${testKey}`}>
               <Trash2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
         <Separator />
-        {node.type === "send" ? (
+
+        {node.type === "send" && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Template ({automationChannel})</Label>
-              <Select value={node.config.templateId?.toString() ?? ""} onValueChange={v => onChange({ config: { templateId: Number(v) } })}>
-                <SelectTrigger data-testid={`select-template-${index}`}><SelectValue placeholder="Pick…" /></SelectTrigger>
+              <Select value={node.config.templateId?.toString() ?? ""} onValueChange={v => onUpdate(path, { config: { templateId: Number(v) } })}>
+                <SelectTrigger data-testid={`select-template-${testKey}`}><SelectValue placeholder="Pick…" /></SelectTrigger>
                 <SelectContent>
                   {templates.filter(t => t.channel === automationChannel).map(t => (
                     <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
@@ -616,8 +955,8 @@ function NodeEditor({ node, templates, automationChannel, onChange, onRemove, on
             </div>
             <div>
               <Label className="text-xs">Recipient</Label>
-              <Select value={node.config.recipientType ?? "borrower"} onValueChange={v => onChange({ config: { recipientType: v as "borrower" | "broker" } })}>
-                <SelectTrigger data-testid={`select-recipient-${index}`}><SelectValue /></SelectTrigger>
+              <Select value={node.config.recipientType ?? "borrower"} onValueChange={v => onUpdate(path, { config: { recipientType: v as "borrower" | "broker" } })}>
+                <SelectTrigger data-testid={`select-recipient-${testKey}`}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="borrower">Borrower</SelectItem>
                   <SelectItem value="broker">Broker</SelectItem>
@@ -625,15 +964,163 @@ function NodeEditor({ node, templates, automationChannel, onChange, onRemove, on
               </Select>
             </div>
           </div>
-        ) : (
+        )}
+
+        {node.type === "wait" && (
           <div>
             <Label className="text-xs">Wait duration (minutes)</Label>
             <Input
               type="number" min={1}
               value={node.config.durationMinutes ?? 60}
-              onChange={e => onChange({ config: { durationMinutes: Number(e.target.value) } })}
-              data-testid={`input-wait-minutes-${index}`}
+              onChange={e => onUpdate(path, { config: { durationMinutes: Number(e.target.value) } })}
+              data-testid={`input-wait-minutes-${testKey}`}
             />
+          </div>
+        )}
+
+        {node.type === "branch_engagement" && (
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label className="text-xs">Reference (earlier Send)</Label>
+              <Select
+                value={node.config.refTopLevelIndex?.toString() ?? ""}
+                onValueChange={v => onUpdate(path, { config: { refTopLevelIndex: Number(v) } })}
+              >
+                <SelectTrigger data-testid={`select-ref-${testKey}`}>
+                  <SelectValue placeholder={eligibleSends.length ? "Pick a send" : "No earlier Send"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {eligibleSends.map(s => (
+                    <SelectItem key={s.idx} value={s.idx.toString()}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Engagement</Label>
+              <Select
+                value={node.config.engagementType ?? "opened"}
+                onValueChange={v => onUpdate(path, { config: { engagementType: v as NodeConfig["engagementType"] } })}
+              >
+                <SelectTrigger data-testid={`select-engagement-${testKey}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="opened">Opened</SelectItem>
+                  <SelectItem value="clicked">Clicked</SelectItem>
+                  <SelectItem value="replied">Replied</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Window (minutes)</Label>
+              <Input
+                type="number" min={1}
+                value={node.config.windowMinutes ?? 1440}
+                onChange={e => onUpdate(path, { config: { windowMinutes: Number(e.target.value) } })}
+                data-testid={`input-window-${testKey}`}
+              />
+            </div>
+            <p className="col-span-3 text-xs text-muted-foreground">
+              The run pauses until this window closes, then takes the Yes branch if the engagement happened, otherwise the No branch.
+            </p>
+          </div>
+        )}
+
+        {node.type === "branch_loan_state" && (
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label className="text-xs">Loan field</Label>
+              <Select
+                value={node.config.field ?? "currentStage"}
+                onValueChange={v => onUpdate(path, { config: { field: v as NodeConfig["field"] } })}
+              >
+                <SelectTrigger data-testid={`select-loan-field-${testKey}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="currentStage">Current stage</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="loanAmount">Loan amount</SelectItem>
+                  <SelectItem value="loanType">Loan type</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Operator</Label>
+              <Select
+                value={node.config.operator ?? "eq"}
+                onValueChange={v => onUpdate(path, { config: { operator: v as NodeConfig["operator"] } })}
+              >
+                <SelectTrigger data-testid={`select-loan-op-${testKey}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="eq">equals</SelectItem>
+                  <SelectItem value="neq">not equals</SelectItem>
+                  <SelectItem value="in">is one of (comma list)</SelectItem>
+                  <SelectItem value="notIn">is none of (comma list)</SelectItem>
+                  <SelectItem value="gt">&gt;</SelectItem>
+                  <SelectItem value="gte">&gt;=</SelectItem>
+                  <SelectItem value="lt">&lt;</SelectItem>
+                  <SelectItem value="lte">&lt;=</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Value</Label>
+              <Input
+                value={Array.isArray(node.config.value) ? node.config.value.join(",") : (node.config.value ?? "").toString()}
+                onChange={e => {
+                  const op = node.config.operator ?? "eq";
+                  const raw = e.target.value;
+                  const next = (op === "in" || op === "notIn")
+                    ? raw.split(",").map(s => s.trim()).filter(Boolean)
+                    : (op === "gt" || op === "gte" || op === "lt" || op === "lte") && raw && !isNaN(Number(raw))
+                      ? Number(raw)
+                      : raw;
+                  onUpdate(path, { config: { value: next } });
+                }}
+                placeholder={(node.config.operator === "in" || node.config.operator === "notIn") ? "underwriting,closing" : "e.g. underwriting"}
+                data-testid={`input-loan-value-${testKey}`}
+              />
+            </div>
+          </div>
+        )}
+
+        {isBranch && (
+          <div className="space-y-2 mt-2">
+            <div>
+              <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full" />Yes branch
+              </div>
+              <NodeList
+                nodes={node.yes ?? []}
+                parentPath={path}
+                side="yes"
+                templates={templates}
+                automationChannel={automationChannel}
+                topLevelSends={topLevelSends}
+                onInsert={onInsertChild}
+                onRemove={onRemoveChild}
+                onMove={onMoveChild}
+                onUpdate={onUpdate}
+                depth={depth + 1}
+              />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-1 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 bg-rose-500 rounded-full" />No branch
+              </div>
+              <NodeList
+                nodes={node.no ?? []}
+                parentPath={path}
+                side="no"
+                templates={templates}
+                automationChannel={automationChannel}
+                topLevelSends={topLevelSends}
+                onInsert={onInsertChild}
+                onRemove={onRemoveChild}
+                onMove={onMoveChild}
+                onUpdate={onUpdate}
+                depth={depth + 1}
+              />
+            </div>
           </div>
         )}
       </CardContent>

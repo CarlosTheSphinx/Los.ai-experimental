@@ -3,7 +3,7 @@ import {
   commsScheduledExecutions, commsAutomationRuns, commsAutomations, commsAutomationNodes,
   commsSendLog, projects, users,
 } from '@shared/schema';
-import { and, eq, asc, sql, isNotNull, lte, gt } from 'drizzle-orm';
+import { and, eq, asc, sql, isNotNull, lte, gt, isNull } from 'drizzle-orm';
 import { sendCommsMessage } from './sendService';
 import { isOptedOut } from './optOutService';
 import { storage } from '../storage';
@@ -45,6 +45,29 @@ type SendNodeConfig = {
 
 type WaitNodeConfig = {
   durationMinutes: number;
+};
+
+type BranchEngagementConfig = {
+  refNodeId: number;                                  // resolved at save time → id of a previous Send node in this run's automation
+  engagementType: 'delivered' | 'opened' | 'clicked' | 'replied';
+  windowMinutes: number;                              // how long to wait for the engagement event
+};
+
+type BranchLoanStateConfig = {
+  field: 'currentStage' | 'status' | 'loanAmount' | 'loanType';
+  operator: 'eq' | 'neq' | 'in' | 'notIn' | 'gt' | 'gte' | 'lt' | 'lte';
+  value: string | number | string[];
+};
+
+// Phase 4 — branch decision snapshot, persisted on commsAutomationRuns.branchPath
+// AND on each commsSendLog row dispatched after the branch. The richer shape
+// (nodeType + side) lets the Run history and Send Log render badges like
+// "Branch: Engagement → No" without joining back to the node table.
+type BranchPathEntry = {
+  nodeId: number;
+  nodeType: 'branch_engagement' | 'branch_loan_state';
+  side: 'yes' | 'no';
+  at: string;
 };
 
 type ExitConditions = {
@@ -140,6 +163,131 @@ async function resolveRecipientUserId(
     return null;
   }
   return null;
+}
+
+/**
+ * Phase 4 — tree-aware "what's next?" walk.
+ *
+ * Each row in commsAutomationNodes carries (parentNodeId, branchSide,
+ * orderIndex). Top-level nodes have parentNodeId=null, branchSide=null.
+ * Branch children have parentNodeId=<branch id>, branchSide='yes'|'no'.
+ *
+ * After executing a node `n`, the next node is:
+ *   1. the next sibling: same parent + same branchSide, with orderIndex >
+ *      n.orderIndex (lowest such).
+ *   2. if no sibling: walk up to n's parent and find ITS next sibling.
+ *   3. if we reach a top-level node with no siblings, the run is done.
+ *
+ * For branch nodes specifically, when we choose to ENTER a side, the "next"
+ * is the first child of that side (lowest orderIndex among children with the
+ * matching branchSide). If that side is empty, we fall back to the
+ * after-branch walk above.
+ */
+async function findFirstChild(automationId: number, parentId: number, side: 'yes' | 'no') {
+  const [child] = await db.select().from(commsAutomationNodes)
+    .where(and(
+      eq(commsAutomationNodes.automationId, automationId),
+      eq(commsAutomationNodes.parentNodeId, parentId),
+      eq(commsAutomationNodes.branchSide, side),
+    ))
+    .orderBy(asc(commsAutomationNodes.orderIndex))
+    .limit(1);
+  return child ?? null;
+}
+
+async function findAfterNode(
+  automationId: number,
+  node: { id: number; parentNodeId: number | null; branchSide: string | null; orderIndex: number },
+): Promise<{ id: number; orderIndex: number; type: string; config: unknown; parentNodeId: number | null; branchSide: string | null } | null> {
+  // 1. next sibling under same parent + branchSide
+  const sibQuery = db.select().from(commsAutomationNodes)
+    .where(and(
+      eq(commsAutomationNodes.automationId, automationId),
+      node.parentNodeId == null
+        ? isNull(commsAutomationNodes.parentNodeId)
+        : eq(commsAutomationNodes.parentNodeId, node.parentNodeId),
+      node.branchSide == null
+        ? isNull(commsAutomationNodes.branchSide)
+        : eq(commsAutomationNodes.branchSide, node.branchSide),
+      gt(commsAutomationNodes.orderIndex, node.orderIndex),
+    ))
+    .orderBy(asc(commsAutomationNodes.orderIndex))
+    .limit(1);
+  const [sibling] = await sibQuery;
+  if (sibling) return sibling;
+
+  // 2. no sibling → walk up to parent's next sibling.
+  if (node.parentNodeId == null) return null;
+  const [parent] = await db.select().from(commsAutomationNodes)
+    .where(eq(commsAutomationNodes.id, node.parentNodeId)).limit(1);
+  if (!parent) return null;
+  return findAfterNode(automationId, parent);
+}
+
+/** Evaluate a branch_engagement node by inspecting send_log for the referenced send. */
+async function evaluateEngagementBranch(
+  runId: number,
+  cfg: BranchEngagementConfig,
+): Promise<'yes' | 'no'> {
+  if (!cfg.refNodeId) return 'no';
+  const [ref] = await db.select({
+    id: commsSendLog.id, status: commsSendLog.status, sentAt: commsSendLog.sentAt,
+    deliveryEvents: commsSendLog.deliveryEvents,
+  })
+    .from(commsSendLog)
+    .where(and(eq(commsSendLog.runId, runId), eq(commsSendLog.nodeId, cfg.refNodeId)))
+    .orderBy(asc(commsSendLog.id))
+    .limit(1);
+  if (!ref) return 'no';
+  const sentAt = ref.sentAt ? new Date(ref.sentAt as unknown as string) : null;
+  if (!sentAt) return 'no';
+  const windowMs = Math.max(1, cfg.windowMinutes ?? 0) * 60_000;
+  const cutoff = new Date(sentAt.getTime() + windowMs);
+  // Until the window closes, defer the decision (caller will reschedule).
+  if (Date.now() < cutoff.getTime()) return '__defer__' as unknown as 'yes';
+
+  if (cfg.engagementType === 'delivered') {
+    return ref.status === 'sent' ? 'yes' : 'no';
+  }
+  // For opened/clicked/replied, scan deliveryEvents (provider webhook events).
+  const events = (Array.isArray(ref.deliveryEvents) ? ref.deliveryEvents : []) as Array<{ type?: string; at?: string }>;
+  const matchType = cfg.engagementType; // 'opened' | 'clicked' | 'replied'
+  const found = events.some(e => {
+    if (e.type !== matchType) return false;
+    if (!e.at) return true;
+    const evAt = new Date(e.at).getTime();
+    return evAt >= sentAt.getTime() && evAt <= cutoff.getTime();
+  });
+  return found ? 'yes' : 'no';
+}
+
+/** Evaluate a branch_loan_state node against the run's subject loan. */
+async function evaluateLoanStateBranch(
+  loanId: number,
+  cfg: BranchLoanStateConfig,
+): Promise<'yes' | 'no'> {
+  const [loan] = await db.select().from(projects).where(eq(projects.id, loanId)).limit(1);
+  if (!loan) return 'no';
+  let actual: unknown;
+  switch (cfg.field) {
+    case 'currentStage': actual = loan.currentStage; break;
+    case 'status':       actual = loan.status; break;
+    case 'loanAmount':   actual = loan.loanAmount != null ? Number(loan.loanAmount) : null; break;
+    case 'loanType':     actual = (loan as Record<string, unknown>).loanType ?? null; break;
+    default:             return 'no';
+  }
+  const v = cfg.value;
+  switch (cfg.operator) {
+    case 'eq':    return String(actual ?? '') === String(v) ? 'yes' : 'no';
+    case 'neq':   return String(actual ?? '') !== String(v) ? 'yes' : 'no';
+    case 'in':    return Array.isArray(v) && v.map(String).includes(String(actual ?? '')) ? 'yes' : 'no';
+    case 'notIn': return Array.isArray(v) && !v.map(String).includes(String(actual ?? '')) ? 'yes' : 'no';
+    case 'gt':    return typeof actual === 'number' && actual >  Number(v) ? 'yes' : 'no';
+    case 'gte':   return typeof actual === 'number' && actual >= Number(v) ? 'yes' : 'no';
+    case 'lt':    return typeof actual === 'number' && actual <  Number(v) ? 'yes' : 'no';
+    case 'lte':   return typeof actual === 'number' && actual <= Number(v) ? 'yes' : 'no';
+    default:      return 'no';
+  }
 }
 
 async function evaluateExitConditions(params: {
@@ -241,16 +389,24 @@ async function processOne(rowId: number): Promise<void> {
         checkUserId = run.subjectId;
         recipientType = run.subjectType;
       } else if (run.subjectType === 'loan') {
-        // Find the next send node at or after this position; use its recipientType.
-        const upcoming = await db.select().from(commsAutomationNodes)
-          .where(and(
-            eq(commsAutomationNodes.automationId, automation.id),
-            sql`${commsAutomationNodes.orderIndex} >= ${node.orderIndex}`,
-            eq(commsAutomationNodes.type, 'send'),
-          ))
-          .orderBy(asc(commsAutomationNodes.orderIndex))
-          .limit(1);
-        const nextSend = upcoming[0];
+        // Phase 4 — tree-aware lookahead: walk forward from the current node
+        // through the tree (findAfterNode) to find the next Send whose
+        // recipientType we can resolve. Stays within the current branch arm
+        // and ascends back up the tree when an arm ends, so we don't target
+        // an unrelated subtree's recipient.
+        let nextSend: { id: number; type: string; config: unknown } | null = null;
+        // If the current node is itself a send, include it as a candidate.
+        if (node.type === 'send') {
+          nextSend = node as any;
+        } else {
+          let cursor: { id: number; parentNodeId: number | null; branchSide: string | null; orderIndex: number } | null = node as any;
+          while (cursor) {
+            const step = await findAfterNode(automation.id, cursor);
+            if (!step) break;
+            if (step.type === 'send') { nextSend = step as any; break; }
+            cursor = { id: step.id, parentNodeId: step.parentNodeId, branchSide: step.branchSide, orderIndex: step.orderIndex };
+          }
+        }
         if (nextSend) {
           const cfg = (nextSend.config ?? {}) as Partial<SendNodeConfig>;
           if (cfg.recipientType === 'borrower' || cfg.recipientType === 'broker') {
@@ -285,6 +441,102 @@ async function processOne(rowId: number): Promise<void> {
         }
       }
     }
+  }
+
+  // Phase 4 — Branch nodes don't dispatch; they evaluate, append to
+  // branchPath, and schedule the first child of the chosen side (or after-
+  // branch fallback when that side is empty).
+  if (node.type === 'branch_engagement' || node.type === 'branch_loan_state') {
+    let chosen: 'yes' | 'no';
+    try {
+      if (node.type === 'branch_engagement') {
+        const cfg = (node.config ?? {}) as BranchEngagementConfig;
+        const result = await evaluateEngagementBranch(run.id, cfg);
+        // If the engagement window hasn't elapsed yet, defer this row to the
+        // exact end-of-window moment so we don't tight-loop.
+        if ((result as unknown) === '__defer__') {
+          const [ref] = await db.select({ sentAt: commsSendLog.sentAt }).from(commsSendLog)
+            .where(and(eq(commsSendLog.runId, run.id), eq(commsSendLog.nodeId, cfg.refNodeId)))
+            .orderBy(asc(commsSendLog.id))
+            .limit(1);
+          const sentAt = ref?.sentAt ? new Date(ref.sentAt as unknown as string) : new Date();
+          const deferUntil = new Date(sentAt.getTime() + Math.max(1, cfg.windowMinutes ?? 0) * 60_000);
+          await db.update(commsScheduledExecutions)
+            .set({
+              scheduledFor: deferUntil, status: 'pending', lockedAt: null,
+              attempts: Math.max(0, (row.attempts ?? 1) - 1),
+              lastError: 'deferred:branch_engagement_window',
+            })
+            .where(eq(commsScheduledExecutions.id, row.id));
+          return;
+        }
+        chosen = result;
+      } else {
+        if (run.subjectType !== 'loan') {
+          // branch_loan_state requires a loan subject; fall to 'no' (false branch)
+          // so the run continues deterministically rather than failing.
+          chosen = 'no';
+        } else {
+          const cfg = (node.config ?? {}) as BranchLoanStateConfig;
+          chosen = await evaluateLoanStateBranch(run.subjectId, cfg);
+        }
+      }
+    } catch (err) {
+      console.error(`[automationWorker] branch evaluation failed for node ${node.id}:`, err);
+      // Fail the row with retry/backoff via the normal !dispatchOk path below.
+      const attempts = row.attempts ?? 0;
+      if (attempts >= MAX_ATTEMPTS) {
+        await db.update(commsAutomationRuns)
+          .set({ status: 'failed', exitReason: 'branch evaluation failed' })
+          .where(eq(commsAutomationRuns.id, run.id));
+        await db.update(commsScheduledExecutions)
+          .set({ status: 'failed', executedAt: new Date(), lastError: (err as Error).message ?? 'branch error' })
+          .where(eq(commsScheduledExecutions.id, row.id));
+      } else {
+        const backoffMin = BACKOFF_MINUTES[Math.min(attempts - 1, BACKOFF_MINUTES.length - 1)] ?? 30;
+        await db.update(commsScheduledExecutions)
+          .set({
+            status: 'pending', scheduledFor: new Date(Date.now() + backoffMin * 60_000),
+            lockedAt: null, lastError: (err as Error).message ?? 'branch error',
+          })
+          .where(eq(commsScheduledExecutions.id, row.id));
+      }
+      return;
+    }
+
+    const newPathEntry: BranchPathEntry = {
+      nodeId: node.id,
+      nodeType: node.type as BranchPathEntry['nodeType'],
+      side: chosen,
+      at: new Date().toISOString(),
+    };
+    const existingPath = (Array.isArray(run.branchPath) ? run.branchPath : []) as BranchPathEntry[];
+    const updatedPath = [...existingPath, newPathEntry];
+
+    const firstChild = await findFirstChild(automation.id, node.id, chosen);
+    const followUp = firstChild ?? await findAfterNode(automation.id, {
+      id: node.id,
+      parentNodeId: node.parentNodeId ?? null,
+      branchSide: node.branchSide ?? null,
+      orderIndex: node.orderIndex,
+    });
+
+    await db.transaction(async (tx) => {
+      await tx.update(commsScheduledExecutions)
+        .set({ status: 'done', executedAt: new Date(), lastError: null })
+        .where(eq(commsScheduledExecutions.id, row.id));
+      await tx.update(commsAutomationRuns)
+        .set({ branchPath: updatedPath, currentNodeId: followUp ? followUp.id : null,
+               status: followUp ? 'running' : 'completed' })
+        .where(eq(commsAutomationRuns.id, run.id));
+      if (followUp) {
+        await tx.insert(commsScheduledExecutions).values({
+          runId: run.id, nodeId: followUp.id, tenantId: automation.tenantId,
+          scheduledFor: new Date(), status: 'pending',
+        });
+      }
+    });
+    return;
   }
 
   // Dispatch
@@ -359,6 +611,10 @@ async function processOne(rowId: number): Promise<void> {
           loanId: resolvedLoanId ?? undefined,
           runId: run.id,
           nodeId: node.id,
+          // Phase 4 — snapshot the run's branch decisions onto the send_log row
+          // so the Send Log + run-detail UI can render "Branch: Engagement → No"
+          // without re-querying the run state.
+          branchPath: (Array.isArray(run.branchPath) ? run.branchPath : []) as BranchPathEntry[],
         });
         // suppressed = opted-out; honor exitOnOptOut
         if (result.status === 'suppressed') {
@@ -409,14 +665,17 @@ async function processOne(rowId: number): Promise<void> {
     return;
   }
 
-  // Advance to the next node
-  const [nextNode] = await db.select().from(commsAutomationNodes)
-    .where(and(
-      eq(commsAutomationNodes.automationId, automation.id),
-      gt(commsAutomationNodes.orderIndex, node.orderIndex),
-    ))
-    .orderBy(asc(commsAutomationNodes.orderIndex))
-    .limit(1);
+  // Advance to the next node — tree-aware. Use findAfterNode so we move to
+  // the next sibling within the same parent+branchSide, or ascend back to the
+  // branch parent's next sibling when a branch arm is exhausted. Phase 4:
+  // global orderIndex is only sibling-scoped, so the old linear lookup would
+  // jump into unrelated subtrees after a nested send/wait.
+  const nextNode = await findAfterNode(automation.id, {
+    id: node.id,
+    parentNodeId: node.parentNodeId ?? null,
+    branchSide: node.branchSide ?? null,
+    orderIndex: node.orderIndex,
+  });
 
   // Schedule the next node. For wait, delay = node.config.durationMinutes.
   let scheduledFor = new Date();

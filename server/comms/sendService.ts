@@ -22,6 +22,14 @@ export interface SendParams {
   runId?: number | null;
   nodeId?: number | null;
   overrideContext?: Partial<MergeTagContext>;
+  // Phase 4 — snapshot of the run's branch decision trail at this send.
+  // Lets the Send Log show "Branch: Engagement → No" without re-querying the run.
+  branchPath?: Array<{
+    nodeId: number;
+    nodeType: 'branch_engagement' | 'branch_loan_state';
+    side: 'yes' | 'no';
+    at: string;
+  }>;
 }
 
 export interface SendResult {
@@ -34,7 +42,8 @@ export interface SendResult {
 export async function sendCommsMessage(params: SendParams): Promise<SendResult> {
   const {
     tenantId, templateId, recipientId, recipientType,
-    loanId, senderUserId = null, runId = null, nodeId = null
+    loanId, senderUserId = null, runId = null, nodeId = null,
+    branchPath = [],
   } = params;
 
   // Tenant-scoped template lookup
@@ -221,6 +230,7 @@ export async function sendCommsMessage(params: SendParams): Promise<SendResult> 
     resolvedBody, resolvedSubject: resolvedSubject || null,
     resolvedMergeTags, status: dispatchStatus,
     failureReason: failureReason || null, runId, nodeId,
+    branchPath,
   });
 
   return {
@@ -246,6 +256,12 @@ async function writeLog(p: {
   failureReason?: string | null;
   runId?: number | null;
   nodeId?: number | null;
+  branchPath?: Array<{
+    nodeId: number;
+    nodeType: 'branch_engagement' | 'branch_loan_state';
+    side: 'yes' | 'no';
+    at: string;
+  }>;
 }) {
   try {
     const [entry] = await db.insert(commsSendLog).values({
@@ -264,6 +280,7 @@ async function writeLog(p: {
       runId: p.runId || null,
       nodeId: p.nodeId || null,
       deliveryEvents: [],
+      branchPath: p.branchPath ?? [],
     }).returning();
     return entry;
   } catch (err) {

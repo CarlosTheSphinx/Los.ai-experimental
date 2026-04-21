@@ -7,7 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, X, GitBranch } from "lucide-react";
+
+interface BranchPathEntry {
+  // Snapshot of the branch decisions that led to this send. Captured at
+  // dispatch time so we can show "Branch: Engagement → No" even if the
+  // automation tree was edited later.
+  nodeId: number;
+  nodeType: "branch_engagement" | "branch_loan_state";
+  side: "yes" | "no";
+  at: string;
+}
 
 interface SendLogEntry {
   log: {
@@ -24,9 +34,15 @@ interface SendLogEntry {
     status: string;
     failureReason: string | null;
     sentAt: string;
+    branchPath?: BranchPathEntry[] | null;
   };
   recipientName: string | null;
   recipientEmail: string | null;
+}
+
+function branchLabel(b: BranchPathEntry): string {
+  const kind = b.nodeType === "branch_engagement" ? "Engagement" : "Loan State";
+  return `${kind} → ${b.side === "yes" ? "Yes" : "No"}`;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -71,6 +87,15 @@ function LogRow({ entry }: { entry: SendLogEntry }) {
             <div className="min-w-0">
               <p className="text-sm font-medium truncate" data-testid={`log-recipient-${log.id}`}>{displayName}</p>
               <p className="text-xs text-muted-foreground truncate">{log.recipientContactValue}</p>
+              {log.branchPath && log.branchPath.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1" data-testid={`log-branch-path-${log.id}`}>
+                  {log.branchPath.map((b, i) => (
+                    <Badge key={i} variant="outline" className="text-[10px] py-0 h-4">
+                      <GitBranch className="h-2.5 w-2.5 mr-1" />{branchLabel(b)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
             <ChannelBadge channel={log.channel} />
             <StatusBadge status={log.status} />

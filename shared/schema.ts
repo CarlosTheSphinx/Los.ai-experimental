@@ -4429,6 +4429,12 @@ export const commsAutomationNodes = pgTable("comms_automation_nodes", {
   orderIndex: integer("order_index").notNull(),
   type: varchar("type", { length: 30 }).notNull(), // 'send' | 'wait' | 'branch_engagement' | 'branch_loan_state'
   config: jsonb("config"),
+  // Phase 4 — branching: branch nodes own two ordered child sequences ('yes'/'no');
+  // children carry parentNodeId pointing at the branch and branchSide identifying
+  // which sequence they belong to. Top-level nodes have parentNodeId = null and
+  // branchSide = null. orderIndex is scoped to (parentNodeId, branchSide).
+  parentNodeId: integer("parent_node_id"),
+  branchSide: varchar("branch_side", { length: 8 }), // 'yes' | 'no' | null
 });
 export const insertCommsAutomationNodeSchema = createInsertSchema(commsAutomationNodes).omit({ id: true });
 export type CommsAutomationNode = typeof commsAutomationNodes.$inferSelect;
@@ -4455,6 +4461,11 @@ export const commsAutomationRuns = pgTable("comms_automation_runs", {
   currentNodeId: integer("current_node_id").references(() => commsAutomationNodes.id, { onDelete: "set null" }),
   status: varchar("status", { length: 20 }).default("running").notNull(), // 'running' | 'completed' | 'exited' | 'failed'
   exitReason: text("exit_reason"),
+  // Phase 4 — branch decision trail. Append-only array of
+  // { nodeId: number, branch: 'yes'|'no', at: ISO8601 } recorded each time the
+  // engine evaluates a branch_* node. Used by the run-detail UI and Send Log
+  // to surface "why did this run end up here?".
+  branchPath: jsonb("branch_path").default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertCommsAutomationRunSchema = createInsertSchema(commsAutomationRuns).omit({ id: true, createdAt: true });
@@ -4502,6 +4513,9 @@ export const commsSendLog = pgTable("comms_send_log", {
   status: varchar("status", { length: 20 }).notNull(), // 'sent' | 'skipped' | 'failed' | 'suppressed'
   failureReason: text("failure_reason"),
   deliveryEvents: jsonb("delivery_events").default([]),
+  // Phase 4 — snapshot of the run's branchPath at send time. Lets the Send Log
+  // surface "Branch: Engagement → No" without re-querying the run.
+  branchPath: jsonb("branch_path").default([]).notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 });
 export const insertCommsSendLogSchema = createInsertSchema(commsSendLog).omit({ id: true });

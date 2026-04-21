@@ -3,7 +3,7 @@ import {
   commsAutomations, commsAutomationNodes, commsAutomationRuns,
   commsScheduledExecutions,
 } from '@shared/schema';
-import { and, eq, asc } from 'drizzle-orm';
+import { and, eq, asc, isNull } from 'drizzle-orm';
 import { commsEventBus, type CommsEventName, type CommsEventMap } from './eventBus';
 import { resolveSegment, type SegmentFilterConfig } from './segmentService';
 
@@ -70,9 +70,15 @@ export async function startRun(params: {
 }): Promise<number | null> {
   const { automationId, tenantId, subjectType, subjectId } = params;
 
-  // Load first node (lowest orderIndex) for this automation
+  // Phase 4 — select the first TOP-LEVEL node. Branch children also have
+  // parentNodeId set and share orderIndex=0 in their own scope, so the old
+  // global lookup would sometimes start a run at a nested child.
   const [firstNode] = await db.select().from(commsAutomationNodes)
-    .where(eq(commsAutomationNodes.automationId, automationId))
+    .where(and(
+      eq(commsAutomationNodes.automationId, automationId),
+      isNull(commsAutomationNodes.parentNodeId),
+      isNull(commsAutomationNodes.branchSide),
+    ))
     .orderBy(asc(commsAutomationNodes.orderIndex))
     .limit(1);
 
@@ -229,9 +235,14 @@ function wireTimeRelativeTrigger(
     const loanId = (payload as { loanId?: number }).loanId;
     if (!loanId) return;
 
-    // Bypass startRun — we want a delayed first execution
+    // Bypass startRun — we want a delayed first execution. Select the first
+    // TOP-LEVEL node (Phase 4 tree-aware).
     const [firstNode] = await db.select().from(commsAutomationNodes)
-      .where(eq(commsAutomationNodes.automationId, automationId))
+      .where(and(
+        eq(commsAutomationNodes.automationId, automationId),
+        isNull(commsAutomationNodes.parentNodeId),
+        isNull(commsAutomationNodes.branchSide),
+      ))
       .orderBy(asc(commsAutomationNodes.orderIndex))
       .limit(1);
     if (!firstNode) return;

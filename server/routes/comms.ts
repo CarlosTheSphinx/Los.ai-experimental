@@ -956,10 +956,24 @@ export function registerCommsRoutes(
     exitOnOptOut: z.boolean().optional(),
   }).optional().nullable();
 
-  const nodeSchema = z.object({
-    type: z.enum(['send', 'wait']),
+  type NodeIn = {
+    type: 'send' | 'wait' | 'branch_engagement' | 'branch_loan_state';
+    config: Record<string, unknown>;
+    yes?: NodeIn[];
+    no?: NodeIn[];
+  };
+  // Phase 4 — branch nodes carry two child sequences. The schema is recursive
+  // because a child sequence may itself contain branch nodes, but we cap depth
+  // in validation (see MAX_BRANCH_DEPTH) so a malicious payload can't blow up
+  // the persistence DFS. Explicit ZodType annotation is required for self-refs
+  // under strict TS.
+  const nodeSchema: z.ZodType<NodeIn> = z.lazy(() => z.object({
+    type: z.enum(['send', 'wait', 'branch_engagement', 'branch_loan_state']),
     config: z.record(z.unknown()),
-  });
+    yes: z.array(nodeSchema).optional(),
+    no: z.array(nodeSchema).optional(),
+  }));
+  const MAX_BRANCH_DEPTH = 5;
 
   const channelEnum = z.enum(['email', 'sms', 'in_app']);
 
@@ -978,54 +992,220 @@ export function registerCommsRoutes(
    * surfaces problems immediately, instead of letting them slip through to
    * activation time. Also enforces the single-channel rule against both the
    * node's declared channel AND the underlying template's actual channel.
+   *
+   * Phase 4 — recursively walks branch children. Each branch must:
+   *   - have at least one child on each side
+   *   - branch_engagement: refTopLevelIndex must point to a strictly earlier
+   *     top-level node of type 'send' (no forward refs, no nested-target refs)
+   *   - branch_loan_state: have a field, operator, and value
+   * Cycles are structurally impossible because the only cross-references are
+   * back-edges to earlier top-level send nodes (a strict partial order).
    */
-  type NodeIn = z.infer<typeof nodeSchema>;
   async function validateNodesForSave(
     nodes: NodeIn[],
     defaultChannel: 'email' | 'sms' | 'in_app',
     tenantId: number,
   ): Promise<string | null> {
     const templateIds: number[] = [];
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
-      const cfg = (n.config ?? {}) as Record<string, unknown>;
-      if (n.type === 'send') {
-        if (!cfg.templateId || typeof cfg.templateId !== 'number') {
-          return `Send step #${i + 1} is missing a template`;
-        }
-        if (!cfg.recipientType || (cfg.recipientType !== 'borrower' && cfg.recipientType !== 'broker')) {
-          return `Send step #${i + 1} is missing a recipient`;
-        }
-        if (cfg.channel && cfg.channel !== defaultChannel) {
-          return `Send step #${i + 1} channel (${cfg.channel}) must match automation channel (${defaultChannel})`;
-        }
-        templateIds.push(cfg.templateId);
-      } else if (n.type === 'wait') {
-        const dm = cfg.durationMinutes;
-        if (typeof dm !== 'number' || dm < 1) {
-          return `Wait step #${i + 1} must have a duration of at least 1 minute`;
+    // Collect top-level node types so branch_engagement refs can be checked
+    // against "previous top-level Send".
+    const topLevelTypes = nodes.map(n => n.type);
+
+    function walk(seq: NodeIn[], path: string, depth: number, rootTopIdx: number): string | null {
+      if (depth > MAX_BRANCH_DEPTH) {
+        return `Sequence at ${path} is nested too deep (max ${MAX_BRANCH_DEPTH} levels)`;
+      }
+      for (let i = 0; i < seq.length; i++) {
+        const n = seq[i];
+        const cfg = (n.config ?? {}) as Record<string, unknown>;
+        const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+        if (n.type === 'send') {
+          if (!cfg.templateId || typeof cfg.templateId !== 'number') return `${here} (Send) is missing a template`;
+          if (!cfg.recipientType || (cfg.recipientType !== 'borrower' && cfg.recipientType !== 'broker')) {
+            return `${here} (Send) is missing a recipient`;
+          }
+          if (cfg.channel && cfg.channel !== defaultChannel) {
+            return `${here} (Send) channel (${cfg.channel}) must match automation channel (${defaultChannel})`;
+          }
+          templateIds.push(cfg.templateId);
+        } else if (n.type === 'wait') {
+          const dm = cfg.durationMinutes;
+          if (typeof dm !== 'number' || dm < 1) return `${here} (Wait) must have a duration of at least 1 minute`;
+        } else if (n.type === 'branch_engagement') {
+          const refIdx = cfg.refTopLevelIndex;
+          if (typeof refIdx !== 'number') return `${here} (Branch on Engagement) must reference a previous Send step`;
+          if (refIdx < 0 || refIdx >= rootTopIdx) {
+            return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a strictly earlier top-level step`;
+          }
+          if (topLevelTypes[refIdx] !== 'send') {
+            return `${here} (Branch on Engagement) references step ${refIdx + 1}, which is not a Send step`;
+          }
+          if (!['delivered', 'opened', 'clicked', 'replied'].includes(String(cfg.engagementType))) {
+            return `${here} (Branch on Engagement) has an invalid engagement type`;
+          }
+          if (typeof cfg.windowMinutes !== 'number' || cfg.windowMinutes < 1) {
+            return `${here} (Branch on Engagement) must have a window of at least 1 minute`;
+          }
+          if (!n.yes?.length) return `${here} (Branch on Engagement) "Yes" sequence is empty`;
+          if (!n.no?.length)  return `${here} (Branch on Engagement) "No" sequence is empty`;
+          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, rootTopIdx); if (yErr) return yErr;
+          const nErr = walk(n.no,  `${here} → No`,  depth + 1, rootTopIdx); if (nErr) return nErr;
+        } else if (n.type === 'branch_loan_state') {
+          const okFields = ['currentStage', 'status', 'loanAmount', 'loanType'];
+          if (!okFields.includes(String(cfg.field))) return `${here} (Branch on Loan State) must pick a loan field`;
+          const okOps = ['eq', 'neq', 'in', 'notIn', 'gt', 'gte', 'lt', 'lte'];
+          const op = String(cfg.operator);
+          if (!okOps.includes(op)) return `${here} (Branch on Loan State) must pick an operator`;
+          if (cfg.value == null || (Array.isArray(cfg.value) && cfg.value.length === 0) || cfg.value === '') {
+            return `${here} (Branch on Loan State) must have a value to compare`;
+          }
+          // Phase 4 — operator/value type compatibility. "in"/"notIn" demand an
+          // array; numeric comparators demand a number. Catching this here
+          // prevents silently-false evaluations at runtime.
+          const numericOps = ['gt', 'gte', 'lt', 'lte'];
+          const arrayOps = ['in', 'notIn'];
+          if (arrayOps.includes(op) && !Array.isArray(cfg.value)) {
+            return `${here} (Branch on Loan State) operator "${op}" requires a list of values`;
+          }
+          if (numericOps.includes(op)) {
+            const numVal = typeof cfg.value === 'number' ? cfg.value : Number(cfg.value);
+            if (!Number.isFinite(numVal)) {
+              return `${here} (Branch on Loan State) operator "${op}" requires a numeric value`;
+            }
+          }
+          if (!n.yes?.length) return `${here} (Branch on Loan State) "Yes" sequence is empty`;
+          if (!n.no?.length)  return `${here} (Branch on Loan State) "No" sequence is empty`;
+          const yErr = walk(n.yes, `${here} → Yes`, depth + 1, rootTopIdx); if (yErr) return yErr;
+          const nErr = walk(n.no,  `${here} → No`,  depth + 1, rootTopIdx); if (nErr) return nErr;
         }
       }
+      return null;
     }
+
+    for (let i = 0; i < nodes.length; i++) {
+      const err = walk([nodes[i]], '', 0, i);
+      if (err) return err;
+    }
+
     if (templateIds.length) {
       const tpls = await db.select({ id: commsTemplates.id, channel: commsTemplates.channel, tenantId: commsTemplates.tenantId })
         .from(commsTemplates)
         .where(sql`${commsTemplates.id} = ANY(${templateIds})`);
       const tplMap = new Map(tpls.map(t => [t.id, t]));
-      for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
-        if (n.type !== 'send') continue;
-        const tid = (n.config as Record<string, unknown>).templateId as number;
-        const tpl = tplMap.get(tid);
-        if (!tpl || tpl.tenantId !== tenantId) {
-          return `Send step #${i + 1} references a template not in your workspace`;
+      // Re-walk to find any send whose template is wrong, with the same path labels.
+      const checkTemplates = (seq: NodeIn[], path: string): string | null => {
+        for (let i = 0; i < seq.length; i++) {
+          const n = seq[i];
+          const here = path ? `${path} → step ${i + 1}` : `Step ${i + 1}`;
+          if (n.type === 'send') {
+            const tid = (n.config as Record<string, unknown>).templateId as number;
+            const tpl = tplMap.get(tid);
+            if (!tpl || tpl.tenantId !== tenantId) return `${here} (Send) references a template not in your workspace`;
+            if (tpl.channel !== defaultChannel) {
+              return `${here} (Send) template channel (${tpl.channel}) must match automation channel (${defaultChannel})`;
+            }
+          } else if (n.type === 'branch_engagement' || n.type === 'branch_loan_state') {
+            const yErr = checkTemplates(n.yes ?? [], `${here} → Yes`); if (yErr) return yErr;
+            const nErr = checkTemplates(n.no  ?? [], `${here} → No`);  if (nErr) return nErr;
+          }
         }
-        if (tpl.channel !== defaultChannel) {
-          return `Send step #${i + 1} template channel (${tpl.channel}) must match automation channel (${defaultChannel})`;
-        }
-      }
+        return null;
+      };
+      const tErr = checkTemplates(nodes, '');
+      if (tErr) return tErr;
     }
     return null;
+  }
+
+  /**
+   * Phase 4 — DFS-flatten a tree of nodes into commsAutomationNodes rows.
+   *
+   * Each call inserts one node, then recurses into its yes/no children with
+   * parentNodeId pointing at the just-inserted row. order_index is scoped to
+   * (parent_node_id, branch_side) — siblings within the same child list each
+   * get a 0-based index.
+   *
+   * For branch_engagement nodes, the editor passes config.refTopLevelIndex
+   * (the position of the referenced top-level Send step). We resolve it to
+   * config.refNodeId here using a pre-computed map of top-level position →
+   * inserted row id, since validation already guarantees the ref points at a
+   * strictly earlier top-level Send.
+   */
+  async function persistNodeTree(
+    automationId: number,
+    nodes: NodeIn[],
+  ): Promise<void> {
+    const topLevelIds: number[] = [];
+    async function insertOne(
+      n: NodeIn, parentNodeId: number | null, branchSide: 'yes' | 'no' | null, orderIndex: number,
+    ): Promise<number> {
+      let cfg: Record<string, unknown> = { ...(n.config ?? {}) };
+      if (n.type === 'branch_engagement') {
+        const refIdx = cfg.refTopLevelIndex as number | undefined;
+        if (typeof refIdx === 'number' && topLevelIds[refIdx] != null) {
+          cfg = { ...cfg, refNodeId: topLevelIds[refIdx] };
+        }
+      }
+      const [row] = await db.insert(commsAutomationNodes).values({
+        automationId,
+        orderIndex,
+        type: n.type,
+        config: cfg,
+        parentNodeId,
+        branchSide,
+      }).returning({ id: commsAutomationNodes.id });
+      const newId = row.id;
+
+      if (n.type === 'branch_engagement' || n.type === 'branch_loan_state') {
+        for (let j = 0; j < (n.yes ?? []).length; j++) {
+          await insertOne(n.yes![j], newId, 'yes', j);
+        }
+        for (let j = 0; j < (n.no ?? []).length; j++) {
+          await insertOne(n.no![j], newId, 'no', j);
+        }
+      }
+      return newId;
+    }
+
+    for (let i = 0; i < nodes.length; i++) {
+      const id = await insertOne(nodes[i], null, null, i);
+      topLevelIds.push(id);
+    }
+  }
+
+  /**
+   * Reassemble the flat node rows into the nested tree shape the editor expects.
+   * Top-level nodes (parentNodeId IS NULL) are sorted by orderIndex; children
+   * are grouped by parentNodeId + branchSide and sorted by orderIndex within.
+   * For branch_engagement nodes we also derive refTopLevelIndex from refNodeId
+   * by looking up the top-level position so the editor can present it as a
+   * picker.
+   */
+  type NodeRow = { id: number; orderIndex: number; type: string; config: unknown; parentNodeId: number | null; branchSide: string | null };
+  function buildNodeTree(rows: NodeRow[]): Array<NodeIn & { id: number }> {
+    const topLevel = rows.filter(r => r.parentNodeId == null).sort((a, b) => a.orderIndex - b.orderIndex);
+    const topLevelIdToIdx = new Map<number, number>();
+    topLevel.forEach((r, i) => topLevelIdToIdx.set(r.id, i));
+
+    const build = (row: NodeRow): NodeIn & { id: number } => {
+      const cfg: Record<string, unknown> = { ...((row.config ?? {}) as Record<string, unknown>) };
+      if (row.type === 'branch_engagement' && typeof cfg.refNodeId === 'number') {
+        const idx = topLevelIdToIdx.get(cfg.refNodeId as number);
+        if (idx != null) cfg.refTopLevelIndex = idx;
+      }
+      const out: NodeIn & { id: number } = {
+        id: row.id,
+        type: row.type as NodeIn['type'],
+        config: cfg,
+      };
+      if (row.type === 'branch_engagement' || row.type === 'branch_loan_state') {
+        const kids = rows.filter(r => r.parentNodeId === row.id);
+        out.yes = kids.filter(r => r.branchSide === 'yes').sort((a, b) => a.orderIndex - b.orderIndex).map(build);
+        out.no  = kids.filter(r => r.branchSide === 'no').sort((a, b) => a.orderIndex - b.orderIndex).map(build);
+      }
+      return out;
+    };
+    return topLevel.map(build);
   }
 
   app.get('/api/comms/automations', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -1081,9 +1261,12 @@ export function registerCommsRoutes(
         .where(and(eq(commsAutomations.id, id), eq(commsAutomations.tenantId, tenantId)))
         .limit(1);
       if (!a) return res.status(404).json({ error: 'Automation not found' });
-      const nodes = await db.select().from(commsAutomationNodes)
+      const nodeRows = await db.select().from(commsAutomationNodes)
         .where(eq(commsAutomationNodes.automationId, id))
         .orderBy(asc(commsAutomationNodes.orderIndex));
+      // Phase 4 — return nested tree (with yes/no children) so the editor can
+      // re-render branches. The legacy flat shape would silently drop children.
+      const nodes = buildNodeTree(nodeRows as NodeRow[]);
       res.json({ ...a, nodes });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
@@ -1115,14 +1298,9 @@ export function registerCommsRoutes(
       }).returning();
 
       if (parsed.data.nodes?.length) {
-        await db.insert(commsAutomationNodes).values(
-          parsed.data.nodes.map((n, idx) => ({
-            automationId: created.id,
-            orderIndex: idx,
-            type: n.type,
-            config: n.config,
-          }))
-        );
+        // Phase 4 — DFS-flatten the tree, threading parent_node_id + branch_side
+        // and resolving branch_engagement.refTopLevelIndex → refNodeId.
+        await persistNodeTree(created.id, parsed.data.nodes as NodeIn[]);
       }
       res.status(201).json(created);
     } catch (err: unknown) {
@@ -1168,11 +1346,9 @@ export function registerCommsRoutes(
         // failed by the worker on next tick.
         await db.delete(commsAutomationNodes).where(eq(commsAutomationNodes.automationId, id));
         if (parsed.data.nodes.length) {
-          await db.insert(commsAutomationNodes).values(
-            parsed.data.nodes.map((n, idx) => ({
-              automationId: id, orderIndex: idx, type: n.type, config: n.config,
-            }))
-          );
+          // Phase 4 — DFS-flatten tree (parent_node_id + branch_side) and resolve
+          // branch_engagement.refTopLevelIndex → refNodeId.
+          await persistNodeTree(id, parsed.data.nodes as NodeIn[]);
         }
       }
 
@@ -1242,57 +1418,24 @@ export function registerCommsRoutes(
         }
       }
 
-      const nodes = await db.select().from(commsAutomationNodes)
+      const nodeRows = await db.select().from(commsAutomationNodes)
         .where(eq(commsAutomationNodes.automationId, id))
         .orderBy(asc(commsAutomationNodes.orderIndex));
-      if (nodes.length === 0) {
+      if (nodeRows.length === 0) {
         return res.status(400).json({ error: 'At least one node is required to activate' });
       }
-      // Validate per-node config so we never activate an automation that will fail at dispatch.
-      // Single-channel automations: every send node must use the automation's defaultChannel,
-      // AND the underlying template's own channel must match — otherwise a crafted PUT payload
-      // could slip a mismatched template past the explicit-channel check.
-      const templateIds: number[] = [];
-      for (const n of nodes) {
-        const cfg = (n.config ?? {}) as Record<string, unknown>;
-        if (n.type === 'send') {
-          if (!cfg.templateId || !cfg.recipientType) {
-            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} is missing template/recipient` });
-          }
-          if (cfg.channel && cfg.channel !== a.defaultChannel) {
-            return res.status(400).json({
-              error: `Send node #${n.orderIndex + 1} channel (${cfg.channel}) must match automation channel (${a.defaultChannel})`,
-            });
-          }
-          templateIds.push(Number(cfg.templateId));
-        } else if (n.type === 'wait') {
-          const dm = cfg.durationMinutes;
-          if (typeof dm !== 'number' || dm < 1) {
-            return res.status(400).json({ error: `Wait node #${n.orderIndex + 1} must have durationMinutes >= 1` });
-          }
-        }
-      }
-
-      if (templateIds.length) {
-        const tpls = await db.select({ id: commsTemplates.id, channel: commsTemplates.channel, tenantId: commsTemplates.tenantId })
-          .from(commsTemplates)
-          .where(sql`${commsTemplates.id} = ANY(${templateIds})`);
-        const tplMap = new Map(tpls.map(t => [t.id, t]));
-        for (const n of nodes) {
-          if (n.type !== 'send') continue;
-          const cfg = (n.config ?? {}) as Record<string, unknown>;
-          const tid = Number(cfg.templateId);
-          const tpl = tplMap.get(tid);
-          if (!tpl || tpl.tenantId !== tenantId) {
-            return res.status(400).json({ error: `Send node #${n.orderIndex + 1} references template ${tid} which is not in your tenant` });
-          }
-          if (tpl.channel !== a.defaultChannel) {
-            return res.status(400).json({
-              error: `Send node #${n.orderIndex + 1} template channel (${tpl.channel}) must match automation channel (${a.defaultChannel})`,
-            });
-          }
-        }
-      }
+      // Phase 4 — re-hydrate the persisted flat rows back into the nested tree
+      // shape, then run the SAME recursive validator used at save time. This
+      // catches branch-aware mistakes (missing children, dangling refs, bad
+      // engagement window, mismatched channels deep inside a branch) that the
+      // old single-level loop silently let through.
+      const tree = buildNodeTree(nodeRows as NodeRow[]);
+      const nodeErr = await validateNodesForSave(
+        tree as NodeIn[],
+        a.defaultChannel as 'email' | 'sms' | 'in_app',
+        tenantId,
+      );
+      if (nodeErr) return res.status(400).json({ error: nodeErr });
 
       await db.update(commsAutomations).set({ status: 'active', updatedAt: new Date() })
         .where(eq(commsAutomations.id, id));
@@ -1409,16 +1552,34 @@ export function registerCommsRoutes(
         }
       }
 
+      // Phase 4 — when the parked node is inside a branch, show the branch
+      // path so admins can see "this run was parked at the Yes side of step 2"
+      // instead of an opaque "Send message" label.
+      const labelFor = (type: string): string => {
+        switch (type) {
+          case 'send': return 'Send message';
+          case 'wait': return 'Wait';
+          case 'branch_engagement': return 'Branch: Engagement';
+          case 'branch_loan_state': return 'Branch: Loan State';
+          default: return type;
+        }
+      };
       const enriched = runs.map(r => {
         const n = r.currentNodeId ? nodeMap.get(r.currentNodeId) : null;
+        const branchPath = (r.branchPath ?? []) as Array<{ nodeId: number; nodeType: string; side: 'yes' | 'no'; at: string }>;
+        const branchTrail = branchPath.map(b => ({
+          ...b,
+          label: `${labelFor(b.nodeType)} → ${b.side === 'yes' ? 'Yes' : 'No'}`,
+        }));
         return {
           ...r,
           parkedNode: n ? {
             id: n.id,
             ordinal: n.orderIndex + 1,
             type: n.type,
-            label: n.type === 'send' ? 'Send message' : 'Wait',
+            label: labelFor(n.type),
           } : null,
+          branchTrail,
           lastSendLogId: lastSendByRun.get(r.id) ?? null,
         };
       });
