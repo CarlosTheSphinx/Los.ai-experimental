@@ -44,6 +44,7 @@ interface SmsChannelStatus {
   fromNumber?: string;
   smsApproved?: boolean;
   hasApiKey?: boolean;
+  hasAuthToken?: boolean;
   webhookToken?: string;
 }
 interface EmailChannelStatus {
@@ -63,7 +64,7 @@ interface SmsTestResult {
 function BrokerIntegrationsTab() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [smsForm, setSmsForm] = useState({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
+  const [smsForm, setSmsForm] = useState({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '', authToken: '' });
   const [showSmsForm, setShowSmsForm] = useState(false);
   const brokerPhone = user?.phone;
 
@@ -79,7 +80,7 @@ function BrokerIntegrationsTab() {
     onSuccess: () => {
       toast({ title: 'SMS channel connected', description: 'Your Twilio account is linked.' });
       setShowSmsForm(false);
-      setSmsForm({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
+      setSmsForm({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '', authToken: '' });
       refetchChannels();
     },
     onError: (err: Error) => {
@@ -169,6 +170,14 @@ function BrokerIntegrationsTab() {
                     <span className="text-xs">Approved for outreach</span>
                   </div>
                 )}
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-28">Webhook Auth:</span>
+                  {channels.sms.hasAuthToken ? (
+                    <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Signature verification active</span>
+                  ) : (
+                    <span className="text-xs text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Token-based (add Auth Token for HMAC)</span>
+                  )}
+                </div>
               </div>
 
               {!channels.sms.smsApproved && (
@@ -284,6 +293,16 @@ function BrokerIntegrationsTab() {
                     value={smsForm.apiKeySecret}
                     onChange={(e) => setSmsForm({ ...smsForm, apiKeySecret: e.target.value })}
                     data-testid="input-twilio-api-secret"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Account Auth Token <span className="text-muted-foreground/60">(optional — enables webhook signature verification)</span></Label>
+                  <Input
+                    type="password"
+                    placeholder="Your Twilio Account Auth Token"
+                    value={smsForm.authToken}
+                    onChange={(e) => setSmsForm({ ...smsForm, authToken: e.target.value })}
+                    data-testid="input-twilio-auth-token"
                   />
                 </div>
                 <div className="space-y-1.5">

@@ -20,7 +20,8 @@ interface TwilioConfig {
   apiKey: string;
   apiKeySecret: string;
   fromNumber: string;
-  webhookToken?: string; // Per-broker UUID used to authenticate the Twilio inbound webhook URL
+  authToken?: string;      // Account Auth Token (encrypted) — used to verify X-Twilio-Signature
+  webhookToken?: string;   // Per-broker UUID embedded in the webhook URL for a second auth layer
 }
 
 /**
@@ -47,7 +48,36 @@ const requireBroker = async (req: AuthRequest, res: Response, next: Function) =>
   }
 };
 
+// One-time startup backfill: generate webhookToken for any existing SMS configs that lack one
+// so that inbound reply capture works without requiring brokers to re-save their credentials.
+async function backfillSmsWebhookTokens() {
+  try {
+    const rows = await db.select().from(brokerChannelConfigs)
+      .where(and(eq(brokerChannelConfigs.type, 'sms'), eq(brokerChannelConfigs.isActive, true)));
+
+    let updated = 0;
+    for (const row of rows) {
+      const cfg = row.config as TwilioConfig;
+      if (!cfg.webhookToken) {
+        await db.update(brokerChannelConfigs)
+          .set({ config: { ...cfg, webhookToken: crypto.randomUUID() } })
+          .where(eq(brokerChannelConfigs.id, row.id));
+        updated++;
+      }
+    }
+
+    if (updated > 0) {
+      console.log(`[BrokerSMS] Backfilled webhookToken for ${updated} SMS config(s)`);
+    }
+  } catch (err) {
+    console.warn('[BrokerSMS] webhookToken backfill failed (non-fatal):', err);
+  }
+}
+
 export function registerBrokerSdrRoutes(app: Express) {
+  // Run the one-time backfill asynchronously at startup (non-blocking)
+  backfillSmsWebhookTokens();
+
   // ==================== CONTACTS CRUD ====================
 
   // Get all contacts for broker
@@ -581,6 +611,7 @@ export function registerBrokerSdrRoutes(app: Express) {
           fromNumber: smsConfig?.fromNumber || '',
           smsApproved: smsRow.smsApproved,
           hasApiKey: !!(smsConfig?.apiKey),
+          hasAuthToken: !!(smsConfig?.authToken), // whether X-Twilio-Signature verification is active
           webhookToken: smsConfig?.webhookToken || '',
         } : { connected: false },
         email: emailRow ? {
@@ -599,7 +630,7 @@ export function registerBrokerSdrRoutes(app: Express) {
   app.post('/api/broker/channels/sms', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
     try {
       const brokerId = req.user!.id;
-      const { accountSid, apiKey, apiKeySecret, fromNumber } = req.body;
+      const { accountSid, apiKey, apiKeySecret, fromNumber, authToken } = req.body;
 
       if (!accountSid || !apiKey || !apiKeySecret || !fromNumber) {
         return res.status(400).json({ error: 'accountSid, apiKey, apiKeySecret, and fromNumber are required' });
@@ -619,8 +650,8 @@ export function registerBrokerSdrRoutes(app: Express) {
         .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
 
       // Preserve existing webhookToken so the broker's Twilio webhook URL stays stable on re-save
-      const existingToken = existing ? (existing.config as TwilioConfig).webhookToken : undefined;
-      const webhookToken = existingToken || crypto.randomUUID();
+      const existingCfg = existing ? (existing.config as TwilioConfig) : null;
+      const webhookToken = existingCfg?.webhookToken || crypto.randomUUID();
 
       const configPayload: TwilioConfig = {
         accountSid,
@@ -628,6 +659,8 @@ export function registerBrokerSdrRoutes(app: Express) {
         apiKeySecret: encryptToken(apiKeySecret),
         fromNumber,
         webhookToken,
+        // Encrypt the Account Auth Token if provided (used for webhook signature validation)
+        ...(authToken ? { authToken: encryptToken(authToken) } : (existingCfg?.authToken ? { authToken: existingCfg.authToken } : {})),
       };
 
       if (existing) {
@@ -746,7 +779,7 @@ export function registerBrokerSdrRoutes(app: Express) {
         where: (c) => and(eq(c.id, contactId), eq(c.brokerId, brokerId)),
       });
       if (!contact) return res.status(404).json({ error: 'Contact not found' });
-      await db.update(brokerContacts).set({ smsOptedOut: true } as any).where(eq(brokerContacts.id, contactId));
+      await db.update(brokerContacts).set({ smsOptedOut: true }).where(eq(brokerContacts.id, contactId));
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -762,7 +795,7 @@ export function registerBrokerSdrRoutes(app: Express) {
         where: (c) => and(eq(c.id, contactId), eq(c.brokerId, brokerId)),
       });
       if (!contact) return res.status(404).json({ error: 'Contact not found' });
-      await db.update(brokerContacts).set({ smsOptedOut: false } as any).where(eq(brokerContacts.id, contactId));
+      await db.update(brokerContacts).set({ smsOptedOut: false }).where(eq(brokerContacts.id, contactId));
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -821,60 +854,94 @@ export function registerBrokerSdrRoutes(app: Express) {
   // ==================== TWILIO INBOUND WEBHOOK ====================
 
   // POST /api/broker/twilio/inbound — Twilio calls this when a prospect replies.
-  // No session auth (Twilio webhook), but each broker's webhook URL includes their
-  // unique ?token=<webhookToken> which is validated below before any DB mutation.
+  //
+  // Security model (layered):
+  //   1. Primary routing: broker identified by matching Twilio `To` number against
+  //      broker_channel_configs.config.fromNumber (as specified).
+  //   2. Request authenticity:
+  //      a. If the broker stored an Account Auth Token, we verify the X-Twilio-Signature
+  //         header using twilio.validateRequest() — the standard Twilio approach.
+  //      b. Otherwise we fall back to validating the per-broker ?token=<webhookToken>
+  //         URL parameter that was generated at connect time.
+  //   Requests that pass neither check are rejected before any DB mutation.
   app.post('/api/broker/twilio/inbound', async (req: any, res: Response) => {
+    const twimlOk = () => res.set('Content-Type', 'text/xml').send('<Response></Response>');
+
     try {
       const { From, To, Body, MessageSid } = req.body;
-      const incomingToken = (req.query.token as string | undefined) || '';
 
       if (!From || !To || !Body) {
         return res.status(400).send('<Response></Response>');
       }
 
-      // ---- Webhook authentication via per-broker token ----
-      // Each broker's Twilio number is configured with a unique URL:
-      //   POST /api/broker/twilio/inbound?token=<webhookToken>
-      // We iterate active SMS configs and match the token; reject if none match.
-      if (!incomingToken) {
-        console.warn('[TwilioInbound] Request missing token — rejected');
-        return res.status(403).send('<Response></Response>');
-      }
+      const normalizedTo = To.replace(/\s/g, '');
+      const normalizedFrom = From.replace(/\s/g, '');
+      const bodyTrimmed = Body.trim();
 
+      // ---- Step 1: Route by To number (spec-required primary dispatch) ----
       const allSmsConfigs = await db.select().from(brokerChannelConfigs)
         .where(and(eq(brokerChannelConfigs.type, 'sms'), eq(brokerChannelConfigs.isActive, true)));
 
       let matchedBrokerId: number | null = null;
-      for (const cfg of allSmsConfigs) {
-        const config = cfg.config as TwilioConfig;
-        if (config.webhookToken && config.webhookToken === incomingToken) {
-          matchedBrokerId = cfg.brokerId;
+      let matchedConfig: TwilioConfig | null = null;
+
+      for (const row of allSmsConfigs) {
+        const cfg = row.config as TwilioConfig;
+        const cfgFrom = (cfg.fromNumber || '').replace(/\s/g, '');
+        if (cfgFrom === normalizedTo) {
+          matchedBrokerId = row.brokerId;
+          matchedConfig = cfg;
           break;
         }
       }
 
-      if (!matchedBrokerId) {
-        console.warn('[TwilioInbound] No broker matched incoming token — rejected');
-        return res.status(403).send('<Response></Response>');
+      if (!matchedBrokerId || !matchedConfig) {
+        console.warn(`[TwilioInbound] No broker found for To number: ${normalizedTo}`);
+        return res.status(200).send('<Response></Response>');
       }
 
-      const normalizedFrom = From.replace(/\s/g, '');
-      const normalizedTo = To.replace(/\s/g, '');
-      const bodyTrimmed = Body.trim();
+      // ---- Step 2: Authenticate the request before mutating any data ----
+      const twilio = (await import('twilio')).default;
 
-      // Find matching contact by phone number
+      if (matchedConfig.authToken) {
+        // 2a. Verify Twilio request signature using the Account Auth Token
+        const decryptedAuthToken = decryptToken(matchedConfig.authToken);
+        const twilioSig = req.headers['x-twilio-signature'] as string | undefined;
+
+        // Reconstruct the full URL Twilio signed (must match exactly what's in the Twilio console)
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+        const fullUrl = `${proto}://${host}${req.originalUrl}`;
+
+        const isValid = twilio.validateRequest(decryptedAuthToken, twilioSig || '', fullUrl, req.body);
+        if (!isValid) {
+          console.warn(`[TwilioInbound] Signature validation failed for broker ${matchedBrokerId} — rejected`);
+          return res.status(403).send('<Response></Response>');
+        }
+      } else {
+        // 2b. Fall back to per-broker webhookToken in the query string
+        const incomingToken = (req.query.token as string | undefined) || '';
+        if (!incomingToken || incomingToken !== (matchedConfig.webhookToken || '')) {
+          console.warn(`[TwilioInbound] Token mismatch for broker ${matchedBrokerId} — rejected`);
+          return res.status(403).send('<Response></Response>');
+        }
+      }
+
+      // ---- Step 3: Process the authenticated inbound message ----
+
+      // Find matching contact by phone number (best-effort; unknown senders are still stored)
       const allContacts = await db.query.brokerContacts.findMany({
         where: (c) => eq(c.brokerId, matchedBrokerId!),
       });
 
-      let matchedContact = allContacts.find((c) => {
+      const matchedContact = allContacts.find((c) => {
         if (!c.phone) return false;
         const normalized = c.phone.replace(/\D/g, '');
         const incomingNorm = normalizedFrom.replace(/\D/g, '');
         return normalized === incomingNorm || normalized === incomingNorm.replace(/^1/, '');
       });
 
-      // Detect opt-out keywords
+      // Detect opt-out keywords (per TCPA standards)
       const isOptOut = /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT)$/i.test(bodyTrimmed);
 
       // Store the reply
@@ -888,20 +955,18 @@ export function registerBrokerSdrRoutes(app: Express) {
         twilioMessageSid: MessageSid || null,
       });
 
-      // If opt-out, mark contact as opted out
+      // If opt-out keyword received, mark contact as opted out
       if (isOptOut && matchedContact) {
         await db.update(brokerContacts)
-          .set({ smsOptedOut: true } as any)
+          .set({ smsOptedOut: true })
           .where(eq(brokerContacts.id, matchedContact.id));
         console.log(`[TwilioInbound] Opt-out received from ${normalizedFrom} — contact ${matchedContact.id} marked opted-out`);
       }
 
-      // Respond with empty TwiML
-      res.set('Content-Type', 'text/xml');
-      res.send('<Response></Response>');
+      return twimlOk();
     } catch (error: any) {
       console.error('[TwilioInbound] Error processing inbound SMS:', error);
-      res.status(200).set('Content-Type', 'text/xml').send('<Response></Response>');
+      return res.status(200).set('Content-Type', 'text/xml').send('<Response></Response>');
     }
   });
 }
