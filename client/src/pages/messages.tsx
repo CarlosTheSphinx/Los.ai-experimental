@@ -1280,9 +1280,6 @@ export default function MessagesPage() {
                       data-testid={`thread-item-${thread.id}`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`flex items-center justify-center h-10 w-10 rounded-full text-white text-[14px] font-bold shrink-0 ${getAvatarColor(thread.id)}`}>
-                          {getInitials(t.propertyAddress || t.userName)}
-                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <div className={`text-[15px] truncate ${t.unreadCount > 0 ? 'font-bold' : 'font-semibold'}`}>
@@ -1611,9 +1608,6 @@ export default function MessagesPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`flex items-center justify-center h-10 w-10 rounded-full text-white text-sm font-semibold shrink-0 ${getAvatarColor(activeThread.id)}`}>
-                      {getInitials(headerAddress)}
-                    </div>
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-[18px] truncate" data-testid="text-conversation-title">
                         {headerAddress}
