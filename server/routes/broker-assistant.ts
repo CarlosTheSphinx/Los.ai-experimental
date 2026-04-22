@@ -10,6 +10,9 @@ import { authenticateUser, type AuthRequest } from "../auth";
 import { getOpenAIApiKey } from "../utils/getOpenAIKey";
 import { storage } from "../storage";
 import { buildBrokerKnowledgePack } from "../services/brokerKnowledgeBase";
+import { db } from "../db";
+import { supportTickets, supportTicketStatusHistory } from "@shared/schema";
+import { computeResponseDueAt } from "../utils/businessHours";
 
 const DEFAULT_BROKER_INTRO = `You are Lendry, an AI loan-program assistant for brokers working with Sphinx Capital.
 
@@ -117,6 +120,58 @@ export function registerBrokerAssistantRoutes(app: Express): void {
     } catch (error) {
       console.error("broker assistant config error", error);
       res.json({ enabled: true });
+    }
+  });
+
+  // Phase 4 — Bot escalation handoff: turn the bot transcript into a support ticket
+  app.post("/api/broker/assistant/escalate", authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user;
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const role = user.role || "";
+      if (!ALLOWED_ROLES.has(role)) {
+        return res.status(403).json({ error: "Escalation is only available to brokers" });
+      }
+      const tenantId = user.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "Not authenticated" });
+
+      const transcript = parseMessages(req.body?.messages);
+      if (!transcript.length) return res.status(400).json({ error: "Transcript is empty" });
+
+      const lastUser = [...transcript].reverse().find((m) => m.role === "user");
+      if (!lastUser) return res.status(400).json({ error: "No user question to escalate" });
+
+      const subjectRaw = (req.body?.subject as string) || lastUser.content;
+      const subject = subjectRaw.replace(/\s+/g, " ").trim().slice(0, 140) || "Escalated from Lendry Assistant";
+      const description =
+        (req.body?.description as string) ||
+        `Escalated from Lendry Assistant.\n\nQuestion:\n${lastUser.content}`;
+
+      const responseDueAt = computeResponseDueAt("help", new Date());
+
+      const [created] = await db.insert(supportTickets).values({
+        tenantId,
+        type: "help",
+        subject,
+        description: description.slice(0, 5000),
+        category: "assistant_escalation",
+        submitterId: user.id,
+        botTranscript: transcript as any,
+        responseDueAt,
+      }).returning();
+
+      await db.insert(supportTicketStatusHistory).values({
+        ticketId: created.id,
+        fromStatus: null,
+        toStatus: "open",
+        changedById: user.id,
+        note: "Ticket created from bot escalation",
+      });
+
+      res.status(201).json({ ticket: created });
+    } catch (error) {
+      console.error("[broker-assistant] escalate error", error);
+      res.status(500).json({ error: "Failed to escalate to support" });
     }
   });
 

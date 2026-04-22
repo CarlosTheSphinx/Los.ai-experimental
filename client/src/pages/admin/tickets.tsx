@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { LifeBuoy, Loader2, ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { LifeBuoy, Loader2, ChevronLeft, ChevronRight, Settings, AlertTriangle } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
   open: "Open", in_progress: "In progress", waiting_on_broker: "Waiting on broker", resolved: "Resolved", closed: "Closed",
@@ -86,6 +86,7 @@ export default function AdminTicketsPage() {
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger data-testid="select-sort"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="sla">SLA urgency</SelectItem>
                 <SelectItem value="activity">Most recent activity</SelectItem>
                 <SelectItem value="newest">Newest first</SelectItem>
                 <SelectItem value="oldest">Oldest first</SelectItem>
@@ -113,23 +114,44 @@ export default function AdminTicketsPage() {
                   <th className="px-4 py-3">Broker</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Severity</th>
+                  <th className="px-4 py-3">SLA</th>
                   <th className="px-4 py-3">Updated</th>
                 </tr>
               </thead>
               <tbody>
-                {tickets.map((t: any) => (
-                  <tr key={t.id} className="border-t hover:bg-muted/40 transition-colors" data-testid={`ticket-row-${t.id}`}>
-                    <td className="px-4 py-3"><Badge variant="outline">{TYPE_LABELS[t.type]}</Badge></td>
-                    <td className="px-4 py-3 max-w-md">
-                      <Link href={`/admin/tickets/${t.id}`} className="font-medium hover:underline" data-testid={`link-ticket-${t.id}`}>{t.subject}</Link>
-                      <div className="text-xs text-muted-foreground">#{t.id}</div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.submitter?.fullName || t.submitter?.email || "—"}</td>
-                    <td className="px-4 py-3"><Badge>{STATUS_LABELS[t.status]}</Badge></td>
-                    <td className="px-4 py-3 capitalize text-muted-foreground">{t.severity || "—"}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(t.updatedAt).toLocaleDateString()}</td>
-                  </tr>
-                ))}
+                {tickets.map((t: any) => {
+                  const due = t.responseDueAt ? new Date(t.responseDueAt) : null;
+                  const breached = due && !t.lastAdminReplyAt && (t.status === "open" || t.status === "in_progress") && due.getTime() < Date.now();
+                  const dueSoon = due && !t.lastAdminReplyAt && (t.status === "open" || t.status === "in_progress") && !breached && (due.getTime() - Date.now()) < 4 * 3600 * 1000;
+                  return (
+                    <tr key={t.id} className={`border-t hover:bg-muted/40 transition-colors ${breached ? "bg-destructive/5" : ""}`} data-testid={`ticket-row-${t.id}`}>
+                      <td className="px-4 py-3"><Badge variant="outline">{TYPE_LABELS[t.type]}</Badge></td>
+                      <td className="px-4 py-3 max-w-md">
+                        <Link href={`/admin/tickets/${t.id}`} className="font-medium hover:underline" data-testid={`link-ticket-${t.id}`}>{t.subject}</Link>
+                        <div className="text-xs text-muted-foreground">#{t.id}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{t.submitter?.fullName || t.submitter?.email || "—"}</td>
+                      <td className="px-4 py-3"><Badge>{STATUS_LABELS[t.status]}</Badge></td>
+                      <td className="px-4 py-3 capitalize text-muted-foreground">{t.severity || "—"}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {breached ? (
+                          <Badge variant="destructive" className="gap-1" data-testid={`sla-breach-${t.id}`}>
+                            <AlertTriangle className="h-3 w-3" /> Overdue
+                          </Badge>
+                        ) : dueSoon ? (
+                          <Badge variant="outline" className="gap-1 border-yellow-600 text-yellow-700 dark:text-yellow-400" data-testid={`sla-soon-${t.id}`}>
+                            Due soon
+                          </Badge>
+                        ) : t.lastAdminReplyAt ? (
+                          <span className="text-muted-foreground">Replied</span>
+                        ) : due ? (
+                          <span className="text-muted-foreground">{due.toLocaleDateString()}</span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(t.updatedAt).toLocaleDateString()}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>

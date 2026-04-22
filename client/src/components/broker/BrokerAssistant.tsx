@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, X, Send, RotateCcw, Loader2 } from "lucide-react";
+import { Sparkles, X, Send, RotateCcw, Loader2, LifeBuoy } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,8 @@ export function BrokerAssistant() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [escalating, setEscalating] = useState(false);
+  const [escalatedTicketId, setEscalatedTicketId] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const storageKey = user ? `${STORAGE_PREFIX}${user.id}` : "";
@@ -86,8 +89,36 @@ export function BrokerAssistant() {
 
   const reset = () => {
     setMessages([]);
+    setEscalatedTicketId(null);
     if (storageKey) sessionStorage.removeItem(storageKey);
   };
+
+  const escalate = async () => {
+    if (escalating || messages.length === 0) return;
+    setEscalating(true);
+    try {
+      const res = await apiRequest("POST", "/api/broker/assistant/escalate", { messages });
+      const data = await res.json();
+      if (data?.ticket?.id) {
+        setEscalatedTicketId(data.ticket.id);
+        toast({ title: "Sent to support", description: `Ticket #${data.ticket.id} created. We'll be in touch.` });
+      }
+    } catch (err: unknown) {
+      const detail = err instanceof Error && err.message ? err.message : "Could not escalate. Please try again.";
+      toast({ title: "Escalation failed", description: detail, variant: "destructive" });
+    } finally {
+      setEscalating(false);
+    }
+  };
+
+  // Suggest escalation when the assistant has admitted it cannot help, OR after 3+ user turns
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const userTurns = messages.filter((m) => m.role === "user").length;
+  const showEscalateCta =
+    !escalatedTicketId &&
+    messages.length >= 2 &&
+    (userTurns >= 3 ||
+      /don't have that detail|contact your loan officer|i don't know|not sure/i.test(lastAssistant?.content || ""));
 
   return (
     <>
@@ -193,6 +224,34 @@ export function BrokerAssistant() {
                   </div>
                 </div>
               ))}
+
+              {showEscalateCta && (
+                <div className="rounded-lg border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-3 space-y-2" data-testid="escalate-cta">
+                  <div className="text-xs text-white/80">
+                    Need a person? Send this conversation to the Sphinx Capital support team and someone will follow up.
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={escalate}
+                    disabled={escalating}
+                    style={{ backgroundColor: "#C9A84C", color: "#0F1729" }}
+                    data-testid="button-escalate-to-support"
+                  >
+                    {escalating ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <LifeBuoy className="h-3.5 w-3.5 mr-1" />}
+                    Escalate to support
+                  </Button>
+                </div>
+              )}
+
+              {escalatedTicketId && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-white/80" data-testid="escalated-confirmation">
+                  Ticket #{escalatedTicketId} created.{" "}
+                  <Link href={`/support-tickets/${escalatedTicketId}`} className="underline text-[#C9A84C]" data-testid="link-view-escalated-ticket">
+                    View it here
+                  </Link>
+                  .
+                </div>
+              )}
 
               {sending && (
                 <div className="flex justify-start">

@@ -8,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, Paperclip, Upload, X, Archive, Mail } from "lucide-react";
+import { ArrowLeft, Loader2, Paperclip, Upload, X, Archive, Mail, AlertTriangle, Clock, History, Sparkles, Lock, User } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BrokerContextSidebar } from "@/components/admin/BrokerContextSidebar";
 
 const STATUS_LABELS: Record<string, string> = {
   open: "Open", in_progress: "In progress", waiting_on_broker: "Waiting on broker", resolved: "Resolved", closed: "Closed",
@@ -55,6 +57,7 @@ export default function AdminTicketDetailPage() {
   const id = params?.id ? parseInt(params.id) : 0;
   const { toast } = useToast();
   const [reply, setReply] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -66,8 +69,14 @@ export default function AdminTicketDetailPage() {
   });
 
   const sendReply = useMutation({
-    mutationFn: async () => apiRequest("POST", `/api/support/tickets/${id}/messages`, { body: reply, attachmentObjectPaths: files }),
-    onSuccess: () => { setReply(""); setFiles([]); queryClient.invalidateQueries({ queryKey: ["/api/support/tickets", id] }); },
+    mutationFn: async () => apiRequest("POST", `/api/support/tickets/${id}/messages`, { body: reply, attachmentObjectPaths: files, isInternal }),
+    onSuccess: () => {
+      setReply(""); setFiles([]);
+      const wasInternal = isInternal;
+      setIsInternal(false);
+      toast({ title: wasInternal ? "Internal note added" : "Reply sent" });
+      queryClient.invalidateQueries({ queryKey: ["/api/support/tickets", id] });
+    },
     onError: () => toast({ title: "Failed to send reply", variant: "destructive" }),
   });
 
@@ -99,6 +108,10 @@ export default function AdminTicketDetailPage() {
   if (!data?.ticket) return <div className="p-8 text-center text-muted-foreground">Ticket not found.</div>;
 
   const t = data.ticket;
+  const legalNext: string[] = data.legalNextStatuses || [];
+  const dueAt = t.responseDueAt ? new Date(t.responseDueAt) : null;
+  const breached = dueAt && !t.lastAdminReplyAt && (t.status === "open" || t.status === "in_progress") && dueAt.getTime() < Date.now();
+  const statusOptions: string[] = Array.from(new Set([t.status, ...legalNext]));
   const ticketAtts = (data.attachments || []).filter((a: any) => a.ticketId === t.id);
   const msgAttsMap: Record<number, any[]> = {};
   for (const a of (data.attachments || [])) {
@@ -121,6 +134,11 @@ export default function AdminTicketDetailPage() {
                     <Badge variant="outline">{TYPE_LABELS[t.type]}</Badge>
                     <Badge>{STATUS_LABELS[t.status]}</Badge>
                     {t.severity && <Badge variant="outline" className="capitalize">{t.severity}</Badge>}
+                    {breached && (
+                      <Badge variant="destructive" className="gap-1" data-testid="badge-sla-breach">
+                        <AlertTriangle className="h-3 w-3" /> SLA breach
+                      </Badge>
+                    )}
                     <span className="text-xs text-muted-foreground">#{t.id}</span>
                   </div>
                   <CardTitle className="font-display text-xl" data-testid="text-ticket-subject">{t.subject}</CardTitle>
@@ -162,10 +180,25 @@ export default function AdminTicketDetailPage() {
 
           <div className="space-y-3">
             {(data.messages || []).map((m: any) => (
-              <Card key={m.id} className={m.authorRole === "admin" ? "border-primary/30 bg-primary/5" : ""} data-testid={`message-${m.id}`}>
+              <Card
+                key={m.id}
+                className={
+                  m.isInternal
+                    ? "border-yellow-600/40 bg-yellow-50 dark:bg-yellow-950/20"
+                    : m.authorRole === "admin" ? "border-primary/30 bg-primary/5" : ""
+                }
+                data-testid={`message-${m.id}`}
+              >
                 <CardContent className="py-4">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-medium">{m.author?.fullName || m.author?.email || (m.authorRole === "admin" ? "Lendry Support" : "Broker")}</div>
+                    <div className="text-sm font-medium flex items-center gap-2">
+                      {m.author?.fullName || m.author?.email || (m.authorRole === "admin" ? "Lendry Support" : "Broker")}
+                      {m.isInternal && (
+                        <Badge variant="outline" className="gap-1 border-yellow-600 text-yellow-700 dark:text-yellow-400" data-testid={`badge-internal-${m.id}`}>
+                          <Lock className="h-3 w-3" /> Internal note
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">{new Date(m.createdAt).toLocaleString()}</div>
                   </div>
                   <div className="whitespace-pre-wrap text-sm">{m.body}</div>
@@ -179,10 +212,31 @@ export default function AdminTicketDetailPage() {
             ))}
           </div>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Reply</CardTitle></CardHeader>
+          <Card className={isInternal ? "border-yellow-600/40" : ""}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                {isInternal ? <><Lock className="h-4 w-4 text-yellow-600" /> Internal note</> : "Reply"}
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
-              <Textarea value={reply} onChange={e => setReply(e.target.value)} rows={4} placeholder="Reply to the broker..." data-testid="input-reply" />
+              <Textarea
+                value={reply}
+                onChange={e => setReply(e.target.value)}
+                rows={4}
+                placeholder={isInternal ? "Notes hidden from the broker (visible to admins only)..." : "Reply to the broker..."}
+                data-testid="input-reply"
+              />
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="internal-note"
+                  checked={isInternal}
+                  onCheckedChange={(v) => setIsInternal(v === true)}
+                  data-testid="checkbox-internal-note"
+                />
+                <label htmlFor="internal-note" className="text-xs text-muted-foreground cursor-pointer select-none">
+                  Internal note (hidden from broker, no email sent)
+                </label>
+              </div>
               <input ref={fileRef} type="file" multiple className="hidden" onChange={onPickFiles} />
               <div className="flex items-center gap-2 flex-wrap">
                 <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading} data-testid="btn-attach">
@@ -194,8 +248,14 @@ export default function AdminTicketDetailPage() {
                   </span>
                 ))}
                 <div className="flex-1" />
-                <Button onClick={() => sendReply.mutate()} disabled={!reply.trim() || sendReply.isPending} data-testid="btn-send-reply">
-                  {sendReply.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null} Send reply
+                <Button
+                  onClick={() => sendReply.mutate()}
+                  disabled={!reply.trim() || sendReply.isPending}
+                  variant={isInternal ? "secondary" : "default"}
+                  data-testid="btn-send-reply"
+                >
+                  {sendReply.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  {isInternal ? "Save internal note" : "Send reply"}
                 </Button>
               </div>
             </CardContent>
@@ -210,8 +270,16 @@ export default function AdminTicketDetailPage() {
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Status</div>
                 <Select value={t.status} onValueChange={(v) => update.mutate({ status: v })}>
                   <SelectTrigger data-testid="select-status"><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  <SelectContent>{statusOptions.map(k => <SelectItem key={k} value={k}>{STATUS_LABELS[k] || k}</SelectItem>)}</SelectContent>
                 </Select>
+                {dueAt && (
+                  <div className={`text-xs mt-1 flex items-center gap-1 ${breached ? "text-destructive" : "text-muted-foreground"}`} data-testid="text-sla">
+                    <Clock className="h-3 w-3" />
+                    {breached ? "Overdue " : "Response due "}
+                    {dueAt.toLocaleString()}
+                    {t.lastAdminReplyAt && <span className="ml-1">· Replied {new Date(t.lastAdminReplyAt).toLocaleString()}</span>}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Severity</div>
@@ -238,6 +306,51 @@ export default function AdminTicketDetailPage() {
               {t.submitter?.role && <div className="text-xs text-muted-foreground capitalize">Role: {t.submitter.role}</div>}
             </CardContent>
           </Card>
+
+          <BrokerContextSidebar
+            submitterId={t.submitterId}
+            submitterName={t.submitter?.fullName}
+            currentTicketId={t.id}
+          />
+
+          {Array.isArray(t.botTranscript) && t.botTranscript.length > 0 && (
+            <Card data-testid="card-bot-transcript">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /> Lendry Assistant transcript</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs max-h-80 overflow-y-auto">
+                {t.botTranscript.map((m: any, i: number) => (
+                  <div key={i} className={m.role === "user" ? "ml-0" : "ml-4"} data-testid={`transcript-${m.role}-${i}`}>
+                    <div className="text-muted-foreground uppercase tracking-wider text-[10px] mb-0.5">{m.role === "user" ? "Broker" : "Lendry"}</div>
+                    <div className={`whitespace-pre-wrap rounded px-2 py-1.5 ${m.role === "user" ? "bg-muted/40" : "bg-primary/5 border border-primary/10"}`}>{m.content}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data.statusHistory || []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><History className="h-4 w-4" /> Status history</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="space-y-2 text-xs" data-testid="list-status-history">
+                  {data.statusHistory.map((h: any) => (
+                    <li key={h.id} className="border-l-2 border-primary/40 pl-3" data-testid={`history-${h.id}`}>
+                      <div className="font-medium">
+                        {h.fromStatus ? `${STATUS_LABELS[h.fromStatus] || h.fromStatus} → ` : ""}{STATUS_LABELS[h.toStatus] || h.toStatus}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {h.actor?.fullName || "System"} · {new Date(h.changedAt).toLocaleString()}
+                      </div>
+                      {h.note && <div className="text-muted-foreground italic">{h.note}</div>}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle className="text-base">Context</CardTitle></CardHeader>

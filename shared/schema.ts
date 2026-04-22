@@ -4613,17 +4613,40 @@ export const supportTickets = pgTable("support_tickets", {
     .references(() => users.id, { onDelete: "set null" }),
   assignedToId: integer("assigned_to_id")
     .references(() => users.id, { onDelete: "set null" }),
-  // Phase 4 (column added now, populated later)
+  // Phase 4 — bot escalation
   botConversationId: integer("bot_conversation_id"),
+  botTranscript: jsonb("bot_transcript"), // [{ role: 'user'|'assistant', content: string }]
   // Archive flags (no hard delete)
   archivedByBroker: boolean("archived_by_broker").default(false).notNull(),
   archivedByAdmin: boolean("archived_by_admin").default(false).notNull(),
+  // Phase 3 — SLA tracking
+  responseDueAt: timestamp("response_due_at"),
+  lastAdminReplyAt: timestamp("last_admin_reply_at"),
+  resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   tenantStatusTypeIdx: index("support_tickets_tenant_status_type_idx").on(table.tenantId, table.status, table.type),
   submitterStatusIdx: index("support_tickets_submitter_status_idx").on(table.submitterId, table.status),
+  responseDueIdx: index("support_tickets_response_due_idx").on(table.responseDueAt),
 }));
+
+// Phase 3 — status history for audit/timeline
+export const supportTicketStatusHistory = pgTable("support_ticket_status_history", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id")
+    .references(() => supportTickets.id, { onDelete: "cascade" })
+    .notNull(),
+  fromStatus: varchar("from_status", { length: 30 }),
+  toStatus: varchar("to_status", { length: 30 }).notNull(),
+  changedById: integer("changed_by_id").references(() => users.id, { onDelete: "set null" }),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+  note: text("note"),
+}, (table) => ({
+  ticketIdx: index("support_ticket_status_history_ticket_idx").on(table.ticketId, table.changedAt),
+}));
+
+export type SupportTicketStatusHistory = typeof supportTicketStatusHistory.$inferSelect;
 
 export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
   id: true,
@@ -4634,6 +4657,7 @@ export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit
   archivedByAdmin: true,
   assignedToId: true,
   botConversationId: true,
+  botTranscript: true,
 });
 export type SupportTicket = typeof supportTickets.$inferSelect;
 export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;

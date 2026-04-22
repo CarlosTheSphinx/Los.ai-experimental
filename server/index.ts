@@ -296,6 +296,11 @@ app.use((req, res, next) => {
       }).catch(err => {
         console.error('Failed to start automation scheduler:', err);
       });
+      import('./services/supportTicketAlerts').then(({ startSupportDigestScheduler }) => {
+        startSupportDigestScheduler();
+      }).catch(err => {
+        console.error('Failed to start support digest scheduler:', err);
+      });
     },
   );
 })();

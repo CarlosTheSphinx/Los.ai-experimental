@@ -18,6 +18,10 @@ import { randomUUID } from 'crypto';
 import type { AuthRequest } from '../auth';
 import type { ObjectStorageService } from '../replit_integrations/object_storage';
 import { getResendClient } from '../email';
+import { sendBugAlertSms, sendDailyDigest, sendTestBugSms } from '../services/supportTicketAlerts';
+import { transitionTicket, isLegalTransition, nextLegalStatuses, forceTransition, type TicketStatus } from '../services/ticketStateMachine';
+import { computeResponseDueAt } from '../utils/businessHours';
+import { supportTicketStatusHistory } from '@shared/schema';
 
 type RequestMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -131,10 +135,10 @@ async function notifyAdmins(tenantId: number, payload: { title: string; message:
 async function sendEmail(to: string | null, subject: string, html: string) {
   if (!to) return;
   try {
-    const resend = await getResendClient();
-    if (!resend) return;
-    const fromEmail = process.env.FROM_EMAIL || 'Lendry AI <noreply@lendry.ai>';
-    await resend.emails.send({ from: fromEmail, to, subject, html });
+    const { client, fromEmail: defaultFrom } = await getResendClient();
+    if (!client) return;
+    const fromEmail = process.env.FROM_EMAIL || defaultFrom || 'Lendry AI <noreply@lendry.ai>';
+    await client.emails.send({ from: fromEmail, to, subject, html });
   } catch (err) {
     console.error('[support-tickets] email send failed:', err);
   }
@@ -304,7 +308,12 @@ export function registerSupportTicketRoutes(
       if (submitterId) where.push(eq(supportTickets.submitterId, submitterId));
       if (search) where.push(ilike(supportTickets.subject, `%${search}%`));
 
-      const orderCol = sortBy === 'oldest' ? asc(supportTickets.createdAt) : desc(supportTickets.updatedAt);
+      // SLA-urgency sort: breached/upcoming response_due_at first (admin-only meaningful)
+      const orderCol = sortBy === 'oldest'
+        ? asc(supportTickets.createdAt)
+        : sortBy === 'sla'
+          ? sql`(CASE WHEN ${supportTickets.lastAdminReplyAt} IS NULL AND ${supportTickets.status} IN ('open','in_progress') THEN ${supportTickets.responseDueAt} ELSE NULL END) ASC NULLS LAST, ${supportTickets.updatedAt} DESC`
+          : desc(supportTickets.updatedAt);
 
       const rows = await db.select({
         ticket: supportTickets,
@@ -373,10 +382,27 @@ export function registerSupportTicketRoutes(
       // Strip session_activity from broker response
       const safeTicket = isAdmin ? ticket : { ...ticket, sessionActivity: null };
 
+      // Phase 3 — status history
+      const historyRows = await db.select({
+        history: supportTicketStatusHistory,
+        actor: { id: users.id, fullName: users.fullName },
+      })
+        .from(supportTicketStatusHistory)
+        .leftJoin(users, eq(users.id, supportTicketStatusHistory.changedById))
+        .where(eq(supportTicketStatusHistory.ticketId, id))
+        .orderBy(asc(supportTicketStatusHistory.changedAt));
+      const statusHistory = historyRows.map(r => {
+        // Brokers don't see admin identity in the timeline
+        const actor = isAdmin ? r.actor : (r.actor ? { id: r.actor.id, fullName: 'Support team' } : null);
+        return { ...r.history, actor };
+      });
+
       res.json({
         ticket: { ...safeTicket, submitter },
         messages: filteredMessages.map(r => ({ ...r.message, author: r.author })),
         attachments: allAttachments,
+        statusHistory,
+        legalNextStatuses: nextLegalStatuses(safeTicket.status as TicketStatus),
       });
     } catch (err) {
       console.error('[support-tickets] get error:', err);
@@ -404,6 +430,7 @@ export function registerSupportTicketRoutes(
         }
       }
 
+      const now = new Date();
       const [ticket] = await db.insert(supportTickets).values({
         tenantId,
         type: parsed.type,
@@ -420,7 +447,16 @@ export function registerSupportTicketRoutes(
         browserOs: parsed.browserOs ?? null,
         sessionActivity: parsed.sessionActivity ?? null,
         submitterId: userId,
+        responseDueAt: computeResponseDueAt(parsed.type, now),
       }).returning();
+
+      await db.insert(supportTicketStatusHistory).values({
+        ticketId: ticket.id,
+        fromStatus: null,
+        toStatus: 'open',
+        changedById: userId,
+        note: 'Ticket created',
+      });
 
       if (attachments.length > 0) {
         await db.insert(supportTicketAttachments).values(attachments.map(a => ({
@@ -475,6 +511,13 @@ export function registerSupportTicketRoutes(
         `);
       }
 
+      // SMS bug alert (Phase 2) — fire-and-forget, never blocks ticket creation
+      if (parsed.type === 'bug') {
+        sendBugAlertSms(ticket, submitter?.fullName || 'broker').catch(err =>
+          console.error('[support-tickets] sendBugAlertSms async error:', err)
+        );
+      }
+
       res.status(201).json({ ticket });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: err.errors });
@@ -490,11 +533,13 @@ export function registerSupportTicketRoutes(
       const tenantId = req.user!.tenantId!;
       const role = req.user!.role;
       const id = parseInt(req.params.id);
-      const { body, attachmentObjectPaths } = req.body || {};
+      const { body, attachmentObjectPaths, isInternal: rawInternal } = req.body || {};
       if (!body || typeof body !== 'string' || body.trim().length === 0) {
         return res.status(400).json({ error: 'Message body required' });
       }
       const isAdmin = isAdminRole(role);
+      // Internal notes are admin-only; brokers cannot create them
+      const isInternal = isAdmin && rawInternal === true;
 
       const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, id)).limit(1);
       if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
@@ -513,12 +558,30 @@ export function registerSupportTicketRoutes(
         }
       }
 
+      // Phase 3: enforce reopen window before allowing replies on Resolved/Closed tickets
+      let reopened = false;
+      if (!isAdmin) {
+        if (ticket.status === 'closed') {
+          return res.status(409).json({ error: 'This ticket is closed. Please open a new ticket.', startNewTicket: true });
+        }
+        if (ticket.status === 'resolved') {
+          const resolvedAt = ticket.resolvedAt ? new Date(ticket.resolvedAt as any).getTime() : Date.now();
+          const ageDays = (Date.now() - resolvedAt) / (1000 * 60 * 60 * 24);
+          if (ageDays > 14) {
+            return res.status(409).json({ error: 'This ticket was resolved more than 14 days ago. Please open a new ticket.', startNewTicket: true });
+          }
+          // Within 14 days — reopen
+          await forceTransition(ticket.id, 'in_progress', 'Reopened by broker reply');
+          reopened = true;
+        }
+      }
+
       const [message] = await db.insert(supportTicketMessages).values({
         ticketId: id,
         authorId: userId,
         authorRole: isAdmin ? 'admin' : 'broker',
         body: body.trim(),
-        isInternal: false,
+        isInternal,
       }).returning();
 
       if (atts.length > 0) {
@@ -533,9 +596,28 @@ export function registerSupportTicketRoutes(
         })));
       }
 
-      await db.update(supportTickets).set({ updatedAt: new Date() }).where(eq(supportTickets.id, id));
+      // Phase 3: SLA + state machine side-effects
+      // Internal notes don't impact SLA or status — they're for admin collaboration only
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (isAdmin && !isInternal) {
+        // First admin reply locks the SLA breach status
+        updates.lastAdminReplyAt = new Date();
+        // open → in_progress on first admin reply
+        if (ticket.status === 'open') {
+          await forceTransition(ticket.id, 'in_progress', 'Admin replied');
+        }
+      } else if (!isAdmin) {
+        // Broker reply on waiting_on_broker → flip back to in_progress
+        if (ticket.status === 'waiting_on_broker') {
+          await forceTransition(ticket.id, 'in_progress', 'Broker replied');
+        }
+      }
+      await db.update(supportTickets).set(updates).where(eq(supportTickets.id, id));
 
-      // Notifications
+      // Notifications — skip for internal notes (broker should never see them)
+      if (isInternal) {
+        return res.status(201).json({ message });
+      }
       const appUrl = buildAppUrl();
       if (isAdmin) {
         // Notify broker
@@ -549,9 +631,12 @@ export function registerSupportTicketRoutes(
           });
           const [s] = await db.select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, ticket.submitterId)).limit(1);
           if (s?.email) {
+            // Phase 5 — include the reply body so brokers can read it without clicking through
+            const safeBody = escapeHtml(body.trim()).replace(/\n/g, '<br/>');
             await sendEmail(s.email, `[Lendry] Reply on ticket #${ticket.id}`, `
-              <p>Lendry support replied to your ticket "<strong>${escapeHtml(ticket.subject)}</strong>".</p>
-              <p><a href="${appUrl}/support/tickets/${ticket.id}">View the reply</a></p>
+              <p>Lendry support replied to your ticket "<strong>${escapeHtml(ticket.subject)}</strong>":</p>
+              <blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #C9A84C;background:#f7f5ee;color:#0F1629;font-family:Helvetica,Arial,sans-serif;">${safeBody}</blockquote>
+              <p><a href="${appUrl}/support/tickets/${ticket.id}" style="color:#0F1629;font-weight:600;">View the full conversation</a></p>
             `);
           }
         }
@@ -591,11 +676,19 @@ export function registerSupportTicketRoutes(
       if (ticket.tenantId !== tenantId) return res.status(403).json({ error: 'Access denied' });
       if (!isAdmin && ticket.submitterId !== userId) return res.status(403).json({ error: 'Access denied' });
 
+      // Status changes go through the state machine
+      if (isAdmin && typeof req.body.status === 'string' && (TICKET_STATUSES as readonly string[]).includes(req.body.status)) {
+        const r = await transitionTicket({
+          ticketId: id,
+          toStatus: req.body.status as TicketStatus,
+          changedById: userId,
+          note: typeof req.body.statusNote === 'string' ? req.body.statusNote : null,
+        });
+        if (!r.ok) return res.status(400).json({ error: r.error });
+      }
+
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (isAdmin) {
-        if (typeof req.body.status === 'string' && (TICKET_STATUSES as readonly string[]).includes(req.body.status)) {
-          updates.status = req.body.status;
-        }
         if (req.body.severity === null || (typeof req.body.severity === 'string' && (SEVERITIES as readonly string[]).includes(req.body.severity))) {
           updates.severity = req.body.severity;
         }
@@ -606,7 +699,7 @@ export function registerSupportTicketRoutes(
       }
 
       const [updated] = await db.update(supportTickets).set(updates).where(eq(supportTickets.id, id)).returning();
-      res.json({ ticket: updated });
+      res.json({ ticket: updated, legalNextStatuses: nextLegalStatuses(updated.status as TicketStatus) });
     } catch (err) {
       console.error('[support-tickets] update error:', err);
       res.status(500).json({ error: 'Failed to update ticket' });
@@ -689,6 +782,32 @@ export function registerSupportTicketRoutes(
       if (err instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: err.errors });
       console.error('[support-tickets] update settings error:', err);
       res.status(500).json({ error: 'Failed to update settings' });
+    }
+  });
+
+  // Send a test SMS to the configured phone number.
+  app.post('/api/admin/notification-settings/test-sms', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const r = await sendTestBugSms(tenantId);
+      if (!r.ok) return res.status(400).json({ error: r.error || 'SMS send failed' });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error('[support-tickets] test-sms error:', err);
+      res.status(500).json({ error: err?.message || 'Test SMS failed' });
+    }
+  });
+
+  // Send the daily digest right now to the configured email.
+  app.post('/api/admin/notification-settings/test-digest', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const r = await sendDailyDigest(tenantId);
+      if (!r.ok) return res.status(400).json({ error: r.error || 'Digest send failed' });
+      res.json({ ok: true, sentTo: r.sentTo });
+    } catch (err: any) {
+      console.error('[support-tickets] test-digest error:', err);
+      res.status(500).json({ error: err?.message || 'Test digest failed' });
     }
   });
 }

@@ -34,7 +34,7 @@ The application is built on a modern web stack: React 18 with TypeScript for the
 -   **Per-Person Invite Links**: Consolidated system for account setup and access.
 -   **Deal Story Recording**: Voice-recorded deal narratives with OpenAI Whisper transcription for AI analysis.
 -   **Fund Knowledge Base & Bulk Upload**: Fund management with searchable lists, bulk import, and AI-powered document extraction into knowledge entries.
--   **Support Tickets**: System for brokers to submit help questions, bug reports, and feature requests with admin triage and response capabilities.
+-   **Support Tickets**: Full broker support system with help questions, bug reports, and feature requests. Includes SMS bug alerts + 9am ET daily digest, status state machine with audit history, NY-business-hours SLA tracking + breach badges + auto-close after 14 days inactivity, broker reopen-by-reply within 14 days, bot escalation handoff (Lendry Assistant transcript carried into a ticket), admin internal notes (hidden from brokers, no SLA impact), reply email body inlined for brokers, and a broker context sidebar showing related tickets.
 -   **Standardized Loan & Property Types**: Uses 7 standardized loan types and 11 property types with a flexible matching system for funds.
 
 ## External Dependencies
