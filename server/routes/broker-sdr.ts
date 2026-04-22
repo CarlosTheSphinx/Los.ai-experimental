@@ -13,6 +13,13 @@ import { eq, and, or, ilike, desc, asc, inArray } from 'drizzle-orm';
 import * as sdrService from '../services/brokerSdr';
 import { encryptToken, decryptToken } from '../utils/encryption';
 
+interface TwilioConfig {
+  accountSid: string;
+  apiKey: string;
+  apiKeySecret: string;
+  fromNumber: string;
+}
+
 /**
  * Middleware: Ensure user is a broker
  */
@@ -560,7 +567,7 @@ export function registerBrokerSdrRoutes(app: Express) {
       }).from(emailAccounts)
         .where(and(eq(emailAccounts.userId, brokerId), eq(emailAccounts.isActive, true)));
 
-      const smsConfig = smsRow ? (smsRow.config as any) : null;
+      const smsConfig = smsRow ? (smsRow.config as TwilioConfig) : null;
 
       res.json({
         sms: smsRow ? {
@@ -667,7 +674,7 @@ export function registerBrokerSdrRoutes(app: Express) {
         return res.status(400).json({ error: 'No SMS channel configured. Please save your credentials first.' });
       }
 
-      const cfg = smsRow.config as any;
+      const cfg = smsRow.config as TwilioConfig;
       const twilio = (await import('twilio')).default;
       const client = twilio(decryptToken(cfg.apiKey), decryptToken(cfg.apiKeySecret), { accountSid: cfg.accountSid });
 

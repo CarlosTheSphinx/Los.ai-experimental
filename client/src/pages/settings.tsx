@@ -38,52 +38,81 @@ import {
   Trash2,
 } from "lucide-react";
 
+interface SmsChannelStatus {
+  connected: boolean;
+  accountSid?: string;
+  fromNumber?: string;
+  smsApproved?: boolean;
+  hasApiKey?: boolean;
+}
+interface EmailChannelStatus {
+  connected: boolean;
+  emailAddress?: string;
+  lastSyncAt?: string;
+}
+interface ChannelsData {
+  sms: SmsChannelStatus;
+  email: EmailChannelStatus;
+}
+interface SmsTestResult {
+  success: boolean;
+  message: string;
+}
+
 function BrokerIntegrationsTab() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [smsForm, setSmsForm] = useState({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
   const [showSmsForm, setShowSmsForm] = useState(false);
-  const brokerPhone = (user as any)?.phone;
+  const brokerPhone = user?.phone;
 
-  const { data: channels, isLoading: loadingChannels, refetch: refetchChannels } = useQuery<any>({
+  const { data: channels, isLoading: loadingChannels, refetch: refetchChannels } = useQuery<ChannelsData>({
     queryKey: ['/api/broker/channels'],
   });
 
   const saveSms = useMutation({
-    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms', smsForm),
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/broker/channels/sms', smsForm);
+      return res.json() as Promise<{ success: boolean; message: string }>;
+    },
     onSuccess: () => {
       toast({ title: 'SMS channel connected', description: 'Your Twilio account is linked.' });
       setShowSmsForm(false);
       setSmsForm({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
       refetchChannels();
     },
-    onError: async (err: any) => {
-      let msg = 'Failed to connect SMS channel';
-      try { msg = (await err.json?.())?.error || msg; } catch {}
-      toast({ title: 'Connection failed', description: msg, variant: 'destructive' });
+    onError: (err: Error) => {
+      toast({ title: 'Connection failed', description: err.message, variant: 'destructive' });
     },
   });
 
   const disconnectSms = useMutation({
-    mutationFn: async () => apiRequest('DELETE', '/api/broker/channels/sms'),
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', '/api/broker/channels/sms');
+      return res.json() as Promise<{ success: boolean }>;
+    },
     onSuccess: () => { toast({ title: 'SMS channel disconnected' }); refetchChannels(); },
-    onError: () => toast({ title: 'Failed to disconnect', variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to disconnect', description: err.message, variant: 'destructive' }),
   });
 
   const testSms = useMutation({
-    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms/test', {}),
-    onSuccess: (data: any) => toast({ title: 'Test SMS sent!', description: data?.message || `Message sent to ${brokerPhone}` }),
-    onError: async (err: any) => {
-      let msg = 'Failed to send test message';
-      try { msg = (await err.json?.())?.error || msg; } catch {}
-      toast({ title: 'Test failed', description: msg, variant: 'destructive' });
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/broker/channels/sms/test', {});
+      return res.json() as Promise<SmsTestResult>;
+    },
+    onSuccess: (data) => toast({ title: 'Test SMS sent!', description: data.message }),
+    onError: (err: Error) => {
+      toast({ title: 'Test failed', description: err.message, variant: 'destructive' });
     },
   });
 
   const disconnectEmail = useMutation({
-    mutationFn: async () => apiRequest('DELETE', '/api/broker/channels/email'),
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', '/api/broker/channels/email');
+      return res.json() as Promise<{ success: boolean }>;
+    },
     onSuccess: () => { toast({ title: 'Gmail disconnected' }); refetchChannels(); },
-    onError: () => toast({ title: 'Failed to disconnect Gmail', variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Failed to disconnect Gmail', description: err.message, variant: 'destructive' }),
   });
 
   const smsConnected = channels?.sms?.connected;

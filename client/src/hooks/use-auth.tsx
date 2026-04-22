@@ -22,6 +22,7 @@ interface User {
   role?: string;
   userType?: string;
   onboardingCompleted?: boolean;
+  phone?: string;
   brokerSettings?: BrokerSettings | null;
 }
 

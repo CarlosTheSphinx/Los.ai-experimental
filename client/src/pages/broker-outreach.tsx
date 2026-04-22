@@ -355,7 +355,7 @@ export default function BrokerOutreachPage() {
                 You need to connect Twilio (SMS) or Gmail before you can send outreach messages.
               </p>
             </div>
-            <Link href="/settings">
+            <Link href="/settings?tab=integrations">
               <button className="shrink-0 text-xs font-medium text-amber-900 dark:text-amber-100 underline underline-offset-4 flex items-center gap-1.5" data-testid="link-setup-integrations">
                 <Plug className="h-3.5 w-3.5" />
                 Set up integrations
