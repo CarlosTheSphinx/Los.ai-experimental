@@ -496,7 +496,12 @@ export default function BrokerOutreachPage() {
                   value={selectedContacts[0]?.toString() || ''}
                   onValueChange={(value) => {
                     if (value === 'all') {
-                      setSelectedContacts(allContacts.map((c) => c.id));
+                      // Exclude opted-out contacts when channel involves SMS
+                      const includesSms = channel === 'sms' || channel === 'both';
+                      const eligible = includesSms
+                        ? allContacts.filter((c) => !c.smsOptedOut)
+                        : allContacts;
+                      setSelectedContacts(eligible.map((c) => c.id));
                     } else if (value) {
                       setSelectedContacts([...selectedContacts, parseInt(value)]);
                     }
@@ -506,15 +511,21 @@ export default function BrokerOutreachPage() {
                     <SelectValue placeholder="Choose contacts..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All contacts ({allContacts.length})</SelectItem>
+                    <SelectItem value="all">
+                      {(() => {
+                        const includesSms = channel === 'sms' || channel === 'both';
+                        const eligible = includesSms ? allContacts.filter((c) => !c.smsOptedOut) : allContacts;
+                        return `All contacts (${eligible.length}${includesSms && eligible.length < allContacts.length ? ` of ${allContacts.length}, opted-out excluded` : ''})`;
+                      })()}
+                    </SelectItem>
                     {allContacts.map((contact: Contact) => (
                       <SelectItem
                         key={contact.id}
                         value={contact.id.toString()}
-                        disabled={channel === 'sms' && !!contact.smsOptedOut}
+                        disabled={(channel === 'sms' || channel === 'both') && !!contact.smsOptedOut}
                       >
                         {contact.firstName} {contact.lastName}
-                        {contact.smsOptedOut && channel === 'sms' && ' · Opted out'}
+                        {contact.smsOptedOut && (channel === 'sms' || channel === 'both') && ' · SMS opted out'}
                       </SelectItem>
                     ))}
                   </SelectContent>

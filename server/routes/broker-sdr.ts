@@ -294,11 +294,13 @@ export function registerBrokerSdrRoutes(app: Express) {
       const brokerId = req.user!.id;
       const { status = 'draft', limit = '50', offset = '0' } = req.query;
 
+      // When status==='all', return every status so failed/opted_out entries are visible
+      const applyStatusFilter = status && status !== 'all';
       const messages = await db.query.brokerOutreachMessages.findMany({
         where: (m) =>
           and(
             eq(m.brokerId, brokerId),
-            status ? eq(m.status, status as any) : undefined
+            applyStatusFilter ? eq(m.status, status as string) : undefined
           ),
         orderBy: (m) => desc(m.createdAt),
         limit: parseInt(limit as string, 10),
