@@ -63,6 +63,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useBranding } from "@/hooks/use-branding";
 import { InboxBadge } from "@/components/InboxBadge";
+import { EmailInboxBadge } from "@/components/EmailInboxBadge";
 import { NotificationBell } from "@/components/NotificationBell";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ProcessorAssistant } from "@/components/admin/ProcessorAssistant";
@@ -83,6 +84,7 @@ interface NavItem {
   label: string;
   icon: any;
   showBadge?: boolean;
+  showEmailBadge?: boolean;
   requiredPermission?: PermissionKey;
   shortcut?: string;
   superAdminOnly?: boolean;
@@ -107,7 +109,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
   { href: "/broker/outreach", label: "Outreach", icon: MessageSquare, shortcut: undefined },
-  { href: "/broker/email", label: "Email Inbox", icon: Mail, shortcut: undefined },
+  { href: "/broker/email", label: "Email Inbox", icon: Mail, showEmailBadge: true, shortcut: undefined },
   { href: "/inbox", label: "Messages", icon: Inbox, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: undefined },
@@ -387,6 +389,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
                           <span className="flex items-center gap-1 flex-1 text-[15px] group-data-[collapsible=icon]:hidden">
                             {item.label}
                             {'showBadge' in item && item.showBadge && <InboxBadge />}
+                            {'showEmailBadge' in item && item.showEmailBadge && <EmailInboxBadge />}
                           </span>
                           {item.shortcut && (
                             <span className="text-[12px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors ml-2 hidden group-hover:inline group-data-[collapsible=icon]:!hidden">

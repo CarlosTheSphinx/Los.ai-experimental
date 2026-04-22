@@ -169,6 +169,31 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
 
   // ==================== EMAIL THREADS & MESSAGES ====================
 
+  // GET /api/email/unread-count — lightweight unread thread count for badge
+  app.get('/api/email/unread-count', authenticateUser, async (req: AuthRequest, res: Response) => {
+    try {
+      const [account] = await db.select({ id: emailAccounts.id })
+        .from(emailAccounts)
+        .where(and(
+          eq(emailAccounts.userId, req.user!.id),
+          eq(emailAccounts.isActive, true)
+        ));
+      if (!account) return res.json({ unreadCount: 0 });
+
+      const unreadThreads = await db.select({ id: emailThreads.id })
+        .from(emailThreads)
+        .where(and(
+          eq(emailThreads.accountId, account.id),
+          eq(emailThreads.isUnread, true)
+        ));
+
+      res.json({ unreadCount: unreadThreads.length });
+    } catch (error: any) {
+      console.error('Error fetching email unread count:', error);
+      res.json({ unreadCount: 0 });
+    }
+  });
+
   // GET /api/email/threads - List email threads with pagination and search
   app.get('/api/email/threads', authenticateUser, async (req: AuthRequest, res: Response) => {
     try {
@@ -182,7 +207,7 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
         return res.json({ threads: [], total: 0 });
       }
 
-      const { search, limit = '50', offset = '0', linked, dealId } = req.query;
+      const { search, participant, limit = '50', offset = '0', linked, dealId } = req.query;
       const limitNum = Math.min(parseInt(limit as string) || 50, 100);
       const offsetNum = parseInt(offset as string) || 0;
 
@@ -204,6 +229,20 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
           t.fromAddress?.toLowerCase().includes(searchLower) ||
           t.snippet?.toLowerCase().includes(searchLower)
         );
+      }
+
+      // Filter by participant email: checks the participants text[] column using Postgres @> operator
+      // so we reliably catch threads where the address appears in To/CC/From, not just subject/snippet
+      if (participant) {
+        const participantEmail = (participant as string).toLowerCase().trim();
+        if (participantEmail) {
+          threads = threads.filter(t => {
+            if (!t.participants || !Array.isArray(t.participants)) return false;
+            return (t.participants as string[]).some(
+              p => p.toLowerCase() === participantEmail
+            );
+          });
+        }
       }
 
       const threadIds = threads.map(t => t.id);

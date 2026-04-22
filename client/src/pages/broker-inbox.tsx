@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -241,7 +242,7 @@ function MessageBody({ message, myEmail }: { message: EmailMessage; myEmail: str
       {message.bodyHtml ? (
         <div
           className="prose prose-sm dark:prose-invert max-w-none text-sm overflow-auto"
-          dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.bodyHtml) }}
         />
       ) : (
         <pre className="text-sm whitespace-pre-wrap font-sans">{message.bodyText || message.snippet}</pre>

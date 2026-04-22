@@ -72,10 +72,11 @@ function ContactEmailHistory({ contact }: { contact: Contact }) {
   });
 
   const { data: threadsData, isLoading } = useQuery<{ threads: EmailThread[]; total: number }>({
-    queryKey: ['/api/email/threads', 'contact', contact.email],
+    queryKey: ['/api/email/threads', 'participant', contact.email],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (contact.email) params.set('search', contact.email);
+      // Use participant param so the server checks the participants[] array, not just subject/snippet
+      if (contact.email) params.set('participant', contact.email);
       const res = await fetch(`/api/email/threads?${params}`, { credentials: 'include' });
       return res.json();
     },
@@ -114,7 +115,6 @@ function ContactEmailHistory({ contact }: { contact: Contact }) {
           {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           <Mail className="w-3 h-3" />
           Email History
-          {!open && threads.length === 0 && !isLoading ? null : !open ? null : null}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
