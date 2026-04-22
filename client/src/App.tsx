@@ -70,6 +70,7 @@ import OnboardingConfigPage from "@/pages/admin/onboarding-config";
 
 import BrokerContactsPage from "@/pages/broker-contacts";
 import BrokerOutreachPage from "@/pages/broker-outreach";
+import BrokerInboxPage from "@/pages/broker-inbox";
 import CommercialPipelinePage from "@/pages/admin/commercial-pipeline";
 import CommercialFormConfigPage from "@/pages/admin/commercial-form-config";
 import CommercialPipelineDetailPage from "@/pages/admin/commercial-pipeline-detail";
@@ -302,6 +303,7 @@ function MainRoutes() {
           <Route path="/broker/documents" component={() => <ProtectedRoute component={BrokerDocumentsPage} />} />
           <Route path="/broker/contacts" component={() => <ProtectedRoute component={BrokerContactsPage} />} />
           <Route path="/broker/outreach" component={() => <ProtectedRoute component={BrokerOutreachPage} />} />
+          <Route path="/broker/email" component={() => <ProtectedRoute component={BrokerInboxPage} />} />
           <Route path="/borrower-preview" component={() => <AdminProtectedRoute component={BorrowerPreview} />} />
 
           {/* Admin Routes */}

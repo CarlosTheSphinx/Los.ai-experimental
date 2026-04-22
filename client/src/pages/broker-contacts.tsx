@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '@/lib/utils';
+import { useLocation } from 'wouter';
 import {
   Table,
   TableBody,
@@ -29,6 +30,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,9 +41,132 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Upload, Search, Edit2, Trash2, Mail, MessageSquare, Sparkles } from 'lucide-react';
+import { Plus, Upload, Search, Edit2, Trash2, Mail, MessageSquare, Sparkles, Eye, ChevronDown, ChevronRight, ExternalLink, Paperclip, Loader2 } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
+import { safeRelativeTime } from '@/lib/utils';
+
+interface EmailThread {
+  id: number;
+  subject: string | null;
+  snippet: string | null;
+  fromAddress: string | null;
+  fromName: string | null;
+  isUnread: boolean;
+  messageCount: number;
+  hasAttachments: boolean;
+  lastMessageAt: string | null;
+}
+
+function ContactEmailHistory({ contact }: { contact: Contact }) {
+  const [, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
+
+  const { data: accountData } = useQuery<{ account: any }>({
+    queryKey: ['/api/email/account'],
+  });
+
+  const { data: threadsData, isLoading } = useQuery<{ threads: EmailThread[]; total: number }>({
+    queryKey: ['/api/email/threads', 'contact', contact.email],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (contact.email) params.set('search', contact.email);
+      const res = await fetch(`/api/email/threads?${params}`, { credentials: 'include' });
+      return res.json();
+    },
+    enabled: open && !!accountData?.account && !!contact.email,
+  });
+
+  const threads = threadsData?.threads || [];
+
+  if (!contact.email) {
+    return <p className="text-xs text-muted-foreground">No email address on file</p>;
+  }
+
+  if (!accountData?.account) {
+    return (
+      <div className="text-xs text-muted-foreground space-y-1">
+        <p>Gmail not connected.</p>
+        <button
+          className="text-primary underline"
+          onClick={() => {
+            window.location.href = `/api/google/connect?returnTo=/broker/contacts`;
+          }}
+        >
+          Connect Gmail
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          data-testid={`toggle-email-history-${contact.id}`}
+        >
+          {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          <Mail className="w-3 h-3" />
+          Email History
+          {!open && threads.length === 0 && !isLoading ? null : !open ? null : null}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 space-y-2">
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Loading threads...
+            </div>
+          ) : threads.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No email threads found for {contact.email}</p>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">{threads.length} thread{threads.length !== 1 ? 's' : ''} with {contact.email}</p>
+              {threads.slice(0, 5).map((thread) => (
+                <div
+                  key={thread.id}
+                  className="p-2 rounded border bg-muted/40 text-xs space-y-0.5 cursor-pointer hover:bg-muted transition-colors"
+                  onClick={() => setLocation(`/broker/email?threadId=${thread.id}`)}
+                  data-testid={`email-thread-link-${thread.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-medium truncate ${thread.isUnread ? 'text-primary' : ''}`}>
+                      {thread.subject || '(No Subject)'}
+                    </span>
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">
+                      {thread.lastMessageAt ? safeRelativeTime(thread.lastMessageAt) : ''}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground truncate">{thread.snippet}</p>
+                  <div className="flex items-center gap-2">
+                    {thread.isUnread && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
+                    {thread.hasAttachments && <Paperclip className="w-3 h-3 text-muted-foreground" />}
+                    <span className="text-muted-foreground">{thread.messageCount} msg{thread.messageCount !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              ))}
+              {threads.length > 5 && (
+                <button
+                  className="text-xs text-primary underline"
+                  onClick={() => setLocation(`/broker/email`)}
+                >
+                  View all {threads.length} threads →
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 interface Contact {
   id: number;
@@ -93,6 +219,7 @@ export default function BrokerContactsPage() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [viewContact, setViewContact] = useState<Contact | null>(null);
 
   // Fetch contacts
   const { data: contactsData, isLoading, refetch } = useQuery({
@@ -524,6 +651,16 @@ export default function BrokerContactsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
+                              onClick={() => setViewContact(contact)}
+                              className="h-8 w-8 p-0"
+                              title="View contact details & email history"
+                              data-testid={`button-view-contact-${contact.id}`}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => handleOpenDialog(contact)}
                               className="h-8 w-8 p-0"
                             >
@@ -548,6 +685,63 @@ export default function BrokerContactsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Contact Detail Dialog */}
+      <Dialog open={!!viewContact} onOpenChange={(open) => !open && setViewContact(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {viewContact?.firstName} {viewContact?.lastName}
+            </DialogTitle>
+            <DialogDescription>
+              {viewContact?.company && <span>{viewContact.company} · </span>}
+              <Badge className={viewContact ? getContactTypeColor(viewContact.contactType) : ''} variant="outline">
+                {viewContact?.contactType}
+              </Badge>
+            </DialogDescription>
+          </DialogHeader>
+          {viewContact && (
+            <div className="space-y-4">
+              {/* Contact info */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {viewContact.email && (
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Email</p>
+                    <p className="mt-0.5">{viewContact.email}</p>
+                  </div>
+                )}
+                {viewContact.phone && (
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Phone</p>
+                    <p className="mt-0.5">{viewContact.phone}</p>
+                  </div>
+                )}
+                {viewContact.lastContactedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Last Contacted</p>
+                    <p className="mt-0.5">{formatDate(viewContact.lastContactedAt)}</p>
+                  </div>
+                )}
+                {viewContact.source && (
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Source</p>
+                    <p className="mt-0.5 capitalize">{viewContact.source}</p>
+                  </div>
+                )}
+              </div>
+              {viewContact.notes && (
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Notes</p>
+                  <p className="text-sm text-muted-foreground">{viewContact.notes}</p>
+                </div>
+              )}
+              <Separator />
+              {/* Email history */}
+              <ContactEmailHistory contact={viewContact} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>

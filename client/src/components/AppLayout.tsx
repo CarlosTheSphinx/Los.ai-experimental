@@ -27,6 +27,7 @@ import {
   GraduationCap,
   Inbox,
   Blocks,
+  Mail,
   MessageSquare,
   BotMessageSquare,
   Home,
@@ -105,7 +106,9 @@ const brokerNavItems: NavItem[] = [
   { href: "/commercial-deals", label: "Commercial Deals", icon: Building2, shortcut: undefined },
   { href: "/commissions", label: "My Commissions", icon: DollarSign, shortcut: undefined },
   { href: "/broker/contacts", label: "Contacts", icon: Users, shortcut: undefined },
-  { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: undefined },
+  { href: "/broker/outreach", label: "Outreach", icon: MessageSquare, shortcut: undefined },
+  { href: "/broker/email", label: "Email Inbox", icon: Mail, shortcut: undefined },
+  { href: "/inbox", label: "Messages", icon: Inbox, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: undefined },
 ];
