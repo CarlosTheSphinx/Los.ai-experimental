@@ -9,7 +9,7 @@ import {
   insertCommsAutomationSchema,
   projects, users, tenants,
 } from '@shared/schema';
-import { eq, and, desc, asc, gte, lte, ilike, or, sql, SQL } from 'drizzle-orm';
+import { eq, and, desc, asc, gte, lte, ilike, or, sql, SQL, isNotNull } from 'drizzle-orm';
 import { wireAutomation, unwireAutomation, startManualRun, type TriggerConfig } from '../comms/triggerService';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
@@ -1798,7 +1798,7 @@ export function registerCommsRoutes(
   // ── Active automation runs for a specific deal (loan) ──────────────────────
   // Used by the deal's Communications tab to show which automations are running
   // and what step they are currently parked on.
-  app.get('/api/comms/deal-runs/:dealId', async (req, res) => {
+  app.get('/api/comms/deal-runs/:dealId', authenticateUser, async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const tenantId = req.user.tenantId;
     const dealId = parseInt(req.params.dealId, 10);
