@@ -32,6 +32,11 @@ import {
   BotMessageSquare,
   Home,
   SlidersHorizontal,
+  Send,
+  ListChecks,
+  UserMinus,
+  ScrollText,
+  Radio,
   Zap,
 } from "lucide-react";
 import {
@@ -153,6 +158,15 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
+];
+
+const commsNavItems: NavItem[] = [
+  { href: "/admin/comms/channels", label: "Channels", icon: Radio },
+  { href: "/admin/comms/templates", label: "Templates", icon: ScrollText },
+  { href: "/admin/comms/automations", label: "Automations", icon: Zap },
+  { href: "/admin/comms/send", label: "Send Message", icon: Send },
+  { href: "/admin/comms/log", label: "Send Log", icon: ListChecks },
+  { href: "/admin/comms/opt-outs", label: "Opt-Outs", icon: UserMinus },
 ];
 
 const borrowerViewNavItems: NavItem[] = [

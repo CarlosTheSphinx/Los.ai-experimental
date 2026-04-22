@@ -291,6 +291,11 @@ app.use((req, res, next) => {
       }).catch(err => {
         console.error('Failed to start email doc check polling:', err);
       });
+      import('./comms/automationEngine').then(({ startScheduler }) => {
+        startScheduler();
+      }).catch(err => {
+        console.error('Failed to start automation scheduler:', err);
+      });
     },
   );
 })();

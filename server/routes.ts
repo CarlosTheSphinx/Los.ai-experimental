@@ -72,6 +72,7 @@ import { startBatchSendWorker } from './comms/batchSendWorker';
 import { startAutomationWorker } from './comms/automationWorker';
 import { initializeTriggerSystem } from './comms/triggerService';
 import { commsEventBus } from './comms/eventBus';
+import { triggerAutomations } from './comms/automationEngine';
 
 
 /**
@@ -7986,6 +7987,17 @@ export async function registerRoutes(
         console.error('Form task notification error:', formNotifErr);
       }
 
+      try {
+        const tenantIdForAutomation = project.tenantId || req.user!.tenantId || 1;
+        await triggerAutomations('loan_stage_change', {
+          loanId: projectId,
+          tenantId: tenantIdForAutomation,
+          stageKey: targetStageKey,
+        });
+      } catch (automationErr) {
+        console.error('[automations] Stage change trigger error:', automationErr);
+      }
+
       res.json({ success: true, currentStage: targetStageKey });
     } catch (error) {
       console.error('Move stage error:', error);
@@ -11426,6 +11438,17 @@ export async function registerRoutes(
         } catch (e) {
           // Non-critical
         }
+      }
+
+      try {
+        const commercialTenantId = (project as { tenantId?: number }).tenantId || (req as AuthRequest).user?.tenantId || 1;
+        await triggerAutomations('loan_stage_change', {
+          loanId: dealId,
+          tenantId: commercialTenantId,
+          stageKey: targetStage.stageKey,
+        });
+      } catch (automationErr) {
+        console.error('[automations] Commercial stage change trigger error:', automationErr);
       }
       
       res.json({ success: true, stage: targetStage.stageKey, stageName: targetStage.stageName });

@@ -1359,6 +1359,7 @@ export function registerCommsRoutes(
     };
     return topLevel.map(build);
   }
+  // ==================== AUTOMATIONS ====================
 
   app.get('/api/comms/automations', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
@@ -1532,6 +1533,10 @@ export function registerCommsRoutes(
         wireAutomation(id, tenantId, parsed.data.triggerConfig as TriggerConfig);
       }
       res.json({ ok: true });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
+    }
+  });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }
