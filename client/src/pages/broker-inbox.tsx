@@ -273,17 +273,24 @@ function ComposeModal({
   onClose,
   contacts,
   accountEmail,
+  defaultTo = "",
 }: {
   open: boolean;
   onClose: () => void;
   contacts: Array<{ id: number; firstName: string; lastName: string; email?: string }>;
   accountEmail: string;
+  defaultTo?: string;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState(defaultTo);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+
+  // Sync To field whenever the modal opens with a new defaultTo
+  useEffect(() => {
+    if (open) setTo(defaultTo);
+  }, [open, defaultTo]);
 
   const { mutate: sendEmail, isPending } = useMutation({
     mutationFn: async () => {
@@ -387,15 +394,19 @@ export default function BrokerInboxPage() {
   const searchParams = new URLSearchParams(searchString);
   const urlThreadId = searchParams.get("threadId");
 
+  const urlComposeEmail = searchParams.get("compose") || "";
+
   const [searchQuery, setSearchQuery] = useState("");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(
     urlThreadId ? parseInt(urlThreadId) : null
   );
   const [replyBody, setReplyBody] = useState("");
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(!!urlComposeEmail);
+  const [composeTo, setComposeTo] = useState(urlComposeEmail);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasAutoSynced = useRef(false);
 
-  // Handle OAuth redirect params
+  // Handle OAuth redirect params and ?compose= deep-link
   useEffect(() => {
     const success = searchParams.get("success");
     const error = searchParams.get("error");
@@ -406,6 +417,10 @@ export default function BrokerInboxPage() {
     }
     if (error) {
       toast({ title: "Connection Failed", description: "Could not connect Gmail. Please try again.", variant: "destructive" });
+      window.history.replaceState({}, "", "/broker/email");
+    }
+    // Clear ?compose= from URL after reading it (modal is already open via useState)
+    if (urlComposeEmail) {
       window.history.replaceState({}, "", "/broker/email");
     }
   }, []);
@@ -471,6 +486,18 @@ export default function BrokerInboxPage() {
       toast({ title: "Sync failed", description: "Could not sync Gmail", variant: "destructive" });
     },
   });
+
+  // Auto-sync (#219): trigger sync on first load when account exists but sync is stale (>5 min or never synced)
+  useEffect(() => {
+    if (!account || hasAutoSynced.current || isSyncing) return;
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    const lastSync = account.lastSyncAt ? new Date(account.lastSyncAt).getTime() : 0;
+    const isStale = !lastSync || (Date.now() - lastSync) > FIVE_MINUTES_MS;
+    if (isStale) {
+      hasAutoSynced.current = true;
+      syncMutation();
+    }
+  }, [account]);
 
   // Mark as read when opening thread
   const { mutate: markRead } = useMutation({
@@ -664,9 +691,10 @@ export default function BrokerInboxPage() {
       {/* Compose modal */}
       <ComposeModal
         open={composeOpen}
-        onClose={() => setComposeOpen(false)}
+        onClose={() => { setComposeOpen(false); setComposeTo(""); }}
         contacts={contactsData?.contacts || []}
         accountEmail={account.emailAddress}
+        defaultTo={composeTo}
       />
     </div>
   );

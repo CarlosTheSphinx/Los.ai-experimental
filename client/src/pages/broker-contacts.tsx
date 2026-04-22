@@ -16,6 +16,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -739,6 +740,23 @@ export default function BrokerContactsPage() {
               {/* Email history */}
               <ContactEmailHistory contact={viewContact} />
             </div>
+          )}
+          {viewContact?.email && (
+            <DialogFooter className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                data-testid={`button-send-email-contact-${viewContact.id}`}
+                onClick={() => {
+                  setViewContact(null);
+                  setLocation(`/broker/email?compose=${encodeURIComponent(viewContact.email!)}`);
+                }}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                Send Email
+              </Button>
+            </DialogFooter>
           )}
         </DialogContent>
       </Dialog>
