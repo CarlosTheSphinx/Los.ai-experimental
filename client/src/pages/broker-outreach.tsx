@@ -391,9 +391,20 @@ export default function BrokerOutreachPage() {
                     </div>
                     <Button
                       size="sm"
-                      onClick={() => executeSuggestion(suggestion.id)}
-                      disabled={isExecuting}
+                      onClick={() => {
+                        if (!hasChannel) {
+                          toast({
+                            title: 'Channel not connected',
+                            description: 'Connect a channel in Settings → Integrations before sending outreach.',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        executeSuggestion(suggestion.id);
+                      }}
+                      disabled={isExecuting || !hasChannel}
                       className="gap-2"
+                      title={!hasChannel ? 'Connect a channel in Settings → Integrations first' : undefined}
                     >
                       <Sparkles className="w-3 h-3" />
                       {suggestion.actionLabel}
