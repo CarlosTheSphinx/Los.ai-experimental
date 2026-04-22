@@ -181,14 +181,14 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
         ));
       if (!account) return res.json({ unreadCount: 0 });
 
-      const unreadThreads = await db.select({ id: emailThreads.id })
+      const [row] = await db.select({ count: sql<string>`COUNT(*)` })
         .from(emailThreads)
         .where(and(
           eq(emailThreads.accountId, account.id),
           eq(emailThreads.isUnread, true)
         ));
 
-      res.json({ unreadCount: unreadThreads.length });
+      res.json({ unreadCount: Number(row?.count ?? 0) });
     } catch (error: any) {
       console.error('Error fetching email unread count:', error);
       res.json({ unreadCount: 0 });
