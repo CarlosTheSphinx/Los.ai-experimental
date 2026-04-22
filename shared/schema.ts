@@ -2991,6 +2991,21 @@ export type InsertBrokerOutreachMessage = z.infer<
   typeof insertBrokerOutreachMessageSchema
 >;
 
+// Broker Channel Configs — per-broker Twilio/Gmail credentials for CRM outreach
+export const brokerChannelConfigs = pgTable("broker_channel_configs", {
+  id: serial("id").primaryKey(),
+  brokerId: integer("broker_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // 'sms' | 'email'
+  config: jsonb("config").notNull().default({}), // { accountSid, apiKey, apiKeySecret, fromNumber } for sms
+  isActive: boolean("is_active").default(true).notNull(),
+  smsApproved: boolean("sms_approved").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertBrokerChannelConfigSchema = createInsertSchema(brokerChannelConfigs).omit({ id: true, createdAt: true, updatedAt: true });
+export type BrokerChannelConfig = typeof brokerChannelConfigs.$inferSelect;
+export type InsertBrokerChannelConfig = z.infer<typeof insertBrokerChannelConfigSchema>;
+
 // AI Assistant Conversations - conversation history with AI assistant
 export const aiAssistantConversations = pgTable("ai_assistant_conversations", {
   id: serial("id").primaryKey(),

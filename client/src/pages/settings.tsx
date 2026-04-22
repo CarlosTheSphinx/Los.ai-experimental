@@ -29,7 +29,327 @@ import {
   CreditCard,
   FileText,
   Calendar,
+  Plug,
+  MessageSquare,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Send,
+  Trash2,
 } from "lucide-react";
+
+function BrokerIntegrationsTab() {
+  const { toast } = useToast();
+  const [smsForm, setSmsForm] = useState({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
+  const [testPhone, setTestPhone] = useState('');
+  const [showSmsForm, setShowSmsForm] = useState(false);
+
+  const { data: channels, isLoading: loadingChannels, refetch: refetchChannels } = useQuery<any>({
+    queryKey: ['/api/broker/channels'],
+  });
+
+  const saveSms = useMutation({
+    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms', smsForm),
+    onSuccess: () => {
+      toast({ title: 'SMS channel connected', description: 'Your Twilio account is linked.' });
+      setShowSmsForm(false);
+      setSmsForm({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
+      refetchChannels();
+    },
+    onError: async (err: any) => {
+      let msg = 'Failed to connect SMS channel';
+      try { msg = (await err.json?.())?.error || msg; } catch {}
+      toast({ title: 'Connection failed', description: msg, variant: 'destructive' });
+    },
+  });
+
+  const disconnectSms = useMutation({
+    mutationFn: async () => apiRequest('DELETE', '/api/broker/channels/sms'),
+    onSuccess: () => { toast({ title: 'SMS channel disconnected' }); refetchChannels(); },
+    onError: () => toast({ title: 'Failed to disconnect', variant: 'destructive' }),
+  });
+
+  const testSms = useMutation({
+    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms/test', { toNumber: testPhone }),
+    onSuccess: () => toast({ title: 'Test SMS sent!', description: `Message sent to ${testPhone}` }),
+    onError: async (err: any) => {
+      let msg = 'Failed to send test message';
+      try { msg = (await err.json?.())?.error || msg; } catch {}
+      toast({ title: 'Test failed', description: msg, variant: 'destructive' });
+    },
+  });
+
+  const disconnectEmail = useMutation({
+    mutationFn: async () => apiRequest('DELETE', '/api/broker/channels/email'),
+    onSuccess: () => { toast({ title: 'Gmail disconnected' }); refetchChannels(); },
+    onError: () => toast({ title: 'Failed to disconnect Gmail', variant: 'destructive' }),
+  });
+
+  const smsConnected = channels?.sms?.connected;
+  const emailConnected = channels?.email?.connected;
+
+  if (loadingChannels) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* SMS / Twilio Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <MessageSquare className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">SMS (Twilio)</CardTitle>
+                <CardDescription className="text-xs">Send personalized SMS from your own Twilio number</CardDescription>
+              </div>
+            </div>
+            {smsConnected ? (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                <CheckCircle2 className="h-3 w-3 mr-1" /> Connected
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Not connected</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {smsConnected ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-28">Account SID:</span>
+                  <span className="font-mono text-xs">{channels.sms.accountSid.slice(0, 8)}…</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-28">From Number:</span>
+                  <span className="font-medium">{channels.sms.fromNumber}</span>
+                </div>
+                {channels.sms.smsApproved && (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span className="text-xs">Approved for outreach</span>
+                  </div>
+                )}
+              </div>
+
+              {!channels.sms.smsApproved && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-amber-800 dark:text-amber-200 text-xs">
+                    Your SMS channel is pending approval. Contact support to activate outreach.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Send test SMS to</Label>
+                  <Input
+                    placeholder="+15551234567"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    data-testid="input-test-phone"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testSms.mutate()}
+                  disabled={testSms.isPending || !testPhone}
+                  data-testid="button-test-sms"
+                >
+                  {testSms.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Test
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setShowSmsForm(!showSmsForm); }}
+                  data-testid="button-edit-sms"
+                >
+                  Update credentials
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => disconnectSms.mutate()}
+                  disabled={disconnectSms.isPending}
+                  data-testid="button-disconnect-sms"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Connect your Twilio account to send SMS outreach from your own number.
+                You'll need your Account SID, API Key, API Key Secret, and a Twilio phone number.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => setShowSmsForm(true)}
+                data-testid="button-connect-sms"
+              >
+                <Plug className="h-3.5 w-3.5 mr-1.5" />
+                Connect Twilio
+              </Button>
+            </div>
+          )}
+
+          {showSmsForm && (
+            <div className="space-y-3 pt-4 border-t">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Twilio Credentials</p>
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Account SID</Label>
+                  <Input
+                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={smsForm.accountSid}
+                    onChange={(e) => setSmsForm({ ...smsForm, accountSid: e.target.value })}
+                    data-testid="input-twilio-account-sid"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">API Key SID</Label>
+                  <Input
+                    placeholder="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={smsForm.apiKey}
+                    onChange={(e) => setSmsForm({ ...smsForm, apiKey: e.target.value })}
+                    data-testid="input-twilio-api-key"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">API Key Secret</Label>
+                  <Input
+                    type="password"
+                    placeholder="Your API Key Secret"
+                    value={smsForm.apiKeySecret}
+                    onChange={(e) => setSmsForm({ ...smsForm, apiKeySecret: e.target.value })}
+                    data-testid="input-twilio-api-secret"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">From Phone Number</Label>
+                  <Input
+                    placeholder="+15551234567"
+                    value={smsForm.fromNumber}
+                    onChange={(e) => setSmsForm({ ...smsForm, fromNumber: e.target.value })}
+                    data-testid="input-twilio-from-number"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  onClick={() => saveSms.mutate()}
+                  disabled={saveSms.isPending || !smsForm.accountSid || !smsForm.apiKey || !smsForm.apiKeySecret || !smsForm.fromNumber}
+                  data-testid="button-save-sms"
+                >
+                  {saveSms.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />}
+                  Validate & Save
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowSmsForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Gmail Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <Mail className="h-4.5 w-4.5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Gmail</CardTitle>
+                <CardDescription className="text-xs">Sync your Gmail inbox to manage client conversations</CardDescription>
+              </div>
+            </div>
+            {emailConnected ? (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                <CheckCircle2 className="h-3 w-3 mr-1" /> Connected
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Not connected</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {emailConnected ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-28">Account:</span>
+                  <span className="font-medium">{channels.email.emailAddress}</span>
+                </div>
+                {channels.email.lastSyncAt && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground w-28">Last synced:</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(channels.email.lastSyncAt).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t">
+                <a
+                  href="/api/google/connect"
+                  className="text-sm text-primary underline underline-offset-4"
+                  data-testid="link-reconnect-gmail"
+                >
+                  Reconnect
+                </a>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => disconnectEmail.mutate()}
+                  disabled={disconnectEmail.isPending}
+                  data-testid="button-disconnect-gmail"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Connect Gmail to send and receive emails directly inside Lendry.
+                We'll only access your email with your permission.
+              </p>
+              <a href="/api/google/connect" data-testid="link-connect-gmail">
+                <Button size="sm">
+                  <Plug className="h-3.5 w-3.5 mr-1.5" />
+                  Connect Gmail
+                </Button>
+              </a>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function BorrowerProfileTab() {
   const { user } = useAuth();
@@ -435,6 +755,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("profile");
   const isBorrower = user?.role === "borrower";
+  const isBroker = user?.role === "broker";
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -495,6 +816,12 @@ export default function SettingsPage() {
             <Bell className="h-3.5 w-3.5 mr-1.5" />
             Notifications
           </TabsTrigger>
+          {isBroker && (
+            <TabsTrigger value="integrations" data-testid="tab-integrations">
+              <Plug className="h-3.5 w-3.5 mr-1.5" />
+              Integrations
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="profile" className="mt-4 space-y-4">
@@ -574,6 +901,12 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isBroker && (
+          <TabsContent value="integrations" className="mt-4">
+            <BrokerIntegrationsTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="notifications" className="mt-4 space-y-4">
           <Card>

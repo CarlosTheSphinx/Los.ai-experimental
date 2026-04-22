@@ -39,7 +39,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Send, Mail, MessageSquare, Copy, Check } from 'lucide-react';
+import { Sparkles, Send, Mail, MessageSquare, Copy, Check, Plug, AlertTriangle } from 'lucide-react';
+import { Link } from 'wouter';
 
 interface Contact {
   id: number;
@@ -89,6 +90,13 @@ interface Suggestion {
 export default function BrokerOutreachPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Channel config status
+  const { data: channels } = useQuery<any>({
+    queryKey: ['/api/broker/channels'],
+  });
+  const hasChannel = channels?.sms?.connected || channels?.email?.connected;
+  const channelsLoaded = channels !== undefined;
 
   // State
   const [prompt, setPrompt] = useState('');
@@ -319,6 +327,25 @@ export default function BrokerOutreachPage() {
             AI-powered outreach to find and engage your next borrower
           </p>
         </div>
+
+        {/* Channel setup notice */}
+        {channelsLoaded && !hasChannel && (
+          <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20" data-testid="banner-no-channel">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">Connect a channel before sending</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                You need to connect Twilio (SMS) or Gmail before you can send outreach messages.
+              </p>
+            </div>
+            <Link href="/settings">
+              <button className="shrink-0 text-xs font-medium text-amber-900 dark:text-amber-100 underline underline-offset-4 flex items-center gap-1.5" data-testid="link-setup-integrations">
+                <Plug className="h-3.5 w-3.5" />
+                Set up integrations
+              </button>
+            </Link>
+          </div>
+        )}
 
         {/* AI Suggestions Section */}
         {suggestions.length > 0 && messageStatus === 'idle' && (

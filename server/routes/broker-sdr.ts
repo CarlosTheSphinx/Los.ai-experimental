@@ -5,6 +5,8 @@ import { db } from '../db';
 import {
   brokerContacts,
   brokerOutreachMessages,
+  brokerChannelConfigs,
+  emailAccounts,
   users,
 } from '@shared/schema';
 import { eq, and, or, ilike, desc, asc, inArray } from 'drizzle-orm';
@@ -535,6 +537,171 @@ export function registerBrokerSdrRoutes(app: Express) {
       });
     } catch (error: any) {
       console.error('Error fetching stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== BROKER CHANNEL CONFIG ====================
+
+  // GET /api/broker/channels — return SMS config + Gmail email account status
+  app.get('/api/broker/channels', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+
+      const [smsRow] = await db.select().from(brokerChannelConfigs)
+        .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
+
+      const [emailRow] = await db.select({
+        id: emailAccounts.id,
+        emailAddress: emailAccounts.emailAddress,
+        isActive: emailAccounts.isActive,
+        lastSyncAt: emailAccounts.lastSyncAt,
+      }).from(emailAccounts)
+        .where(and(eq(emailAccounts.userId, brokerId), eq(emailAccounts.isActive, true)));
+
+      const smsConfig = smsRow ? (smsRow.config as any) : null;
+
+      res.json({
+        sms: smsRow ? {
+          connected: true,
+          accountSid: smsConfig?.accountSid || '',
+          fromNumber: smsConfig?.fromNumber || '',
+          smsApproved: smsRow.smsApproved,
+          hasApiKey: !!(smsConfig?.apiKey),
+        } : { connected: false },
+        email: emailRow ? {
+          connected: true,
+          emailAddress: emailRow.emailAddress,
+          lastSyncAt: emailRow.lastSyncAt,
+        } : { connected: false },
+      });
+    } catch (error: any) {
+      console.error('Error fetching broker channels:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/broker/channels/sms — save & validate Twilio credentials
+  app.post('/api/broker/channels/sms', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      const { accountSid, apiKey, apiKeySecret, fromNumber } = req.body;
+
+      if (!accountSid || !apiKey || !apiKeySecret || !fromNumber) {
+        return res.status(400).json({ error: 'accountSid, apiKey, apiKeySecret, and fromNumber are required' });
+      }
+
+      // Validate credentials against Twilio API
+      try {
+        const twilio = (await import('twilio')).default;
+        const client = twilio(apiKey, apiKeySecret, { accountSid });
+        await client.api.accounts(accountSid).fetch();
+      } catch (twilioErr: any) {
+        return res.status(400).json({ error: `Twilio validation failed: ${twilioErr.message || 'Invalid credentials'}` });
+      }
+
+      // Upsert config
+      const [existing] = await db.select().from(brokerChannelConfigs)
+        .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
+
+      const configPayload = { accountSid, apiKey, apiKeySecret, fromNumber };
+
+      if (existing) {
+        await db.update(brokerChannelConfigs)
+          .set({ config: configPayload, isActive: true, updatedAt: new Date() })
+          .where(eq(brokerChannelConfigs.id, existing.id));
+      } else {
+        await db.insert(brokerChannelConfigs).values({
+          brokerId,
+          type: 'sms',
+          config: configPayload,
+          isActive: true,
+          smsApproved: false,
+        });
+      }
+
+      res.json({ success: true, message: 'SMS channel connected successfully' });
+    } catch (error: any) {
+      console.error('Error saving SMS channel:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/broker/channels/sms — disconnect SMS channel
+  app.delete('/api/broker/channels/sms', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      await db.delete(brokerChannelConfigs)
+        .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/broker/channels/sms/test — send test SMS to broker's phone
+  app.post('/api/broker/channels/sms/test', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      const { toNumber } = req.body;
+
+      if (!toNumber) {
+        return res.status(400).json({ error: 'toNumber is required' });
+      }
+
+      const [smsRow] = await db.select().from(brokerChannelConfigs)
+        .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
+
+      if (!smsRow) {
+        return res.status(400).json({ error: 'No SMS channel configured. Please save your credentials first.' });
+      }
+
+      const cfg = smsRow.config as any;
+      const twilio = (await import('twilio')).default;
+      const client = twilio(cfg.apiKey, cfg.apiKeySecret, { accountSid: cfg.accountSid });
+
+      await client.messages.create({
+        body: 'Test message from Lendry.AI — your SMS channel is connected and working! 🎉',
+        from: cfg.fromNumber,
+        to: toNumber,
+      });
+
+      res.json({ success: true, message: 'Test SMS sent successfully' });
+    } catch (error: any) {
+      console.error('Error sending test SMS:', error);
+      res.status(500).json({ error: `Failed to send test SMS: ${error.message}` });
+    }
+  });
+
+  // GET /api/broker/channels/email — email account status (read from emailAccounts table)
+  app.get('/api/broker/channels/email', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const [emailRow] = await db.select({
+        id: emailAccounts.id,
+        emailAddress: emailAccounts.emailAddress,
+        isActive: emailAccounts.isActive,
+        lastSyncAt: emailAccounts.lastSyncAt,
+      }).from(emailAccounts)
+        .where(and(eq(emailAccounts.userId, req.user!.id), eq(emailAccounts.isActive, true)));
+
+      if (emailRow) {
+        res.json({ connected: true, emailAddress: emailRow.emailAddress, lastSyncAt: emailRow.lastSyncAt });
+      } else {
+        res.json({ connected: false });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/broker/channels/email — disconnect Gmail
+  app.delete('/api/broker/channels/email', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      await db.update(emailAccounts)
+        .set({ isActive: false })
+        .where(eq(emailAccounts.userId, req.user!.id));
+      res.json({ success: true });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
