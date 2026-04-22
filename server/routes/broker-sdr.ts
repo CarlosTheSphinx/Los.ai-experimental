@@ -1,4 +1,5 @@
 // Broker AI SDR / CRM API Routes
+import crypto from 'crypto';
 import { Express, Response } from 'express';
 import { AuthRequest, authenticateUser } from '../auth';
 import { db } from '../db';
@@ -19,6 +20,7 @@ interface TwilioConfig {
   apiKey: string;
   apiKeySecret: string;
   fromNumber: string;
+  webhookToken?: string; // Per-broker UUID used to authenticate the Twilio inbound webhook URL
 }
 
 /**
@@ -577,6 +579,7 @@ export function registerBrokerSdrRoutes(app: Express) {
           fromNumber: smsConfig?.fromNumber || '',
           smsApproved: smsRow.smsApproved,
           hasApiKey: !!(smsConfig?.apiKey),
+          webhookToken: smsConfig?.webhookToken || '',
         } : { connected: false },
         email: emailRow ? {
           connected: true,
@@ -613,11 +616,16 @@ export function registerBrokerSdrRoutes(app: Express) {
       const [existing] = await db.select().from(brokerChannelConfigs)
         .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
 
-      const configPayload = {
+      // Preserve existing webhookToken so the broker's Twilio webhook URL stays stable on re-save
+      const existingToken = existing ? (existing.config as TwilioConfig).webhookToken : undefined;
+      const webhookToken = existingToken || crypto.randomUUID();
+
+      const configPayload: TwilioConfig = {
         accountSid,
         apiKey: encryptToken(apiKey),
         apiKeySecret: encryptToken(apiKeySecret),
         fromNumber,
+        webhookToken,
       };
 
       if (existing) {
@@ -810,38 +818,47 @@ export function registerBrokerSdrRoutes(app: Express) {
 
   // ==================== TWILIO INBOUND WEBHOOK ====================
 
-  // POST /api/broker/twilio/inbound — Twilio calls this when a prospect replies
-  // No auth required (Twilio webhook). Dispatches by the To number.
+  // POST /api/broker/twilio/inbound — Twilio calls this when a prospect replies.
+  // No session auth (Twilio webhook), but each broker's webhook URL includes their
+  // unique ?token=<webhookToken> which is validated below before any DB mutation.
   app.post('/api/broker/twilio/inbound', async (req: any, res: Response) => {
     try {
       const { From, To, Body, MessageSid } = req.body;
+      const incomingToken = (req.query.token as string | undefined) || '';
 
       if (!From || !To || !Body) {
         return res.status(400).send('<Response></Response>');
       }
 
-      const normalizedTo = To.replace(/\s/g, '');
-      const normalizedFrom = From.replace(/\s/g, '');
-      const bodyTrimmed = Body.trim();
+      // ---- Webhook authentication via per-broker token ----
+      // Each broker's Twilio number is configured with a unique URL:
+      //   POST /api/broker/twilio/inbound?token=<webhookToken>
+      // We iterate active SMS configs and match the token; reject if none match.
+      if (!incomingToken) {
+        console.warn('[TwilioInbound] Request missing token — rejected');
+        return res.status(403).send('<Response></Response>');
+      }
 
-      // Find which broker owns this To number by looking in broker_channel_configs
       const allSmsConfigs = await db.select().from(brokerChannelConfigs)
         .where(and(eq(brokerChannelConfigs.type, 'sms'), eq(brokerChannelConfigs.isActive, true)));
 
       let matchedBrokerId: number | null = null;
       for (const cfg of allSmsConfigs) {
         const config = cfg.config as TwilioConfig;
-        const cfgFrom = (config.fromNumber || '').replace(/\s/g, '');
-        if (cfgFrom === normalizedTo) {
+        if (config.webhookToken && config.webhookToken === incomingToken) {
           matchedBrokerId = cfg.brokerId;
           break;
         }
       }
 
       if (!matchedBrokerId) {
-        console.warn(`[TwilioInbound] No broker found for To number: ${normalizedTo}`);
-        return res.status(200).send('<Response></Response>');
+        console.warn('[TwilioInbound] No broker matched incoming token — rejected');
+        return res.status(403).send('<Response></Response>');
       }
+
+      const normalizedFrom = From.replace(/\s/g, '');
+      const normalizedTo = To.replace(/\s/g, '');
+      const bodyTrimmed = Body.trim();
 
       // Find matching contact by phone number
       const allContacts = await db.query.brokerContacts.findMany({

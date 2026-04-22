@@ -44,6 +44,7 @@ interface SmsChannelStatus {
   fromNumber?: string;
   smsApproved?: boolean;
   hasApiKey?: boolean;
+  webhookToken?: string;
 }
 interface EmailChannelStatus {
   connected: boolean;
@@ -176,6 +177,18 @@ function BrokerIntegrationsTab() {
                   <p className="text-amber-800 dark:text-amber-200 text-xs">
                     Your SMS channel is pending approval. Contact support to activate outreach.
                   </p>
+                </div>
+              )}
+
+              {channels.sms.webhookToken && (
+                <div className="rounded-lg border bg-slate-50 dark:bg-slate-900/40 p-3 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Twilio Webhook URL</p>
+                  <p className="text-xs text-muted-foreground">Configure this URL in your Twilio console under the phone number's "A message comes in" webhook so inbound replies are captured.</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="text-xs font-mono bg-muted px-2 py-1 rounded flex-1 break-all select-all">
+                      {`${window.location.origin}/api/broker/twilio/inbound?token=${channels.sms.webhookToken}`}
+                    </code>
+                  </div>
                 </div>
               )}
 

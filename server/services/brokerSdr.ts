@@ -497,6 +497,13 @@ async function sendSmsMessageViaBrokerTwilio(
       };
     }
 
+    if (!smsRow.smsApproved) {
+      return {
+        success: false,
+        error: 'Your SMS channel is pending approval. Contact support to enable outbound SMS.',
+      };
+    }
+
     const cfg = smsRow.config as TwilioConfig;
 
     if (!cfg.apiKey || !cfg.apiKeySecret || !cfg.accountSid || !cfg.fromNumber) {
