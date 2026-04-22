@@ -266,6 +266,10 @@ export function DynamicQuoteForm({ fields, onSubmit, isLoading, defaultData, pro
     visibleFields.forEach(f => {
       if (defaultData && defaultData[f.fieldKey] !== undefined) {
         let val = defaultData[f.fieldKey];
+        // yes_no fields are stored as booleans by handleFormSubmit; convert back to strings for the Select.
+        if (f.fieldType === 'yes_no' && typeof val === 'boolean') {
+          val = val ? 'Yes' : 'No';
+        }
         // For select fields, if the stored value is a human label rather than an option ID,
         // reverse-resolve it back to the option ID so the Select renders correctly.
         if ((f.fieldType === 'select' || f.fieldType === 'radio') && val && typeof val === 'string') {

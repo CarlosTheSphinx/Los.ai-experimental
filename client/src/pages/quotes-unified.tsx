@@ -1488,9 +1488,37 @@ export default function QuotesUnified() {
                           const aliased = applyKeyAliases(data as Record<string, any>, keyAliases);
                           const augmented = resolvePricingDisplayLabels(aliased, selectedProgram);
                           if (loanProductType === "dscr") {
-                            handleDSCRSubmit(augmented as any);
+                            // Store the pre-label-transform data (option IDs intact) so that
+                            // quote duplication can reverse-resolve dropdowns correctly.
+                            setDscrFormData(aliased as any);
+                            setScraperDebug(null);
+                            setShowScraperDebug(false);
+                            getPricing({ ...augmented, programId: selectedProgramId ?? undefined }, {
+                              onSuccess: (response: any) => {
+                                setDscrResult(response);
+                                if (response.scraperPayload) {
+                                  setScraperDebug({
+                                    ...response.scraperPayload,
+                                    formResult: response.formResult,
+                                  });
+                                }
+                              },
+                              onError: (error: any) => {
+                                if (error.scraperPayload) {
+                                  setScraperDebug({
+                                    ...error.scraperPayload,
+                                    error: error.message,
+                                    formResult: error.debug?.formResult,
+                                    bodySnippet: error.debug?.rateDebugInfo?.bodySnippet,
+                                  });
+                                  setShowScraperDebug(true);
+                                }
+                              },
+                            });
                           } else {
-                            handleRTLSubmit(augmented as any);
+                            // Store option IDs (aliased) for duplication; send labels (augmented) to API.
+                            setRtlFormData(aliased as any);
+                            rtlPricingMutation.mutate(augmented as any);
                           }
                         }}
                         isLoading={loanProductType === "dscr" ? dscrPending : rtlPricingMutation.isPending}
