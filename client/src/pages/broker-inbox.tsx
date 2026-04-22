@@ -401,7 +401,7 @@ export default function BrokerInboxPage() {
     const error = searchParams.get("error");
     if (success === "google_connected" || success === "email_connected") {
       toast({ title: "Gmail Connected", description: "Your Gmail account has been connected. Syncing emails now..." });
-      syncMutation.mutate();
+      syncMutation();
       window.history.replaceState({}, "", "/broker/email");
     }
     if (error) {

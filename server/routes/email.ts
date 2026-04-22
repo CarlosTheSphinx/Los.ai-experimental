@@ -3,6 +3,7 @@ import type { AuthRequest } from '../auth';
 import type { RouteDeps } from './types';
 import { eq, desc, and, sql, ilike, or, inArray } from 'drizzle-orm';
 import { emailAccounts, emailThreads, emailMessages, emailThreadDealLinks, projects, users } from '@shared/schema';
+import type { EmailThread } from '@shared/schema';
 import { getGmailAuthUrl, exchangeGmailCode, syncEmails, getAttachment, checkLinkedThreadsForNewEmails, sendReply, sendNewEmail } from '../services/gmail';
 import { encryptToken } from '../utils/encryption';
 
@@ -236,10 +237,10 @@ export function registerEmailRoutes(app: Express, deps: RouteDeps) {
       if (participant) {
         const participantEmail = (participant as string).toLowerCase().trim();
         if (participantEmail) {
-          threads = threads.filter(t => {
+          threads = threads.filter((t: EmailThread) => {
             if (!t.participants || !Array.isArray(t.participants)) return false;
             return (t.participants as string[]).some(
-              p => p.toLowerCase() === participantEmail
+              (p: string) => p.toLowerCase() === participantEmail
             );
           });
         }
