@@ -2,12 +2,19 @@
 // Handles AI-powered contact outreach, message generation, and automation suggestions
 
 import { db } from '../db';
-import { brokerContacts, brokerOutreachMessages, insertBrokerOutreachMessageSchema } from '@shared/schema';
+import { brokerContacts, brokerOutreachMessages, brokerChannelConfigs, insertBrokerOutreachMessageSchema } from '@shared/schema';
 import { eq, and, desc, gt, lt, inArray } from 'drizzle-orm';
-import { sendSms } from '../smsService';
 import { getResendClient } from '../email';
+import { decryptToken } from '../utils/encryption';
 import OpenAI from 'openai';
 import { differenceInDays } from 'date-fns';
+
+interface TwilioConfig {
+  accountSid: string;
+  apiKey: string;
+  apiKeySecret: string;
+  fromNumber: string;
+}
 
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 const openai = new OpenAI({
@@ -314,7 +321,7 @@ export async function suggestAutomations(
 export async function sendOutreachMessage(
   messageId: number,
   brokerId: number
-): Promise<{ success: boolean; error?: string; sentAt?: Date }> {
+): Promise<{ success: boolean; error?: string; sentAt?: Date; status?: string }> {
   try {
     // Fetch the message
     const message = await db.query.brokerOutreachMessages.findFirst({
@@ -333,32 +340,57 @@ export async function sendOutreachMessage(
       };
     }
 
-    let sendResult;
+    // For SMS: check opt-out status before sending
+    if (message.channel === 'sms' && message.contactId) {
+      const contact = await db.query.brokerContacts.findFirst({
+        where: (c) => eq(c.id, message.contactId!),
+      });
+      if (contact?.smsOptedOut) {
+        await db
+          .update(brokerOutreachMessages)
+          .set({ status: 'opted_out' } as any)
+          .where(eq(brokerOutreachMessages.id, messageId));
+        return { success: false, error: 'Contact has opted out of SMS', status: 'opted_out' };
+      }
+    }
+
+    let sendResult: { success: boolean; error?: string; twilioSid?: string };
 
     if (message.channel === 'email') {
       sendResult = await sendEmailMessage(message);
     } else if (message.channel === 'sms') {
-      sendResult = await sendSmsMessage(message);
+      sendResult = await sendSmsMessageViaBrokerTwilio(message, brokerId);
     } else {
       return { success: false, error: 'Unknown channel: ' + message.channel };
     }
 
     if (!sendResult.success) {
-      // Update message status to failed
       await db
         .update(brokerOutreachMessages)
-        .set({ status: 'failed' })
+        .set({ status: 'failed', deliveryStatus: 'failed' } as any)
         .where(eq(brokerOutreachMessages.id, messageId));
 
       return sendResult;
     }
 
-    // Update message status to sent
+    // Update message status to sent with Twilio SID if available
     const sentAt = new Date();
     await db
       .update(brokerOutreachMessages)
-      .set({ status: 'sent', sentAt })
+      .set({
+        status: 'sent',
+        sentAt,
+        ...(sendResult.twilioSid ? { twilioMessageSid: sendResult.twilioSid, deliveryStatus: 'sent' } : {}),
+      } as any)
       .where(eq(brokerOutreachMessages.id, messageId));
+
+    // Update contact's lastContactedAt
+    if (message.contactId) {
+      await db
+        .update(brokerContacts)
+        .set({ lastContactedAt: sentAt } as any)
+        .where(eq(brokerContacts.id, message.contactId));
+    }
 
     return { success: true, sentAt };
   } catch (error) {
@@ -435,24 +467,66 @@ async function sendEmailMessage(
 }
 
 /**
- * Helper: Send SMS message via Twilio
+ * Helper: Send SMS via broker's own Twilio number from broker_channel_configs
  */
-async function sendSmsMessage(
-  message: any
-): Promise<{ success: boolean; error?: string }> {
+async function sendSmsMessageViaBrokerTwilio(
+  message: any,
+  brokerId: number
+): Promise<{ success: boolean; error?: string; twilioSid?: string }> {
   try {
     if (!message.phone) {
-      return { success: false, error: 'Missing phone number' };
+      return { success: false, error: 'Missing phone number for contact' };
     }
 
-    const result = await sendSms(
-      message.phone,
-      message.personalizedBody || message.body
-    );
+    // Fetch broker's SMS channel config
+    const [smsRow] = await db
+      .select()
+      .from(brokerChannelConfigs)
+      .where(
+        and(
+          eq(brokerChannelConfigs.brokerId, brokerId),
+          eq(brokerChannelConfigs.type, 'sms'),
+          eq(brokerChannelConfigs.isActive, true)
+        )
+      );
 
-    return result;
+    if (!smsRow) {
+      return {
+        success: false,
+        error: 'No SMS channel configured. Connect your Twilio account in Settings → Integrations.',
+      };
+    }
+
+    const cfg = smsRow.config as TwilioConfig;
+
+    if (!cfg.apiKey || !cfg.apiKeySecret || !cfg.accountSid || !cfg.fromNumber) {
+      return { success: false, error: 'Incomplete Twilio configuration' };
+    }
+
+    // Normalize destination number
+    let toNumber = message.phone.replace(/\D/g, '');
+    if (!toNumber.startsWith('1') && toNumber.length === 10) {
+      toNumber = '1' + toNumber;
+    }
+    if (!toNumber.startsWith('+')) {
+      toNumber = '+' + toNumber;
+    }
+
+    const twilio = (await import('twilio')).default;
+    const client = twilio(decryptToken(cfg.apiKey), decryptToken(cfg.apiKeySecret), {
+      accountSid: cfg.accountSid,
+    });
+
+    const result = await client.messages.create({
+      body: message.personalizedBody || message.body,
+      from: cfg.fromNumber,
+      to: toNumber,
+    });
+
+    console.log(`[BrokerSMS] Sent from ${cfg.fromNumber} to ${toNumber}, SID: ${result.sid}`);
+    return { success: true, twilioSid: result.sid };
   } catch (error) {
-    console.error('Error sending SMS:', error);
+    console.error('Error sending broker SMS:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

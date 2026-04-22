@@ -29,6 +29,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +40,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Send, Mail, MessageSquare, Copy, Check, Plug, AlertTriangle } from 'lucide-react';
+import { Sparkles, Send, Mail, MessageSquare, Copy, Check, Plug, AlertTriangle, MessageCircle, Ban, RotateCcw } from 'lucide-react';
 import { Link } from 'wouter';
 
 interface Contact {
@@ -50,6 +51,7 @@ interface Contact {
   phone?: string;
   company?: string;
   contactType: string;
+  smsOptedOut?: boolean;
 }
 
 interface OutreachMessage {
@@ -60,9 +62,23 @@ interface OutreachMessage {
   subject?: string;
   body: string;
   personalizedBody: string;
-  status: 'draft' | 'approved' | 'sent' | 'failed';
+  status: 'draft' | 'approved' | 'sent' | 'failed' | 'opted_out';
   sentAt?: string;
   createdAt: string;
+  twilioMessageSid?: string;
+  deliveryStatus?: string;
+}
+
+interface SmsThreadEntry {
+  id: string;
+  direction: 'outbound' | 'inbound';
+  body: string;
+  status: string;
+  deliveryStatus?: string;
+  twilioMessageSid?: string;
+  fromNumber?: string;
+  isOptOut?: boolean;
+  timestamp: string;
 }
 
 interface GeneratedMessage {
@@ -109,6 +125,7 @@ export default function BrokerOutreachPage() {
   const [messageTab, setMessageTab] = useState('drafts');
   const [expandedMessage, setExpandedMessage] = useState<number | null>(null);
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [smsThreadContactId, setSmsThreadContactId] = useState<number | null>(null);
 
   // Fetch contacts
   const { data: contactsData } = useQuery({
@@ -148,6 +165,44 @@ export default function BrokerOutreachPage() {
   });
 
   const messages: OutreachMessage[] = messagesData || [];
+
+  // SMS thread for a selected contact
+  const { data: smsThreadData } = useQuery<{ contact: Contact; thread: SmsThreadEntry[]; smsOptedOut: boolean }>({
+    queryKey: ['broker-sms-thread', smsThreadContactId],
+    queryFn: async () => {
+      const res = await fetch(`/api/broker/contacts/${smsThreadContactId}/sms-thread`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch thread');
+      return res.json();
+    },
+    enabled: !!smsThreadContactId,
+  });
+
+  // Opt-out / opt-in mutations
+  const { mutate: optOut } = useMutation({
+    mutationFn: async (contactId: number) => {
+      const res = await fetch(`/api/broker/contacts/${contactId}/opt-out`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to opt out');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['broker-contacts-all'] });
+      queryClient.invalidateQueries({ queryKey: ['broker-sms-thread', smsThreadContactId] });
+      toast({ title: 'Contact opted out of SMS' });
+    },
+  });
+
+  const { mutate: optIn } = useMutation({
+    mutationFn: async (contactId: number) => {
+      const res = await fetch(`/api/broker/contacts/${contactId}/opt-in`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to opt in');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['broker-contacts-all'] });
+      queryClient.invalidateQueries({ queryKey: ['broker-sms-thread', smsThreadContactId] });
+      toast({ title: 'Contact re-opted into SMS' });
+    },
+  });
 
   // Generate messages mutation
   const { mutate: generateMessages, isPending: isGenerating } = useMutation({
@@ -452,9 +507,14 @@ export default function BrokerOutreachPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All contacts ({allContacts.length})</SelectItem>
-                    {allContacts.map((contact) => (
-                      <SelectItem key={contact.id} value={contact.id.toString()}>
+                    {allContacts.map((contact: Contact) => (
+                      <SelectItem
+                        key={contact.id}
+                        value={contact.id.toString()}
+                        disabled={channel === 'sms' && !!contact.smsOptedOut}
+                      >
                         {contact.firstName} {contact.lastName}
+                        {contact.smsOptedOut && channel === 'sms' && ' · Opted out'}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -618,19 +678,28 @@ export default function BrokerOutreachPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Contact</TableHead>
-                        <TableHead>Subject</TableHead>
+                        <TableHead>Subject / Preview</TableHead>
                         <TableHead>Channel</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Delivery</TableHead>
                         <TableHead>Date</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {messages.map((message) => (
                         <TableRow key={message.id}>
                           <TableCell className="font-medium">
-                            {message.contact?.firstName} {message.contact?.lastName}
+                            <div className="flex items-center gap-2">
+                              {message.contact?.firstName} {message.contact?.lastName}
+                              {message.contact?.smsOptedOut && (
+                                <Badge variant="outline" className="text-[10px] text-rose-600 border-rose-300 gap-0.5">
+                                  <Ban className="w-2.5 h-2.5" /> Opted out
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
-                          <TableCell className="max-w-xs truncate">
+                          <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                             {message.subject || message.body.substring(0, 50)}
                           </TableCell>
                           <TableCell>
@@ -645,16 +714,42 @@ export default function BrokerOutreachPage() {
                               variant={
                                 message.status === 'sent'
                                   ? 'default'
+                                  : message.status === 'opted_out'
+                                  ? 'outline'
                                   : message.status === 'draft'
                                   ? 'outline'
                                   : 'destructive'
                               }
+                              className={message.status === 'opted_out' ? 'text-rose-600 border-rose-300' : ''}
                             >
-                              {message.status}
+                              {message.status === 'opted_out' ? 'Opted out' : message.status}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {message.deliveryStatus ? (
+                              <span className={`text-xs ${message.deliveryStatus === 'delivered' ? 'text-emerald-600' : message.deliveryStatus === 'failed' || message.deliveryStatus === 'undelivered' ? 'text-rose-600' : 'text-muted-foreground'}`}>
+                                {message.deliveryStatus}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDate(message.sentAt || message.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            {message.channel === 'sms' && message.contactId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-xs"
+                                onClick={() => setSmsThreadContactId(message.contactId)}
+                                data-testid={`button-sms-thread-${message.id}`}
+                              >
+                                <MessageCircle className="w-3 h-3" />
+                                Thread
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -666,6 +761,88 @@ export default function BrokerOutreachPage() {
           </Tabs>
         )}
       </div>
+
+      {/* SMS Thread Dialog */}
+      <Dialog open={!!smsThreadContactId} onOpenChange={(open) => !open && setSmsThreadContactId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="w-4 h-4" />
+              SMS Thread — {smsThreadData?.contact?.firstName} {smsThreadData?.contact?.lastName}
+            </DialogTitle>
+            <DialogDescription className="flex items-center justify-between">
+              <span>{smsThreadData?.contact?.phone || 'No phone number'}</span>
+              {smsThreadData?.smsOptedOut ? (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-rose-600 border-rose-300 gap-1">
+                    <Ban className="w-3 h-3" /> Opted out
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1"
+                    onClick={() => smsThreadContactId && optIn(smsThreadContactId)}
+                    data-testid="button-opt-in-contact"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Re-subscribe
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs gap-1 text-rose-600 hover:text-rose-700"
+                  onClick={() => smsThreadContactId && optOut(smsThreadContactId)}
+                  data-testid="button-opt-out-contact"
+                >
+                  <Ban className="w-3 h-3" /> Mark opted out
+                </Button>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[360px] pr-2">
+            {!smsThreadData || smsThreadData.thread.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground text-sm">
+                No SMS messages yet for this contact.
+              </div>
+            ) : (
+              <div className="space-y-3 py-2">
+                {smsThreadData.thread.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={`flex ${entry.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm ${
+                        entry.direction === 'outbound'
+                          ? 'bg-primary text-primary-foreground rounded-br-sm'
+                          : entry.isOptOut
+                          ? 'bg-rose-100 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-bl-sm'
+                          : 'bg-muted rounded-bl-sm'
+                      }`}
+                    >
+                      <p className="leading-snug">{entry.body}</p>
+                      <div className={`flex items-center gap-1.5 mt-1 ${entry.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
+                        <span className="text-[10px] opacity-60">
+                          {entry.timestamp ? new Date(entry.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+                        </span>
+                        {entry.direction === 'outbound' && entry.deliveryStatus && (
+                          <span className={`text-[10px] font-medium ${entry.deliveryStatus === 'delivered' ? 'text-emerald-300' : entry.deliveryStatus === 'failed' ? 'text-rose-300' : 'opacity-60'}`}>
+                            · {entry.deliveryStatus}
+                          </span>
+                        )}
+                        {entry.isOptOut && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 text-rose-600 border-rose-300">STOP</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Send confirmation dialog */}
       <AlertDialog open={showSendDialog} onOpenChange={setShowSendDialog}>

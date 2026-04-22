@@ -6,6 +6,7 @@ import {
   brokerContacts,
   brokerOutreachMessages,
   brokerChannelConfigs,
+  brokerSmsReplies,
   emailAccounts,
   users,
 } from '@shared/schema';
@@ -721,6 +722,167 @@ export function registerBrokerSdrRoutes(app: Express) {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== SMS OPT-OUT MANAGEMENT ====================
+
+  // POST /api/broker/contacts/:id/opt-out — manually mark contact as SMS opted-out
+  app.post('/api/broker/contacts/:id/opt-out', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      const contactId = parseInt(req.params.id, 10);
+      const contact = await db.query.brokerContacts.findFirst({
+        where: (c) => and(eq(c.id, contactId), eq(c.brokerId, brokerId)),
+      });
+      if (!contact) return res.status(404).json({ error: 'Contact not found' });
+      await db.update(brokerContacts).set({ smsOptedOut: true } as any).where(eq(brokerContacts.id, contactId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/broker/contacts/:id/opt-in — remove SMS opt-out for contact
+  app.post('/api/broker/contacts/:id/opt-in', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      const contactId = parseInt(req.params.id, 10);
+      const contact = await db.query.brokerContacts.findFirst({
+        where: (c) => and(eq(c.id, contactId), eq(c.brokerId, brokerId)),
+      });
+      if (!contact) return res.status(404).json({ error: 'Contact not found' });
+      await db.update(brokerContacts).set({ smsOptedOut: false } as any).where(eq(brokerContacts.id, contactId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/broker/contacts/:id/sms-thread — sent messages + inbound replies for a contact
+  app.get('/api/broker/contacts/:id/sms-thread', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
+    try {
+      const brokerId = req.user!.id;
+      const contactId = parseInt(req.params.id, 10);
+
+      const contact = await db.query.brokerContacts.findFirst({
+        where: (c) => and(eq(c.id, contactId), eq(c.brokerId, brokerId)),
+      });
+      if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+      const sentMessages = await db.query.brokerOutreachMessages.findMany({
+        where: (m) => and(eq(m.brokerId, brokerId), eq(m.contactId, contactId), eq(m.channel, 'sms')),
+        orderBy: (m) => m.createdAt,
+      });
+
+      const replies = await db.query.brokerSmsReplies.findMany({
+        where: (r) => and(eq(r.brokerId, brokerId), eq(r.contactId, contactId)),
+        orderBy: (r) => r.receivedAt,
+      });
+
+      // Merge into chronological thread
+      const thread = [
+        ...sentMessages.map((m) => ({
+          id: `sent-${m.id}`,
+          direction: 'outbound' as const,
+          body: m.personalizedBody || m.body,
+          status: m.status,
+          deliveryStatus: m.deliveryStatus,
+          twilioMessageSid: m.twilioMessageSid,
+          timestamp: m.sentAt || m.createdAt,
+        })),
+        ...replies.map((r) => ({
+          id: `reply-${r.id}`,
+          direction: 'inbound' as const,
+          body: r.body,
+          status: r.isOptOut ? 'opted_out' : 'received',
+          fromNumber: r.fromNumber,
+          isOptOut: r.isOptOut,
+          timestamp: r.receivedAt,
+        })),
+      ].sort((a, b) => new Date(a.timestamp!).getTime() - new Date(b.timestamp!).getTime());
+
+      res.json({ contact, thread, smsOptedOut: contact.smsOptedOut });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== TWILIO INBOUND WEBHOOK ====================
+
+  // POST /api/broker/twilio/inbound — Twilio calls this when a prospect replies
+  // No auth required (Twilio webhook). Dispatches by the To number.
+  app.post('/api/broker/twilio/inbound', async (req: any, res: Response) => {
+    try {
+      const { From, To, Body, MessageSid } = req.body;
+
+      if (!From || !To || !Body) {
+        return res.status(400).send('<Response></Response>');
+      }
+
+      const normalizedTo = To.replace(/\s/g, '');
+      const normalizedFrom = From.replace(/\s/g, '');
+      const bodyTrimmed = Body.trim();
+
+      // Find which broker owns this To number by looking in broker_channel_configs
+      const allSmsConfigs = await db.select().from(brokerChannelConfigs)
+        .where(and(eq(brokerChannelConfigs.type, 'sms'), eq(brokerChannelConfigs.isActive, true)));
+
+      let matchedBrokerId: number | null = null;
+      for (const cfg of allSmsConfigs) {
+        const config = cfg.config as TwilioConfig;
+        const cfgFrom = (config.fromNumber || '').replace(/\s/g, '');
+        if (cfgFrom === normalizedTo) {
+          matchedBrokerId = cfg.brokerId;
+          break;
+        }
+      }
+
+      if (!matchedBrokerId) {
+        console.warn(`[TwilioInbound] No broker found for To number: ${normalizedTo}`);
+        return res.status(200).send('<Response></Response>');
+      }
+
+      // Find matching contact by phone number
+      const allContacts = await db.query.brokerContacts.findMany({
+        where: (c) => eq(c.brokerId, matchedBrokerId!),
+      });
+
+      let matchedContact = allContacts.find((c) => {
+        if (!c.phone) return false;
+        const normalized = c.phone.replace(/\D/g, '');
+        const incomingNorm = normalizedFrom.replace(/\D/g, '');
+        return normalized === incomingNorm || normalized === incomingNorm.replace(/^1/, '');
+      });
+
+      // Detect opt-out keywords
+      const isOptOut = /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT)$/i.test(bodyTrimmed);
+
+      // Store the reply
+      await db.insert(brokerSmsReplies).values({
+        brokerId: matchedBrokerId,
+        contactId: matchedContact?.id ?? null,
+        fromNumber: normalizedFrom,
+        toNumber: normalizedTo,
+        body: bodyTrimmed,
+        isOptOut,
+        twilioMessageSid: MessageSid || null,
+      });
+
+      // If opt-out, mark contact as opted out
+      if (isOptOut && matchedContact) {
+        await db.update(brokerContacts)
+          .set({ smsOptedOut: true } as any)
+          .where(eq(brokerContacts.id, matchedContact.id));
+        console.log(`[TwilioInbound] Opt-out received from ${normalizedFrom} — contact ${matchedContact.id} marked opted-out`);
+      }
+
+      // Respond with empty TwiML
+      res.set('Content-Type', 'text/xml');
+      res.send('<Response></Response>');
+    } catch (error: any) {
+      console.error('[TwilioInbound] Error processing inbound SMS:', error);
+      res.status(200).set('Content-Type', 'text/xml').send('<Response></Response>');
     }
   });
 }

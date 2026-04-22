@@ -2951,6 +2951,7 @@ export const brokerContacts = pgTable("broker_contacts", {
   tags: jsonb("tags"), // array of strings
   source: varchar("source", { length: 100 }),
   isActive: boolean("is_active").default(true).notNull(),
+  smsOptedOut: boolean("sms_opted_out").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -2975,12 +2976,27 @@ export const brokerOutreachMessages = pgTable("broker_outreach_messages", {
   subject: varchar("subject", { length: 255 }),
   body: text("body").notNull(),
   personalizedBody: text("personalized_body"),
-  status: varchar("status", { length: 50 }).default("draft").notNull(), // draft, approved, sent, failed, bounced
+  status: varchar("status", { length: 50 }).default("draft").notNull(), // draft, approved, sent, failed, bounced, opted_out
   sentAt: timestamp("sent_at"),
   openedAt: timestamp("opened_at"),
   clickedAt: timestamp("clicked_at"),
   aiGenerated: boolean("ai_generated").default(false),
+  twilioMessageSid: varchar("twilio_message_sid", { length: 100 }),
+  deliveryStatus: varchar("delivery_status", { length: 50 }), // queued, sent, delivered, failed, undelivered
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Broker SMS Replies - inbound replies captured via Twilio webhook
+export const brokerSmsReplies = pgTable("broker_sms_replies", {
+  id: serial("id").primaryKey(),
+  brokerId: integer("broker_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  contactId: integer("contact_id").references(() => brokerContacts.id, { onDelete: "set null" }),
+  fromNumber: varchar("from_number", { length: 50 }).notNull(),
+  toNumber: varchar("to_number", { length: 50 }).notNull(),
+  body: text("body").notNull(),
+  isOptOut: boolean("is_opt_out").default(false).notNull(),
+  twilioMessageSid: varchar("twilio_message_sid", { length: 100 }),
+  receivedAt: timestamp("received_at").defaultNow(),
 });
 
 export const insertBrokerOutreachMessageSchema = createInsertSchema(
@@ -2990,6 +3006,10 @@ export type BrokerOutreachMessage = typeof brokerOutreachMessages.$inferSelect;
 export type InsertBrokerOutreachMessage = z.infer<
   typeof insertBrokerOutreachMessageSchema
 >;
+
+export const insertBrokerSmsReplySchema = createInsertSchema(brokerSmsReplies).omit({ id: true, receivedAt: true });
+export type BrokerSmsReply = typeof brokerSmsReplies.$inferSelect;
+export type InsertBrokerSmsReply = z.infer<typeof insertBrokerSmsReplySchema>;
 
 // Broker Channel Configs — per-broker Twilio/Gmail credentials for CRM outreach
 export const brokerChannelConfigs = pgTable("broker_channel_configs", {
