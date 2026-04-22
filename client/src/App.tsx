@@ -80,6 +80,11 @@ import BrokerCommercialDeals, { DealForm as BrokerDealForm, DealDetail as Broker
 import SettingsPage from "@/pages/settings";
 import BorrowerDocumentsPage from "@/pages/borrower-documents";
 import AutomationsPage from "@/pages/admin/automations";
+import SupportTicketsPage from "@/pages/support-tickets";
+import SupportTicketDetailPage from "@/pages/support-ticket-detail";
+import AdminTicketsPage from "@/pages/admin/tickets";
+import AdminTicketDetailPage from "@/pages/admin/ticket-detail";
+import AdminNotificationSettingsPage from "@/pages/admin/notification-settings";
 import CommsChannelsPage from "@/pages/admin/comms/channels";
 import CommsTemplatesPage from "@/pages/admin/comms/templates";
 import CommsSendPage from "@/pages/admin/comms/send";
@@ -348,6 +353,13 @@ function MainRoutes() {
           <Route path="/admin/email" component={() => <AdminProtectedRoute component={EmailInboxPage} />} />
           <Route path="/admin/platform-integrations" component={() => <SuperAdminProtectedRoute component={IntegrationsPage} />} />
           <Route path="/admin/onboarding-config" component={() => <SuperAdminProtectedRoute component={OnboardingConfigPage} />} />
+
+          {/* Support Tickets */}
+          <Route path="/support" component={() => <ProtectedRoute component={SupportTicketsPage} />} />
+          <Route path="/support/tickets/:id" component={() => <ProtectedRoute component={SupportTicketDetailPage} />} />
+          <Route path="/admin/tickets" component={() => <AdminProtectedRoute component={AdminTicketsPage} />} />
+          <Route path="/admin/tickets/:id" component={() => <AdminProtectedRoute component={AdminTicketDetailPage} />} />
+          <Route path="/admin/notification-settings" component={() => <AdminProtectedRoute component={AdminNotificationSettingsPage} />} />
 
           {/* Automations (consolidated comms) */}
           <Route path="/admin/automations" component={() => <AdminProtectedRoute component={AutomationsPage} />} />

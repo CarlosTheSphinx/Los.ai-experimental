@@ -4582,3 +4582,118 @@ export const commsConsentRecords = pgTable("comms_consent_records", {
 export const insertCommsConsentRecordSchema = createInsertSchema(commsConsentRecords).omit({ id: true });
 export type CommsConsentRecord = typeof commsConsentRecords.$inferSelect;
 export type InsertCommsConsentRecord = z.infer<typeof insertCommsConsentRecordSchema>;
+
+// ==================== SUPPORT TICKETS ====================
+
+export const supportTickets = pgTable("support_tickets", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .references(() => tenants.id, { onDelete: "cascade" })
+    .notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // 'help' | 'bug' | 'feature'
+  subject: varchar("subject", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  status: varchar("status", { length: 30 }).default("open").notNull(), // 'open' | 'in_progress' | 'waiting_on_broker' | 'resolved' | 'closed'
+  // Help-only
+  category: varchar("category", { length: 50 }),
+  // Bug-only
+  severity: varchar("severity", { length: 20 }), // 'blocker' | 'major' | 'minor' | 'cosmetic'
+  stepsToReproduce: text("steps_to_reproduce"),
+  expectedBehavior: text("expected_behavior"),
+  actualBehavior: text("actual_behavior"),
+  // Feature-only
+  useCase: text("use_case"),
+  brokerPriority: varchar("broker_priority", { length: 30 }), // 'nice_to_have' | 'important' | 'critical'
+  // Auto-captured
+  pageUrl: text("page_url"),
+  browserOs: varchar("browser_os", { length: 255 }),
+  sessionActivity: jsonb("session_activity"), // last 5 actions blob (admin-only)
+  // People
+  submitterId: integer("submitter_id")
+    .references(() => users.id, { onDelete: "set null" }),
+  assignedToId: integer("assigned_to_id")
+    .references(() => users.id, { onDelete: "set null" }),
+  // Phase 4 (column added now, populated later)
+  botConversationId: integer("bot_conversation_id"),
+  // Archive flags (no hard delete)
+  archivedByBroker: boolean("archived_by_broker").default(false).notNull(),
+  archivedByAdmin: boolean("archived_by_admin").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantStatusTypeIdx: index("support_tickets_tenant_status_type_idx").on(table.tenantId, table.status, table.type),
+  submitterStatusIdx: index("support_tickets_submitter_status_idx").on(table.submitterId, table.status),
+}));
+
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  archivedByBroker: true,
+  archivedByAdmin: true,
+  assignedToId: true,
+  botConversationId: true,
+});
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+
+export const supportTicketMessages = pgTable("support_ticket_messages", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id")
+    .references(() => supportTickets.id, { onDelete: "cascade" })
+    .notNull(),
+  authorId: integer("author_id")
+    .references(() => users.id, { onDelete: "set null" }),
+  authorRole: varchar("author_role", { length: 20 }).notNull(), // 'broker' | 'admin' | 'system'
+  body: text("body").notNull(),
+  isInternal: boolean("is_internal").default(false).notNull(), // Phase 5; always false in Phase 1
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  ticketCreatedIdx: index("support_ticket_messages_ticket_created_idx").on(table.ticketId, table.createdAt),
+}));
+
+export const insertSupportTicketMessageSchema = createInsertSchema(supportTicketMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export type SupportTicketMessage = typeof supportTicketMessages.$inferSelect;
+export type InsertSupportTicketMessage = z.infer<typeof insertSupportTicketMessageSchema>;
+
+export const supportTicketAttachments = pgTable("support_ticket_attachments", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").references(() => supportTickets.id, { onDelete: "cascade" }),
+  messageId: integer("message_id").references(() => supportTicketMessages.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileUrl: text("file_url").notNull(), // object storage path (/objects/...)
+  mimeType: varchar("mime_type", { length: 120 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  uploadedById: integer("uploaded_by_id")
+    .references(() => users.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertSupportTicketAttachmentSchema = createInsertSchema(supportTicketAttachments).omit({
+  id: true,
+  uploadedAt: true,
+});
+export type SupportTicketAttachment = typeof supportTicketAttachments.$inferSelect;
+export type InsertSupportTicketAttachment = z.infer<typeof insertSupportTicketAttachmentSchema>;
+
+export const adminNotificationSettings = pgTable("admin_notification_settings", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .references(() => tenants.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  email: varchar("email", { length: 255 }).notNull(),
+  smsPhone: varchar("sms_phone", { length: 30 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAdminNotificationSettingsSchema = createInsertSchema(adminNotificationSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+export type AdminNotificationSettings = typeof adminNotificationSettings.$inferSelect;
+export type InsertAdminNotificationSettings = z.infer<typeof insertAdminNotificationSettingsSchema>;

@@ -1537,10 +1537,6 @@ export function registerCommsRoutes(
       const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
     }
   });
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err); res.status(500).json({ error: errMsg });
-    }
-  });
 
   app.delete('/api/comms/automations/:id', authenticateUser, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {

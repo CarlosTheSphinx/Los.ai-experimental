@@ -68,6 +68,7 @@ import { registerGoogleConnectRoutes } from './routes/googleConnect';
 import { registerMicrosoftConnectRoutes } from './routes/microsoftConnect';
 import commercialIntakeRouter from './routes/commercialIntake';
 import { registerCommsRoutes } from './routes/comms';
+import { registerSupportTicketRoutes } from './routes/supportTickets';
 import { startBatchSendWorker } from './comms/batchSendWorker';
 import { startAutomationWorker } from './comms/automationWorker';
 import { initializeTriggerSystem } from './comms/triggerService';
@@ -6064,6 +6065,7 @@ export async function registerRoutes(
 
   // ==================== COMMS AUTOMATIONS ROUTES ====================
   registerCommsRoutes(app, { authenticateUser, requireAdmin, requireSuperAdmin });
+  registerSupportTicketRoutes(app, { authenticateUser, requireAdmin, objectStorageService });
   startBatchSendWorker();
   startAutomationWorker();
   initializeTriggerSystem().catch(err => console.error('[triggerService] init failed:', err));

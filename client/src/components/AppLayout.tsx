@@ -38,6 +38,7 @@ import {
   ScrollText,
   Radio,
   Zap,
+  LifeBuoy,
 } from "lucide-react";
 import {
   Select,
@@ -116,6 +117,7 @@ const brokerNavItems: NavItem[] = [
   { href: "/broker/outreach", label: "Outreach", icon: MessageSquare, shortcut: undefined },
   { href: "/broker/email", label: "Email Inbox", icon: Mail, showEmailBadge: true, shortcut: undefined },
   { href: "/inbox", label: "Messages", icon: Inbox, shortcut: undefined },
+  { href: "/support", label: "Get Help", icon: LifeBuoy, shortcut: undefined },
   { href: "/resources", label: "Resources", icon: BookOpen, shortcut: undefined },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: undefined },
 ];
@@ -140,6 +142,7 @@ const adminNavItems: NavItem[] = [
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/automations", label: "Automations", icon: Zap },
+  { href: "/admin/tickets", label: "Support Tickets", icon: LifeBuoy },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
@@ -155,6 +158,7 @@ const adminNavItemsV2: NavItem[] = [
   { href: "/inbox", label: "Messages", icon: Inbox, requiredPermission: "messages.view" },
   { href: "/admin/users", label: "Users", icon: Users, requiredPermission: "users.view", shortcut: "⌘2" },
   { href: "/admin/automations", label: "Automations", icon: Zap },
+  { href: "/admin/tickets", label: "Support Tickets", icon: LifeBuoy },
   { href: "/admin/onboarding", label: "Onboarding", icon: BookOpen, requiredPermission: "onboarding.view" },
   { href: "/admin/settings", label: "Settings", icon: Settings, requiredPermission: "settings.view" },
   { href: "/admin/integrations", label: "Integrations", icon: Blocks, requiredPermission: "settings.view" },
