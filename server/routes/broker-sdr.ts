@@ -1,6 +1,6 @@
 // Broker AI SDR / CRM API Routes
 import crypto from 'crypto';
-import { Express, Response } from 'express';
+import { Express, Request, Response } from 'express';
 import { AuthRequest, authenticateUser } from '../auth';
 import { db } from '../db';
 import {
@@ -864,18 +864,27 @@ export function registerBrokerSdrRoutes(app: Express) {
   //      b. Otherwise we fall back to validating the per-broker ?token=<webhookToken>
   //         URL parameter that was generated at connect time.
   //   Requests that pass neither check are rejected before any DB mutation.
-  app.post('/api/broker/twilio/inbound', async (req: any, res: Response) => {
+  // Canonical E.164-style comparison: strip all non-digits, then strip leading '1' for US numbers
+  // so "+15551234567", "(555) 123-4567", "5551234567", and "15551234567" all match.
+  const normalizePhone = (num: string): string => {
+    const digits = num.replace(/\D/g, '');
+    return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  };
+
+  app.post('/api/broker/twilio/inbound', async (req: Request, res: Response) => {
     const twimlOk = () => res.set('Content-Type', 'text/xml').send('<Response></Response>');
 
     try {
-      const { From, To, Body, MessageSid } = req.body;
+      const { From, To, Body, MessageSid } = req.body as {
+        From?: string; To?: string; Body?: string; MessageSid?: string;
+      };
 
       if (!From || !To || !Body) {
         return res.status(400).send('<Response></Response>');
       }
 
-      const normalizedTo = To.replace(/\s/g, '');
-      const normalizedFrom = From.replace(/\s/g, '');
+      const normalizedTo = normalizePhone(To);
+      const normalizedFrom = normalizePhone(From);
       const bodyTrimmed = Body.trim();
 
       // ---- Step 1: Route by To number (spec-required primary dispatch) ----
@@ -887,8 +896,7 @@ export function registerBrokerSdrRoutes(app: Express) {
 
       for (const row of allSmsConfigs) {
         const cfg = row.config as TwilioConfig;
-        const cfgFrom = (cfg.fromNumber || '').replace(/\s/g, '');
-        if (cfgFrom === normalizedTo) {
+        if (normalizePhone(cfg.fromNumber || '') === normalizedTo) {
           matchedBrokerId = row.brokerId;
           matchedConfig = cfg;
           break;
@@ -934,12 +942,10 @@ export function registerBrokerSdrRoutes(app: Express) {
         where: (c) => eq(c.brokerId, matchedBrokerId!),
       });
 
-      const matchedContact = allContacts.find((c) => {
-        if (!c.phone) return false;
-        const normalized = c.phone.replace(/\D/g, '');
-        const incomingNorm = normalizedFrom.replace(/\D/g, '');
-        return normalized === incomingNorm || normalized === incomingNorm.replace(/^1/, '');
-      });
+      // Use the same normalizePhone helper for contact phone comparison
+      const matchedContact = allContacts.find((c) =>
+        c.phone ? normalizePhone(c.phone) === normalizedFrom : false
+      );
 
       // Detect opt-out keywords (per TCPA standards)
       const isOptOut = /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT)$/i.test(bodyTrimmed);

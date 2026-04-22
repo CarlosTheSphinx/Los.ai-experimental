@@ -16,6 +16,16 @@ interface TwilioConfig {
   fromNumber: string;
 }
 
+// Minimal shape of a broker outreach message needed for SMS sending
+interface SmsOutboundMessage {
+  id: number;
+  phone: string;
+  body: string;
+  personalizedBody: string | null;
+  contactId: number | null;
+  channel: string;
+}
+
 const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 const openai = new OpenAI({
   apiKey: aiApiKey || 'disabled',
@@ -348,18 +358,18 @@ export async function sendOutreachMessage(
       if (contact?.smsOptedOut) {
         await db
           .update(brokerOutreachMessages)
-          .set({ status: 'opted_out' } as any)
+          .set({ status: 'opted_out' })
           .where(eq(brokerOutreachMessages.id, messageId));
         return { success: false, error: 'Contact has opted out of SMS', status: 'opted_out' };
       }
     }
 
-    let sendResult: { success: boolean; error?: string; twilioSid?: string };
+    let sendResult: { success: boolean; error?: string; twilioSid?: string; twilioStatus?: string };
 
     if (message.channel === 'email') {
       sendResult = await sendEmailMessage(message);
     } else if (message.channel === 'sms') {
-      sendResult = await sendSmsMessageViaBrokerTwilio(message, brokerId);
+      sendResult = await sendSmsMessageViaBrokerTwilio(message as SmsOutboundMessage, brokerId);
     } else {
       return { success: false, error: 'Unknown channel: ' + message.channel };
     }
@@ -367,28 +377,37 @@ export async function sendOutreachMessage(
     if (!sendResult.success) {
       await db
         .update(brokerOutreachMessages)
-        .set({ status: 'failed', deliveryStatus: 'failed' } as any)
+        .set({ status: 'failed', deliveryStatus: 'failed' })
         .where(eq(brokerOutreachMessages.id, messageId));
 
       return sendResult;
     }
 
-    // Update message status to sent with Twilio SID if available
+    // Update message status to sent — store Twilio's actual returned status for accurate delivery tracking
     const sentAt = new Date();
+    const sentUpdatePayload: {
+      status: string;
+      sentAt: Date;
+      twilioMessageSid?: string;
+      deliveryStatus?: string;
+    } = { status: 'sent', sentAt };
+
+    if (sendResult.twilioSid) {
+      sentUpdatePayload.twilioMessageSid = sendResult.twilioSid;
+      // Use the provider's actual status (e.g. 'queued', 'sent') rather than hardcoding
+      sentUpdatePayload.deliveryStatus = sendResult.twilioStatus || 'queued';
+    }
+
     await db
       .update(brokerOutreachMessages)
-      .set({
-        status: 'sent',
-        sentAt,
-        ...(sendResult.twilioSid ? { twilioMessageSid: sendResult.twilioSid, deliveryStatus: 'sent' } : {}),
-      } as any)
+      .set(sentUpdatePayload)
       .where(eq(brokerOutreachMessages.id, messageId));
 
     // Update contact's lastContactedAt
     if (message.contactId) {
       await db
         .update(brokerContacts)
-        .set({ lastContactedAt: sentAt } as any)
+        .set({ lastContactedAt: sentAt })
         .where(eq(brokerContacts.id, message.contactId));
     }
 
@@ -470,9 +489,9 @@ async function sendEmailMessage(
  * Helper: Send SMS via broker's own Twilio number from broker_channel_configs
  */
 async function sendSmsMessageViaBrokerTwilio(
-  message: any,
+  message: SmsOutboundMessage,
   brokerId: number
-): Promise<{ success: boolean; error?: string; twilioSid?: string }> {
+): Promise<{ success: boolean; error?: string; twilioSid?: string; twilioStatus?: string }> {
   try {
     if (!message.phone) {
       return { success: false, error: 'Missing phone number for contact' };
@@ -530,8 +549,9 @@ async function sendSmsMessageViaBrokerTwilio(
       to: toNumber,
     });
 
-    console.log(`[BrokerSMS] Sent from ${cfg.fromNumber} to ${toNumber}, SID: ${result.sid}`);
-    return { success: true, twilioSid: result.sid };
+    console.log(`[BrokerSMS] Sent from ${cfg.fromNumber} to ${toNumber}, SID: ${result.sid}, status: ${result.status}`);
+    // result.status is Twilio's immediate status (typically 'queued' or 'accepted')
+    return { success: true, twilioSid: result.sid, twilioStatus: result.status };
   } catch (error) {
     console.error('Error sending broker SMS:', error);
     return {
