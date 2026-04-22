@@ -645,14 +645,19 @@ export function registerBrokerSdrRoutes(app: Express) {
     }
   });
 
-  // POST /api/broker/channels/sms/test — send test SMS to broker's phone
+  // POST /api/broker/channels/sms/test — send test SMS to the broker's own phone
   app.post('/api/broker/channels/sms/test', authenticateUser, requireBroker, async (req: AuthRequest, res: Response) => {
     try {
       const brokerId = req.user!.id;
-      const { toNumber } = req.body;
 
-      if (!toNumber) {
-        return res.status(400).json({ error: 'toNumber is required' });
+      // Fetch the broker's own phone number — test can only go to broker's account
+      const brokerUser = await db.query.users.findFirst({ where: (u) => eq(u.id, brokerId) });
+      const brokerPhone = brokerUser?.phone;
+
+      if (!brokerPhone) {
+        return res.status(400).json({
+          error: 'No phone number on your profile. Please add your phone number in Settings → Profile before testing.',
+        });
       }
 
       const [smsRow] = await db.select().from(brokerChannelConfigs)
@@ -669,10 +674,10 @@ export function registerBrokerSdrRoutes(app: Express) {
       await client.messages.create({
         body: 'Test message from Lendry.AI — your SMS channel is connected and working! 🎉',
         from: cfg.fromNumber,
-        to: toNumber,
+        to: brokerPhone,
       });
 
-      res.json({ success: true, message: 'Test SMS sent successfully' });
+      res.json({ success: true, message: `Test SMS sent to ${brokerPhone}` });
     } catch (error: any) {
       console.error('Error sending test SMS:', error);
       res.status(500).json({ error: `Failed to send test SMS: ${error.message}` });

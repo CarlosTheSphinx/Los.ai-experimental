@@ -39,10 +39,11 @@ import {
 } from "lucide-react";
 
 function BrokerIntegrationsTab() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [smsForm, setSmsForm] = useState({ accountSid: '', apiKey: '', apiKeySecret: '', fromNumber: '' });
-  const [testPhone, setTestPhone] = useState('');
   const [showSmsForm, setShowSmsForm] = useState(false);
+  const brokerPhone = (user as any)?.phone;
 
   const { data: channels, isLoading: loadingChannels, refetch: refetchChannels } = useQuery<any>({
     queryKey: ['/api/broker/channels'],
@@ -70,8 +71,8 @@ function BrokerIntegrationsTab() {
   });
 
   const testSms = useMutation({
-    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms/test', { toNumber: testPhone }),
-    onSuccess: () => toast({ title: 'Test SMS sent!', description: `Message sent to ${testPhone}` }),
+    mutationFn: async () => apiRequest('POST', '/api/broker/channels/sms/test', {}),
+    onSuccess: (data: any) => toast({ title: 'Test SMS sent!', description: data?.message || `Message sent to ${brokerPhone}` }),
     onError: async (err: any) => {
       let msg = 'Failed to send test message';
       try { msg = (await err.json?.())?.error || msg; } catch {}
@@ -149,21 +150,22 @@ function BrokerIntegrationsTab() {
                 </div>
               )}
 
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Send test SMS to</Label>
-                  <Input
-                    placeholder="+15551234567"
-                    value={testPhone}
-                    onChange={(e) => setTestPhone(e.target.value)}
-                    data-testid="input-test-phone"
-                  />
+              <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-dashed">
+                <div className="text-sm">
+                  <p className="font-medium text-xs text-muted-foreground mb-0.5">Send test to your phone</p>
+                  {brokerPhone ? (
+                    <p className="font-mono text-sm">{brokerPhone}</p>
+                  ) : (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      No phone on profile — add one in the Profile tab first
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => testSms.mutate()}
-                  disabled={testSms.isPending || !testPhone}
+                  disabled={testSms.isPending || !brokerPhone}
                   data-testid="button-test-sms"
                 >
                   {testSms.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}

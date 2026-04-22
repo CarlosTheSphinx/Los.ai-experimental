@@ -266,7 +266,7 @@ export default function BrokerOutreachPage() {
     if (!channels) return false;
     if (channel === 'email') return !!channels.email?.connected;
     if (channel === 'sms') return !!channels.sms?.connected;
-    if (channel === 'both') return !!channels.email?.connected || !!channels.sms?.connected;
+    if (channel === 'both') return !!channels.email?.connected && !!channels.sms?.connected;
     return false;
   })();
 
