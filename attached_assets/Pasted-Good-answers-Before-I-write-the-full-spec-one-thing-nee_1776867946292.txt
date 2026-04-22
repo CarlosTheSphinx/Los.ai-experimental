@@ -1,0 +1,351 @@
+Good answers. Before I write the full spec, one thing needs unpacking because it's going to trip you up otherwise — you flagged it yourself:
+"I need to configure the bot to also be a help bot on the website"
+You've actually got two separate-but-related "bots" in your head, and they're conflating:
+
+The broker-facing AI help bot (the system prompt I wrote for you in the last turn) — lives inside the Lendry broker portal, answers questions from logged-in brokers about Sphinx's programs and how to use the app.
+A website chatbot (on your public marketing site or the top of the broker portal login page) — answers questions from visitors who may not even be customers yet.
+
+The spec I wrote was for #1. It won't work well for #2 because:
+
+It assumes the user is an authenticated broker with a Sphinx relationship
+It has no understanding of marketing/sales context ("how do I become a broker with Sphinx?")
+It would refuse too many legitimate prospect questions
+
+Which did you actually mean? My read is #1 — you want the same bot already planned to be the first line of support inside the portal, with a "can't help, open a ticket" escalation path. That's clean and aligns with everything we've discussed. If you also want a public website bot, that's a separate feature we can scope later.
+Assumption I'm making unless you correct me: We're talking about #1 — the bot inside the authenticated broker portal. The escalation handoff from bot → ticket is part of THIS support ticket feature.
+
+With that assumption locked in, here's the full spec.
+
+ARTIFACT 1: Product Brief — Broker Support Ticket System
+Purpose
+Give brokers on Lendry a single, low-friction way to get help, report bugs, or request features. Give the lender (Carlos, as super admin) a single inbox to triage, respond, and track issues. Tightly integrated with the AI help bot so the bot handles volume and tickets only capture what matters.
+Actors
+
+Broker (submitter): logged into the portal. Opens tickets, uploads attachments, sees their own ticket history, receives updates.
+Super Admin / Lender (Carlos): reviews and responds to all tickets, triages bugs, manages feature request backlog.
+
+Core Concepts
+1. Ticket Types (3)
+
+Help Question: broker needs an answer or explanation. Resolved by a written reply.
+Bug Report: software defect. Resolved when fix is shipped or confirmed non-reproducible.
+Feature Request: product suggestion. Acknowledged quickly, reviewed when Carlos has time, marked as Under Review / Planned / Declined.
+
+2. Ticket Lifecycle
+Shared states across all types:
+
+Open — newly submitted, not yet responded to.
+In Progress — super admin has engaged; work is happening.
+Waiting on Broker — super admin replied and is waiting on more info/confirmation.
+Resolved — super admin marked resolved; broker can reopen within 14 days by replying.
+Closed — finalized (auto-close after 14 days in Resolved with no broker reply).
+
+Feature requests have additional sub-states: Under Review, Planned, Declined, Shipped. (No Kanban board in v1; these are just status values in the list view.)
+3. Intake Flow (broker side)
+The intake is bot-first:
+
+Broker clicks "Get Help" button (persistent in portal UI).
+Chat window opens with the AI help bot (the one we already speced).
+Bot attempts to answer within its scope.
+At any point, broker can click "This didn't solve my problem — open a ticket" OR the bot itself offers the escalation button when it detects it can't help.
+On escalation, broker picks ticket type (3 cards: Help / Bug / Request).
+Type-specific form appears, pre-filled with the bot conversation transcript.
+Broker fills required fields, attaches files, submits.
+Confirmation screen shows ticket ID, expected response time, and link to view ticket.
+
+Brokers can also bypass the bot entirely if they want ("Skip to ticket form" link), but the default is bot-first.
+4. Type-Specific Fields
+All tickets share:
+
+Subject (auto-suggested from bot convo if escalated, editable)
+Description (required)
+Attachments (optional, multiple files; encouraged)
+Status, created_at, updated_at
+Broker info (auto-attached)
+Bot conversation transcript (if escalated from bot)
+
+Help Questions additionally:
+
+Category dropdown (Deal submission / Documents / Pricing / Messaging / Account / Other)
+
+Bug Reports additionally:
+
+Severity (Blocker / Major / Minor / Cosmetic) — broker picks, lender can reclassify
+Steps to reproduce (required)
+Expected behavior
+Actual behavior
+Page/URL where it happened (auto-captured from where they clicked the button, editable)
+Browser + OS (auto-detected, editable)
+Screenshot (strongly nudged — "A screenshot helps us fix this 3x faster")
+
+Feature Requests additionally:
+
+Use case / problem being solved (required — this filters low-quality requests)
+Priority to broker (Nice to have / Important / Critical to my workflow)
+
+5. Response Time Commitments (shown to broker on submission)
+
+Help Questions: within 4 business hours
+Bug Reports: within 24 hours
+Feature Requests: reviewed within 5 business days (acknowledgment, not resolution)
+
+6. Notifications
+Broker receives (email + in-app):
+
+Ticket submitted (confirmation + ticket ID + expected response time)
+Super admin replies
+Status changes to Resolved
+Status changes to Planned or Shipped (feature requests only)
+
+Super Admin (Carlos) receives:
+
+In-app: notification for every new ticket
+Email: for every new ticket
+Email + SMS: immediately on new bug reports, regardless of severity (per your instruction)
+Daily digest email: open tickets summary, oldest unresolved, anything breaching SLA
+Broker replies: in-app + email
+
+7. Super Admin View
+Unified ticket inbox in super admin dashboard with:
+
+Filters: type, status, severity (bugs), date range, broker, unread-to-me.
+Sort: newest first (default), oldest first, most recent activity, SLA urgency.
+List columns: type icon, subject, broker name, status, severity (if bug), last updated, age.
+Quick actions from list: change status, reply, archive.
+
+Per-ticket detail view:
+
+Full thread (broker + admin messages)
+Attachments gallery
+Bot conversation transcript (if escalated) — collapsible
+Broker context sidebar: name, company, recent deals, last login, total ticket history
+Internal notes field (admin-only, never shown to broker)
+Reply box (public reply to broker)
+Status + severity controls
+Timeline of status changes
+
+Dashboard widgets:
+
+Count of open tickets by type
+Count of bugs by severity
+SLA breaches (tickets past their response window without a reply)
+Oldest unresolved ticket
+Trend graph: tickets submitted per week, last 8 weeks
+
+8. Broker View of Their Own Tickets
+"My Tickets" page in broker portal:
+
+List of all their tickets with status, type, last updated
+Filter by status
+Click in to see full thread, reply, add attachments, view status history
+Reopen a Resolved ticket by replying within 14-day window
+
+9. AI Bot Integration (the escalation handoff)
+When the bot can't help, it offers an "Open a support ticket" button. On click:
+
+Full bot conversation transcript captures (timestamps, messages both sides)
+Transcript attaches to new ticket invisibly (broker can see it if they expand; admin always sees it)
+Bot's best guess at ticket type pre-selects (e.g. if broker said "this is broken," bot suggests Bug Report)
+Description field pre-fills with a bot-generated summary: "Broker asked about X. I attempted Y. Issue unresolved because Z."
+Broker reviews, edits if needed, submits
+
+Bot's detection of "can't help" triggers:
+
+User explicitly asks ("how do I contact support?" "this isn't working")
+Bot's attempted answers followed by user frustration signals ("still not working," "that didn't help")
+Bot detects question outside scope (specific borrower qualification, legal advice, etc.)
+User clicks manual escalation button
+
+10. File Attachments
+
+Supported: images (PNG, JPG, GIF), PDFs, videos up to 50MB (helpful for bug reports with screen recordings), common doc types
+Max 10 files per ticket, 50MB each
+Stored in your existing file storage (likely same system as deal documents)
+Virus scanned on upload (use existing infra if available, otherwise simple file type validation for v1)
+Inline preview in admin view for images and PDFs
+
+Compliance / Audit
+
+All ticket activity logged with timestamps and actor ID
+Broker cannot delete tickets (only archive from their view)
+Admin can archive but not hard-delete (audit trail preserved)
+Attachments retained per your standard data retention policy
+
+Out of scope for v1 (explicitly deferred)
+
+Kanban board for feature requests (list view only)
+Public roadmap / customer-visible feature vote counts
+Ticket assignment / queues (only one admin for now: Carlos)
+Canned responses / macros
+CSAT surveys after resolution
+Integration with external dev trackers (GitHub, Linear, Jira) — tickets live only in Lendry
+Analytics beyond the dashboard widgets listed
+Multi-lender tenancy for tickets (Sphinx only for now)
+Auto-translation for non-English submissions
+
+Success metrics
+
+Broker can submit a ticket in under 60 seconds (bot → escalate → form → submit).
+AI bot resolves ≥50% of broker questions without ticket creation.
+Average time-to-first-response under target SLAs.
+Zero missed bug reports (every bug-type ticket acknowledged within 24h).
+
+
+ARTIFACT 2: Replit Build Prompt
+Copy everything below and give it to your Replit agent.
+
+Build a Broker Support Ticket System for Lendry.AI. Full product brief attached above (read it first). This spec is the buildable breakdown.
+Context you need to know
+
+The platform is Lendry.AI, a commercial loan origination SaaS. Only lender is Sphinx Capital; only super admin is Carlos.
+Users are brokers (logged-in portal users) and the super admin (Carlos).
+There is an AI help bot already speced for the broker portal. The ticket system integrates with it — tickets can be opened directly OR escalated from a bot conversation with the transcript attached.
+Existing infrastructure in the app: authentication, broker and deal records, email sending, in-app notifications, file storage. Use these. Do not rebuild.
+SMS sending: Twilio is configured. A separate Communications Automations module is being built that will own the Twilio integration long-term. For now, the ticket system should send bug-report alert SMS to Carlos using whatever direct Twilio integration exists or a minimal wrapper. Keep the wrapper clean so it can be swapped for the Automations module later without refactoring ticket code.
+
+Before you code
+
+Read the full product brief.
+Ask clarifying questions about anything ambiguous.
+Propose the data model (schema) for my review.
+Propose a phased build order for my approval.
+Wait for explicit "approved, start Phase 1" before implementing.
+
+Data model (propose, wait for approval)
+Tables to propose:
+
+tickets — core record. Fields: id, type (enum: help/bug/feature_request), subject, description, status, severity (nullable, bugs only), category (nullable, help only), broker_priority (nullable, feature requests only), use_case (nullable, feature requests only), steps_to_reproduce + expected_behavior + actual_behavior + page_url + browser_os (nullable, bugs only), submitter_id (FK to users/brokers), assigned_to_id (nullable, FK to users — for future queue support, unused in v1), created_at, updated_at, resolved_at, closed_at, feature_request_substate (nullable enum: under_review/planned/declined/shipped), bot_conversation_id (nullable FK).
+ticket_messages — threaded replies. Fields: id, ticket_id, author_id, author_role (broker/admin), body, is_internal (bool, admin-only internal notes), created_at. Attachments link here OR directly to ticket.
+ticket_attachments — file records. Fields: id, ticket_id (nullable), message_id (nullable — one of the two must be set), file_name, file_url, mime_type, size_bytes, uploaded_by_id, uploaded_at. File storage via existing file storage infrastructure.
+ticket_status_history — audit trail. Fields: id, ticket_id, from_status, to_status, changed_by_id, changed_at, note (optional context).
+bot_conversations — conversation transcripts from the AI help bot. Fields: id, broker_id, started_at, ended_at, messages (JSONB array of {role, content, timestamp}), escalated_to_ticket_id (nullable). If a bot conversation schema already exists in the app, extend it rather than creating a new one.
+
+Think carefully about indexes — ticket list queries filtered by status + type + broker will be the hottest path. Index accordingly.
+Core subsystems to build
+1. Intake flow (broker side)
+Entry points:
+
+Persistent "Get Help" button in the broker portal UI (pick an appropriate location — header or sidebar).
+Same button also accessible from a bot conversation (the bot can open the ticket form mid-conversation).
+
+Flow:
+
+Click "Get Help" → bot chat opens first (bot-first by design).
+Bot conversation proceeds normally.
+Bot offers escalation button when it detects it can't help (triggers listed in product brief).
+Broker can also manually click "Skip to ticket form" at any point.
+On escalation, show 3 type-selection cards with icons and one-line descriptions:
+
+Help Question: "I need an answer or explanation."
+Bug Report: "Something in the app isn't working right."
+Feature Request: "I have an idea for something new."
+
+
+On type selection, show type-appropriate form. Pre-fill subject + description from bot conversation if available.
+On submit, show confirmation with ticket ID, response-time expectation, link to "My Tickets."
+
+Form specifics:
+
+Help: subject, description, category dropdown, attachments.
+Bug: subject, description, severity, steps-to-reproduce, expected, actual, page URL (auto-filled from referrer — the page the broker was on when they clicked "Get Help"), browser/OS (auto-detected), attachments with a prominent "screenshot recommended" nudge.
+Feature: subject, description, use case (required), priority-to-broker, attachments.
+
+Auto-capture (do this for every ticket):
+
+Page URL / route at time of ticket open
+Browser user agent, OS
+Broker's recent session activity (last 5 actions) — include as an internal-only metadata blob visible to admin, helps debug bugs
+
+2. Admin (super admin) view
+Lives under the super admin dashboard. Routes:
+
+/admin/tickets — list view. Default filter: all open tickets, newest first. Filter UI with type, status, severity, broker, date range, "has unread admin messages." Sort options. Pagination.
+/admin/tickets/:id — detail view. Full thread, attachments, bot transcript (collapsed by default), broker context sidebar, internal notes field, reply box, status/severity controls, status history timeline.
+/admin/dashboard — ensure the existing admin dashboard surfaces ticket widgets (open count by type, SLA breaches, oldest unresolved, weekly trend graph).
+
+Broker context sidebar on the ticket detail page should show (read from existing broker data):
+
+Broker name, company, email, phone
+Number of active deals, recent deal list (5 most recent)
+Last login date
+Total tickets submitted (lifetime) + breakdown by type
+Link to their full broker profile
+
+3. Broker "My Tickets" view
+
+/portal/support/tickets — list of broker's own tickets.
+/portal/support/tickets/:id — detail view with thread, attachment view, reply box.
+Status filter, search by subject.
+Reopen resolved ticket by replying (if within 14-day window).
+
+4. Notification system
+Use existing email and in-app notification infrastructure. For SMS, use a minimal Twilio wrapper that can be swapped for the Communications Automations module later.
+Triggers and recipients:
+EventBroker getsCarlos getsTicket created (any type)Email confirmation, in-appEmail, in-appTicket created (bug, any severity)same as aboveAdditional: SMS, immediatelyAdmin replyEmail, in-app—Broker reply—Email, in-appStatus changed to ResolvedEmail, in-app—Status changed to Planned/Shipped (feature req)Email, in-app—Daily digest—Email, 9am local, summary of open tickets + SLA breaches
+SMS format for bug alerts: [Lendry] New BUG from {broker_name} ({severity}): {subject_truncated}. View: {short_url}.
+5. Bot escalation handoff
+Integration contract with the AI help bot:
+
+Bot exposes a method escalateToTicket(conversationId, suggestedType?, suggestedSubject?, suggestedDescription?) that opens the ticket form pre-filled.
+On form submit, bot conversation is linked to ticket via bot_conversation_id.
+Bot conversation transcript is viewable on the ticket detail page (both broker and admin).
+If bot escalates automatically (detected can't-help), bot sends a message like "I'll open a ticket for you. Can you confirm the details below?" and shows the pre-filled form inline.
+
+If the bot module isn't built yet, scaffold a clean interface the bot can call into, and build a stub for testing. The ticket system must work standalone (direct submission bypassing bot) even if the bot isn't wired up.
+6. Status transitions and SLA tracking
+Status state machine:
+
+Open → In Progress (admin opens or replies)
+In Progress → Waiting on Broker (admin replies asking for more info)
+Waiting on Broker → In Progress (broker replies)
+In Progress → Resolved (admin marks resolved)
+Resolved → Closed (auto, 14 days no reply)
+Resolved → In Progress (broker replies within 14 days — ticket reopens)
+
+SLA rules:
+
+Every ticket has a response_due_at timestamp computed at creation based on type:
+
+Help: created_at + 4 business hours
+Bug: created_at + 24 hours (calendar, not business — bugs don't wait for weekends)
+Feature Request: created_at + 5 business days
+
+
+Tickets past response_due_at with no admin reply are flagged as SLA breach in the admin view.
+SLA breach triggers: inclusion in daily digest, visual flag in list view. No auto-escalation in v1.
+
+7. File attachments
+
+Use existing file storage.
+Validate file types (allowlist: images, PDFs, videos, office docs, text).
+Max 10 files per ticket, 50MB per file.
+Inline preview for images and PDFs in admin view; download link for others.
+Secure access — files only accessible to ticket participants (broker submitter, super admin) via signed URLs.
+
+8. Phased build order (propose your refined version)
+Suggested phasing:
+
+Phase 1: Foundation. Schema, migrations, ticket CRUD API, broker submission form (direct, no bot integration yet), file attachments, broker "My Tickets" view, admin ticket list + detail view, basic notifications (email + in-app, no SMS yet).
+Phase 2: Bug SMS + daily digest. Twilio bug alert SMS. Daily digest email job.
+Phase 3: Status machine + SLA. Full status state machine, SLA tracking, SLA breach flags, reopen logic.
+Phase 4: Bot escalation. Wire up the AI help bot escalation handoff. Pre-fill logic, transcript attachment, stub interface if bot isn't ready.
+Phase 5: Polish. Broker context sidebar, dashboard widgets, admin internal notes, audit trail UI, reply notifications.
+
+Non-negotiables
+
+Every ticket MUST capture: page URL, browser/OS, broker identity at submission time (no anonymous tickets).
+Bug reports MUST trigger SMS to Carlos regardless of severity, immediately on creation. No batching, no delay.
+Brokers MUST be able to see full history of their own tickets with threading.
+Admin MUST be able to add internal notes that brokers cannot see. Never leak internal notes.
+File attachments MUST be secured — only ticket participants can access. Use signed URLs, don't expose direct storage paths.
+No hard-deletes. Archive only. Audit trail preserved.
+
+What I want from you next
+
+Confirm you've read both the product brief and this build prompt.
+Ask clarifying questions.
+Propose the Prisma schema for my review.
+Propose your refined phased build order.
+Wait for explicit approval before implementing Phase 1.
+
+Do not start coding until I say "approved, start Phase 1."
