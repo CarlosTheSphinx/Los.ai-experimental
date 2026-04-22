@@ -262,7 +262,24 @@ export default function BrokerOutreachPage() {
     },
   });
 
+  const channelReady = (() => {
+    if (!channels) return false;
+    if (channel === 'email') return !!channels.email?.connected;
+    if (channel === 'sms') return !!channels.sms?.connected;
+    if (channel === 'both') return !!channels.email?.connected || !!channels.sms?.connected;
+    return false;
+  })();
+
   const handleGenerate = () => {
+    if (!channelReady) {
+      toast({
+        title: 'Channel not connected',
+        description: 'Please connect a channel in Settings → Integrations before sending outreach.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!prompt.trim()) {
       toast({
         title: 'Error',
@@ -457,9 +474,11 @@ export default function BrokerOutreachPage() {
 
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating}
+              disabled={isGenerating || !channelReady}
               size="lg"
               className="w-full gap-2"
+              data-testid="button-generate-messages"
+              title={!channelReady ? 'Connect a channel in Settings → Integrations first' : undefined}
             >
               <Sparkles className="w-4 h-4" />
               {isGenerating ? 'Generating...' : 'Generate Messages'}

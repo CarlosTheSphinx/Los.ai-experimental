@@ -312,7 +312,7 @@ function BrokerIntegrationsTab() {
               </div>
               <div className="flex items-center justify-between pt-2 border-t">
                 <a
-                  href="/api/google/connect"
+                  href="/api/google/connect?returnTo=/settings%3Ftab%3Dintegrations"
                   className="text-sm text-primary underline underline-offset-4"
                   data-testid="link-reconnect-gmail"
                 >
@@ -337,7 +337,7 @@ function BrokerIntegrationsTab() {
                 Connect Gmail to send and receive emails directly inside Lendry.
                 We'll only access your email with your permission.
               </p>
-              <a href="/api/google/connect" data-testid="link-connect-gmail">
+              <a href="/api/google/connect?returnTo=/settings%3Ftab%3Dintegrations" data-testid="link-connect-gmail">
                 <Button size="sm">
                   <Plug className="h-3.5 w-3.5 mr-1.5" />
                   Connect Gmail
@@ -753,7 +753,12 @@ function BrokerProfileTab() {
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('tab') || 'profile';
+    } catch { return 'profile'; }
+  });
   const isBorrower = user?.role === "borrower";
   const isBroker = user?.role === "broker";
 

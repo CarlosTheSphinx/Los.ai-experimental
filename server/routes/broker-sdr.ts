@@ -11,6 +11,7 @@ import {
 } from '@shared/schema';
 import { eq, and, or, ilike, desc, asc, inArray } from 'drizzle-orm';
 import * as sdrService from '../services/brokerSdr';
+import { encryptToken, decryptToken } from '../utils/encryption';
 
 /**
  * Middleware: Ensure user is a broker
@@ -604,7 +605,12 @@ export function registerBrokerSdrRoutes(app: Express) {
       const [existing] = await db.select().from(brokerChannelConfigs)
         .where(and(eq(brokerChannelConfigs.brokerId, brokerId), eq(brokerChannelConfigs.type, 'sms')));
 
-      const configPayload = { accountSid, apiKey, apiKeySecret, fromNumber };
+      const configPayload = {
+        accountSid,
+        apiKey: encryptToken(apiKey),
+        apiKeySecret: encryptToken(apiKeySecret),
+        fromNumber,
+      };
 
       if (existing) {
         await db.update(brokerChannelConfigs)
@@ -658,7 +664,7 @@ export function registerBrokerSdrRoutes(app: Express) {
 
       const cfg = smsRow.config as any;
       const twilio = (await import('twilio')).default;
-      const client = twilio(cfg.apiKey, cfg.apiKeySecret, { accountSid: cfg.accountSid });
+      const client = twilio(decryptToken(cfg.apiKey), decryptToken(cfg.apiKeySecret), { accountSid: cfg.accountSid });
 
       await client.messages.create({
         body: 'Test message from Lendry.AI — your SMS channel is connected and working! 🎉',
