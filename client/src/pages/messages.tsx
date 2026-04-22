@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, useSearch } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,8 @@ import {
   MapPin,
   Sparkles,
   File,
+  Plug,
+  Settings,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBranding } from "@/hooks/use-branding";
@@ -419,6 +421,14 @@ export default function MessagesPage() {
     },
     enabled: inboxTab === 'digests' && !!isAdmin,
     refetchInterval: inboxTab === 'digests' ? 30000 : false,
+  });
+
+  const { data: brokerChannels } = useQuery<{
+    sms: { connected: boolean; accountSid?: string; fromNumber?: string; smsApproved?: boolean };
+    email: { connected: boolean; email?: string };
+  }>({
+    queryKey: ['/api/broker/channels'],
+    enabled: !!isBroker,
   });
 
   const approveDraftMutation = useMutation({
@@ -1325,6 +1335,94 @@ export default function MessagesPage() {
               </div>
             )}
           </ScrollArea>
+
+          {/* Broker-only: Channels panel at the bottom of the inbox sidebar */}
+          {isBroker && (
+            <>
+              <Separator />
+              <div className="px-4 py-3 space-y-2" data-testid="broker-channels-panel">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <Plug className="h-3 w-3" />
+                    Channels
+                  </div>
+                  <Link href="/settings?tab=integrations">
+                    <button
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      data-testid="link-manage-channels"
+                    >
+                      <Settings className="h-3 w-3" />
+                      Manage
+                    </button>
+                  </Link>
+                </div>
+
+                {/* SMS row */}
+                <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/40">
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-medium">SMS</span>
+                    {brokerChannels?.sms?.connected ? (
+                      <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                        <XCircle className="h-3 w-3" />
+                        Not set up
+                      </span>
+                    )}
+                  </div>
+                  {!brokerChannels?.sms?.connected && (
+                    <Link href="/settings?tab=integrations">
+                      <button
+                        className="text-[11px] font-medium text-primary hover:underline"
+                        data-testid="link-connect-sms"
+                      >
+                        Connect
+                      </button>
+                    </Link>
+                  )}
+                  {brokerChannels?.sms?.connected && brokerChannels.sms.fromNumber && (
+                    <span className="text-[11px] text-muted-foreground">{brokerChannels.sms.fromNumber}</span>
+                  )}
+                </div>
+
+                {/* Gmail row */}
+                <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/40">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-medium">Gmail</span>
+                    {brokerChannels?.email?.connected ? (
+                      <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                        <XCircle className="h-3 w-3" />
+                        Not set up
+                      </span>
+                    )}
+                  </div>
+                  {!brokerChannels?.email?.connected && (
+                    <Link href="/settings?tab=integrations">
+                      <button
+                        className="text-[11px] font-medium text-primary hover:underline"
+                        data-testid="link-connect-gmail"
+                      >
+                        Connect
+                      </button>
+                    </Link>
+                  )}
+                  {brokerChannels?.email?.connected && brokerChannels.email.email && (
+                    <span className="text-[11px] text-muted-foreground truncate max-w-[120px]">{brokerChannels.email.email}</span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </Card>
 
         <Card className="flex-1 flex flex-col rounded-[10px] shadow-sm">
