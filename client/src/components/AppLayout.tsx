@@ -302,7 +302,7 @@ function AppLayoutContent({ children, sidebarPinnedProp, setSidebarPinnedProp }:
           <div className="flex items-center justify-between gap-1">
             <div className="flex flex-col items-start gap-1 group-data-[collapsible=icon]:hidden">
               <div className="flex items-baseline gap-1">
-                <span className="text-[24px] font-display font-bold text-white tracking-[0.25em]">LENDRY</span>
+                <span className="text-[24px] font-display font-bold text-white tracking-[0.25em] [word-break:normal] [overflow-wrap:normal]">LENDRY</span>
                 <span className="text-[14px] font-display font-bold text-primary tracking-[0.15em]">AI</span>
               </div>
               <span className="text-[16px] text-muted-foreground font-medium">
